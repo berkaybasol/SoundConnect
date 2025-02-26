@@ -1,4 +1,7 @@
 package com.berkayb.soundconnect.service;
 
+import org.springframework.stereotype.Service;
+
+@Service
 public class UserService {
 }
