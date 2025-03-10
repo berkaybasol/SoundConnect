@@ -2,26 +2,28 @@ package com.berkayb.soundconnect.controller.impl;
 
 import com.berkayb.soundconnect.controller.IUserController;
 import com.berkayb.soundconnect.dto.request.UserSaveRequestDto;
+import com.berkayb.soundconnect.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.dto.response.BaseResponse;
 import com.berkayb.soundconnect.dto.response.UserListDto;
-import com.berkayb.soundconnect.entity.User;
 import com.berkayb.soundconnect.service.IUserService;
+import static com.berkayb.soundconnect.constant.EndPoints.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
+
 
 @RestController
-@RequestMapping("/rest/api/user")
+@RequestMapping(USERS)
 @RequiredArgsConstructor
+
 
 public class UserControllerImpl implements IUserController {
 	private final IUserService userService;
 	
 	
-	@GetMapping("/get-all-users")
+	@GetMapping(GET_ALL_USERS)
 	@Override
 	public ResponseEntity<BaseResponse<List<UserListDto>>> getAllUsers() {
 		List<UserListDto> users = userService.getAllUsers();
@@ -34,7 +36,7 @@ public class UserControllerImpl implements IUserController {
 		                                     .build());
 	}
 	
-	@PostMapping("/save-user")
+	@PostMapping(SAVE_USER)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> saveUser(@RequestBody UserSaveRequestDto dto) {
 		userService.saveUser(dto);
@@ -46,5 +48,15 @@ public class UserControllerImpl implements IUserController {
 				                             .build());
 	}
 	
+	@GetMapping(GET_USER_BY_ID)
+	@Override
+	public ResponseEntity<BaseResponse<UserListDto>> getUserById(@PathVariable Long id) {
+		return ResponseEntity.ok(BaseResponse.<UserListDto>builder()
+		                                     .code(200)
+		                                     .data(userService.getUserById(id))
+		                                     .message("User getirildi.")
+		                                     .success(true)
+		                                     .build());
+	}
 	
 }
