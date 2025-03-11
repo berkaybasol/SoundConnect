@@ -11,4 +11,7 @@ public interface IUserService {
 	User saveUser(UserSaveRequestDto dto);
 	List<UserListDto> getAllUsers();
 	UserListDto getUserById(Long id);
+	void deleteUserById(Long id);
+	Boolean updateUser(UserUpdateRequestDto dto);
+	
 }

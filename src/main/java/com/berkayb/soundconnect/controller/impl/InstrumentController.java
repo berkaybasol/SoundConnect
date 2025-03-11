@@ -35,7 +35,4 @@ public class InstrumentController implements IInstrumentController {
 				                         .build());
 		
 	}
-	
-	
-	
 }

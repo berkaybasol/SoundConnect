@@ -7,10 +7,11 @@ import com.berkayb.soundconnect.enums.Role;
 import java.util.List;
 
 public record UserUpdateRequestDto(
+		Long id, // Kullanıcının ID'sini güncellemek için ekledik
 		String userName,
 		String password,
 		String email,
 		City city,
-		List<Instrument> instruments
+		List<Long> instrumentIds
 ) {
 }

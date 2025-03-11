@@ -22,6 +22,31 @@ import java.util.List;
 public class UserControllerImpl implements IUserController {
 	private final IUserService userService;
 	
+	@PutMapping(UPDATE_USER)
+	@Override
+	public ResponseEntity<BaseResponse<Boolean>> updateUser(@RequestBody UserUpdateRequestDto dto) {
+		boolean isUpdated = userService.updateUser(dto);
+		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
+		                                     .code(200)
+		                                     .data(isUpdated)
+		                                     .message(isUpdated ? "User başarıyla güncellendi." : "User güncellenemedi.")
+		                                     .success(isUpdated)
+		                                     .build());
+	}
+	
+	
+	@DeleteMapping(DELETE_USER)
+	@Override
+	public ResponseEntity<BaseResponse<Boolean>> deleteUserById(@PathVariable Long id) {
+		userService.deleteUserById(id);
+		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
+		                                     .data(true)
+				                         .code(200)
+				                         .message("User deleted successfully")
+				                         .success(true)
+				                             .build());
+	}
+	
 	
 	@GetMapping(GET_ALL_USERS)
 	@Override
@@ -58,5 +83,7 @@ public class UserControllerImpl implements IUserController {
 		                                     .success(true)
 		                                     .build());
 	}
+	
+	
 	
 }

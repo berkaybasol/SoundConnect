@@ -17,5 +17,6 @@ public interface IUserController {
 	ResponseEntity<BaseResponse<Boolean>> saveUser(UserSaveRequestDto dto);
 	ResponseEntity<BaseResponse<List<UserListDto>>> getAllUsers();
 	ResponseEntity<BaseResponse<UserListDto>> getUserById(Long id);
-	
+	ResponseEntity<BaseResponse<Boolean>> deleteUserById(Long id);
+	ResponseEntity<BaseResponse<Boolean>> updateUser(UserUpdateRequestDto dto);
 }
