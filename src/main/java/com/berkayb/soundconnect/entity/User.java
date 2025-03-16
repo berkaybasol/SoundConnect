@@ -24,27 +24,52 @@ public class User {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+	
+	
 	@Column(unique = true, nullable = false)
 	private String userName;
+	
+	
 	//@Column(nullable = false)  BU SONRA GELCEK SIMDI UGRASTIRMASIN TESTLER
 	private String password;
 	@Column(unique = true, nullable = false)
+	
+	
 	private String email;
 	@Column(unique = true, nullable = false)
+	
+	
 	private String phone;
+	
+	
 	private String description;
+	
+	
 	@Enumerated(EnumType.STRING)
 	private Gender gender;
+	
+	
 	@Enumerated(EnumType.STRING)
 	private City city;
+	
+	
 	@Enumerated(EnumType.STRING)
 	private UserStatus status;
+	
+	
 	@Enumerated(EnumType.STRING)
 	private Role role;
+	
+	
 	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	private List<Instrument> instruments;
-	private Integer followers; // BURALAR ENTITY OLACAK
-	private Integer following; // BURALAR ENTITY OLACAK
+	
+	@OneToMany(mappedBy = "following", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+	private List<Follow> followers;
+	
+	@OneToMany(mappedBy = "follower", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+	private List<Follow> following;
+	
 	private String profilePicture;
 	private LocalDateTime createdAt;
 	private LocalDateTime updatedAt;

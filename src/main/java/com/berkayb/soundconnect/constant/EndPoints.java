@@ -5,6 +5,7 @@ public class EndPoints {
 	public static final String VERSION = "/v1";
 	public static final String USERS = API + VERSION + "/users";
 	public static final String INSTRUMENTS = API + VERSION + "/users";
+	public static final String FOLLOW = API + VERSION + "/follows";
 	public static final String GET_ALL_USERS = "/get-all-users";
 	public static final String GET_USER_BY_ID = "/{id}";
 	public static final String SAVE_USER = "/save";
