@@ -16,4 +16,23 @@ spring:
       hibernate:
         format_sql: true
 
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
+app:
+  jwt:
+    secret: Z8bkt7cqnVtok5IlZKUtcBbT5-3Ib55SprD_l_uKV6eMOQMCM6Mx0C_SqU4tpQ-PCFtzenS4pwsBy7ZZ0JTopw
+
+    expiration: 86400000 # örnek: 1 gün = 24 * 60 * 60 * 1000 ms
+
   jpa.database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
