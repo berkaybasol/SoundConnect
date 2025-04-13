@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.auth.service;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.user.entity.User;
 import com.berkayb.soundconnect.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 	@Override
 	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 		User user = userRepository.findByUsername(username)
-				.orElseThrow(() -> new UsernameNotFoundException("User Not Found" + username));
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		return new UserDetailsImpl(user);
 	}
 }

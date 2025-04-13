@@ -14,6 +14,10 @@ public interface UserMapper {
 	@Mapping(target = "password", ignore = true)
 	@Mapping(target = "instruments", ignore = true)
 	User toEntity(UserSaveRequestDto dto);
+	
+	@Mapping(target = "followers", expression = "java(user.getFollowers() != null ? user.getFollowers().size() : 0)")
+	@Mapping(target = "following", expression = "java(user.getFollowing() != null ? user.getFollowing().size() : 0)")
 	UserListDto toDto(User user);
+	
 	UserUpdateRequestDto toUpdateRequestDto(User user);
 }

@@ -31,7 +31,7 @@ public class UserService implements IUserService {
 		boolean isUpdated = false;
 		
 		if (dto.userName() != null) {
-			user.setUserName(dto.userName());
+			user.setUsername(dto.userName());
 			isUpdated = true;
 		}
 		if (dto.email() != null) {

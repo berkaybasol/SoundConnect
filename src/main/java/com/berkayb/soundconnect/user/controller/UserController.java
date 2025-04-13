@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import static com.berkayb.soundconnect.shared.constant.EndPoints.*;
+
 
 @RestController
 @RequestMapping(USERS)

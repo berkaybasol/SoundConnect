@@ -7,11 +7,11 @@ import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import jakarta.validation.constraints.*;
 
 @PasswordMatch
-public record UserRegisterRequestDto(
+public record RegisterRequestDto(
 		
 		@NotBlank(message = "Username alanı boş bırakılamaz.")
 		@Size(min = 3, max = 20, message = "Kullanıcı adı 3 ile 20 karakter arasında olmalıdır.")
-		String userName,
+		String username,
 		
 		@Email(message = "Geçerli bir e-posta girin.")
 		@NotBlank(message = "E-posta boş olamaz.")
@@ -25,7 +25,7 @@ public record UserRegisterRequestDto(
 		Gender gender,
 		
 		@NotNull(message = "Rol boş olamaz.")
-		Role role,
+		Long roleId,
 		
 		@NotNull(message = "Şehir boş olamaz.")
 		City city,

@@ -29,8 +29,8 @@ public class User {
 	private Long id;
 	
 	
-	@Column(unique = true, nullable = false)
-	private String userName;
+	@Column(name = "user_name", unique = true, nullable = false)
+	private String username;
 	
 	
 	//@Column(nullable = false)  BU SONRA GELCEK SIMDI UGRASTIRMASIN TESTLER

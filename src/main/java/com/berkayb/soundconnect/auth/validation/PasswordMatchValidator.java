@@ -1,13 +1,13 @@
 package com.berkayb.soundconnect.auth.validation;
 
-import com.berkayb.soundconnect.auth.dto.request.UserRegisterRequestDto;
+import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-public class PasswordMatchValidator implements ConstraintValidator<PasswordMatch, UserRegisterRequestDto> {
+public class PasswordMatchValidator implements ConstraintValidator<PasswordMatch, RegisterRequestDto> {
 	
 	@Override
-	public boolean isValid(UserRegisterRequestDto dto, ConstraintValidatorContext context) {
+	public boolean isValid(RegisterRequestDto dto, ConstraintValidatorContext context) {
 		if (dto.password() == null || dto.rePassword() == null) {
 			return false; // Şifrelerin null olup olmadığını kontrol et
 		}

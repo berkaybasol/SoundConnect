@@ -1,14 +1,16 @@
 package com.berkayb.soundconnect.user.dto.response;
 
 import com.berkayb.soundconnect.instrument.entity.Instrument;
+import com.berkayb.soundconnect.role.entity.Role;
 import com.berkayb.soundconnect.user.enums.City;
 import com.berkayb.soundconnect.user.enums.Gender;
-import com.berkayb.soundconnect.enums.Role;
+import lombok.Builder;
 
 import java.util.List;
 
+@Builder
 public record UserListDto(
-		String userName,
+		String username,
 		Gender gender,
 		City city,
 		Role role,
