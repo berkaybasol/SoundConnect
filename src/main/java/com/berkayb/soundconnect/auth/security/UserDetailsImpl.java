@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.auth.security;
 
+import com.berkayb.soundconnect.role.entity.Permission;
+import com.berkayb.soundconnect.role.entity.Role;
 import com.berkayb.soundconnect.user.entity.User;
 import lombok.AllArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -7,6 +9,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @AllArgsConstructor
@@ -24,15 +28,35 @@ public class UserDetailsImpl implements UserDetails {
 	// Bu metot, kullanıcı doğrulandıktan sonra hangi işlemleri yapabileceğini belirlemek için çalışır.
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
-		// Kullanicinin sahip oldugu izinleri alip stream"e donusturuyoruz
-		return user.getPermissions()
-				.stream()
-				// Her bir permission nesnesini, GrantedAuthority tipine çeviriyoruz.
-				// Lambda ifadesi ile, getAuthority() metodu permission.getName() değerini dönecek şekilde yapılandırılıyor
-				.map(permission -> new SimpleGrantedAuthority(permission.getName()))
-		           // Stream"den tekrar listeye ceviriyoruz.
-				.collect(Collectors.toList());
+		// Yetki adlarını string olarak tutacağımız set
+		Set<String> authorityNames = new HashSet<>();
+		
+		// Rolleri güvenli şekilde yeni bir set'e çekiyoruz (ConcurrentModification hatası için önlem)
+		Set<Role> roles = new HashSet<>(user.getRoles());
+		for (Role role : roles) {
+			// Role adını ekliyoruz
+			authorityNames.add(role.getName());
+			
+			// Role'e ait izinleri güvenli şekilde yeni bir set'e çekiyoruz
+			Set<Permission> permissionsOfRole = new HashSet<>(role.getPermissions());
+			for (Permission permission : permissionsOfRole) {
+				authorityNames.add(permission.getName());
+			}
+		}
+		
+		// Kullanıcının doğrudan sahip olduğu izinleri de güvenli şekilde yeni set'e çekiyoruz
+		Set<Permission> directUserPermissions = new HashSet<>(user.getPermissions());
+		for (Permission permission : directUserPermissions) {
+			authorityNames.add(permission.getName());
+		}
+		
+		// En son tüm string yetki adlarını SimpleGrantedAuthority'ye çeviriyoruz yoksa spring mevzuyu ayikmiyo
+		return authorityNames.stream()
+		                     .map(SimpleGrantedAuthority::new)
+		                     .collect(Collectors.toSet());
 	}
+	
+	
 	
 	@Override
 	public String getPassword() {

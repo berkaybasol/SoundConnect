@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.user.entity.User;
 import com.berkayb.soundconnect.user.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -23,8 +24,9 @@ public class CustomUserDetailsService implements UserDetailsService {
 	
 	// verilen username ile veritabanindan kullaniciyi buluruz
 	// bulamazsak springe ozel exception firlatilir
-	// bulursak kullaniciyi sprin'in anlatyacagi UserDetails formatina cevirip doneriz.
+	// bulursak kullaniciyi spring'in anlayacagi UserDetails formatina cevirip doneriz.
 	@Override
+	@Transactional
 	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 		User user = userRepository.findByUsername(username)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));

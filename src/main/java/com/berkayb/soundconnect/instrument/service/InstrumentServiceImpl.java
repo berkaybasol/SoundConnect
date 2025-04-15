@@ -4,7 +4,6 @@ import com.berkayb.soundconnect.instrument.dto.request.InstrumentSaveRequestDto;
 import com.berkayb.soundconnect.instrument.entity.Instrument;
 import com.berkayb.soundconnect.instrument.mapper.InstrumentMapper;
 import com.berkayb.soundconnect.instrument.repository.InstrumentRepository;
-import com.berkayb.soundconnect.user.service.IInstrumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.follow.controller;
 
-public interface IFollowController {
+public interface FollowController {
 
 
 }

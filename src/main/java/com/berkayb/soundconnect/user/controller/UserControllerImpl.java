@@ -5,25 +5,26 @@ import com.berkayb.soundconnect.user.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.user.service.IUserService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-import static com.berkayb.soundconnect.shared.constant.EndPoints.*;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.User.*;
 
 
 @RestController
-@RequestMapping(USERS)
+@RequestMapping(BASE)
 @RequiredArgsConstructor
+@Tag(name = "User Controller", description = "user includes transactions")
 
-
-public class UserController implements IUserController {
+public class UserControllerImpl implements IUserController {
 	
 	private final IUserService userService;
 	
-	@PutMapping(UPDATE_USER)
+	@PutMapping(UPDATE)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> updateUser(@RequestBody UserUpdateRequestDto dto) {
 		boolean isUpdated = userService.updateUser(dto);
@@ -36,7 +37,7 @@ public class UserController implements IUserController {
 	}
 	
 	
-	@DeleteMapping(DELETE_USER)
+	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> deleteUserById(@PathVariable Long id) {
 		userService.deleteUserById(id);
@@ -49,7 +50,7 @@ public class UserController implements IUserController {
 	}
 	
 	
-	@GetMapping(GET_ALL_USERS)
+	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<UserListDto>>> getAllUsers() {
 		List<UserListDto> users = userService.getAllUsers();
@@ -62,7 +63,7 @@ public class UserController implements IUserController {
 		                                     .build());
 	}
 	
-	@PostMapping(SAVE_USER)
+	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> saveUser(@RequestBody UserSaveRequestDto dto) {
 		userService.saveUser(dto);
@@ -74,7 +75,7 @@ public class UserController implements IUserController {
 				                             .build());
 	}
 	
-	@GetMapping(GET_USER_BY_ID)
+	@GetMapping(BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<UserListDto>> getUserById(@PathVariable Long id) {
 		return ResponseEntity.ok(BaseResponse.<UserListDto>builder()

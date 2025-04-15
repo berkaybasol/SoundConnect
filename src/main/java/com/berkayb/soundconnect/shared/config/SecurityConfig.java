@@ -8,6 +8,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,6 +17,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableMethodSecurity // @PreAuthorize gibi anatasyonlarin calismasini saglar
+@EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 	
@@ -54,7 +56,10 @@ public class SecurityConfig {
 								"/auth/**",                 // login & register
 								"/v3/api-docs/**",          // swagger JSON verisi
 								"/swagger-ui/**",           // swagger arayüzü
-								"/swagger-ui.html"          // swagger giriş noktası
+								"/swagger-ui.html",         // swagger giriş noktası
+								"/swagger-resources/**",
+								"/webjars/**"
+								
 						).permitAll()
 						.anyRequest().authenticated()
 				)

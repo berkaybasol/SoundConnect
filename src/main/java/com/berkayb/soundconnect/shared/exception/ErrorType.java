@@ -33,8 +33,15 @@ public enum ErrorType {
 	// VALID
 	VALIDATION_ERROR(4000,"Validation failed", HttpStatus.BAD_REQUEST),
 	
-	// ROLE
+	// ROLE-PERMISSIONS
 	ROLE_NOT_FOUND(5001,"Role not found",HttpStatus.NOT_FOUND),
+	ROLE_ALREADY_EXISTS(5002,"Role already exists",HttpStatus.BAD_REQUEST),
+	PERMISSION_NOT_FOUND(5003, "Permission not found", HttpStatus.NOT_FOUND),
+	PERMISSION_ALREADY_EXISTS(5004, "Permission already exists", HttpStatus.BAD_REQUEST),
+	
+	
+	
+	
 	
 	// GENEL
 	INTERNAL_ERROR(9999,"Internal error",HttpStatus.INTERNAL_SERVER_ERROR);

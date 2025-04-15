@@ -3,7 +3,7 @@ package com.berkayb.soundconnect;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.berkayb.soundconnect")
 public class SoundConnectApplication {
 	
 	public static void main(String[] args) {

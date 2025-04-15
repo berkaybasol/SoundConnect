@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.user.service;
+package com.berkayb.soundconnect.instrument.service;
 
 import com.berkayb.soundconnect.instrument.dto.request.InstrumentSaveRequestDto;
 import com.berkayb.soundconnect.instrument.entity.Instrument;

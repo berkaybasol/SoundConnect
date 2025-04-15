@@ -44,10 +44,11 @@ public class JwtTokenProvider {
 		User user = userDetails.getUser();
 		
 		// Izinleri string listesine ceviriyoruz.
-		List<String> permissons = user.getPermissions()
-				.stream()
-				.map(Permission::getName)
-				.collect(Collectors.toList());
+		List<String> permissions = user.getRoles().stream()
+		                               .flatMap(role -> role.getPermissions().stream())
+		                               .map(Permission::getName)
+		                               .distinct()
+		                               .collect(Collectors.toList());
 		
 		
 		// Rolleri String listesine ceviriyoruz
@@ -59,7 +60,7 @@ public class JwtTokenProvider {
 		// JWT claim'leri map'ine ekleniyor
 		Map<String, Object> claims = new HashMap<>();
 		claims.put("roles", roles);
-		claims.put("permissions", permissons);
+		claims.put("permissions", permissions);
 		
 		return Jwts.builder()
 				// JWT'nin payload kismina ozel alanlar ekliyoruz. (roller ve izinler gibi)
@@ -93,6 +94,7 @@ public class JwtTokenProvider {
 				.setIssuedAt(new Date()) // suanki zaman
 		           // tokenin gecerlilik suresi. suanki zamana yml'dan gelen sure eklenir.
 				.setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+				.signWith(getSigningKey(), SignatureAlgorithm.HS256)
 				.compact(); // tokeni string formatina cevirir. frontende bunu gondeririz
 	}
 	

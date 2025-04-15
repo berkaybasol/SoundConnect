@@ -1,5 +1,4 @@
 package com.berkayb.soundconnect.follow.service;
 
-public interface FollowService {
-
+public class FollowServiceImpl {
 }
