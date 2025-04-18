@@ -39,14 +39,30 @@ public class DataInitializer {
 			return;
 		}
 		
-		// Default izinler
+								// --------------> DEFAULT IZINLER <--------------
+		// USER
 		Permission readUser = Permission.builder().name(PermissionEnum.READ_USER.name()).build();
 		Permission writeUser = Permission.builder().name(PermissionEnum.WRITE_USER.name()).build();
 		Permission deleteUser = Permission.builder().name(PermissionEnum.DELETE_USER.name()).build();
 		
-		permissionRepository.saveAll(List.of(readUser, writeUser, deleteUser));
+		// VENUE
+		Permission readVenue = Permission.builder().name(PermissionEnum.READ_VENUE.name()).build();
+		Permission writeVenue = Permission.builder().name(PermissionEnum.WRITE_VENUE.name()).build();
+		Permission deleteVenue = Permission.builder().name(PermissionEnum.DELETE_VENUE.name()).build();
+		Permission assignArtistToVenue = Permission.builder().name(PermissionEnum.ASSIGN_ARTIST_TO_VENUE.name()).build();
 		
-		// Default roller ve ilgili rollerin izinleri
+		// butun izinleri kaydet
+		permissionRepository.saveAll(List.of(
+				readUser,
+				writeUser,
+				deleteUser,
+				readVenue,
+				writeVenue,
+				deleteVenue,
+				assignArtistToVenue
+		));
+		
+		//              --------------> DEFAULT ROLLER VE ILGILI ROLLERIN IZINLERI <--------------
 		Role userRole = Role.builder()
 		                    .name("ROLE_USER")
 		                    .permissions(Set.of(readUser))
@@ -54,10 +70,22 @@ public class DataInitializer {
 		
 		Role adminRole = Role.builder()
 		                     .name("ROLE_ADMIN")
-		                     .permissions(Set.of(readUser, writeUser, deleteUser)) // yeni bir izin eklediginde buraya ugramayi unutma :D
+		                     .permissions(Set.of(
+									 readUser,
+									 writeUser,
+									 deleteUser,
+									 readVenue,
+									 writeVenue,
+									 deleteVenue,
+									 assignArtistToVenue)) // yeni bir izin eklediginde buraya ugramayi unutma :D
 		                     .build();
 		
-		roleRepository.saveAll(List.of(userRole, adminRole));
+		Role venueRole = Role.builder()
+				.name("ROLE_VENUE")
+				.permissions(Set.of(readVenue, writeVenue, deleteVenue, assignArtistToVenue))
+				.build();
+		
+		roleRepository.saveAll(List.of(userRole, adminRole, venueRole));
 		
 		log.info("Default Roles & Permissions added");
 		
@@ -68,13 +96,16 @@ public class DataInitializer {
 			Role persistedAdminRole = roleRepository.findByName("ROLE_ADMIN")
 			                                        .orElseThrow(() -> new RuntimeException("ROLE_ADMIN not found"));
 			
+			
+			
+			// default admin
 			User admin = User.builder()
 			                 .username("basol")
 			                 .password(passwordEncoder.encode("raprap12334")) // Şifreyi encode etmezsen giriş yapılamaz!
 			                 .email("admin@soundconnect.com")
 			                 .phone("05555555555")
 			                 .city(City.ANKARA)
-			                 .gender(Gender.MALE)
+			                 .gender(Gender.MALE) 
 			                 .status(UserStatus.ACTIVE)
 			                 .roles(Set.of(persistedAdminRole))
 			                 .createdAt(LocalDateTime.now())
@@ -85,5 +116,7 @@ public class DataInitializer {
 			
 			log.info("Default admin user created with username: basol / password: raprap12334");
 		}
+		
+		
 	}
 }

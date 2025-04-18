@@ -64,10 +64,4 @@ public class PermissionControllerImpl implements PermissionController {
 				                         .build());
 				
 	}
-	
-	
-	
-	
-	
-	
 }
