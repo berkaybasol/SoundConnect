@@ -47,4 +47,34 @@ public class EndPoints {
 		public static final String REGISTER = "/register";
 		public static final String LOGIN = "/login";
 	}
+	
+	public static class City {
+		public static final String BASE = API + VERSION + "/cities";
+		public static final String SAVE = "/save-city";
+		public static final String GET_ALL = "/get-all-cities";
+		public static final String GET_CITY = "/get-city/{id}";
+		public static final String DELETE = "/delete-city/{id}";
+		public static final String PRETTY = "/pretty";
+	}
+	
+	public static class District {
+		public static final String BASE = API + VERSION + "/districts";
+		public static final String SAVE = "/save-district";
+		public static final String GET_ALL = "/get-all-districts";
+		public static final String GET_BY_ID = "/get-by-id/{id}";
+		public static final String GET_BY_CITY = "/get-by-city/{cityId}";
+		public static final String DELETE = "/delete-district/{id}";
+	}
+	
+	public static class Neighborhood {
+		public static final String BASE = API + VERSION + "/neighborhoods";
+		public static final String SAVE = "/save";
+		public static final String GET_ALL = "/get-all";
+		public static final String GET_BY_ID = "/get-by-id/{id}";
+		public static final String GET_BY_DISTRICT = "/get-by-district/{districtId}";
+		public static final String DELETE = "/delete/{id}";
+		
+	}
+	
+	
 }

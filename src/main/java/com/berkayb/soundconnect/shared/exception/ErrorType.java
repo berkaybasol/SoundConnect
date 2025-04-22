@@ -39,6 +39,14 @@ public enum ErrorType {
 	PERMISSION_NOT_FOUND(5003, "Permission not found", HttpStatus.NOT_FOUND),
 	PERMISSION_ALREADY_EXISTS(5004, "Permission already exists", HttpStatus.BAD_REQUEST),
 	
+	// CITY - DISTRICT - NEIGHBORHOOD
+	CITY_NOT_FOUND(6001, "City not found", HttpStatus.NOT_FOUND),
+	CITY_ALREADY_EXISTS(6002, "City already exists", HttpStatus.BAD_REQUEST),
+	DISTRICT_NOT_FOUND(6003, "District not found", HttpStatus.NOT_FOUND),
+	DISTRICT_ALREADY_EXISTS(6004, "District already exists", HttpStatus.BAD_REQUEST),
+	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.BAD_REQUEST),
+	NEIGHBORHOOD_NOT_FOUND(6006, "Neighborhood not found", HttpStatus.BAD_REQUEST),
+	
 	
 	
 	

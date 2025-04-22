@@ -1,13 +1,14 @@
 package com.berkayb.soundconnect.venue.entity;
 
+import com.berkayb.soundconnect.location.entity.City;
+import com.berkayb.soundconnect.location.entity.District;
+import com.berkayb.soundconnect.location.entity.Neighborhood;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.user.entity.User;
-import com.berkayb.soundconnect.user.enums.City;
+import com.berkayb.soundconnect.venue.enums.VenueStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.GenericGenerator;
-
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
@@ -30,7 +31,8 @@ public class Venue extends BaseEntity {
 	@Column(nullable = false, length = 255)
 	private String address;
 	
-	@Enumerated(EnumType.STRING)
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "city_id", nullable = false)
 	private City city;
 	
 	@Column(length = 15)
@@ -42,9 +44,29 @@ public class Venue extends BaseEntity {
 	@Column(length = 500)
 	private String description;
 	
-	@Column(nullable = false)
-	private boolean isApproved = false;
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "district_id", nullable = false)
+	private District district;
 	
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "neighborhood_id", nullable = false)
+	private Neighborhood neighborhood;
+	
+	@Column(name = "music_start_time")
+	private String musicStartTime;
+	
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false)
+	private VenueStatus status;
+	
+	/**
+	 * Lombok'un @ToString anotasyonu, tüm alanları otomatik olarak toString metoduna dahil eder.
+	 * Bu durum @ManyToOne gibi ilişki alanlarında sonsuz döngü (StackOverflowError) yaratabilir.
+	 * Örneğin: Venue -> User -> Venue -> User ... şeklinde birbirini referanslayan yapılar oluşabilir.
+	 *
+	 * Bu riski önlemek için ilgili ilişki alanlarına @ToString.Exclude eklenir.
+	 * Böylece toString çıktısında sadece ID veya null yazılır, ilişkili nesneye erişilmez.
+	 */
 	@ToString.Exclude
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "owner_id")

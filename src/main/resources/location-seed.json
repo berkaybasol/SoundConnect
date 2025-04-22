@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Ankara",
+    "districts": [
+      {
+        "name": "Çankaya",
+        "neighborhoods": ["Bahçelievler", "Yüzüncüyıl", "Kocatepe"]
+      },
+      {
+        "name": "Keçiören",
+        "neighborhoods": ["Etlik", "Aktepe", "Yayla"]
+      }
+    ]
+  },
+  {
+    "name": "İstanbul",
+    "districts": [
+      {
+        "name": "Kadıköy",
+        "neighborhoods": ["Moda", "Fenerbahçe", "Kozyatağı"]
+      },
+      {
+        "name": "Beşiktaş",
+        "neighborhoods": ["Levent", "Ortaköy", "Balmumcu"]
+      }
+    ]
+  }
+]
