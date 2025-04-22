@@ -28,9 +28,7 @@ public class VenueServiceImpl implements VenueService {
 	
 	@Override
 	public VenueResponseDto save(VenueRequestDto dto) {
-		log.info("Saving venue: {}", dto.name());
-		
-		City
+		return null;
 	}
 	
 	@Override
@@ -52,4 +50,6 @@ public class VenueServiceImpl implements VenueService {
 	public VenueResponseDto update(UUID id, VenueRequestDto dto) {
 		return null;
 	}
+	
+	
 }
