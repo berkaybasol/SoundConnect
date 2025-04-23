@@ -1,10 +1,11 @@
 package com.berkayb.soundconnect.auth.dto.request;
 
-import com.berkayb.soundconnect.role.entity.Role;
-import com.berkayb.soundconnect.user.enums.City;
-import com.berkayb.soundconnect.user.enums.Gender;
+import com.berkayb.soundconnect.modules.user.enums.City;
+import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import jakarta.validation.constraints.*;
+
+import java.util.UUID;
 
 @PasswordMatch
 public record RegisterRequestDto(
@@ -25,7 +26,7 @@ public record RegisterRequestDto(
 		Gender gender,
 		
 		@NotNull(message = "Rol boş olamaz.")
-		Long roleId,
+		UUID roleId,
 		
 		@NotNull(message = "Şehir boş olamaz.")
 		City city,

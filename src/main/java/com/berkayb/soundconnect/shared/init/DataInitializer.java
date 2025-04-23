@@ -1,15 +1,15 @@
 package com.berkayb.soundconnect.shared.init;
 
-import com.berkayb.soundconnect.role.entity.Permission;
-import com.berkayb.soundconnect.role.entity.Role;
-import com.berkayb.soundconnect.role.enums.PermissionEnum;
-import com.berkayb.soundconnect.role.repository.PermissionRepository;
-import com.berkayb.soundconnect.role.repository.RoleRepository;
-import com.berkayb.soundconnect.user.entity.User;
-import com.berkayb.soundconnect.user.enums.City;
-import com.berkayb.soundconnect.user.enums.Gender;
-import com.berkayb.soundconnect.user.enums.UserStatus;
-import com.berkayb.soundconnect.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.role.entity.Permission;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.PermissionEnum;
+import com.berkayb.soundconnect.modules.role.repository.PermissionRepository;
+import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.City;
+import com.berkayb.soundconnect.modules.user.enums.Gender;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +17,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static com.berkayb.soundconnect.modules.role.enums.PermissionEnum.*;
+import static com.berkayb.soundconnect.modules.role.enums.RoleEnum.*;
 
 @Component
 @RequiredArgsConstructor
@@ -29,94 +32,95 @@ public class DataInitializer {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	
-	
-	@PostConstruct // proje calistiktan sonra calissin
+	@PostConstruct
 	public void initData() {
 		
-		// eger veri varsa tekrar eklememek icin kontrol et
+		// eger veri onceden eklenmisse tekrar ekleme
 		if (roleRepository.count() > 0 || permissionRepository.count() > 0) {
-			log.info("Roles already exist");
+			log.info("roles and permissions zaten eklenmis.");
 			return;
 		}
 		
-								// --------------> DEFAULT IZINLER <--------------
-		// USER
-		Permission readUser = Permission.builder().name(PermissionEnum.READ_USER.name()).build();
-		Permission writeUser = Permission.builder().name(PermissionEnum.WRITE_USER.name()).build();
-		Permission deleteUser = Permission.builder().name(PermissionEnum.DELETE_USER.name()).build();
+		log.info("roller ve izinler ekleniyor...");
 		
-		// VENUE
-		Permission readVenue = Permission.builder().name(PermissionEnum.READ_VENUE.name()).build();
-		Permission writeVenue = Permission.builder().name(PermissionEnum.WRITE_VENUE.name()).build();
-		Permission deleteVenue = Permission.builder().name(PermissionEnum.DELETE_VENUE.name()).build();
-		Permission assignArtistToVenue = Permission.builder().name(PermissionEnum.ASSIGN_ARTIST_TO_VENUE.name()).build();
+		// tum izinleri enumdan al ve kaydet
+		List<Permission> allPermissions = Arrays.stream(PermissionEnum.values())
+		                                        .map(p -> Permission.builder().name(p.name()).build())
+		                                        .collect(Collectors.toList());
+		permissionRepository.saveAll(allPermissions);
 		
-		// butun izinleri kaydet
-		permissionRepository.saveAll(List.of(
-				readUser,
-				writeUser,
-				deleteUser,
-				readVenue,
-				writeVenue,
-				deleteVenue,
-				assignArtistToVenue
-		));
+		// kayitli izinleri map yapisina donustur
+		Map<String, Permission> permissionMap = permissionRepository.findAll().stream()
+		                                                            .collect(Collectors.toMap(Permission::getName, p -> p));
 		
-		//              --------------> DEFAULT ROLLER VE ILGILI ROLLERIN IZINLERI <--------------
+		// user rolunu olustur
 		Role userRole = Role.builder()
-		                    .name("ROLE_USER")
-		                    .permissions(Set.of(readUser))
+		                    .name(ROLE_USER.name())
+		                    .permissions(Set.of(
+				                    Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                    ))
 		                    .build();
 		
-		Role adminRole = Role.builder()
-		                     .name("ROLE_ADMIN")
+		// moderator rolunu olustur
+		Role moderatorRole = Role.builder()
+		                         .name(ROLE_ADMIN.name())
+		                         .permissions(Set.of(
+				                         Objects.requireNonNull(permissionMap.get(READ_USER.name())),
+				                         Objects.requireNonNull(permissionMap.get(WRITE_USER.name())),
+				                         Objects.requireNonNull(permissionMap.get(DELETE_USER.name())),
+				                         Objects.requireNonNull(permissionMap.get(READ_ALL_USERS.name())),
+				                         Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
+				                         Objects.requireNonNull(permissionMap.get(WRITE_VENUE.name())),
+				                         Objects.requireNonNull(permissionMap.get(DELETE_VENUE.name())),
+				                         Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name())),
+				                         Objects.requireNonNull(permissionMap.get(READ_LOCATION.name())),
+				                         Objects.requireNonNull(permissionMap.get(WRITE_LOCATION.name())),
+				                         Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name()))
+				                         
+		                         ))
+		                         .build();
+		
+		// venue rolunu olustur
+		Role venueRole = Role.builder()
+		                     .name(ROLE_VENUE.name())
 		                     .permissions(Set.of(
-									 readUser,
-									 writeUser,
-									 deleteUser,
-									 readVenue,
-									 writeVenue,
-									 deleteVenue,
-									 assignArtistToVenue)) // yeni bir izin eklediginde buraya ugramayi unutma :D
+				                     Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
+				                     Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name()))
+		                     ))
 		                     .build();
 		
-		Role venueRole = Role.builder()
-				.name("ROLE_VENUE")
-				.permissions(Set.of(readVenue, writeVenue, deleteVenue, assignArtistToVenue))
-				.build();
+		// owner (adminlerin ustu) rolunu olustur
+		Role ownerRole = Role.builder()
+		                     .name(ROLE_OWNER.name())
+		                     .permissions(new HashSet<>(permissionMap.values()))
+		                     .build();
 		
-		roleRepository.saveAll(List.of(userRole, adminRole, venueRole));
+		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole));
 		
-		log.info("Default Roles & Permissions added");
+		log.info("roller ve izinler eklendi.");
 		
-		if (userRepository.findByUsername("admin").isEmpty()) {
-			log.info("Admin user not found, creating default admin...");
+		// default owner kullaniciyi olustur
+		if (userRepository.findByUsername("basol").isEmpty()) {
+			log.info("default owner olusturuluyor...");
 			
-			// ROLE_ADMIN'i tekrar veritabanından çekiyoruz çünkü yukarıdaki saveAll() işlemi sonrası Entity'ler detached olabilir
-			Role persistedAdminRole = roleRepository.findByName("ROLE_ADMIN")
-			                                        .orElseThrow(() -> new RuntimeException("ROLE_ADMIN not found"));
+			Role owner = roleRepository.findByName(ROLE_OWNER.name())
+			                           .orElseThrow(() -> new RuntimeException("ROLE_OWNER bulunamadi"));
 			
-			
-			
-			// default admin
 			User admin = User.builder()
 			                 .username("basol")
-			                 .password(passwordEncoder.encode("raprap12334")) // Şifreyi encode etmezsen giriş yapılamaz!
+			                 .password(passwordEncoder.encode("raprap12334"))
 			                 .email("admin@soundconnect.com")
 			                 .phone("05555555555")
 			                 .city(City.ANKARA)
-			                 .gender(Gender.MALE) 
+			                 .gender(Gender.MALE)
 			                 .status(UserStatus.ACTIVE)
-			                 .roles(Set.of(persistedAdminRole))
+			                 .roles(Set.of(owner))
 			                 .createdAt(LocalDateTime.now())
 			                 .updatedAt(LocalDateTime.now())
 			                 .build();
 			
 			userRepository.save(admin);
-			
-			log.info("Default admin user created with username: basol / password: raprap12334");
+			log.info("owner kullanici olusturuldu: basol / raprap12334");
 		}
-		
-		
 	}
 }

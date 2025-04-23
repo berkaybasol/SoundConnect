@@ -76,5 +76,15 @@ public class EndPoints {
 		
 	}
 	
+	public static class Venue {
+		public static final String BASE = API + VERSION + "/venues";
+		public static final String SAVE = "/save";
+		public static final String UPDATE = "/update/{id}";
+		public static final String GET_ALL = "/get-all";
+		public static final String GET_BY_ID = "/get-by-id/{id}";
+		public static final String DELETE = "/delete/{id}";
+	}
+	
+	
 	
 }

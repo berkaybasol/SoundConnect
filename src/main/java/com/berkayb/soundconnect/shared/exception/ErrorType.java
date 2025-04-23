@@ -47,6 +47,10 @@ public enum ErrorType {
 	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.BAD_REQUEST),
 	NEIGHBORHOOD_NOT_FOUND(6006, "Neighborhood not found", HttpStatus.BAD_REQUEST),
 	
+	// VENUE
+	VENUE_NOT_FOUND(7001, "Venue not found", HttpStatus.NOT_FOUND),
+	
+	
 	
 	
 	

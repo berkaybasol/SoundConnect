@@ -1,11 +1,10 @@
 package com.berkayb.soundconnect.auth.security;
 
-import com.berkayb.soundconnect.role.entity.Permission;
-import com.berkayb.soundconnect.role.entity.Role;
-import com.berkayb.soundconnect.user.entity.User;
+import com.berkayb.soundconnect.modules.role.entity.Permission;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import jakarta.persistence.Column;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;

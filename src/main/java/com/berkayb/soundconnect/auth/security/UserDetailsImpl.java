@@ -1,8 +1,8 @@
 package com.berkayb.soundconnect.auth.security;
 
-import com.berkayb.soundconnect.role.entity.Permission;
-import com.berkayb.soundconnect.role.entity.Role;
-import com.berkayb.soundconnect.user.entity.User;
+import com.berkayb.soundconnect.modules.role.entity.Permission;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import lombok.AllArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;

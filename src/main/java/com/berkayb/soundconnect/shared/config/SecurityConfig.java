@@ -53,7 +53,7 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(
-								"/api/v1/auth/**",                 // login & register
+								"/api/v1/auth/**",           // login & register
 								"/v3/api-docs/**",          // swagger JSON verisi
 								"/swagger-ui/**",           // swagger arayüzü
 								"/swagger-ui.html",         // swagger giriş noktası
