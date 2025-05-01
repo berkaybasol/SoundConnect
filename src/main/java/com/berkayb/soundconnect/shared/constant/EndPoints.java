@@ -64,7 +64,7 @@ public class EndPoints {
 		public static final String GET_BY_ID = "/get-by-id/{id}";
 		public static final String GET_BY_CITY = "/get-by-city/{cityId}";
 		public static final String DELETE = "/delete-district/{id}";
-	}
+	}//
 	
 	public static class Neighborhood {
 		public static final String BASE = API + VERSION + "/neighborhoods";
