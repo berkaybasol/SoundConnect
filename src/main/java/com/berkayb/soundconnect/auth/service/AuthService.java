@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -63,8 +64,8 @@ public class AuthService {
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
 		// varsayilan rolu veritabanindan cek
-		Role defaultRole = roleRepository.findById(dto.roleId())
-				.orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
+		                                 .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		// yeni kullaniciyi olustur
 		User user = User.builder()

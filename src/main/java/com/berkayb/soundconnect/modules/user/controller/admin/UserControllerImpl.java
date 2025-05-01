@@ -26,11 +26,12 @@ public class UserControllerImpl implements UserController {
 	
 	private final UserService userService;
 	
-	@PreAuthorize("hasAuthority('WRITE_USER')") // kullanıcı güncelleme yetkisi
-	@PutMapping(UPDATE)
+	@PreAuthorize("hasAuthority('WRITE_USER')")
+	@PutMapping(UPDATE) // Yani: "/update/{id}"
 	@Override
-	public ResponseEntity<BaseResponse<Boolean>> updateUser(@RequestBody UserUpdateRequestDto dto) {
-		boolean isUpdated = userService.updateUser(dto);
+	public ResponseEntity<BaseResponse<Boolean>> updateUser(@PathVariable UUID id,
+	                                                        @RequestBody UserUpdateRequestDto dto) {
+		boolean isUpdated = userService.updateUser(id, dto);
 		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
 		                                     .code(200)
 		                                     .data(isUpdated)

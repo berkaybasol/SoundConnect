@@ -38,15 +38,15 @@ public class UserServiceImpl implements UserService {
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
-	public Boolean updateUser(UserUpdateRequestDto dto) {
+	public Boolean updateUser(UUID id, UserUpdateRequestDto dto) {
 		// kullanici bulunamazsa hata firlatilir
-		User user = userEntityFinder.getUser(dto.id());
+		User user = userEntityFinder.getUser(id);
 		
 		boolean isUpdated = false;
 		
 		// kullanici adi guncellenirse flag true yapilir
-		if (dto.userName() != null) {
-			user.setUsername(dto.userName());
+		if (dto.username() != null) {
+			user.setUsername(dto.username());
 			isUpdated = true;
 		}
 		

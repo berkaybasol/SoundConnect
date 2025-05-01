@@ -13,6 +13,6 @@ public interface UserService {
 	List<UserListDto> getAllUsers();
 	UserListDto getUserById(UUID id);
 	void deleteUserById(UUID id);
-	Boolean updateUser(UserUpdateRequestDto dto);
+	Boolean updateUser(UUID id, UserUpdateRequestDto dto);
 	
 }

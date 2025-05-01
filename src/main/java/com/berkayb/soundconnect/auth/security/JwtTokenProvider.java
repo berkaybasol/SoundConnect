@@ -85,7 +85,7 @@ public class JwtTokenProvider {
 		 *
 		 * .setSubject(userDetails.getUsername()) çağrısı ile "sub" alanına kullanıcının username bilgisini koyarız.
 		 */
-		
+		 
 		/***
 		 * Kullanıcının rollerini (authorities) JWT token’ın payload kısmına "roles" adıyla ekliyoruz.
 		 * getAuthorities() → ROLE bilgilerini döner, stream ile tek tek gezip sadece role isimlerini alıyoruz.

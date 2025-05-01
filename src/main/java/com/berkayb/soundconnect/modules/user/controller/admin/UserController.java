@@ -14,5 +14,5 @@ public interface UserController {
 	ResponseEntity<BaseResponse<List<UserListDto>>> getAllUsers();
 	ResponseEntity<BaseResponse<UserListDto>> getUserById(UUID id);
 	ResponseEntity<BaseResponse<Boolean>> deleteUserById(UUID id);
-	ResponseEntity<BaseResponse<Boolean>> updateUser(UserUpdateRequestDto dto);
+	ResponseEntity<BaseResponse<Boolean>> updateUser(UUID id, UserUpdateRequestDto dto);
 }

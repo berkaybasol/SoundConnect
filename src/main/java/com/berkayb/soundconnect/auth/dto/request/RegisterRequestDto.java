@@ -25,9 +25,6 @@ public record RegisterRequestDto(
 		@NotNull(message = "Cinsiyet boş olamaz.")
 		Gender gender,
 		
-		@NotNull(message = "Rol boş olamaz.")
-		UUID roleId,
-		
 		@NotNull(message = "Şehir boş olamaz.")
 		City city,
 		

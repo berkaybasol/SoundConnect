@@ -6,8 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record UserUpdateRequestDto(
-		UUID id, // lazim
-		String userName,
+		String username,
 		String password,
 		String email,
 		City city,

@@ -14,17 +14,22 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
-@EnableMethodSecurity // @PreAuthorize gibi anatasyonlarin calismasini saglar
-@EnableWebSecurity
+@EnableMethodSecurity // @PreAuthorize gibi anotasyonların çalışmasını sağlar
+@EnableWebSecurity // Spring Security yapılandırmasını etkinleştirir
 @RequiredArgsConstructor
 public class SecurityConfig {
 	
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	
 	/**
-	 * Parolaları BCrypt algoritması ile şifreleyen PasswordEncoder bean’i
+	 * Şifreleri BCrypt algoritması ile şifrelemek için PasswordEncoder bean'i tanımlıyoruz.
 	 */
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -32,8 +37,8 @@ public class SecurityConfig {
 	}
 	
 	/**
-	 * AuthenticationManager, Spring’in login işlemlerinde kullandığı çekirdek yapı.
-	 * Biz bunu dışarıya bean olarak veriyoruz ki controller'da kullanabilelim.
+	 * AuthenticationManager, login işlemlerinde kullanıcıyı doğrulamak için kullanılır.
+	 * AuthenticationConfiguration üzerinden elde edilir.
 	 */
 	@Bean
 	public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
@@ -41,30 +46,52 @@ public class SecurityConfig {
 	}
 	
 	/**
-	 * Uygulamadaki güvenlik zincirini tanımlarız:
-	 * - Hangi endpoint'ler serbest?
-	 * - Hangi filtreler devreye girecek?
-	 * - Stateless yapı mı olacak?
+	 * Uygulamadaki güvenlik zincirini tanımlar:
+	 * - CSRF kapatılır
+	 * - Stateless session yapısı kurulur (JWT için)
+	 * - CORS izinleri tanımlanır
+	 * - Hangi endpointler serbest, hangileri korumalı ayarlanır
+	 * - JWT filtresi security zincirine eklenir
 	 */
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		http
 				.csrf(csrf -> csrf.disable())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(
-								"/api/v1/auth/**",           // login & register
-								"/v3/api-docs/**",          // swagger JSON verisi
-								"/swagger-ui/**",           // swagger arayüzü
-								"/swagger-ui.html",         // swagger giriş noktası
+								"/api/v1/auth/**",           // Auth işlemleri
+								"/v3/api-docs/**",            // Swagger dökümantasyonu
+								"/swagger-ui/**",             // Swagger UI
+								"/swagger-ui.html",           // Swagger ana giriş
 								"/swagger-resources/**",
 								"/webjars/**"
-								
 						).permitAll()
-						.anyRequest().authenticated()
+						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister
 				)
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		
 		return http.build();
+	}
+	
+	/**
+	 * CORS yapılandırmasını tanımlar:
+	 * - Frontend'den gelen isteklere izin verir
+	 * - İzin verilen origin: http://localhost:3000
+	 * - Tüm HTTP methodlarına izin verilir
+	 * - Header kısıtlaması yapılmaz
+	 */
+	@Bean
+	public CorsConfigurationSource corsConfigurationSource() {
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+		configuration.setAllowedHeaders(List.of("*"));
+		configuration.setAllowCredentials(true);
+		
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", configuration);
+		return source;
 	}
 }
