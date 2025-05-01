@@ -29,6 +29,10 @@ public class JwtTokenProvider {
 	@Value("${app.jwt.expiration}")
 	private long jwtExpiration;
 	
+	// application.yml icinde tanimladigim issueri yani tokenin kimin olusturdugunu belirtir.
+	@Value("${app.jwt.issuer}")
+	private String jwtIssuer;
+	
 	// JWT secret'i HMAC imzasi icin gerekli olan key objesine donustururuz. (byte array tabanli)
 	// HMAC, token'in backend tarafindan uretildigini ve yolda bozulmadigini garantileyen imzalama yontemidir.
 	private Key getSigningKey() {
@@ -85,6 +89,7 @@ public class JwtTokenProvider {
 		 *
 		 * .setSubject(userDetails.getUsername()) çağrısı ile "sub" alanına kullanıcının username bilgisini koyarız.
 		 */
+				.setIssuer(jwtIssuer) // token'ı hangi servis oluşturduysa onu belirtir (örneğin: "soundconnect-auth")
 		 
 		/***
 		 * Kullanıcının rollerini (authorities) JWT token’ın payload kısmına "roles" adıyla ekliyoruz.
@@ -101,6 +106,7 @@ public class JwtTokenProvider {
 	private Claims extractAllClaims(String token) {
 		return Jwts.parserBuilder()
 				.setSigningKey(getSigningKey()) // token imzasini dogrulamak icin key veriyoruz
+				.requireIssuer(jwtIssuer)
 				.build()
 				.parseClaimsJws(token)// token parse edilir ->> imza ve sure kontrolu yapilir
 				.getBody(); // eger token gecerliyse payloaddan claim kismi alinir.

@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/soundconnectdb
-    username: postgres
-    password: root
+    url: ${SOUNDCONNECT_POSTGRE_URL}
+    username: ${SOUNDCONNECT_POSTGRE_USERNAME}
+    password: ${SOUNDCONNECT_POSTGRE_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -22,9 +22,11 @@ spring:
 
 app:
   jwt:
-    secret: Z8bkt7cqnVtok5IlZKUtcBbT5-3Ib55SprD_l_uKV6eMOQMCM6Mx0C_SqU4tpQ-PCFtzenS4pwsBy7ZZ0JTopw
+    secret: ${SOUNDCONNECT_JWT_SECRETKEY}
 
-    expiration: 86400000 # örnek: 1 gün = 24 * 60 * 60 * 1000 ms
+    expiration: ${SOUNDCONNECT_JWT_EXTIME}
+
+    issuer: ${SOUNDCONNECT_JWT_ISSUER}
 
   jpa.database-platform: org.hibernate.dialect.PostgreSQLDialect
 
