@@ -39,7 +39,7 @@ public class EndPoints {
 		public static final String BASE = API + VERSION + "/roles";
 		public static final String SAVE = "/save-role";
 		public static final String GET_ALL = "/get-all-roles";
-		public static final String DELETE = "/delete-role/{id}";
+		public static final String DELETE = "/delete-role/{id}"; //
 	}
 	
 	public static class Auth {
