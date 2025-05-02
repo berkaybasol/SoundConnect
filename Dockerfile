@@ -5,7 +5,7 @@ COPY . .
 
 RUN ./gradlew clean build -x test
 
-# --------- Runtime kısmı ---------
+# --------- Runtime kısmı -----------
 FROM eclipse-temurin:21-jdk
 
 WORKDIR /app
