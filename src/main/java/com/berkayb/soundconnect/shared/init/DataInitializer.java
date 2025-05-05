@@ -44,56 +44,34 @@ public class DataInitializer {
 		log.info("roller ve izinler ekleniyor...");
 		
 		// tum izinleri enumdan al ve kaydet
-		List<Permission> allPermissions = Arrays.stream(PermissionEnum.values())
-		                                        .map(p -> Permission.builder().name(p.name()).build())
-		                                        .collect(Collectors.toList());
+		List<Permission> allPermissions =
+				Arrays.stream(PermissionEnum.values()).map(p -> Permission.builder().name(p.name()).build())
+				      .collect(Collectors.toList());
 		permissionRepository.saveAll(allPermissions);
 		
 		// kayitli izinleri map yapisina donustur
-		Map<String, Permission> permissionMap = permissionRepository.findAll().stream()
-		                                                            .collect(Collectors.toMap(Permission::getName, p -> p));
+		Map<String, Permission> permissionMap =
+				permissionRepository.findAll().stream().collect(Collectors.toMap(Permission::getName, p -> p));
 		
 		// user rolunu olustur
-		Role userRole = Role.builder()
-		                    .name(ROLE_USER.name())
-		                    .permissions(Set.of(
-				                    Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                    ))
+		Role userRole = Role.builder().name(ROLE_USER.name())
+		                    .permissions(Set.of(Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")))
 		                    .build();
 		
 		// moderator rolunu olustur
-		Role moderatorRole = Role.builder()
-		                         .name(ROLE_ADMIN.name())
-		                         .permissions(Set.of(
-				                         Objects.requireNonNull(permissionMap.get(READ_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_ALL_USERS.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name()))
-				                         
-		                         ))
-		                         .build();
+		Role moderatorRole = Role.builder().name(ROLE_ADMIN.name())
+		                         .permissions(Set.of(Objects.requireNonNull(permissionMap.get(READ_USER.name())), Objects.requireNonNull(permissionMap.get(WRITE_USER.name())), Objects.requireNonNull(permissionMap.get(DELETE_USER.name())), Objects.requireNonNull(permissionMap.get(READ_ALL_USERS.name())), Objects.requireNonNull(permissionMap.get(READ_VENUE.name())), Objects.requireNonNull(permissionMap.get(WRITE_VENUE.name())), Objects.requireNonNull(permissionMap.get(DELETE_VENUE.name())), Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name())), Objects.requireNonNull(permissionMap.get(READ_LOCATION.name())), Objects.requireNonNull(permissionMap.get(WRITE_LOCATION.name())), Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name()))
+		                         
+		                         )).build();
 		
 		// venue rolunu olustur
-		Role venueRole = Role.builder()
-		                     .name(ROLE_VENUE.name())
-		                     .permissions(Set.of(
-				                     Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
-				                     Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name()))
-		                     ))
+		Role venueRole = Role.builder().name(ROLE_VENUE.name())
+		                     .permissions(Set.of(Objects.requireNonNull(permissionMap.get(READ_VENUE.name())), Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name()))))
 		                     .build();
 		
 		// owner (adminlerin ustu) rolunu olustur
-		Role ownerRole = Role.builder()
-		                     .name(ROLE_OWNER.name())
-		                     .permissions(new HashSet<>(permissionMap.values()))
-		                     .build();
+		Role ownerRole =
+				Role.builder().name(ROLE_OWNER.name()).permissions(new HashSet<>(permissionMap.values())).build();
 		
 		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole));
 		
@@ -106,21 +84,28 @@ public class DataInitializer {
 			Role owner = roleRepository.findByName(ROLE_OWNER.name())
 			                           .orElseThrow(() -> new RuntimeException("ROLE_OWNER bulunamadi"));
 			
-			User admin = User.builder()
-			                 .username("basol")
-			                 .password(passwordEncoder.encode("raprap12334"))
-			                 .email("admin@soundconnect.com")
-			                 .phone("05555555555")
-			                 .city(City.ANKARA)
-			                 .gender(Gender.MALE)
-			                 .status(UserStatus.ACTIVE)
-			                 .roles(Set.of(owner))
-			                 .createdAt(LocalDateTime.now())
-			                 .updatedAt(LocalDateTime.now())
-			                 .build();
+			User admin = User.builder().username("basol").password(passwordEncoder.encode("raprap12334"))
+			                 .email("admin@soundconnect.com").phone("05555555555").city(City.ANKARA).gender(Gender.MALE)
+			                 .status(UserStatus.ACTIVE).roles(Set.of(owner)).createdAt(LocalDateTime.now())
+			                 .updatedAt(LocalDateTime.now()).build();
 			
 			userRepository.save(admin);
 			log.info("owner kullanici olusturuldu: basol / raprap12334");
+		}
+		
+		if (userRepository.findByUsername("enesadmin").isEmpty()) {
+			log.info("enes default owner olusturuluyor...");
+			
+			Role user = roleRepository.findByName(ROLE_OWNER.name())
+			                          .orElseThrow(() -> new RuntimeException("ROLE_OWNER bulunamadı"));
+			
+			User ownerRoleForEnes = User.builder().username("enesadmin").password(passwordEncoder.encode("enes1234"))
+			                            .email("enesadmin@soundconnect.com").phone("05551112233").city(City.ESKISEHIR)
+			                            .gender(Gender.MALE).status(UserStatus.ACTIVE).roles(Set.of(user))
+			                            .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now()).build();
+			
+			userRepository.save(ownerRoleForEnes);
+			log.info("owner kullanici olusturuldu: enesadmin / enes1234");
 		}
 	}
 }
