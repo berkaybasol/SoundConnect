@@ -46,6 +46,7 @@ public enum ErrorType {
 	DISTRICT_ALREADY_EXISTS(6004, "District already exists", HttpStatus.BAD_REQUEST),
 	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.BAD_REQUEST),
 	NEIGHBORHOOD_NOT_FOUND(6006, "Neighborhood not found", HttpStatus.BAD_REQUEST),
+	INVALID_CITY_NAME(6007, "Geçersiz şehir adı", HttpStatus.BAD_REQUEST),
 	
 	// VENUE
 	VENUE_NOT_FOUND(7001, "Venue not found", HttpStatus.NOT_FOUND),
