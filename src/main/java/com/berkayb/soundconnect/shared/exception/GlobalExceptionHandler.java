@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,7 +29,7 @@ public class GlobalExceptionHandler {
 		                                      .httpStatus(errorType.getHttpStatus())
 		                                      .path(request.getRequestURI())
 		                                      .timestamp(LocalDateTime.now())
-		                                      .details(e.getDetails())
+		                                      .details(e.getDetails() != null ? e.getDetails() : Collections.singletonList(errorType.getDetails()))
 		                                      .build();
 		
 		return new ResponseEntity<>(response, errorType.getHttpStatus());
