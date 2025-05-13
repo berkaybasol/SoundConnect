@@ -22,7 +22,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -43,39 +42,32 @@ public class AuthService {
 		
 		// dogrulanmis kullaniciyi al (UserDetailsImpl tipine downcast ederek)
 		UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-		User user = userDetails.getUser();
 		
-		// Kullanıcının rolleri string olarak maplenir
-		List<String> roles = user.getRoles().stream()
-		                         .map(Role::getName)
-		                         .toList();
-		
-		// dto hazirla
-		LoginResponse response = new LoginResponse(
-				user.getId().toString(),
-				user.getUsername(),
-				roles
-		);
+		// token uret
+		String token = jwtTokenProvider.generateToken(userDetails);
 		
 		// tokeni response sinifina sarip don
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
-		                   .message("Login Successful")
+		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(response)
+		                   .data(new LoginResponse(token))
 		                   .build();
 	}
 	
 	public BaseResponse<LoginResponse> register(RegisterRequestDto dto) {
-		if (userRepository.existsByUsername(dto.username())) {
+		// Kullanici adi dahg once alinmis mi kontrol et
+		if (userRepository.existsByUsername(dto.username())){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
-		
+		// sifreyi encode et
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
+		// varsayilan rolu veritabanindan cek
 		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
 		                                 .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
+		// yeni kullaniciyi olustur
 		User user = User.builder()
 		                .username(dto.username())
 		                .email(dto.email())
@@ -88,26 +80,21 @@ public class AuthService {
 		                .createdAt(LocalDateTime.now())
 		                .build();
 		
+		// veritabanina kaydet
 		userRepository.save(user);
 		
-		// Roller string listesi haline getirilir
-		List<String> roles = user.getRoles().stream()
-		                         .map(Role::getName)
-		                         .toList();
+		// token uret
+		UserDetailsImpl userDetails = new UserDetailsImpl(user);
+		String token = jwtTokenProvider.generateToken(userDetails);
 		
-		// LoginResponse oluşturulur
-		LoginResponse response = new LoginResponse(
-				user.getId().toString(),
-				user.getUsername(),
-				roles
-		);
-		
+		// tokeni response sinifina sarip don
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
 		                   .message("Registration Successful")
 		                   .code(201)
-		                   .data(response)
+		                   .data(new LoginResponse(token))
 		                   .build();
+		
 	}
 	
 	
