@@ -1,5 +1,11 @@
 package com.berkayb.soundconnect.modules.user.enums;
 
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.fasterxml.jackson.annotation.JsonCreator;
+
+import java.util.Arrays;
+
 public enum City {
 	ISTANBUL,
 	TEKIRDAG,
@@ -91,4 +97,21 @@ public enum City {
 	GAZIANTEP,
 	ADIYAMAN,
 	KILIS;
+	
+	@JsonCreator
+	public static City fromJson(String value) {
+		String normalized = value
+				.toUpperCase()
+				.replace("Ç", "C")
+				.replace("Ğ", "G")
+				.replace("İ", "I")
+				.replace("Ö", "O")
+				.replace("Ş", "S")
+				.replace("Ü", "U");
+		
+		return Arrays.stream(City.values())
+		             .filter(city -> city.name().equals(normalized))
+		             .findFirst()
+		             .orElseThrow(() -> new SoundConnectException(ErrorType.INVALID_CITY_NAME));
+	}
 }
