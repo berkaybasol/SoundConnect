@@ -35,7 +35,7 @@ public class UserDetailsImpl implements UserDetails {
 		Set<Role> roles = new HashSet<>(user.getRoles());
 		for (Role role : roles) {
 			// Role adını ekliyoruz
-			authorityNames.add(role.getName());
+			authorityNames.add(role.getName().name());
 			
 			// Role'e ait izinleri güvenli şekilde yeni bir set'e çekiyoruz
 			Set<Permission> permissionsOfRole = new HashSet<>(role.getPermissions());
