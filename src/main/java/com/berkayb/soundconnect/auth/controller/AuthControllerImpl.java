@@ -32,7 +32,8 @@ public class AuthControllerImpl implements AuthController {
 	
 	
 	@Override
-	public ResponseEntity<BaseResponse<LoginResponse>> register(RegisterRequestDto request, HttpServletResponse response) {
+	@PostMapping(REGISTER)
+	public ResponseEntity<BaseResponse<LoginResponse>> register(@RequestBody @Valid RegisterRequestDto request, HttpServletResponse response) {
 		// 1. Kullanıcıyı oluştur ve DTO dön
 		BaseResponse<LoginResponse> registerResponse = authService.register(request);
 		
@@ -59,7 +60,8 @@ public class AuthControllerImpl implements AuthController {
 	
 	
 	@Override
-	public ResponseEntity<BaseResponse<LoginResponse>> login(LoginRequestDto loginRequestDto, HttpServletResponse response) {
+	@PostMapping(LOGIN)
+	public ResponseEntity<BaseResponse<LoginResponse>> login(@RequestBody LoginRequestDto loginRequestDto, HttpServletResponse response) {
 		// 1. Kullanıcı bilgisi dönsün
 		BaseResponse<LoginResponse> loginResponse = authService.login(loginRequestDto);
 		
