@@ -56,6 +56,11 @@ public class UserDetailsImpl implements UserDetails {
 		                     .collect(Collectors.toSet());
 	}
 	
+	public static UserDetailsImpl build(User user) {
+		return new UserDetailsImpl(user);
+	}
+	
+	
 	
 	
 	@Override

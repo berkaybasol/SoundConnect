@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -139,4 +140,10 @@ public class UserServiceImpl implements UserService {
 	private List<Instrument> fetchInstruments(List<UUID> instrumentIds) {
 		return instrumentRepository.findAllById(instrumentIds);
 	}
+	
+	@Override
+	public Optional<User> findByUsername(String username) {
+		return userRepository.findByUsername(username);
+	}
+	
 }

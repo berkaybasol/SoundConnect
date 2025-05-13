@@ -19,7 +19,7 @@ import java.util.Set;
 public class Role extends BaseEntity {
 	
 	@Column(nullable = false, unique = true)
-	private String name;
+	private String name; // Enum yerine String olarak saklanır (RoleEnum sadece sabit referans içindir)
 	
 	
 	@Builder.Default

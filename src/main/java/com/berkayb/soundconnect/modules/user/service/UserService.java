@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface UserService {
@@ -14,5 +15,7 @@ public interface UserService {
 	UserListDto getUserById(UUID id);
 	void deleteUserById(UUID id);
 	Boolean updateUser(UUID id, UserUpdateRequestDto dto);
+	Optional<User> findByUsername(String username);
+	
 	
 }
