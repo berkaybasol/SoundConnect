@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.role.entity;
 
-import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import jakarta.persistence.*;
@@ -19,9 +18,8 @@ import java.util.Set;
 @Table(name = "tbl_role")
 public class Role extends BaseEntity {
 	
-	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, unique = true)
-	private RoleEnum name;
+	private String name; // Enum yerine String olarak saklanır (RoleEnum sadece sabit referans içindir)
 	
 	
 	@Builder.Default

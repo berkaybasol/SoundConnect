@@ -40,25 +40,26 @@ public class AuthService {
 				new UsernamePasswordAuthenticationToken(request.username(), request.password())
 		);
 		
-		// dogrulanmis kullaniciyi al
+		// dogrulanmis kullaniciyi al (UserDetailsImpl tipine downcast ederek)
 		UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-		User user = userDetails.getUser();
+		
 		
 		// token uret
 		String token = jwtTokenProvider.generateToken(userDetails);
 		
-		// kullanicinin sahip oldugu roller RoleEnum olarak aliniyor
-		var roles = user.getRoles()
-		                .stream()
-		                .map(Role::getName)
-		                .toList();
+		// kullanici rollerini cek
+		User user = userDetails.getUser();
+		var roleNames = user.getRoles()
+		                    .stream()
+		                    .map(role -> role.getName())
+		                    .toList();
 		
-		// response
+		// tokeni response sinifina sarip don
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
 		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(new LoginResponse(token, roles))
+		                   .data(new LoginResponse(token,roleNames))
 		                   .build();
 	}
 	
@@ -70,8 +71,8 @@ public class AuthService {
 		// sifreyi encode et
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
-		// varsayilan rolu veritabanindan RoleEnum ile cek
-		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER)
+		// varsayilan rolu veritabanindan cek
+		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
 		                                 .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		// yeni kullaniciyi olustur
@@ -81,7 +82,7 @@ public class AuthService {
 		                .phone(dto.phone())
 		                .gender(dto.gender())
 		                .city(dto.city())
-		                .roles(Set.of(defaultRole)) // varsayilan olarak ROLE_USER atanir
+		                .roles(Set.of(defaultRole))
 		                .password(encodedPassword)
 		                .status(UserStatus.ACTIVE)
 		                .createdAt(LocalDateTime.now())
@@ -94,18 +95,19 @@ public class AuthService {
 		UserDetailsImpl userDetails = new UserDetailsImpl(user);
 		String token = jwtTokenProvider.generateToken(userDetails);
 		
-		// kullanicinin sahip oldugu roller RoleEnum olarak aliniyor
-		var roles = user.getRoles()
-		                .stream()
-		                .map(Role::getName)
-		                .toList();
+		// role
+		var roleNames = user.getRoles()
+		                    .stream()
+		                    .map(role -> role.getName())
+		                    .toList();
 		
-		// LoginResponse olusturulup response donuluyor
+		
+		// tokeni response sinifina sarip don
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
 		                   .message("Registration Successful")
 		                   .code(201)
-		                   .data(new LoginResponse(token, roles))
+		                   .data(new LoginResponse(token,roleNames))
 		                   .build();
 		
 	}
