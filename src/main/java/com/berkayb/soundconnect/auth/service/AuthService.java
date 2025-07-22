@@ -125,5 +125,35 @@ public class AuthService {
 		
 	}
 	
-	
+	public BaseResponse<Void> verifyEmail(String token){
+		// Token'dan kullanıcıyı bul
+		User user = userRepository.findByEmailVerificationToken(token)
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.TOKEN_NOT_FOUND, List.of("Geçersiz veya süresi dolmuş token.")));
+		
+		// Token süresi geçmiş mi kontrol et
+		if (user.getEmailVerificationExpiry() != null && user.getEmailVerificationExpiry().isBefore(LocalDateTime.now())) {
+			throw new SoundConnectException(ErrorType.TOKEN_EXPIRED, List.of("Doğrulama tokenının süresi dolmuş."));
+		}
+		
+		// Zaten doğrulanmış mı kontrol et
+		if (Boolean.TRUE.equals(user.getEmailVerified())) {
+			return BaseResponse.<Void>builder()
+			                   .success(false)
+			                   .message("Email zaten doğrulanmış.")
+			                   .code(400)
+			                   .build();
+		}
+		
+		// Doğrula ve tokeni temizle
+		user.setEmailVerified(true);
+		user.setEmailVerificationToken(null);
+		user.setStatus(UserStatus.ACTIVE); // Durumunu da aktif yapıyoruz
+		userRepository.save(user);
+		
+		return BaseResponse.<Void>builder()
+		                   .success(true)
+		                   .message("Email başarıyla doğrulandı!")
+		                   .code(200)
+		                   .build();
+	}
 }

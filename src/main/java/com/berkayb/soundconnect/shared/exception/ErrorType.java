@@ -46,8 +46,13 @@ public enum ErrorType {
 	// VENUE
 	VENUE_NOT_FOUND(7001, "Venue not found", HttpStatus.NOT_FOUND, "Mekan bilgisi bulunamadı."),
 	
+	// TOKEN
+	TOKEN_NOT_FOUND(8001, "TOKEN not found", HttpStatus.NOT_FOUND, "Token bulunamadı."),
+	
 	// GENEL
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
+	
+	
 	
 	private final int code;
 	private final String message;
