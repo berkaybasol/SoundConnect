@@ -56,8 +56,10 @@ public class User extends BaseEntity {
 	
 	private LocalDateTime emailVerificationExpiry;
 	
-	@Column(nullable = false)
+	@Builder.Default
+	@Column(name = "email_verified", nullable = false)
 	private Boolean emailVerified = false;
+	
 	
 	
 	@Builder.Default // NullPointer yemeyek diye bos deger atiyo hashsete
