@@ -56,6 +56,10 @@ public class User extends BaseEntity {
 	
 	private LocalDateTime emailVerificationExpiry;
 	
+	@Column(nullable = false)
+	private Boolean emailVerified = false;
+	
+	
 	@Builder.Default // NullPointer yemeyek diye bos deger atiyo hashsete
 	@ManyToMany(fetch = FetchType.EAGER)
 	@JoinTable(
