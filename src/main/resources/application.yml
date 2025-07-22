@@ -20,12 +20,16 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
 app:
   jwt:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
-
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
-
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
 
   jpa.database-platform: org.hibernate.dialect.PostgreSQLDialect
@@ -38,3 +42,9 @@ logging:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+mailersend:
+  api-key: ${MAILERSEND_API_KEY}
+  from-email: ${MAILERSEND_SENDER_EMAIL}
+  from-name: SoundConnect
+  frontend-verify-url: http://localhost:3000/verify-email

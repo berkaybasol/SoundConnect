@@ -34,11 +34,11 @@ public class User extends BaseEntity {
 	@Column(nullable = false)
 	private String password;
 	
-	//@Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
+	// FIXME @Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
 	private String email;
 	
 	// Telefon numarası benzersiz ve zorunlu.
-	// @Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
+	// FIXME @Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
 	private String phone;
 	
 	private String description;
@@ -50,8 +50,11 @@ public class User extends BaseEntity {
 	private City city;
 	
 	@Enumerated(EnumType.STRING)
-	private UserStatus status;
+	private UserStatus status; // ACTIVE, INACTIVE. PENDING
 	
+	private String emailVerificationToken;
+	
+	private LocalDateTime emailVerificationExpiry;
 	
 	@Builder.Default // NullPointer yemeyek diye bos deger atiyo hashsete
 	@ManyToMany(fetch = FetchType.EAGER)
@@ -86,7 +89,8 @@ public class User extends BaseEntity {
 	
 	private String profilePicture;
 	
-	private LocalDateTime createdAt;
+	// BASE ENTITYDEN ALIYOR ZATEN
+	// private LocalDateTime createdAt;
 	
-	private LocalDateTime updatedAt;
+	// private LocalDateTime updatedAt;
 }

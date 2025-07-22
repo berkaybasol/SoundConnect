@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.service.MailService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -22,7 +24,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -33,9 +37,22 @@ public class AuthService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
+	private final MailProducer mailProducer;
+	private final MailService mailService;
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
-		// kullaniciyi dogrula
+		// kullanici db'den bul
+		User user = userRepository.findByUsername(request.username()).
+				orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		
+		// email dogrulanmis mi kontrol et
+		if (user.getStatus() != UserStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış." +
+					                                                                " Lütfen gelen kutunuzu kontrol " +
+					                                                                "edin."));
+		}
+		
+		// Spring Security authentication ile kullaniciyi dogrula.
 		Authentication authentication = authenticationManager.authenticate(
 				new UsernamePasswordAuthenticationToken(request.username(), request.password())
 		);
@@ -60,12 +77,22 @@ public class AuthService {
 		if (userRepository.existsByUsername(dto.username())){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
+		
+		// mail daha once alinmis mi kontrol et
+		if (userRepository.existsByEmail(dto.email())) {
+			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
+		}
+		
 		// sifreyi encode et
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
 		// varsayilan rolu veritabanindan cek
 		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
 		                                 .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+		
+		// email dogrulama token ve expiry olustur
+		String verificationToken = UUID.randomUUID().toString(); // UUID den random token olusturup stringe ceviriyoruz
+		LocalDateTime expiry = LocalDateTime.now().plusHours(24); // token 24 saat icinde devedisi olacak
 		
 		// yeni kullaniciyi olustur
 		User user = User.builder()
@@ -76,23 +103,24 @@ public class AuthService {
 				.city(dto.city())
 				.roles(Set.of(defaultRole))
 				.password(encodedPassword)
-				.status(UserStatus.ACTIVE)
-				.createdAt(LocalDateTime.now())
+				.status(UserStatus.INACTIVE)
+				.emailVerificationToken(verificationToken)
+				.emailVerificationExpiry(expiry)
+				// baseentityde tanimladigimiz icin gerek yok.createdAt(LocalDateTime.now())
 				.build();
 		
 		// veritabanina kaydet
 		userRepository.save(user);
 		
-		// token uret
-		UserDetailsImpl userDetails = new UserDetailsImpl(user);
-		String token = jwtTokenProvider.generateToken(userDetails);
+		// 6. Email kuyruğuna at — RabbitMQ üzerinden asenkron gönderim (producer kodu yakında!)
+		mailService.sendVerificationMail(user.getEmail(), verificationToken);
 		
-		// tokeni response sinifina sarip don
+		// kullaniciya mail dogrulamamak icin response at
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
-		                   .message("Registration Successful")
+		                   .message("Kayit alindi. lutfen e-posta adresinden kaydini dogrula")
 		                   .code(201)
-		                   .data(new LoginResponse(token))
+		                   .data(null)
 		                   .build();
 		
 	}
