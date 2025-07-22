@@ -8,7 +8,6 @@ COPY src/main/java/com/berkayb/soundconnect /app
 RUN chmod +x gradlew
 RUN ./gradlew clean build -x check -x test
 
-# 2. Run aşaması (daha küçük image)
 FROM eclipse-temurin:21-jre
 
 WORKDIR /app
