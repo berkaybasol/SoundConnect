@@ -4,8 +4,10 @@ import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import org.springframework.web.bind.annotation.RequestParam;
 
 public interface AuthController {
 	BaseResponse<LoginResponse> login(LoginRequestDto loginRequestDto);
 	BaseResponse<LoginResponse> register(RegisterRequestDto registerRequestDto);
+	BaseResponse<Void> verifyEmail(String token);
 }
