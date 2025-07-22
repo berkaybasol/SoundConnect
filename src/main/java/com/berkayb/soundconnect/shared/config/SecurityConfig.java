@@ -19,10 +19,18 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
-
-@Configuration
+/*
+Bu sınıf, SoundConnect’in güvenlik altyapısını kurar:
+- Hangi endpoint’e kim erişebilir?
+- Sisteme giriş nasıl olur?
+- JWT ile oturum yönetimi nasıl sağlanır?
+- Şifreler nasıl saklanır?
+- CORS (cross-origin) izinleri nasıl ayarlanır?
+ */
+@Configuration // Spring’e “ben bir konfigürasyon dosyasıyım, beni otomatik olarak yükle” der.
 @EnableMethodSecurity // @PreAuthorize gibi anotasyonların çalışmasını sağlar
-@EnableWebSecurity // Spring Security yapılandırmasını etkinleştirir
+@EnableWebSecurity // Spring Security altyapısını projeye entegre eder.
+
 @RequiredArgsConstructor
 public class SecurityConfig {
 	
@@ -30,6 +38,7 @@ public class SecurityConfig {
 	
 	/**
 	 * Şifreleri BCrypt algoritması ile şifrelemek için PasswordEncoder bean'i tanımlıyoruz.
+	 * BCrypt, günümüzde sektör standardı kabul edilen bir şifreleme algoritmasıdır.
 	 */
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -37,7 +46,7 @@ public class SecurityConfig {
 	}
 	
 	/**
-	 * AuthenticationManager, login işlemlerinde kullanıcıyı doğrulamak için kullanılır.
+	 * AuthenticationManager, Kullanıcı login olduğunda, kimlik doğrulama işlemini yönetir
 	 * AuthenticationConfiguration üzerinden elde edilir.
 	 */
 	@Bean
@@ -46,6 +55,7 @@ public class SecurityConfig {
 	}
 	
 	/**
+	 * SecurityFilterChain, “hangi isteklere kim erişebilir, hangi filtreler devreye girer” hepsini burada belirleriz
 	 * Uygulamadaki güvenlik zincirini tanımlar:
 	 * - CSRF kapatılır
 	 * - Stateless session yapısı kurulur (JWT için)

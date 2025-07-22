@@ -16,6 +16,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+
+/**
+ * Her HTTP isteğinde (request) çalışır ve gelen isteğin JWT token’ı taşıyıp taşımadığını,
+ * token’ın geçerli olup olmadığını ve kullanıcıyı sisteme kimlikli şekilde tanıtıp tanıtmadığını kontrol eder.
+ * Spring Security zincirinde, gerçek authentication noktası burasıdır.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor

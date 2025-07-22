@@ -12,6 +12,11 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
+/*
+ Bu sinif User entity’sini, Spring Security’nin iç mekanizmasının “tanıyacağı” şekilde bir UserDetails nesnesine sarar.
+ Böylece login olduğunda veya request ile kimlik doğrulandığında,
+ Spring sistemin tamamı “kimin, hangi role/izne sahip olduğunu” doğru şekilde görebilir.
+ */
 
 @AllArgsConstructor
 public class UserDetailsImpl implements UserDetails {

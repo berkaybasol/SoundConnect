@@ -13,10 +13,13 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Swagger konfigürasyon sınıfıdır.
+ * Swagger/OpenAPI, projenin REST endpointlerini dökümante eder,
+ * JWT gibi security kullanan projelerde, token’ı manuel eklemeden protected endpointleri test etmeyi sağlar (Swagger
+ * UI’da üstte “Authorize” butonu açılır).
  * JWT token ile güvenli endpoint'lerin test edilebilmesini sağlar.
  */
 
-@Configuration
+@Configuration // Spring’e “ben bir konfigürasyon sınıfıyım, otomatik olarak yükle” der.
 @SecurityScheme(
 		name = "bearerAuth", // Bu ismi .addSecurityItem icinde kullanicaz
 		type = SecuritySchemeType.HTTP, // HTTP authentication
@@ -28,6 +31,7 @@ public class SwaggerConfig {
 	 * OpenAPI tanımını özelleştirir.
 	 * Uygulama bilgilerini ve global security yapılandırmasını içerir.
 	 */
+	
 	@Bean
 	public OpenAPI customOpenAPI() {
 		return new OpenAPI()

@@ -28,7 +28,7 @@ public class AuthControllerImpl implements AuthController {
 	
 	
 	@Override
-	@PostMapping(LOGIN)
+	@PostMapping(LOGIN)                 // FIXME: buraya valid koymadik admin girisi kolayligi icin prod. da koyulcak
 	public BaseResponse<LoginResponse> login(@RequestBody LoginRequestDto loginRequestDto) {
 		return authService.login(loginRequestDto);
 	}
