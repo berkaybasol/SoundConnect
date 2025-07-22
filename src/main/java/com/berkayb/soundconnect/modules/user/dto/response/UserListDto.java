@@ -18,6 +18,7 @@ public record UserListDto(
 		List<Instrument> instruments,
 		Integer followers,
 		Integer following,
+		Boolean emailVerified,
 		Set<String>roles
 
 ) {
