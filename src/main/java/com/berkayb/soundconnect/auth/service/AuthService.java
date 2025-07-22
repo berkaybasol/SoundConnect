@@ -112,8 +112,8 @@ public class AuthService {
 		// veritabanina kaydet
 		userRepository.save(user);
 		
-		// 6. Email kuyruğuna at — RabbitMQ üzerinden asenkron gönderim (producer kodu yakında!)
-		mailService.sendVerificationMail(user.getEmail(), verificationToken);
+		// 6. Email kuyruğuna at — RabbitMQ üzerinden asenkron gönderim
+		mailProducer.sendVerificationMail(user.getEmail(), verificationToken);
 		
 		// kullaniciya mail dogrulamamak icin response at
 		return BaseResponse.<LoginResponse>builder()

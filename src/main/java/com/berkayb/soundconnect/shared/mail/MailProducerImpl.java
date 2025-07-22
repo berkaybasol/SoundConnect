@@ -1,11 +1,9 @@
 package com.berkayb.soundconnect.shared.mail;
 
+import com.berkayb.soundconnect.shared.mail.dto.EmailVerificationMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -15,10 +13,7 @@ public class MailProducerImpl implements MailProducer {
 	
 	@Override
 	public void sendVerificationMail(String email, String verificatiyonToken) {
-	// Mesaji bir Map veya DTO ile kuyruga gonderiyoruz.
-		Map<String, Object> message = new HashMap<>();
-		message.put("email", email);
-		message.put("token", verificatiyonToken);
+		EmailVerificationMessage message = new EmailVerificationMessage(email, verificatiyonToken);
 		rabbitTemplate.convertAndSend(VERIFICATION_MAIL_QUEUE, message);
 	}
 }
