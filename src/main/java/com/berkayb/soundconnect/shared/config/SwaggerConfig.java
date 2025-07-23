@@ -37,7 +37,7 @@ public class SwaggerConfig {
 	public OpenAPI customOpenAPI() {
 		return new OpenAPI()
 				.info(new Info().title("JWT Auth API").version("1.0"))
-				.addServersItem(new Server().url("https://soundconnect.dev"))
+				.addServersItem(new Server().url("https://api.soundconnect.dev"))
 				.addSecurityItem(new SecurityRequirement().addList("bearerAuth")) // Tüm endpoint'lere güvenlik şeması uygula
 				.components(new Components()
 						            .addSecuritySchemes("bearerAuth", new io.swagger.v3.oas.models.security.SecurityScheme()
