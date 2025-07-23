@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * SoundConnect Security Configuration
  * - JWT tabanlı kimlik doğrulama
- * - CORS ayarları (sadece ilgili domainlere izinli!)
+ * - CORS ayarları (herkese açık, test ve debug için uygundur!)
  */
 @Configuration
 @EnableMethodSecurity
@@ -66,23 +66,16 @@ public class SecurityConfig {
 	}
 	
 	/**
-	 * CORS KISMI – PROD için sadece belirli domainler açıldı.
-	 * Geliştirme için localhost, prod için ana domainler var.
+	 * CORS KISMI – HERKESE AÇIK (TEST VE GELİŞTİRME İÇİN!)
+	 * Prod ortamda whitelist'e döndürmeyi unutma!
 	 */
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(List.of(
-				"http://localhost:3000",        // Lokal geliştirme (React/Next.js)
-				"https://soundconnect.dev",     // PROD frontend
-				"https://www.soundconnect.dev"  // www'lu hali
-		));
+		configuration.addAllowedOriginPattern("*"); // <-- HERKESE AÇIK!
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);
-		
-		// Eğer geçici olarak herkese açmak istersen:
-		// configuration.addAllowedOriginPattern("*"); // (Tüm domainlere açar, PROD'da önerilmez)
 		
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", configuration);
