@@ -47,4 +47,4 @@ mailersend:
   api-key: ${MAILERSEND_API_KEY}
   from-email: ${MAILERSEND_SENDER_EMAIL}
   from-name: SoundConnect
-  frontend-verify-url: http://localhost:3000/verify-email
+  frontend-verify-url: http://soundconnect.dev/verify-email

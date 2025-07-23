@@ -20,13 +20,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-/*
-Bu sınıf, SoundConnect’in güvenlik altyapısını kurar:
-- Hangi endpoint’e kim erişebilir?
-- Sisteme giriş nasıl olur?
-- JWT ile oturum yönetimi nasıl sağlanır?
-- Şifreler nasıl saklanır?
-- CORS (cross-origin) izinleri nasıl ayarlanır?
+/**
+ * SoundConnect Security Configuration
+ * - JWT tabanlı kimlik doğrulama
+ * - CORS ayarları (sadece ilgili domainlere izinli!)
  */
 @Configuration
 @EnableMethodSecurity
@@ -69,28 +66,23 @@ public class SecurityConfig {
 	}
 	
 	/**
-	 * CORS UPDATE
-	 * Railway'de SWAGGER üzerinden test için CORS'u herkese açık yaptık.
-	 * Burada allowedOrigins("*") yazarsan, bütün domainler erişebilir (güvenliksiz).
-	 * PROD'da sadece frontend ve kendi domainini ekle!
-	 * Örneğin:
-	 * configuration.setAllowedOrigins(List.of("https://soundconnect.dev", "https://www.soundconnect.dev", "http://localhost:3000"));
+	 * CORS KISMI – PROD için sadece belirli domainler açıldı.
+	 * Geliştirme için localhost, prod için ana domainler var.
 	 */
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
 		configuration.setAllowedOrigins(List.of(
-				"http://localhost:3000",        // Lokal frontend
-				"https://soundconnect.dev",     // Railway ana domainin
+				"http://localhost:3000",        // Lokal geliştirme (React/Next.js)
+				"https://soundconnect.dev",     // PROD frontend
 				"https://www.soundconnect.dev"  // www'lu hali
 		));
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);
 		
-		// PROD İÇİN DİKKAT:
-		// Eğer herkes erişsin diyorsan şunu da ekleyebilirsin:
-		// configuration.addAllowedOriginPattern("*"); // (Spring 5.3+ ile allowedOrigins yerine)
+		// Eğer geçici olarak herkese açmak istersen:
+		// configuration.addAllowedOriginPattern("*"); // (Tüm domainlere açar, PROD'da önerilmez)
 		
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", configuration);
