@@ -8,4 +8,5 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 public interface AuthController {
 	BaseResponse<LoginResponse> login(LoginRequestDto loginRequestDto);
 	BaseResponse<LoginResponse> register(RegisterRequestDto registerRequestDto);
+	BaseResponse<Void> verifyEmail(String token);
 }

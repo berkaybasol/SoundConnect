@@ -20,6 +20,13 @@ public class AuthControllerImpl implements AuthController {
 	private final AuthService authService;
 	
 	
+	@GetMapping(VERIFY_EMAIL)
+	@Override
+	public BaseResponse<Void> verifyEmail(@RequestParam String token) {
+		return authService.verifyEmail(token);
+	}
+	
+	
 	@Override
 	@PostMapping(REGISTER)
 	public BaseResponse<LoginResponse> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
