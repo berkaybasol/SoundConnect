@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.shared.config;
 
-// RabbitMQ'da Queue ve Spring'in Bean yönetimi için gerekli importlar
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
