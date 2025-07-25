@@ -38,7 +38,7 @@ public class AuthService {
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
 	private final MailProducer mailProducer;
-	private final MailService mailService;
+	
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
 		// kullanici db'den bul
