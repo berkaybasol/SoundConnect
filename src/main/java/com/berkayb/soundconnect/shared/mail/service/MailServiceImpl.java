@@ -1,21 +1,30 @@
 package com.berkayb.soundconnect.shared.mail.service;
 
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Mailsend ile email dogrulama mesaji gonderen servis.
+ * tum configler application.yml/.env'den alinir.
+ */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MailServiceImpl implements MailService {
-	private final RestTemplate restTemplate = new RestTemplate();
+	/**
+	 * RestTemplate dis servislere (MailerSend gibi) HTTP istegi atmak icin kullanilir.
+	 * burada constructor ile almak icin Bean olarak config klasorunde @Configuration ile tanitim.
+	 */
+	private final RestTemplate restTemplate;
 	
 	@Value("${mailersend.api-key}")
 	private String apiKey;
@@ -29,16 +38,20 @@ public class MailServiceImpl implements MailService {
 	@Value("${mailersend.frontend-verify-url}")
 	private String frontendVerifyUrl;
 	
+	// kullaniciya dogrulama maili gonderen method.
 	@Override
 	public void sendVerificationMail(String to, String verificationToken) {
-		// Doğrulama linki
+		// dogrulama linki
 		String verifyLink = frontendVerifyUrl + "?token=" + verificationToken;
 		
 		// Mail içeriği
-		String subject = "SoundConnect E-posta Doğrulama";
+		String subject = "E-posta Doğrulama Gerekiyor";
+		
 		String html = "<p>Merhaba,</p>" +
-				"<p>SoundConnect hesabını tamamlamak için aşağıdaki bağlantıya tıkla:</p>" +
-				"<a href='" + verifyLink + "'>E-postanı Doğrula</a>";
+				"<p>Hesabınızı etkinleştirmek için lütfen aşağıdaki bağlantıya tıklayın:</p>" +
+				"<p><a href='" + verifyLink + "'>E-postanızı Doğrulayın</a></p>" +
+				"<p>Bu bağlantı yalnızca kısa bir süre geçerlidir.</p>" +
+				"<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>";
 		
 		// MailerSend API için JSON body
 		Map<String, Object> body = Map.of(
@@ -63,12 +76,28 @@ public class MailServiceImpl implements MailService {
 		// MailerSend endpoint’i
 		String url = "https://api.mailersend.com/v1/email";
 		
+		
 		// API’ye gönder (try-catch ile hatayı logla)
 		try {
-			restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-		} catch (Exception e) {
-			// Geliştirirken log.info/log.error kullanabilirsin
-			System.err.println("E-posta gönderilemedi: " + e.getMessage());
+			ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+			if (response.getStatusCode().is2xxSuccessful()) {
+				log.info("Verification mail sent via MailerSend to email={}", to);
+			} else {
+				log.error("MailerSend API returned error for email={}: status={}, body={}",
+				          to, response.getStatusCode(), response.getBody());
+				throw new SoundConnectException(
+						ErrorType.MAIL_QUEUE_ERROR,
+						List.of("MailerSend API status: " + response.getStatusCode(),
+						        "Body: " + response.getBody(),
+						        "Mail adresi: " + to)
+				);
+			}
+		}  catch (Exception e) {
+			log.error("Failed to send verification mail via MailerSend to email={}", to, e);
+			throw new SoundConnectException(
+					ErrorType.MAIL_QUEUE_ERROR,
+					List.of("Mail adresi: " + to, "Hata: " + e.getMessage())
+			);
 		}
 	}
 }

@@ -49,6 +49,9 @@ public enum ErrorType {
 	// TOKEN
 	TOKEN_NOT_FOUND(8001, "TOKEN not found", HttpStatus.NOT_FOUND, "Token bulunamadı."),
 	
+	// MAIL
+	MAIL_QUEUE_ERROR(1101, "Mail could not be queued", HttpStatus.INTERNAL_SERVER_ERROR, "Mail kuyruğa alınamadı."),
+	
 	// GENEL
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	
