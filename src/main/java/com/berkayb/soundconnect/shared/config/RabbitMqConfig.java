@@ -5,11 +5,14 @@ import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+// RabbitMQ'da mesajlari otomatik olarak JSON'a serialize/deserialize etmek icin gerekli converter sinifidir.
 @Configuration
-@EnableRabbit
+@EnableRabbit // Spring Boot'un RabbitMQ anatasyonlarini aktif hale getirmek icin kullanilan anatasyon
 public class RabbitMqConfig {
 	@Bean
 	public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {
 		return new Jackson2JsonMessageConverter("com.berkayb.soundconnect.shared.mail.dto");
+		// mesajlari otomatik olarak json formatina cevirdigimiz kod.
+		// "com.berkayb.soundconnect.shared.mail.dto" derken yalnizca burdaki dosyalari cevir demis oluyoruz.
 	}
 }
