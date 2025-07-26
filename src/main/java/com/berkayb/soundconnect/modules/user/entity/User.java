@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
@@ -55,6 +56,11 @@ public class User extends BaseEntity {
 	private String emailVerificationToken;
 	
 	private LocalDateTime emailVerificationExpiry;
+	
+	@Enumerated(EnumType.STRING)
+	@Column(name = "provider", nullable = false)
+	@Builder.Default
+	private AuthProvider provider = AuthProvider.LOCAL; // kullanicini kayit tipi local veya google default local baslatiyoruz
 	
 	@Builder.Default
 	@Column(name = "email_verified", nullable = false)

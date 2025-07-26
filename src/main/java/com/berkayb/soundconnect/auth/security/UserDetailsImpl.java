@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.io.Serial;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -21,6 +22,14 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 public class UserDetailsImpl implements UserDetails {
 	private final User user;
+	
+	@Serial
+	private static final long serialVersionUID = 1L;
+	
+	// Static factory: User entity’den UserDetailsImpl üretir
+	public static UserDetailsImpl fromUser(User user) {
+		return new UserDetailsImpl(user);
+	}
 	
 	// Authenticated kullanıcının tüm User entity bilgilerine erişmek için getter methodu
 	// @Getter işe yaramıyor çünkü UserDetailsImpl sınıfı zaten Spring Security'nin bir interface'ini implement ediyor.
@@ -60,6 +69,8 @@ public class UserDetailsImpl implements UserDetails {
 		                     .map(SimpleGrantedAuthority::new)
 		                     .collect(Collectors.toSet());
 	}
+	
+	
 	
 	
 	
