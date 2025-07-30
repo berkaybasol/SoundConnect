@@ -10,6 +10,7 @@ public enum ErrorType {
 	USER_NOT_FOUND(1001, "User not found", HttpStatus.NOT_FOUND, "Kullanıcı sistemde bulunamadı."),
 	USER_ALREADY_EXISTS(1002, "User already exists", HttpStatus.CONFLICT, "Bu kullanıcı zaten mevcut."),
 	EMAIL_ALREADY_EXISTS(1003, "Email already exists", HttpStatus.CONFLICT, "Bu email adresi zaten kullanılıyor."),
+	USER_ALREADY_REGISTERED(1004,"User already registered",HttpStatus.CONFLICT, "Profil zaten tanimlanmis."),
 	
 	// AUTH (1100-1199)
 	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.CONFLICT, "Kullanıcı adı veya şifre hatalı."),

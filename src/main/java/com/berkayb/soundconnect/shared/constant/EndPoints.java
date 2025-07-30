@@ -75,6 +75,7 @@ public class EndPoints {
 		public static final String LOGIN = "/login";
 		public static final String VERIFY_EMAIL = "/verify-email";
 		public static final String GOOGLE_SIGN_IN = "/google-sign-in";
+		public static final String COMPLETE_GOOGLE_PROFILE = "/complete-google-profile";
 	}
 	
 	public static class City {
