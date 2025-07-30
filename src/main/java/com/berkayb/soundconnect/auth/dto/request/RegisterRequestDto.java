@@ -1,9 +1,11 @@
 package com.berkayb.soundconnect.auth.dto.request;
 
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import jakarta.validation.constraints.*;
+import org.checkerframework.checker.units.qual.N;
 
 import java.util.UUID;
 
@@ -35,6 +37,9 @@ public record RegisterRequestDto(
 		String password,
 		
 		@NotBlank(message = "Şifre tekrarı boş olamaz.")
-		String rePassword
+		String rePassword,
+		
+		@NotNull(message = "Rol secilmelidir.")
+		RoleEnum role
 
 ) {}

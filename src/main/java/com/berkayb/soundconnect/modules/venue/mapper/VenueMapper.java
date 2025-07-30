@@ -11,6 +11,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface VenueMapper {
@@ -28,6 +30,7 @@ public interface VenueMapper {
 	@Mapping(target = "description", source = "dto.description")
 	@Mapping(target = "musicStartTime", source = "dto.musicStartTime")
 	
+	
 	// Diğer entity’ler
 	@Mapping(target = "city", source = "city")
 	@Mapping(target = "district", source = "district")
@@ -40,7 +43,16 @@ public interface VenueMapper {
 	@Mapping(target = "neighborhoodName", source = "neighborhood.name")
 	@Mapping(target = "ownerId", source = "owner.id")
 	@Mapping(target = "ownerFullName", source = "owner.username")
+	@Mapping(target = "activeMusicians", expression = "java(toActiveMusicians(venue))")
 	VenueResponseDto toResponse(Venue venue);
+	
+	default Set<String> toActiveMusicians(Venue venue) {
+		if (venue.getActiveMusicians() == null) return null;
+		return venue.getActiveMusicians()
+		            .stream()
+		            .map(mp -> mp.getStageName())
+		            .collect(java.util.stream.Collectors.toSet());
+	}
 	
 	List<VenueResponseDto> toResponseList(List<Venue> venues);
 }

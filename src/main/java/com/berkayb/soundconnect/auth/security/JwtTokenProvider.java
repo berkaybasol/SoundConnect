@@ -10,10 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 // bu sinif token uretir, cozer ve dogrular. tum token operasyonlarinin merkezidir.
@@ -69,7 +66,7 @@ public class JwtTokenProvider {
 				// JWT'nin payload kismina ozel alanlar ekliyoruz. (roller ve izinler gibi)
 				// "roles" ve "permissions" alanlari daha sonra token cozumlenirken guvenlik kontrolu icin kullanilcak
 				.setClaims(claims)
-				.setSubject(userDetails.getUsername()) // kullaniciyi subject yani token sahibi olarak token icine koyar
+				.setSubject(userDetails.getUser().getId().toString()) // kullaniciyi subject yani token sahibi olarak token icine koyar
 		/*
 		 * Subject = JWT token içindeki "kim" kısmıdır (token kime ait?).
 		 * Örneğin, JWT’nin base64 çözüldüğünde yapısı şu şekildedir:
@@ -116,8 +113,8 @@ public class JwtTokenProvider {
 	
 	// Token'in icerisiten subject bilgisini almak icin kullanilir.
 	// token cozulmeden once imzasi kontrol edilir ve gecerliyse payload kismindan subject alinir.
-	public String getUsernameFromToken(String token) {
-		return extractAllClaims(token).getSubject(); // generatToken'da koydumuz sub alanini cekiyoruz
+	public UUID getUserIdFromToken(String token) {
+		return UUID.fromString(extractAllClaims(token).getSubject()); // generateToken'da koydumuz sub alanini cekiyoruz
 	}
 	
 	// token gecerli mi diye kontrol ettigimiz metod (filtrede kullanicaz)

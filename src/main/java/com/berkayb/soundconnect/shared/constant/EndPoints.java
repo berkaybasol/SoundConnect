@@ -16,6 +16,33 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class ProfileMusician {
+		public static final String BASE = API + VERSION + "/musician-profiles";
+		public static final String GET_ALL = "/get-all-profiles";
+		public static final String GET_MY_PROFILE = "/musician-profiles/{id}";
+		public static final String CREATE = "/create-profile";
+		public static final String UPDATE = "/update/{id}";
+		public static final String GET_BY_ID = "/{id}";   // Public profil view (id: MusicianProfile id'si)
+	}
+	
+	public static class ProfileVenue {
+		public static final String BASE = API + VERSION + "/venue-profiles";
+		public static final String GET_ALL = "/get-all-venues";
+		public static final String GET_PROFILE = "/{venueId}/profile";
+		public static final String CREATE_PROFILE = "/create-profile/{venueId}";
+		public static final String UPDATE_PROFILE = "/{venueId}/profile";
+		public static final String GET_BY_ID = "/{venueId}"; // Public profil view (id: MusicianProfile id'si)
+	}
+	
+	public static class ArtistVenueConnections {
+		public static final String BASE = API + VERSION + "/artist-venue-connections";
+		public static final String REQUEST = "/request";
+		public static final String ACCEPT = "/{requestId}/accept";
+		public static final String REJECT = "/{requestId}/reject";
+		public static final String GET_REQUESTS_BY_MUSICIAN = "/musician/{musicianProfileId}";
+		public static final String GET_REQUESTS_BY_VENUE = "/venue/{venueId}";
+	}
+	
 	public static class Instrument {
 		public static final String BASE = API + VERSION + "/instruments";
 		public static final String SAVE = "/save-instrument";

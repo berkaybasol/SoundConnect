@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.shared.util.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.UUID;
 
 
 /**
@@ -29,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	
 	private final JwtTokenProvider jwtTokenProvider;
 	private final CustomUserDetailsService userDetailsService;
+	private final JwtUtil jwtUtil;
 	
 	// OncePerRequestFilter: Her HTTP isteginde yalnizca bir kez calisan filtre temel sinifidir.
 	// doFilterInfernal metodu, filtre mantigini uyguladigimiz ana methoddur.
@@ -39,26 +42,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-			throws ServletException, IOException {
-		// Authorization header'ini aliyoruz
-		String authHeader = request.getHeader("Authorization");
+			throws ServletException, IOException {;
 		
-		// Header null mu, "Bearer " ile mi basliyor onu kontrol ediyoruz
-		if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+		// Header null mu, "Bearer " ile mi basliyor onu kontrol ediyoruz ve headerdan tokeni kesip aliyoruz.
+		// bunu metodlastirdim cunku baska yerlerde de lazim oluyor
+		String token = jwtUtil.getTokenFromRequest(request);
+		if (token == null) {
 			filterChain.doFilter(request, response);
 			return;
 		}
 		
-		// Header'dan tokeni kesip aliyoruz
-		String token = authHeader.substring(7); // "Bearer " kismini atmamiz icin index 7
-		
 		// Token gecerli mi? token'dan usernameyi aliyoruz
-		String username = jwtTokenProvider.getUsernameFromToken(token);
+		UUID userId = jwtTokenProvider.getUserIdFromToken(token);
 		
 		// SecurityContext bossa (kullanici daha tanitilmamissa)
-		if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+		if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 			// db'den kullaniciyi bulalim
-			UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+			UserDetails userDetails = userDetailsService.loadUserById(userId);
 			
 			// token gecerli mi diye tekrar kontrol edelim
 			if (jwtTokenProvider.validateToken(token)){

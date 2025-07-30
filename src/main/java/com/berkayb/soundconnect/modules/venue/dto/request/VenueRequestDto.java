@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.venue.dto.request;
 
+import com.berkayb.soundconnect.modules.profile.dto.request.VenueProfileSaveRequestDto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -24,6 +25,8 @@ public record VenueRequestDto(
 		@NotNull
 		UUID ownerId,
 		
+		VenueProfileSaveRequestDto profile,
+		
 		String phone,
 		
 		String website,
@@ -31,5 +34,6 @@ public record VenueRequestDto(
 		String description,
 		
 		String musicStartTime
+		
 ) {
 }

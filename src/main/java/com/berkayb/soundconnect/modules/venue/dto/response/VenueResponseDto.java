@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.venue.dto.response;
 
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 
+import java.util.Set;
 import java.util.UUID;
 
 public record VenueResponseDto(
@@ -21,6 +22,7 @@ public record VenueResponseDto(
 		VenueStatus status,
 		
 		UUID ownerId,
-		String ownerFullName
+		String ownerFullName,
+		Set<String> activeMusicians
 
 ) {}

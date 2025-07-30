@@ -1,7 +1,6 @@
 package com.berkayb.soundconnect.modules.user.entity;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
-import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
@@ -83,10 +82,6 @@ public class User extends BaseEntity {
 			inverseJoinColumns = @JoinColumn(name = "permission_id")
 	)
 	private Set<Permission> permissions = new HashSet<>();
-	
-	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-	private List<Instrument> instruments;
-	
 	
 	@OneToMany(mappedBy = "following", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
 	@JsonIgnore

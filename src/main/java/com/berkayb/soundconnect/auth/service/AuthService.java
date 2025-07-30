@@ -5,6 +5,9 @@ import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.dto.request.MusicianProfileSaveRequestDto;
+import com.berkayb.soundconnect.modules.profile.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -17,6 +20,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -30,6 +34,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 	
 	private final AuthenticationManager authenticationManager;
@@ -38,7 +43,15 @@ public class AuthService {
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
 	private final MailProducer mailProducer;
-	private final MailService mailService;
+	private final MusicianProfileService musicianProfileService;
+	private final ProfileFactory profileFactory;
+	
+	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
+	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
+			RoleEnum.ROLE_MUSICIAN,
+			RoleEnum.ROLE_USER,
+			RoleEnum.ROLE_VENUE
+	);
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
 		// kullanici db'den bul
@@ -73,56 +86,109 @@ public class AuthService {
 	}
 	
 	public BaseResponse<LoginResponse> register(RegisterRequestDto dto) {
-		// Kullanici adi dahg once alinmis mi kontrol et
+		// önce kullanıcı adı daha önce alınmış mı bak, varsa hata fırlat
 		if (userRepository.existsByUsername(dto.username())){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
 		
-		// mail daha once alinmis mi kontrol et
+		// mail daha önce alınmış mı bak, varsa hata fırlat
 		if (userRepository.existsByEmail(dto.email())) {
 			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
 		}
 		
-		// sifreyi encode et
+		// sadece izin verilen rollerle kayıt olunabilir, yoksa hata fırlat
+		if (!REGISTER_ALLOWED_ROLES.contains(dto.role())) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED,
+			                                List.of("bu rol ile kayıt olunamaz. sistem yöneticisiyle görüş."));
+		}
+		
+		// seçilen rolü kaydet
+		RoleEnum selectedRoleEnum = dto.role();
+		
+		// şifreyi hashle
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
-		// varsayilan rolu veritabanindan cek
-		Role defaultRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
-		                                 .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+		// email doğrulama tokeni ve son kullanma tarihi oluştur
+		String verificationToken = UUID.randomUUID().toString();
+		LocalDateTime expiry = LocalDateTime.now().plusHours(24);
 		
-		// email dogrulama token ve expiry olustur
-		String verificationToken = UUID.randomUUID().toString(); // UUID den random token olusturup stringe ceviriyoruz
-		LocalDateTime expiry = LocalDateTime.now().plusHours(24); // token 24 saat icinde devedisi olacak
+		// eğer başvuru mekan sahibi (ROLE_VENUE) ise
+		if (selectedRoleEnum == RoleEnum.ROLE_VENUE) {
+			// dinleyici rolünü ver
+			Role listenerRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
+			                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
+			                                                                               List.of("ROLE_USER bulunamadı!")));
+			
+			// user'ı dinleyici olarak kaydet, status pending_venue_request olsun
+			User user = User.builder()
+			                .username(dto.username())
+			                .email(dto.email())
+			                .phone(dto.phone())
+			                .gender(dto.gender())
+			                .city(dto.city())
+			                .roles(Set.of(listenerRole))
+			                .password(encodedPassword)
+			                .status(UserStatus.PENDING_VENUE_REQUEST)
+			                .emailVerificationToken(verificationToken)
+			                .emailVerificationExpiry(expiry)
+			                .build();
+			
+			// kullanıcıyı kaydet
+			userRepository.save(user);
+			
+			// todo: buraya admin'e başvuru bildirimi veya özel bir mail logic'i ekle
+			
+			// kullanıcıya email doğrulama yolla
+			mailProducer.sendVerificationMail(user.getEmail(), verificationToken);
+			
+			// dinleyici olarak kaydoldu, frontend'e bilgi dön
+			return BaseResponse.<LoginResponse>builder()
+			                   .success(true)
+			                   .message("başvurun alındı, şu an dinleyici olarak kaydın yapıldı. en kısa sürede seninle iletişime geçeceğiz. lütfen e-posta adresinden hesabını doğrula.")
+			                   .code(201)
+			                   .data(null)
+			                   .build();
+		}
 		
-		// yeni kullaniciyi olustur
+		// buradan sonrası diğer tüm roller (müzisyen, user vs.)
+		
+		// ilgili rolü bul
+		Role selectedRole = roleRepository.findByName(selectedRoleEnum.name())
+		                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
+		                                                                               List.of("geçersiz rol seçimi veya sistemde tanımlı değil.")));
+		
+		// yeni kullanıcıyı oluştur
 		User user = User.builder()
-				.username(dto.username())
-				.email(dto.email())
-				.phone(dto.phone())
-				.gender(dto.gender())
-				.city(dto.city())
-				.roles(Set.of(defaultRole))
-				.password(encodedPassword)
-				.status(UserStatus.INACTIVE)
-				.emailVerificationToken(verificationToken)
-				.emailVerificationExpiry(expiry)
-				// baseentityde tanimladigimiz icin gerek yok.createdAt(LocalDateTime.now())
-				.build();
+		                .username(dto.username())
+		                .email(dto.email())
+		                .phone(dto.phone())
+		                .gender(dto.gender())
+		                .city(dto.city())
+		                .roles(Set.of(selectedRole))
+		                .password(encodedPassword)
+		                .status(UserStatus.INACTIVE)
+		                .emailVerificationToken(verificationToken)
+		                .emailVerificationExpiry(expiry)
+		                .build();
 		
-		// veritabanina kaydet
+		// kullanıcıyı kaydet
 		userRepository.save(user);
 		
-		// 6. Email kuyruğuna at — RabbitMQ üzerinden asenkron gönderim
+		// kullanıcının rolüne göre otomatik profil oluştur, sadece venue'da açılmaz
+		if (selectedRoleEnum != RoleEnum.ROLE_VENUE) {
+			profileFactory.createProfileIfNeeded(user, selectedRoleEnum);
+		}
+		
+		// kullanıcıya email doğrulama gönder
 		mailProducer.sendVerificationMail(user.getEmail(), verificationToken);
 		
-		// kullaniciya mail dogrulamamak icin response at
+		// frontend'e kayıt başarılı mesajı dön
 		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
-		                   .message("Kayit alindi. lutfen e-posta adresinden kaydini dogrula")
+		                   .message("kayıt alındı. lütfen e-posta adresinden kaydını doğrula.")
 		                   .code(201)
 		                   .data(null)
 		                   .build();
-		
 	}
 	
 	public BaseResponse<Void> verifyEmail(String token){

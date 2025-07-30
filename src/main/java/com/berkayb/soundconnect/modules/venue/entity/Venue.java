@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.venue.entity;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
+import com.berkayb.soundconnect.modules.profile.entity.MusicianProfile;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
@@ -10,6 +11,9 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.GenericGenerator;
+
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @EqualsAndHashCode(callSuper = true)
@@ -57,9 +61,18 @@ public class Venue extends BaseEntity {
 	@Column(name = "music_start_time")
 	private String musicStartTime;
 	
+	
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private VenueStatus status;
+	
+	
+	@Builder.Default
+	@ToString.Exclude
+	@EqualsAndHashCode.Exclude
+	@ManyToMany(mappedBy = "activeVenues", fetch = FetchType.LAZY)
+	private Set<MusicianProfile> activeMusicians = new HashSet<>();
+	
 	
 	/**
 	 * Lombok'un @ToString anotasyonu, tüm alanları otomatik olarak toString metoduna dahil eder.

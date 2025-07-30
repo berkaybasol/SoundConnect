@@ -15,7 +15,5 @@ public record UserSaveRequestDto(
 		UUID roleId,
 		City city,
 		String password
-		// FIXME: enstruman endpointi hazır olduğunda instrumentIds kısmı tekrar aktif hale getirilecek
-		// List<UUID> instrumentIds
 ) {
 }
