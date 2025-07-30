@@ -59,7 +59,7 @@ Instrument Module
 - VenueProfileSaveRequestDto
 - VenueProfileService
 - VenueProfileServiceImpl
-tekrar pushlicam commit guncellemedim :D 
+tekrar pushlicam commit guncellemedim :D ;
 - 
 - 
 - 
