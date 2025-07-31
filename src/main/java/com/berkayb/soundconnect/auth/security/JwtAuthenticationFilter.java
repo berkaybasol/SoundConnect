@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.shared.util.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
