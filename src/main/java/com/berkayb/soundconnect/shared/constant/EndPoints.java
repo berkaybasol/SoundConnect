@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.shared.constant;
 
-import org.springframework.security.core.parameters.P;
 
 public class EndPoints {
 	
@@ -47,6 +46,8 @@ public class EndPoints {
 		public static final String BASE = API + VERSION + "/instruments";
 		public static final String SAVE = "/save-instrument";
 		public static final String GET_ALL = "/get-all-instruments";
+		public static final String GET_BY_ID = "/{id}";
+		public static final String DELETE = "/delete/{id}";
 	}
 	
 	public static class Follow {

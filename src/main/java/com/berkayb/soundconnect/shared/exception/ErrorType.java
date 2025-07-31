@@ -29,6 +29,7 @@ public enum ErrorType {
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
+	INSTRUMENT_ALREADY_EXISTS(1401,"Instrument alreadyi exists", HttpStatus.BAD_REQUEST,"Bu isimde enstruman zaten var."),
 	
 	// ARTISTVENUECONNECTION (1500 - 1599)
 	REQUEST_PENDING_ALREADY(1500,"Request Pending Already", HttpStatus.CONFLICT, "Basvuru zaten beklemede."),
