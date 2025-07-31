@@ -10,10 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 // bu sinif token uretir, cozer ve dogrular. tum token operasyonlarinin merkezidir.
@@ -56,9 +53,9 @@ public class JwtTokenProvider {
 		
 		// Rolleri String listesine ceviriyoruz
 		List<String> roles = user.getRoles()
-				.stream()
-				.map(Role::getName)
-				.collect(Collectors.toList());
+		                         .stream()
+		                         .map(Role::getName)
+		                         .collect(Collectors.toList());
 		
 		// JWT claim'leri map'ine ekleniyor
 		Map<String, Object> claims = new HashMap<>();
@@ -66,58 +63,58 @@ public class JwtTokenProvider {
 		claims.put("permissions", permissions);
 		
 		return Jwts.builder()
-				// JWT'nin payload kismina ozel alanlar ekliyoruz. (roller ve izinler gibi)
-				// "roles" ve "permissions" alanlari daha sonra token cozumlenirken guvenlik kontrolu icin kullanilcak
-				.setClaims(claims)
-				.setSubject(userDetails.getUsername()) // kullaniciyi subject yani token sahibi olarak token icine koyar
-		/*
-		 * Subject = JWT token içindeki "kim" kısmıdır (token kime ait?).
-		 * Örneğin, JWT’nin base64 çözüldüğünde yapısı şu şekildedir:
-		 *
-		 * Header:
-		 * {
-		 *   "alg": "HS512",
-		 *   "typ": "JWT"
-		 * }
-		 *
-		 * Payload:
-		 * {
-		 *   "sub": "berkay",        // Burada sub alanını doldurmuş oluyoruz
-		 *   "roles": "ROLE_USER",
-		 *   "exp": 17112345678
-		 * }
-		 *
-		 * .setSubject(userDetails.getUsername()) çağrısı ile "sub" alanına kullanıcının username bilgisini koyarız.
-		 */
-				.setIssuer(jwtIssuer) // token'ı hangi servis oluşturduysa onu belirtir (örneğin: "soundconnect-auth")
-		 
-		/***
-		 * Kullanıcının rollerini (authorities) JWT token’ın payload kısmına "roles" adıyla ekliyoruz.
-		 * getAuthorities() → ROLE bilgilerini döner, stream ile tek tek gezip sadece role isimlerini alıyoruz.
-		 */
-				.setIssuedAt(new Date()) // suanki zaman
+		           // JWT'nin payload kismina ozel alanlar ekliyoruz. (roller ve izinler gibi)
+		           // "roles" ve "permissions" alanlari daha sonra token cozumlenirken guvenlik kontrolu icin kullanilcak
+		           .setClaims(claims)
+		           .setSubject(userDetails.getUser().getId().toString()) // kullaniciyi subject yani token sahibi olarak token icine koyar
+		           /*
+		            * Subject = JWT token içindeki "kim" kısmıdır (token kime ait?).
+		            * Örneğin, JWT’nin base64 çözüldüğünde yapısı şu şekildedir:
+		            *
+		            * Header:
+		            * {
+		            *   "alg": "HS512",
+		            *   "typ": "JWT"
+		            * }
+		            *
+		            * Payload:
+		            * {
+		            *   "sub": "berkay",        // Burada sub alanını doldurmuş oluyoruz
+		            *   "roles": "ROLE_USER",
+		            *   "exp": 17112345678
+		            * }
+		            *
+		            * .setSubject(userDetails.getUsername()) çağrısı ile "sub" alanına kullanıcının username bilgisini koyarız.
+		            */
+		           .setIssuer(jwtIssuer) // token'ı hangi servis oluşturduysa onu belirtir (örneğin: "soundconnect-auth")
+		           
+		           /***
+		            * Kullanıcının rollerini (authorities) JWT token’ın payload kısmına "roles" adıyla ekliyoruz.
+		            * getAuthorities() → ROLE bilgilerini döner, stream ile tek tek gezip sadece role isimlerini alıyoruz.
+		            */
+		           .setIssuedAt(new Date()) // suanki zaman
 		           // tokenin gecerlilik suresi. suanki zamana yml'dan gelen sure eklenir.
-				.setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
-				.signWith(getSigningKey(), SignatureAlgorithm.HS256)
-				.compact(); // tokeni string formatina cevirir. frontende bunu gondeririz
+		           .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+		           .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+		           .compact(); // tokeni string formatina cevirir. frontende bunu gondeririz
 	}
 	
 	// ortak tyoken cozumleme islemi (parse + claim cikarma)
 	private Claims extractAllClaims(String token) {
 		return Jwts.parserBuilder()
-				.setSigningKey(getSigningKey()) // token imzasini dogrulamak icin key veriyoruz
-				.requireIssuer(jwtIssuer)
-				.build()
-				.parseClaimsJws(token)// token parse edilir ->> imza ve sure kontrolu yapilir
-				.getBody(); // eger token gecerliyse payloaddan claim kismi alinir.
+		           .setSigningKey(getSigningKey()) // token imzasini dogrulamak icin key veriyoruz
+		           .requireIssuer(jwtIssuer)
+		           .build()
+		           .parseClaimsJws(token)// token parse edilir ->> imza ve sure kontrolu yapilir
+		           .getBody(); // eger token gecerliyse payloaddan claim kismi alinir.
 	}
 	
 	
 	
 	// Token'in icerisiten subject bilgisini almak icin kullanilir.
 	// token cozulmeden once imzasi kontrol edilir ve gecerliyse payload kismindan subject alinir.
-	public String getUsernameFromToken(String token) {
-		return extractAllClaims(token).getSubject(); // generatToken'da koydumuz sub alanini cekiyoruz
+	public UUID getUserIdFromToken(String token) {
+		return UUID.fromString(extractAllClaims(token).getSubject()); // generateToken'da koydumuz sub alanini cekiyoruz
 	}
 	
 	// token gecerli mi diye kontrol ettigimiz metod (filtrede kullanicaz)
@@ -143,7 +140,4 @@ public class JwtTokenProvider {
 		}
 		return false;
 	}
-	
-	
-	
 }

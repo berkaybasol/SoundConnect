@@ -9,7 +9,6 @@ public record UserUpdateRequestDto(
 		String username,
 		String password,
 		String email,
-		City city,
-		List<UUID> instrumentIds
+		City city
 ) {
 }

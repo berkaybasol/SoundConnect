@@ -12,6 +12,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 /**
  * Bu sinifin amaci Spring Security login ve JWT çözümleme sürecinde,
  * username ile DB’den kullanıcıyı bulup, sistemin tanıyacağı formata sarmak.
@@ -32,11 +34,18 @@ public class CustomUserDetailsService implements UserDetailsService {
 	
 	@Override
 	@Transactional  // loadUserByUsername metodu boyunca DB connection ve session açık kalır
-					// Roller/izinler rahatça çekilir, hata fırlamaz.
+	// Roller/izinler rahatça çekilir, hata fırlamaz.
 	
 	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
 		User user = userRepository.findByUsername(username)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		return new UserDetailsImpl(user);
+	}
+	
+	// bunu kullancaz ustteki method yerine
+	public UserDetails loadUserById(UUID userId) {
+		User user = userRepository.findById(userId)
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		return new UserDetailsImpl(user);
 	}
 }

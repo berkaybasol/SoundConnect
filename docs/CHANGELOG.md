@@ -1,16 +1,35 @@
 ### updated:
-- yml
-- AuthProvider
-- build.gradle
-- EndPoints
+- AuthService
+- CustomUserDetailsService
+- Endpoints
+- ErrorType
+- JwtAuthenticationFilter
+- JwtTokenProvider
+- ReqisterRequestDto
 - User
-- UserDetailsImpl
-- UserRepository
+- UserServiceImpl
+- UserStatus
+- UserUpdateRequestDto
+- Venue
+- VenueMapper
+- VenueRepository
+- VenueRequestDto
+- VenueResponseDto
+- VenueServiceImpl
+-
+-
+-
+-
+-
+
+### deleted:
+Instrument Module
 
 
 ### new:
-- GoogleAuthController
-- GoogleAuthControllerImpl
-- GoogleAuthRequestDto
-- GoogleAuthService
-- CHANGELOG.md
+- 
+- 
+  tekrar pushlicam commit guncellemedim :D ;
+-
+-
+- 

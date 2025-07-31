@@ -1,14 +1,13 @@
 package com.berkayb.soundconnect.modules.user.entity;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
-import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
-import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,7 +15,6 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @EqualsAndHashCode(callSuper = true)
@@ -62,12 +60,9 @@ public class User extends BaseEntity {
 	@Builder.Default
 	private AuthProvider provider = AuthProvider.LOCAL; // kullanicini kayit tipi local veya google default local baslatiyoruz
 	
-	
 	@Builder.Default
 	@Column(name = "email_verified", nullable = false)
 	private Boolean emailVerified = false;
-	
-	
 	
 	@Builder.Default // NullPointer yemeyek diye bos deger atiyo hashsete
 	@ManyToMany(fetch = FetchType.EAGER)
@@ -86,10 +81,6 @@ public class User extends BaseEntity {
 			inverseJoinColumns = @JoinColumn(name = "permission_id")
 	)
 	private Set<Permission> permissions = new HashSet<>();
-	
-	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-	private List<Instrument> instruments;
-	
 	
 	@OneToMany(mappedBy = "following", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
 	@JsonIgnore

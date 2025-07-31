@@ -4,6 +4,15 @@ import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.profile.dto.request.VenueProfileSaveRequestDto;
+import com.berkayb.soundconnect.modules.profile.entity.VenueProfile;
+import com.berkayb.soundconnect.modules.profile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.profile.service.VenueProfileService;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
+import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -18,6 +27,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -32,7 +42,11 @@ public class VenueServiceImpl implements VenueService {
 	private final LocationEntityFinder locationEntityFinder;
 	private final UserEntityFinder userEntityFinder;
 	private final VenueEntityFinder venueEntityFinder;
+	private final RoleRepository roleRepository;
+	private final UserRepository userRepository;
+	private final VenueProfileService venueProfileService;
 	
+	@Transactional
 	@Override
 	public VenueResponseDto save(VenueRequestDto dto) {
 		log.info("Saving venue: {}", dto.name());
@@ -45,8 +59,35 @@ public class VenueServiceImpl implements VenueService {
 		Venue venue = venueMapper.toEntity(dto, city, district, neighborhood, owner);
 		venue.setStatus(VenueStatus.APPROVED); // Admin CRUD'da otomatik onaylı
 		
-		Venue saved = venueRepository.save(venue);
-		return venueMapper.toResponse(saved);
+		// mekan kaydi yap
+		Venue savedVenue = venueRepository.save(venue);
+		
+		
+		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())
+		                               .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+		
+		// eger zaten venue rolu yoksa ekle
+		if (owner.getRoles().stream().noneMatch(r -> r.getName().equals(RoleEnum.ROLE_VENUE.name()))) {
+			owner.getRoles().add(venueRole);
+		}
+		
+		// status u aktif yap
+		owner.setStatus(UserStatus.ACTIVE);
+		
+		// useri guncelle
+		userRepository.save(owner);
+		
+		// venue profile olustur
+		VenueProfileSaveRequestDto profileDto = new VenueProfileSaveRequestDto(
+				null, // bio
+				null, // profilePicture
+				null, // instagramUrl
+				null, // youtubeUrl
+				null  // websiteUrl
+		);
+		venueProfileService.createProfile(savedVenue.getId(), profileDto);
+		
+		return venueMapper.toResponse(savedVenue);
 	}
 	
 	@Override

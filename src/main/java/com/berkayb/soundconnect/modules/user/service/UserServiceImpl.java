@@ -5,11 +5,9 @@ import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
-import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.mapper.UserMapper;
-import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -30,7 +28,6 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 	
 	private final UserRepository userRepository;
-	private final InstrumentRepository instrumentRepository;
 	private final RoleRepository roleRepository;
 	private final UserMapper userMapper;
 	private final UserEntityFinder userEntityFinder;
@@ -65,13 +62,6 @@ public class UserServiceImpl implements UserService {
 		// sehir guncellenirse set edilir
 		if (dto.city() != null) {
 			user.setCity(dto.city());
-			isUpdated = true;
-		}
-		
-		// enstrumanlar guncellenirse liste veritabanindan cekilir ve set edilir
-		if (dto.instrumentIds() != null && !dto.instrumentIds().isEmpty()) {
-			List<Instrument> instruments = fetchInstruments(dto.instrumentIds());
-			user.setInstruments(instruments);
 			isUpdated = true;
 		}
 		
@@ -127,16 +117,11 @@ public class UserServiceImpl implements UserService {
 		                .gender(dto.gender())
 		                .roles(Set.of(role))
 		                // TODO: enstruman endpointi hazır olduğunda instrumentIds kısmı tekrar aktif hale getirilecek
-		               // .instruments(instruments)
+		                // .instruments(instruments)
 		                .status(UserStatus.ACTIVE)
 		                .createdAt(LocalDateTime.now())
 		                .build();
 		
 		return userRepository.save(user);
-	}
-	
-	// verilen id'lere gore enstrumanlari dondurur
-	private List<Instrument> fetchInstruments(List<UUID> instrumentIds) {
-		return instrumentRepository.findAllById(instrumentIds);
 	}
 }
