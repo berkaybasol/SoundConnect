@@ -3,7 +3,7 @@ package com.berkayb.soundconnect.modules.venue.entity;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
-import com.berkayb.soundconnect.modules.profile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;

@@ -1,7 +1,7 @@
 package com.berkayb.soundconnect.auth.service;
 
 import com.berkayb.soundconnect.auth.dto.request.GoogleCompleteProfileRequestDto;
-import com.berkayb.soundconnect.modules.profile.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;

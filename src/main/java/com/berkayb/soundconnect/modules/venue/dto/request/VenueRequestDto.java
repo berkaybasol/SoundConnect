@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.venue.dto.request;
 
-import com.berkayb.soundconnect.modules.profile.dto.request.VenueProfileSaveRequestDto;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 

@@ -7,8 +7,8 @@ import com.berkayb.soundconnect.modules.artistvenueconnection.enums.RequestByTyp
 import com.berkayb.soundconnect.modules.artistvenueconnection.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.artistvenueconnection.mapper.ArtistVenueConnectionRequestMapper;
 import com.berkayb.soundconnect.modules.artistvenueconnection.repository.ArtistVenueConnectionRequestRepository;
-import com.berkayb.soundconnect.modules.profile.entity.MusicianProfile;
-import com.berkayb.soundconnect.modules.profile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;

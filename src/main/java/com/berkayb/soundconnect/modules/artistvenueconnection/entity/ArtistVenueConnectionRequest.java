@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.artistvenueconnection.entity;
 
 import com.berkayb.soundconnect.modules.artistvenueconnection.enums.RequestByType;
 import com.berkayb.soundconnect.modules.artistvenueconnection.enums.RequestStatus;
-import com.berkayb.soundconnect.modules.profile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;

@@ -17,21 +17,38 @@ public class EndPoints {
 	
 	public static class ProfileMusician {
 		public static final String BASE = API + VERSION + "/musician-profiles";
-		public static final String GET_ALL = "/get-all-profiles";
 		public static final String GET_MY_PROFILE = "/musician-profiles/{id}";
 		public static final String CREATE = "/create-profile";
 		public static final String UPDATE = "/update/{id}";
-		public static final String GET_BY_ID = "/{id}";   // Public profil view (id: MusicianProfile id'si)
 	}
 	
 	public static class ProfileVenue {
 		public static final String BASE = API + VERSION + "/venue-profiles";
-		public static final String GET_ALL = "/get-all-venues";
 		public static final String GET_PROFILE = "/{venueId}/profile";
 		public static final String CREATE_PROFILE = "/create-profile/{venueId}";
 		public static final String UPDATE_PROFILE = "/{venueId}/profile";
-		public static final String GET_BY_ID = "/{venueId}"; // Public profil view (id: MusicianProfile id'si)
 	}
+	
+	public static class ProfileListener {
+		public static final String BASE = API + VERSION + "/listener-profiles";
+		
+		// Kendi profilini getir (me)
+		public static final String GET_MY_PROFILE = "/me";
+		
+		// Başkasının profilini getir
+		public static final String GET_PROFILE_BY_ID = "/{id}";
+		
+		// Kendi profilini güncelle (me)
+		public static final String UPDATE_MY_PROFILE = "/me";
+		
+		// Başkasının profilini güncelle (admin/owner future, opsiyonel)
+		public static final String UPDATE = "/update/{id}";
+		
+		public static final String CREATE = "/create-profile";
+	}
+	
+	
+	
 	
 	public static class ArtistVenueConnections {
 		public static final String BASE = API + VERSION + "/artist-venue-connections";

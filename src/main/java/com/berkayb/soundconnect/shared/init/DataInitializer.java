@@ -61,6 +61,22 @@ public class DataInitializer {
 		                    ))
 		                    .build();
 		
+		// musician rolunu olustur
+		Role musicianRole = Role.builder()
+		                    .name(ROLE_MUSICIAN.name())
+		                    .permissions(Set.of(
+				                    Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                    ))
+		                    .build();
+		
+		// listener rolunu olustur
+		Role listenerRole = Role.builder()
+		                        .name(ROLE_LISTENER.name())
+		                        .permissions(Set.of(
+				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                        ))
+		                        .build();
+		
 		// moderator rolunu olustur
 		Role moderatorRole = Role.builder()
 		                         .name(ROLE_ADMIN.name())
@@ -95,7 +111,7 @@ public class DataInitializer {
 		                     .permissions(new HashSet<>(permissionMap.values()))
 		                     .build();
 		
-		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole));
+		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole, musicianRole, listenerRole));
 		
 		log.info("roller ve izinler eklendi.");
 		

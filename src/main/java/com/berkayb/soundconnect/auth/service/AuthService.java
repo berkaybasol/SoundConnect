@@ -5,16 +5,14 @@ import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.modules.profile.dto.request.MusicianProfileSaveRequestDto;
-import com.berkayb.soundconnect.modules.profile.factory.ProfileFactory;
-import com.berkayb.soundconnect.modules.profile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.MailProducer;
-import com.berkayb.soundconnect.shared.mail.service.MailService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -50,7 +48,8 @@ public class AuthService {
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
 			RoleEnum.ROLE_MUSICIAN,
 			RoleEnum.ROLE_USER,
-			RoleEnum.ROLE_VENUE
+			RoleEnum.ROLE_VENUE,
+			RoleEnum.ROLE_LISTENER
 	);
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
