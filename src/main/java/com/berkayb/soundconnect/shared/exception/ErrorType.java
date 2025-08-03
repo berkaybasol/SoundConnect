@@ -36,6 +36,12 @@ public enum ErrorType {
 	REQUEST_NOT_FOUND(1501,"Request not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi."),
 	REQUEST_ALREADY_ACCEPTED(1502,"Request already accepted.", HttpStatus.BAD_REQUEST,"Basvuru zaten onaylandi."),
 	REQUEST_ALREADY_REJECTED(1503,"Request already rejected.", HttpStatus.BAD_REQUEST,"Basvuru zaten reddedildi."),
+	
+	// VENUEAPPLICATION ( 1600 - 1699)
+	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.BAD_REQUEST, "Zaten basvuru yapilmis."),
+	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.BAD_REQUEST, "Basvuru bulunamadi"),
+	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.BAD_REQUEST, "Bu basvuruya zaten islem yapilmis"),
+	
 	// VALIDATION (4000-4099)
 	VALIDATION_ERROR(4000, "Validation failed", HttpStatus.BAD_REQUEST, "Alanlardan biri ya da birkaçı doğrulama hatası verdi."),
 	

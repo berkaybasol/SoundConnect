@@ -13,17 +13,45 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class VenueProfileServiceImpl implements VenueProfileService {
+	
 	private final VenueProfileRepository venueProfileRepository;
 	private final VenueRepository venueRepository;
 	private final VenueProfileMapper venueProfileMapper;
 	private final VenueEntityFinder venueEntityFinder;
+	
+	
+	@Override
+	public List<VenueProfileResponseDto> getProfilesByUserId(UUID userId) {
+		List<Venue> venues = venueRepository.findAllByOwnerId(userId);
+		if (venues.isEmpty()) {
+			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+		}
+		return venues.stream()
+		             .map(venue -> venueProfileRepository.findByVenueId(venue.getId())
+		                                                 .map(venueProfileMapper::toResponse)
+		                                                 .orElse(null))
+		             .filter(Objects::nonNull)
+		             .collect(Collectors.toList());
+	}
+	
+	@Override
+	public VenueProfileResponseDto updateProfileByVenueId(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto) {
+		// venueId gerçekten bu user’a mı ait?
+		Venue venue = venueRepository.findByIdAndOwnerId(venueId, userId)
+		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+		return updateProfile(venue.getId(), dto);
+	}
 	
 	@Override
 	public VenueProfileResponseDto createProfile(UUID venueId, VenueProfileSaveRequestDto dto) {

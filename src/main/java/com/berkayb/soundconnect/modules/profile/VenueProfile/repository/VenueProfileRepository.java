@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface VenueProfileRepository extends JpaRepository<VenueProfile, UUID> {
 	Optional<VenueProfile> findByVenueId(UUID venueId);
 	
+	
 }

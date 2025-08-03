@@ -20,6 +20,11 @@ public class LocationEntityFinder {
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
 	
+	public City getCityByName(String cityName) {
+		return cityRepository.findByName(cityName)
+		                     .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
+	}
+	
 	public City getCity(UUID id) {
 		return cityRepository.findById(id)
 		                     .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));

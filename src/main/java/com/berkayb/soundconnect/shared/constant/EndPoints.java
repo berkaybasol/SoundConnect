@@ -15,36 +15,65 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
-	public static class ProfileMusician {
-		public static final String BASE = API + VERSION + "/musician-profiles";
-		public static final String GET_MY_PROFILE = "/musician-profiles/{id}";
-		public static final String CREATE = "/create-profile";
-		public static final String UPDATE = "/update/{id}";
+	public static class MusicianProfile {
+		public static final String USER_BASE = API + VERSION + "/user/musician-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/musician-profiles";
+		
+		// user
+		public static final String ME = "/me";
+		public static final String CREATE = "/create";
+		public static final String UPDATE = "/update";
+		
+		// Admin
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
 	}
 	
-	public static class ProfileVenue {
-		public static final String BASE = API + VERSION + "/venue-profiles";
-		public static final String GET_PROFILE = "/{venueId}/profile";
-		public static final String CREATE_PROFILE = "/create-profile/{venueId}";
-		public static final String UPDATE_PROFILE = "/{venueId}/profile";
+	public static class VenueApplication {
+		public static final String USER_BASE = API + VERSION + "/user/venue-applications";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/venue-applications";
+		
+		// user
+		public static final String CREATE = "/create";
+		public static final String MY_APPLICATIONS = "/my";
+		public static final String MY_PENDING = "/my/pending";
+		
+		//admin
+		public static final String BY_STATUS = "/by-status";
+		public static final String GET_BY_ID = "/{id}";
+		public static final String APPROVE = "/approve/{applicationId}";
+		public static final String REJECT = "/reject/{applicationId}";
 	}
 	
-	public static class ProfileListener {
-		public static final String BASE = API + VERSION + "/listener-profiles";
+	
+	public static class VenueProfile {
 		
-		// Kendi profilini getir (me)
-		public static final String GET_MY_PROFILE = "/me";
+		public static final String USER_BASE = API + VERSION + "/user/venue-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/venue-profiles";
 		
-		// Başkasının profilini getir
-		public static final String GET_PROFILE_BY_ID = "/{id}";
+		// User
+		public static final String ME = "/me";
+		public static final String UPDATE = "/update";
 		
-		// Kendi profilini güncelle (me)
-		public static final String UPDATE_MY_PROFILE = "/me";
+		// Admin
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+		public static final String ADMIN_CREATE = "/create/{venueId}";
+	}
+	
+	
+	public class ListenerProfile {
+		public static final String USER_BASE = API + VERSION + "/user/listener-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/listener-profiles";
 		
-		// Başkasının profilini güncelle (admin/owner future, opsiyonel)
-		public static final String UPDATE = "/update/{id}";
+		// User için
+		public static final String ME = "/me";
+		public static final String CREATE = "/create";
+		public static final String UPDATE = "/update";
 		
-		public static final String CREATE = "/create-profile";
+		// Admin için
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/update/{userId}";
 	}
 	
 	
