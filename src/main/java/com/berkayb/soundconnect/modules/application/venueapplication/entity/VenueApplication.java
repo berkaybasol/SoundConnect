@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.entity;
 
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.entity.District;
+import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
@@ -45,4 +48,17 @@ public class VenueApplication extends BaseEntity {
 	
 	@Column
 	private LocalDateTime decisionDate; // karar tarihi.
+	
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "city_id", nullable = false)
+	private City city;
+	
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "district_id", nullable = false)
+	private District district;
+	
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "neighborhood_id")
+	private Neighborhood neighborhood;
+	
 }

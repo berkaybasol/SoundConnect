@@ -18,7 +18,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Google Complete Profile", description = "Google ile giren kullanıcılar için profil tamamlama endpointleri")
+@Tag(name = "FOR USERS / Google Complete Profile", description = "Google ile giren kullanıcılar için profil tamamlama endpointleri")
 @Slf4j
 public class GoogleCompleteProfileController {
 	

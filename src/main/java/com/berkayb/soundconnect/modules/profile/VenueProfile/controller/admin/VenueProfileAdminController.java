@@ -17,7 +17,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueProfile.*;
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / Venue Profile", description = "Admin'in istediği kullanıcının venue profillerini görüp yönetmesi için endpointler")
+@Tag(name = "FOR ADMIN / Venue Profile", description = "Admin'in istediği kullanıcının venue profillerini görüp yönetmesi için endpointler")
 public class VenueProfileAdminController {
 	
 	private final VenueProfileService venueProfileService;

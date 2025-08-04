@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.user.dto.request;
 
-import com.berkayb.soundconnect.modules.user.enums.City;
+import com.berkayb.soundconnect.modules.location.entity.City;
 
 import java.util.List;
 import java.util.UUID;

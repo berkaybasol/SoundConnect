@@ -21,7 +21,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Permission.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Permission Controller ", description = "Permission management endpoints")
+@Tag(name = "FOR ADMIN / Permission Controller ", description = "Permission management endpoints")
 public class PermissionControllerImpl implements PermissionController {
 	private final PermissionService permissionService;
 	

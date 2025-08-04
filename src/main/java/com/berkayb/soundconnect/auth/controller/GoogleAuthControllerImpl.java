@@ -17,7 +17,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Google Auth Controller", description = "Login procedures with Google")
+@Tag(name = "FOR USERS / Google Auth Controller", description = "Login procedures with Google")
 public class GoogleAuthControllerImpl implements GoogleAuthController {
 	private final GoogleAuthService googleAuthService;
 	

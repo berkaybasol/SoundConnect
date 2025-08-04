@@ -22,7 +22,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueApplicatio
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Admin / Venue Application", description = "Venue applications (admin operations)")
+@Tag(name = "FOR USERS / Venue Application", description = "Venue applications (admin operations)")
 public class VenueApplicationAdminController {
 	private final VenueApplicationService venueApplicationService;
 	

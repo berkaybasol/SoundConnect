@@ -16,7 +16,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.MusicianProfile
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / Musician Profile", description = "Admin tüm kullanıcıların müzisyen profillerini yönetir")
+@Tag(name = "FOR ADMIN / Musician Profile", description = "Admin tüm kullanıcıların müzisyen profillerini yönetir")
 public class MusicianProfileAdminController {
 	private final MusicianProfileService musicianProfileService;
 	

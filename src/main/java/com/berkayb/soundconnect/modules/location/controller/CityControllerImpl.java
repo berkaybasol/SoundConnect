@@ -21,7 +21,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / City", description = "city includes transactions")
+@Tag(name = "FOR ADMIN / City", description = "city includes transactions")
 public class CityControllerImpl implements CityController {
 	private final CityService cityService;
 	

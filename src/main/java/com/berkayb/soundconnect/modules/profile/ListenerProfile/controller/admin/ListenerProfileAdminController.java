@@ -16,7 +16,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / Listener Profile", description = "Endpoints for Admin users to manage Listener profiles")
+@Tag(name = "FOR ADMIN / Listener Profile", description = "Endpoints for Admin users to manage Listener profiles")
 public class ListenerProfileAdminController {
 private final ListenerProfileService listenerProfileService;
 	

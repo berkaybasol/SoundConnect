@@ -8,6 +8,8 @@ import com.berkayb.soundconnect.modules.application.venueapplication.enums.Appli
 import com.berkayb.soundconnect.modules.application.venueapplication.mapper.VenueApplicationMapper;
 import com.berkayb.soundconnect.modules.application.venueapplication.repository.VenueApplicationRepository;
 import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.entity.District;
+import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
@@ -62,20 +64,19 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())
 		                               .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
-		// rol zaten var ise tekrar atama
+		// rol zaten varsa tekrar atama
 		if (applicant.getRoles().stream().noneMatch(role -> role.getName().equals(RoleEnum.ROLE_VENUE.name()))) {
 			applicant.getRoles().add(venueRole);
 		}
 		applicant.setStatus(UserStatus.ACTIVE);
 		userRepository.save(applicant);
 		
-		City cityEntity = locationEntityFinder.getCityByName(applicant.getCity().name());
 		Venue venue = Venue.builder()
 		                   .name(application.getVenueName())
 		                   .address(application.getVenueAddress())
-		                   .city(cityEntity)
-		                   .district(null)
-		                   .neighborhood(null)
+		                   .city(applicant.getCity())
+		                   .district(application.getDistrict())
+		                   .neighborhood(application.getNeighborhood())
 		                   .owner(applicant)
 		                   .phone(application.getPhone())
 		                   .status(VenueStatus.APPROVED)
@@ -131,9 +132,18 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 				});
 		
 		
+		// location modululundeki entitylerin id'lerini al
+		City city = locationEntityFinder.getCity(UUID.fromString(dto.cityId()));
+		District district = locationEntityFinder.getDistrict(UUID.fromString(dto.districtId()));
+		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(UUID.fromString(dto.neighborhoodId()));
+		
+		
 		// dto -> entity mapping
 		VenueApplication application = venueApplicationMapper.toEntity(dto);
 		application.setApplicant(applicant);
+		application.setCity(city);
+		application.setDistrict(district);
+		application.setNeighborhood(neighborhood);
 		application.setStatus(ApplicationStatus.PENDING);
 		application.setApplicationDate(LocalDateTime.now());
 		application.setDecisionDate(null); // henuz karar yok biz onaylicaz

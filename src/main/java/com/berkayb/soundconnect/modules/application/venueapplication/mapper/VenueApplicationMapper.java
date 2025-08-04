@@ -19,6 +19,9 @@ public interface VenueApplicationMapper {
 	VenueApplicationResponseDto toResponseDto(VenueApplication venueApplication);
 	
 	// request'ten entity'ye map; applicant, status, date service'te setlenecek
+	@Mapping(target = "city", ignore = true)
+	@Mapping(target = "district", ignore = true)
+	@Mapping(target = "neighborhood", ignore = true)
 	@Mapping(target = "id", ignore = true)
 	@Mapping(target = "applicant", ignore = true)
 	@Mapping(target = "status", ignore = true)

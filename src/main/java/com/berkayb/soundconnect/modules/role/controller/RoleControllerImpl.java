@@ -18,7 +18,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Role.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Role Controller", description = "Role management endpoints")
+@Tag(name = "FOR ADMIN / Role Controller", description = "Role management endpoints")
 public class RoleControllerImpl implements RoleController {
 	private final RoleService roleService;
 	

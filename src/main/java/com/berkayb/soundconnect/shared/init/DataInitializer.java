@@ -1,12 +1,13 @@
 package com.berkayb.soundconnect.shared.init;
 
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.PermissionEnum;
 import com.berkayb.soundconnect.modules.role.repository.PermissionRepository;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
@@ -31,6 +32,7 @@ public class DataInitializer {
 	private final PermissionRepository permissionRepository;
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final LocationEntityFinder locationEntityFinder;
 	
 	@PostConstruct
 	public void initData() {
@@ -122,12 +124,13 @@ public class DataInitializer {
 			Role owner = roleRepository.findByName(ROLE_OWNER.name())
 			                           .orElseThrow(() -> new RuntimeException("ROLE_OWNER bulunamadi"));
 			
+			City cityEntity = locationEntityFinder.getCityByName("Ankara");
 			User admin = User.builder()
 			                 .username("basol")
 			                 .password(passwordEncoder.encode("raprap12334"))
 			                 .email("admin@soundconnect.com")
 			                 .phone("05555555555")
-			                 .city(City.ANKARA)
+			                 .city(cityEntity)
 			                 .gender(Gender.MALE)
 			                 .status(UserStatus.ACTIVE)
 			                 .roles(Set.of(owner))

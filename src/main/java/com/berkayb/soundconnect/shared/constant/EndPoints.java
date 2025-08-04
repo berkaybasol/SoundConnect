@@ -88,13 +88,19 @@ public class EndPoints {
 		public static final String GET_REQUESTS_BY_VENUE = "/venue/{venueId}";
 	}
 	
-	public static class Instrument {
-		public static final String BASE = API + VERSION + "/instruments";
-		public static final String SAVE = "/save-instrument";
-		public static final String GET_ALL = "/get-all-instruments";
-		public static final String GET_BY_ID = "/{id}";
-		public static final String DELETE = "/delete/{id}";
+	public class InstrumentEndpoints {
+		public static final String USER_BASE = API + VERSION + "/user/instruments";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/instruments";
+		
+		// User
+		public static final String LIST = ""; // /user/instruments (getAll)
+		public static final String GET_BY_ID = "/{id}"; // /user/instruments/{id}
+		
+		// Admin
+		public static final String CREATE = ""; // /admin/instruments (post)
+		public static final String DELETE = "/{id}"; // /admin/instruments/{id}
 	}
+	
 	
 	public static class Follow {
 		public static final String BASE = API + VERSION + "/follows";

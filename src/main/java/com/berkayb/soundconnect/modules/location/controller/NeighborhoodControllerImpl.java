@@ -21,7 +21,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Neighborhood.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / Neighboor", description = "Neighborhood management endpoints")
+@Tag(name = "FOR ADMIN / Neighboor", description = "Neighborhood management endpoints")
 public class NeighborhoodControllerImpl implements NeighborhoodController {
 	
 	private final NeighborhoodService neighborhoodService;

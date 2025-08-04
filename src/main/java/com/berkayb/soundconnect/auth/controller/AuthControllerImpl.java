@@ -15,7 +15,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Auth Controller", description = "register, login includes transactions")
+@Tag(name = "FOR USERS / Auth Controller", description = "register, login includes transactions")
 public class AuthControllerImpl implements AuthController {
 	private final AuthService authService;
 	

@@ -32,7 +32,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
-@Tag(name = "User / Listener Profile", description = "Operations related to the profile of users with a Listener " +
+@Tag(name = "FOR USERS / Listener Profile", description = "Operations related to the profile of users with a Listener " +
 		"profile")
 public class ListenerProfileUserController {
 	private final ListenerProfileService listenerProfileService;

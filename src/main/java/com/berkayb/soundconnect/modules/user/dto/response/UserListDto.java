@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.user.dto.response;
 
-import com.berkayb.soundconnect.modules.user.enums.City;
+import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import lombok.Builder;
 

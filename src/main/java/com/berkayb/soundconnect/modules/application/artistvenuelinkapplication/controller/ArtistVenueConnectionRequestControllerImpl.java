@@ -21,7 +21,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ArtistVenueConn
 @RequestMapping(BASE)
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Artist Venue Connections", description = "Artist - Venue Connections Management")
+@Tag(name = "FOR USERS / Artist Venue Connections", description = "Artist - Venue Connections Management")
 public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueConnectionRequestController {
 	private final ArtistVenueConnectionRequestService service;
 	

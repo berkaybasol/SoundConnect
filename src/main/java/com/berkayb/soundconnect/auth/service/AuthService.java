@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
@@ -43,6 +44,7 @@ public class AuthService {
 	private final MailProducer mailProducer;
 	private final MusicianProfileService musicianProfileService;
 	private final ProfileFactory profileFactory;
+	private final LocationEntityFinder locationEntityFinder;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -124,7 +126,7 @@ public class AuthService {
 			                .email(dto.email())
 			                .phone(dto.phone())
 			                .gender(dto.gender())
-			                .city(dto.city())
+			                .city(locationEntityFinder.getCity(dto.cityId()))
 			                .roles(Set.of(listenerRole))
 			                .password(encodedPassword)
 			                .status(UserStatus.PENDING_VENUE_REQUEST)
@@ -162,7 +164,7 @@ public class AuthService {
 		                .email(dto.email())
 		                .phone(dto.phone())
 		                .gender(dto.gender())
-		                .city(dto.city())
+		                .city(locationEntityFinder.getCity(dto.cityId()))
 		                .roles(Set.of(selectedRole))
 		                .password(encodedPassword)
 		                .status(UserStatus.INACTIVE)

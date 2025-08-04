@@ -21,7 +21,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / Venue", description = "Admin venue transtactions")
+@Tag(name = "FOR ADMIN / Venue", description = "Admin venue transtactions")
 public class VenueControllerImpl implements VenueController {
 	
 	private final VenueService venueService;

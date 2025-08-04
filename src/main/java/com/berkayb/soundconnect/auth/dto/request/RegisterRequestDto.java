@@ -1,7 +1,7 @@
 package com.berkayb.soundconnect.auth.dto.request;
 
+import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
-import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import jakarta.validation.constraints.*;
@@ -28,7 +28,7 @@ public record RegisterRequestDto(
 		Gender gender,
 		
 		@NotNull(message = "Şehir boş olamaz.")
-		City city,
+		UUID cityId,
 		
 		@Size(min = 8, max = 20, message = "Şifreniz en az 8, en fazla 20 karakterden oluşmalıdır.")
 		@NotBlank(message = "Şifre boş olamaz.")

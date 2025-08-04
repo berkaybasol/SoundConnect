@@ -1,11 +1,11 @@
 package com.berkayb.soundconnect.modules.user.entity;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
-import com.berkayb.soundconnect.modules.user.enums.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -45,7 +45,8 @@ public class User extends BaseEntity {
 	@Enumerated(EnumType.STRING)
 	private Gender gender;
 	
-	@Enumerated(EnumType.STRING)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "city_id")
 	private City city;
 	
 	@Enumerated(EnumType.STRING)

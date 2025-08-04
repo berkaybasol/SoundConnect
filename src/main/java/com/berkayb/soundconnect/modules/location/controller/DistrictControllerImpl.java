@@ -21,7 +21,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.District.*;
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "Admin / District", description = "district includes transactions")
+@Tag(name = "FOR ADMIN / District", description = "district includes transactions")
 public class DistrictControllerImpl implements DistrictController {
 	private final DistrictService districtService;
 	
