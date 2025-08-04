@@ -61,7 +61,7 @@ public class VenueServiceImpl implements VenueService {
 		Venue savedVenue = venueRepository.save(venue);
 		
 		
-		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())
+		Role venueRole = roleRepository .findByName(RoleEnum.ROLE_VENUE.name())
 		                               .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		// eger zaten venue rolu yoksa ekle
