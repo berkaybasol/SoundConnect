@@ -18,6 +18,7 @@ public interface UserMapper {
 	@Mapping(target = "followers", expression = "java(user.getFollowers() != null ? user.getFollowers().size() : 0)")
 	@Mapping(target = "following", expression = "java(user.getFollowing() != null ? user.getFollowing().size() : 0)")
 	@Mapping(target = "roles", source = "roles", qualifiedByName = "mapRolesToNames")
+	@Mapping(target = "city", source = "city")
 	UserListDto toDto(User user);
 	
 	UserUpdateRequestDto toUpdateRequestDto(User user);

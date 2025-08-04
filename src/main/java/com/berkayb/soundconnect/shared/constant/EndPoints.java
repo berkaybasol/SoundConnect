@@ -93,19 +93,27 @@ public class EndPoints {
 		public static final String ADMIN_BASE = API + VERSION + "/admin/instruments";
 		
 		// User
-		public static final String LIST = ""; // /user/instruments (getAll)
-		public static final String GET_BY_ID = "/{id}"; // /user/instruments/{id}
+		public static final String LIST = "";
+		public static final String GET_BY_ID = "/{id}";
 		
 		// Admin
-		public static final String CREATE = ""; // /admin/instruments (post)
-		public static final String DELETE = "/{id}"; // /admin/instruments/{id}
+		public static final String CREATE = "";
+		public static final String DELETE = "/{id}";
 	}
 	
 	
 	public static class Follow {
-		public static final String BASE = API + VERSION + "/follows";
+		public static final String BASE = API + VERSION + "/follow";  // tekil “follow” kullanımı daha yaygın ve anlamlıdır.
 		
+		public static final String FOLLOW = "/";       // POST /api/v1/follow/  → takip et
+		public static final String UNFOLLOW = "/unfollow"; // POST /api/v1/follow/unfollow → takipten çık
+		
+		public static final String GET_FOLLOWING = "/following/{userId}"; // GET /api/v1/follow/following/{userId}
+		public static final String GET_FOLLOWERS = "/followers/{userId}"; // GET /api/v1/follow/followers/{userId}
+		
+		public static final String IS_FOLLOWING = "/is-following"; // GET /api/v1/follow/is-following?followerId=...&followingId=...
 	}
+	
 	
 	public static class Permission{
 		public static final String BASE = API + VERSION + "/permissions";

@@ -12,7 +12,7 @@ public record UserSaveRequestDto(
 		String phone,
 		Gender gender,
 		UUID roleId,
-		City city,
+		UUID cityId,
 		String password
 ) {
 }

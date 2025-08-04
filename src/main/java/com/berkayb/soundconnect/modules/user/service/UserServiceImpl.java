@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.user.service;
 
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
@@ -32,6 +34,7 @@ public class UserServiceImpl implements UserService {
 	private final UserMapper userMapper;
 	private final UserEntityFinder userEntityFinder;
 	private final PasswordEncoder passwordEncoder;
+	private final CityRepository cityRepository;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -104,8 +107,8 @@ public class UserServiceImpl implements UserService {
 		                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		
-		// TODO: enstruman endpointi hazır olduğunda instrumentIds kısmı tekrar aktif hale getirilecek
-		// List<Instrument> instruments = instrumentRepository.findAllById(dto.instrumentIds());
+		City city = cityRepository.findById(dto.cityId())
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
 		
 		// elle user oluştur
 		User user = User.builder()
@@ -113,7 +116,7 @@ public class UserServiceImpl implements UserService {
 		                .email(dto.email())
 		                .password(passwordEncoder.encode(dto.password()))
 		                .phone(dto.phone())
-		                .city(dto.city())
+		                .city(city)
 		                .gender(dto.gender())
 		                .roles(Set.of(role))
 		                // TODO: enstruman endpointi hazır olduğunda instrumentIds kısmı tekrar aktif hale getirilecek

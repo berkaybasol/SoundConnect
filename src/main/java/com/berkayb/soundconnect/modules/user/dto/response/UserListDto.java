@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.user.dto.response;
 
+import com.berkayb.soundconnect.modules.location.dto.response.CityResponseDto;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import lombok.Builder;
@@ -12,7 +13,7 @@ public record UserListDto(
 		UUID id,
 		String username,
 		Gender gender,
-		City city,
+		CityResponseDto city,
 		Integer followers,
 		Integer following,
 		Boolean emailVerified,
