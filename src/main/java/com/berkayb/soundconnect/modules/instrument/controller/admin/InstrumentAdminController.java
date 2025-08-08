@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.instrument.controller;
+package com.berkayb.soundconnect.modules.instrument.controller.admin;
 
 import com.berkayb.soundconnect.modules.instrument.dto.request.InstrumentSaveRequestDto;
 import com.berkayb.soundconnect.modules.instrument.dto.response.InstrumentResponseDto;
