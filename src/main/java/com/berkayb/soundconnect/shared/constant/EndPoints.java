@@ -76,7 +76,44 @@ public class EndPoints {
 		public static final String ADMIN_UPDATE = "/update/{userId}";
 	}
 	
+	public static class StudioProfile {
+		public static final String USER_BASE = API + VERSION + "/user/studio-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/studio-profiles";
+		
+		// User için
+		public static final String ME = "/me";
+		public static final String UPDATE = "/update";
+		
+		// Admin için
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+	}
 	
+	public static class OrganizerProfile {
+		public static final String USER_BASE = API + VERSION + "/user/organizer-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/organizer-profiles";
+		
+		// User için
+		public static final String ME = "/me";
+		public static final String UPDATE = "/update";
+		
+		// Admin için
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+	}
+	
+	public static class ProducerProfile {
+		public static final String USER_BASE = API + VERSION + "/user/producer-profiles";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/producer-profiles";
+		
+		// User
+		public static final String ME = "/me";
+		public static final String UPDATE = "/update";
+		
+		// Admin
+		public static final String BY_USER_ID = "/by-user/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+	}
 	
 	
 	public static class ArtistVenueConnections {

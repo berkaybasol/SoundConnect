@@ -51,7 +51,10 @@ public class AuthService {
 			RoleEnum.ROLE_MUSICIAN,
 			RoleEnum.ROLE_USER,
 			RoleEnum.ROLE_VENUE,
-			RoleEnum.ROLE_LISTENER
+			RoleEnum.ROLE_LISTENER,
+			RoleEnum.ROLE_STUDIO,
+			RoleEnum.ROLE_ORGANIZER,
+			RoleEnum.ROLE_PRODUCER
 	);
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {

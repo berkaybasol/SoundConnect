@@ -71,6 +71,14 @@ public class DataInitializer {
 		                    ))
 		                    .build();
 		
+		// studio rolunu olustur
+		Role studioRole = Role.builder()
+		                        .name(ROLE_STUDIO.name())
+		                        .permissions(Set.of(
+				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                        ))
+		                        .build();
+		
 		// listener rolunu olustur
 		Role listenerRole = Role.builder()
 		                        .name(ROLE_LISTENER.name())
@@ -78,6 +86,24 @@ public class DataInitializer {
 				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
 		                        ))
 		                        .build();
+		
+		// Organizer rolunu olustur
+		Role organizerRole = Role.builder()
+		                        .name(ROLE_ORGANIZER.name())
+		                        .permissions(Set.of(
+				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                        ))
+		                        .build();
+		
+		// Producer rolunu olustur
+		Role producerRole = Role.builder()
+		                         .name(ROLE_PRODUCER.name())
+		                         .permissions(Set.of(
+				                         Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
+		                         ))
+		                         .build();
+		
+		
 		
 		// moderator rolunu olustur
 		Role moderatorRole = Role.builder()
@@ -113,7 +139,7 @@ public class DataInitializer {
 		                     .permissions(new HashSet<>(permissionMap.values()))
 		                     .build();
 		
-		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole, musicianRole, listenerRole));
+		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole, musicianRole, listenerRole, studioRole, organizerRole, producerRole));
 		
 		log.info("roller ve izinler eklendi.");
 		
