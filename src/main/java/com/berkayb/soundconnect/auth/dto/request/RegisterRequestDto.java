@@ -1,13 +1,8 @@
 package com.berkayb.soundconnect.auth.dto.request;
 
-import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
-import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import jakarta.validation.constraints.*;
-import org.checkerframework.checker.units.qual.N;
-
-import java.util.UUID;
 
 @PasswordMatch
 public record RegisterRequestDto(
@@ -19,16 +14,6 @@ public record RegisterRequestDto(
 		@Email(message = "Geçerli bir e-posta girin.")
 		@NotBlank(message = "E-posta boş olamaz.")
 		String email,
-		
-		@Pattern(regexp = "^((\\+90)?[1-9][0-9]{9})$",
-				message = "Telefon numarası geçerli formatta olmalıdır. Örn: +905551234567 veya 05551234567")
-		String phone,
-		
-		@NotNull(message = "Cinsiyet boş olamaz.")
-		Gender gender,
-		
-		@NotNull(message = "Şehir boş olamaz.")
-		UUID cityId,
 		
 		@Size(min = 8, max = 20, message = "Şifreniz en az 8, en fazla 20 karakterden oluşmalıdır.")
 		@NotBlank(message = "Şifre boş olamaz.")

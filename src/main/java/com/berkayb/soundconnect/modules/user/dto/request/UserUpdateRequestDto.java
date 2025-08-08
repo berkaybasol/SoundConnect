@@ -9,6 +9,6 @@ public record UserUpdateRequestDto(
 		String username,
 		String password,
 		String email,
-		City city
+		UUID roleId
 ) {
 }

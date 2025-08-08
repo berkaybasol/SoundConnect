@@ -19,7 +19,6 @@ gibi temel alanları ve davranışları tek bir yerden vermek icin actigimiz sin
 
 
 @SuperBuilder
-
 // Bu sınıf “saf entity” değil, diğer entity’lere üst sınıf olacak demek.
 // BaseEntity’nin alanları (id, createdAt, updatedAt) tüm child entity’lere direkt eklenir
 @MappedSuperclass

@@ -38,7 +38,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 		// profil olustur
 		ListenerProfile profile = ListenerProfile.builder()
 				.user(user)
-				.bio(dto.bio())
+				.description(dto.description())
 				.profilePicture(dto.profilePicture())
 				.build();
 		
@@ -72,7 +72,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 		});
 		
 		// null degilse alanlari guncelle
-		if (dto.bio() != null) profile.setBio(dto.bio());
+		if (dto.description() != null) profile.setDescription(dto.description());
 		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
 		
 		// kaydet

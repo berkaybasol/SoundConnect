@@ -9,10 +9,7 @@ import java.util.UUID;
 public record UserSaveRequestDto(
 		String username,
 		String email,
-		String phone,
-		Gender gender,
 		UUID roleId,
-		UUID cityId,
 		String password
 ) {
 }

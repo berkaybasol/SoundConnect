@@ -42,9 +42,7 @@ public class AuthService {
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
 	private final MailProducer mailProducer;
-	private final MusicianProfileService musicianProfileService;
 	private final ProfileFactory profileFactory;
-	private final LocationEntityFinder locationEntityFinder;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -127,9 +125,6 @@ public class AuthService {
 			User user = User.builder()
 			                .username(dto.username())
 			                .email(dto.email())
-			                .phone(dto.phone())
-			                .gender(dto.gender())
-			                .city(locationEntityFinder.getCity(dto.cityId()))
 			                .roles(Set.of(listenerRole))
 			                .password(encodedPassword)
 			                .status(UserStatus.PENDING_VENUE_REQUEST)
@@ -165,9 +160,6 @@ public class AuthService {
 		User user = User.builder()
 		                .username(dto.username())
 		                .email(dto.email())
-		                .phone(dto.phone())
-		                .gender(dto.gender())
-		                .city(locationEntityFinder.getCity(dto.cityId()))
 		                .roles(Set.of(selectedRole))
 		                .password(encodedPassword)
 		                .status(UserStatus.INACTIVE)

@@ -49,7 +49,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				.name(dto.name())
 				.description(dto.descpriction())
 				.profilePicture(dto.profilePicture())
-				.adress(dto.adress())
+				.address(dto.adress())
 				.phone(dto.phone())
 				.website(dto.website())
 				.facilities(facilities)
@@ -96,7 +96,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		if (dto.name() != null) profile.setName(dto.name());
 		if (dto.descpriction() != null) profile.setDescription(dto.descpriction());
 		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
-		if (dto.adress() != null) profile.setAdress(dto.adress());
+		if (dto.adress() != null) profile.setAddress(dto.adress());
 		if (dto.phone() != null) profile.setPhone(dto.phone());
 		if (dto.website() != null) profile.setWebsite(dto.website());
 		if (dto.facilities() != null) profile.setFacilities(new HashSet<>(dto.facilities()));

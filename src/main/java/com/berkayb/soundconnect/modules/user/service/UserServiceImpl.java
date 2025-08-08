@@ -62,11 +62,15 @@ public class UserServiceImpl implements UserService {
 			isUpdated = true;
 		}
 		
-		// sehir guncellenirse set edilir
-		if (dto.city() != null) {
-			user.setCity(dto.city());
+		// ROLE GÜNCELLEME: önce null check
+		if (dto.roleId() != null) {
+			Role role = roleRepository.findById(dto.roleId())
+			                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+			user.getRoles().clear();
+			user.getRoles().add(role);
 			isUpdated = true;
 		}
+		
 		
 		// herhangi bir alan guncellenmisse updatedAt set edilir ve kaydedilir
 		if (isUpdated) {
@@ -102,25 +106,17 @@ public class UserServiceImpl implements UserService {
 	// yeni kullanici kaydeder, varsa enstrumanlarini da ekler
 	@Override
 	public User saveUser(UserSaveRequestDto dto) {
-		// role ve enstrumanları elle bul
+		// role
 		Role role = roleRepository.findById(dto.roleId())
 		                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
-		
-		City city = cityRepository.findById(dto.cityId())
-		                          .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
 		
 		// elle user oluştur
 		User user = User.builder()
 		                .username(dto.username())
 		                .email(dto.email())
 		                .password(passwordEncoder.encode(dto.password()))
-		                .phone(dto.phone())
-		                .city(city)
-		                .gender(dto.gender())
 		                .roles(Set.of(role))
-		                // TODO: enstruman endpointi hazır olduğunda instrumentIds kısmı tekrar aktif hale getirilecek
-		               // .instruments(instruments)
 		                .status(UserStatus.ACTIVE)
 		                .createdAt(LocalDateTime.now())
 		                .build();

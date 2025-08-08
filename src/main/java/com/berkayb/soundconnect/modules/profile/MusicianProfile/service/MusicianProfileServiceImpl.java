@@ -54,7 +54,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		MusicianProfile profile = MusicianProfile.builder()
 		                                         .user(user)
 		                                         .stageName(dto.stageName())
-		                                         .bio(dto.bio())
+		                                         .description(dto.description())
 		                                         .profilePicture(dto.profilePicture())
 		                                         .instagramUrl(dto.instagramUrl())
 		                                         .youtubeUrl(dto.youtubeUrl())
@@ -96,7 +96,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				});
 		// null degilse alanlari guncelle
 		if (dto.stageName() != null) profile.setStageName(dto.stageName());
-		if (dto.bio() != null) profile.setBio(dto.bio());
+		if (dto.description() != null) profile.setDescription(dto.description());
 		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
