@@ -27,11 +27,13 @@ gibi temel alanları ve davranışları tek bir yerden vermek icin actigimiz sin
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public abstract class BaseEntity implements Serializable {
 	@Id
 	@GeneratedValue(generator = "UUID")
 	@GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
 	@Column(name = "id", updatable = false, nullable = false)
+	@EqualsAndHashCode.Include
 	private UUID id;
 	
 	@CreatedDate

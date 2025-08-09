@@ -8,11 +8,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@Getter
+@Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString
 @Entity
 @Table(
 		name = "tbl_follow",
