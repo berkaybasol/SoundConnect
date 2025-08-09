@@ -51,6 +51,11 @@ dependencies {
     implementation 'com.google.api-client:google-api-client:2.8.0'
     implementation 'com.google.http-client:google-http-client-jackson2:1.43.3'
 
+
+    // TEST
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.1'
+    testImplementation 'org.testcontainers:postgresql:1.20.1'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 

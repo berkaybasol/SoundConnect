@@ -76,7 +76,8 @@ public class SecurityConfig {
 								"/swagger-ui/**",             // Swagger UI
 								"/swagger-ui.html",           // Swagger ana giriş
 								"/swagger-resources/**",
-								"/webjars/**"
+								"/webjars/**",
+								"/api/ping"
 						).permitAll()
 						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister
 				)

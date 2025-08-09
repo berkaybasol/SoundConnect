@@ -1,0 +1,66 @@
+spring:
+  datasource:
+    # Testcontainers PostgreSQL bu URL ve bilgileri override edecek
+    url: jdbc:postgresql://localhost:5432/test
+    username: sc
+    password: sc
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop   # Testte her seferinde temiz şema
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-google-client-id
+            client-secret: test-google-client-secret
+            redirect-uri: "{baseUrl}/api/auth/google/callback"
+            scope:
+              - openid
+              - email
+              - profile
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
+            user-name-attribute: email
+
+app:
+  jwt:
+    secret: test-jwt-secret
+    expiration: 3600000
+    issuer: test-issuer
+
+mailersend:
+  api-key: test-mailersend-api-key
+  from-email: test@example.com
+  from-name: SoundConnect Test
+  frontend-verify-url: http://localhost:3000/verify-email
+
+logging:
+  level:
+    root: WARN
+    org.springframework.web: INFO
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
