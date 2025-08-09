@@ -22,21 +22,10 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueApplicatio
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "FOR USERS / Venue Application", description = "Venue applications (admin operations)")
+@Tag(name = "FOR ADMIN / Venue Application", description = "Venue applications (admin operations)")
 public class VenueApplicationAdminController {
 	private final VenueApplicationService venueApplicationService;
 	
-	@PostMapping(APPROVE)
-	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> approveVenueApplication(@PathVariable UUID applicationId, @AuthenticationPrincipal UserDetailsImpl adminDetails) {
-		log.info("Admin {} approves venue application {}", adminDetails.getUsername(), applicationId );
-		var response = venueApplicationService.approveApplication(applicationId, adminDetails.getUser().getId());
-		return ResponseEntity.ok(BaseResponse.<VenueApplicationResponseDto>builder()
-				                         .success(true)
-				                         .message("basvuru onaylandi, venue olusturuldu.")
-				                         .code(200)
-				                         .data(response)
-				                         .build());
-	}
 	
 	@PostMapping(REJECT)
 	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> rejectVenueApplication(@PathVariable UUID applicationId, @RequestParam String reason, @AuthenticationPrincipal UserDetailsImpl adminDetails) {

@@ -25,7 +25,6 @@ public record VenueRequestDto(
 		@NotNull
 		UUID ownerId,
 		
-		VenueProfileSaveRequestDto profile,
 		
 		String phone,
 		

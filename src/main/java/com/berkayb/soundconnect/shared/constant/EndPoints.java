@@ -53,11 +53,11 @@ public class EndPoints {
 		
 		// User
 		public static final String ME = "/me";
-		public static final String UPDATE = "/update";
+		public static final String UPDATE = "/update/{venueId}";
 		
 		// Admin
 		public static final String BY_USER_ID = "/by-user/{userId}";
-		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/{venueId}/update";
 		public static final String ADMIN_CREATE = "/create/{venueId}";
 	}
 	
