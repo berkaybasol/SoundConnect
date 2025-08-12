@@ -26,7 +26,7 @@ public class UserControllerImpl implements UserController {
 	
 	private final UserService userService;
 	
-	@PreAuthorize("hasAuthority('WRITE_USER')")
+	// TODO @PreAuthorize("hasAuthority('WRITE_USER')")
 	@PutMapping(UPDATE) // Yani: "/update/{id}"
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> updateUser(@PathVariable UUID id,
@@ -40,7 +40,7 @@ public class UserControllerImpl implements UserController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('DELETE_USER')")
+	// TODO @PreAuthorize("hasAuthority('DELETE_USER')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> deleteUserById(@PathVariable UUID id) {
@@ -54,7 +54,7 @@ public class UserControllerImpl implements UserController {
 	}
 	
 	
-	@PreAuthorize("hasAuthority('READ_ALL_USERS')") // tüm kullanıcıları listeleme yetkisi
+	// TODO @PreAuthorize("hasAuthority('READ_ALL_USERS')") // tüm kullanıcıları listeleme yetkisi
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<UserListDto>>> getAllUsers() {
@@ -68,7 +68,7 @@ public class UserControllerImpl implements UserController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('WRITE_USER')") // yeni kullanıcı kaydetme yetkisi
+	// TODO@PreAuthorize("hasAuthority('WRITE_USER')") // yeni kullanıcı kaydetme yetkisi
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<Boolean>> saveUser(@RequestBody UserSaveRequestDto dto) {
@@ -80,7 +80,7 @@ public class UserControllerImpl implements UserController {
 				                         .success(true)
 				                             .build());
 	}
-	@PreAuthorize("hasAuthority('READ_USER')") // spesifik user'ı görme yetkisi
+	// TODO@PreAuthorize("hasAuthority('READ_USER')") // spesifik user'ı görme yetkisi
 	@GetMapping(BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<UserListDto>> getUserById(@PathVariable UUID id) {

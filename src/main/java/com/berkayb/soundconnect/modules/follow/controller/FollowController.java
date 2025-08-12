@@ -11,6 +11,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -65,6 +66,7 @@ public class FollowController {
 		                   .build();
 	}
 	
+	@Transactional(readOnly = true)
 	@GetMapping(GET_FOLLOWING)
 	public BaseResponse<List<FollowResponseDto>> getFollowing(@PathVariable UUID userId) {
 		User follower = userEntityFinder.getUser(userId);
@@ -81,6 +83,7 @@ public class FollowController {
 		                   .build();
 	}
 	
+	@Transactional(readOnly = true)
 	@GetMapping(GET_FOLLOWERS)
 	public BaseResponse<List<FollowResponseDto>> getFollowers(@PathVariable UUID userId) {
 		User following = userEntityFinder.getUser(userId);
@@ -96,7 +99,7 @@ public class FollowController {
 		                   .message("Followers list fetched successfully.")
 		                   .build();
 	}
-	
+
 	@GetMapping(IS_FOLLOWING)
 	public BaseResponse<Boolean> isFollowing(@RequestParam UUID followerId, @RequestParam UUID followingId) {
 		User follower = userEntityFinder.getUser(followerId);

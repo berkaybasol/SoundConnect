@@ -25,7 +25,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.District.*;
 public class DistrictControllerImpl implements DistrictController {
 	private final DistrictService districtService;
 	
-	@PreAuthorize("hasAuthority('WRITE_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('WRITE_LOCATION')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<DistrictResponseDto>> save(@RequestBody @Valid DistrictRequestDto dto) {
@@ -41,7 +41,7 @@ public class DistrictControllerImpl implements DistrictController {
 		);
 	}
 	
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<DistrictResponseDto>>> getAll() {
@@ -57,7 +57,7 @@ public class DistrictControllerImpl implements DistrictController {
 		);
 	}
 	
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<DistrictResponseDto>> getById(@PathVariable UUID id) {
@@ -73,7 +73,7 @@ public class DistrictControllerImpl implements DistrictController {
 		);
 	}
 	
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_BY_CITY)
 	@Override
 	public ResponseEntity<BaseResponse<List<DistrictResponseDto>>> getByCityId(@PathVariable UUID cityId) {
@@ -89,7 +89,7 @@ public class DistrictControllerImpl implements DistrictController {
 		);
 	}
 	
-	@PreAuthorize("hasAuthority('DELETE_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('DELETE_LOCATION')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> delete(@PathVariable UUID id) {

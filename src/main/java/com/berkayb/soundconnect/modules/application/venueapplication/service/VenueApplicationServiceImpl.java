@@ -23,9 +23,10 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -74,30 +75,22 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		Venue venue = Venue.builder()
 		                   .name(application.getVenueName())
 		                   .address(application.getVenueAddress())
-		                   .city(applicant.getCity())
+		                   .city(application.getCity())
 		                   .district(application.getDistrict())
 		                   .neighborhood(application.getNeighborhood())
 		                   .owner(applicant)
-		                   .phone(application.getPhone())
+		                   .phone(applicant.getPhone())
 		                   .status(VenueStatus.APPROVED)
 		                   .build();
 		venueRepository.save(venue);
-
-// VenueProfile olustur
-		venueProfileService.createProfile(venue.getId(), new VenueProfileSaveRequestDto(
-				null, null, null,
-				null, null
-		));
-
-// Application'ı güncelle
+		
+		venueProfileService.createProfile(venue.getId(), new VenueProfileSaveRequestDto(null, null, null, null, null));
+		
 		application.setStatus(ApplicationStatus.APPROVED);
 		application.setDecisionDate(LocalDateTime.now());
 		venueApplicationRepository.save(application);
 		
-		log.info("Venue application {} approved by admin {}. Venue {} created, role assigned.", applicationId, adminId, venue.getName());
-		
 		return venueApplicationMapper.toResponseDto(application);
-		
 	}
 	
 	
@@ -135,9 +128,10 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		// location modululundeki entitylerin id'lerini al
 		City city = locationEntityFinder.getCity(UUID.fromString(dto.cityId()));
 		District district = locationEntityFinder.getDistrict(UUID.fromString(dto.districtId()));
-		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(UUID.fromString(dto.neighborhoodId()));
-		
-		
+		Neighborhood neighborhood = null;
+		if (dto.neighborhoodId() != null && !dto.neighborhoodId().isBlank()) {
+			neighborhood = locationEntityFinder.getNeighborhood(UUID.fromString(dto.neighborhoodId()));
+		}
 		// dto -> entity mapping
 		VenueApplication application = venueApplicationMapper.toEntity(dto);
 		application.setApplicant(applicant);
@@ -155,6 +149,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		
 	}
 	
+	@Transactional(readOnly = true)
 	@Override
 	public List<VenueApplicationResponseDto> getApplicationsByUser(UUID applicantUserId) {
 		User applicant = userEntityFinder.getUser(applicantUserId);
@@ -162,12 +157,14 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		return apps.stream().map(venueApplicationMapper :: toResponseDto).toList();
 	}
 	
+	@Transactional(readOnly = true)
 	@Override
 	public List<VenueApplicationResponseDto> getApplicationsByStatus(ApplicationStatus status) {
 		List<VenueApplication> apps = venueApplicationRepository.findAllByStatus(status);
 		return apps.stream().map(venueApplicationMapper :: toResponseDto).toList();
 	}
 	
+	@Transactional(readOnly = true)
 	@Override
 	public VenueApplicationResponseDto getPendingApplicationByUser(UUID applicantUserId) {
 		User applicant = userEntityFinder.getUser(applicantUserId);
@@ -177,6 +174,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		return venueApplicationMapper.toResponseDto(pending);
 	}
 	
+	@Transactional(readOnly = true)
 	@Override
 	public VenueApplicationResponseDto getById(UUID applicationId) {
 		VenueApplication application = venueApplicationRepository.findById(applicationId)

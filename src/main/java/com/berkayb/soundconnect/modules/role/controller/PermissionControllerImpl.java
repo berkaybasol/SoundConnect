@@ -25,7 +25,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Permission.*;
 public class PermissionControllerImpl implements PermissionController {
 	private final PermissionService permissionService;
 	
-	@PreAuthorize("hasAuthority('WRITE_PERMISSION')")
+	//TODO @PreAuthorize("hasAuthority('WRITE_PERMISSION')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<PermissionResponse>> savePermission(@RequestBody @Valid PermissionRequest request) {
@@ -40,7 +40,7 @@ public class PermissionControllerImpl implements PermissionController {
 						.build()
 		);
 	}
-	@PreAuthorize("hasAuthority('DELETE_PERMISSION')")
+	//TODO @PreAuthorize("hasAuthority('DELETE_PERMISSION')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> deletePermission(@PathVariable UUID id) {
@@ -54,7 +54,7 @@ public class PermissionControllerImpl implements PermissionController {
 						.build()
 		);
 	}
-	@PreAuthorize("hasAuthority('READ_PERMISSION')")
+	//TODO @PreAuthorize("hasAuthority('READ_PERMISSION')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<PermissionResponse>>> getAllPermissions() {

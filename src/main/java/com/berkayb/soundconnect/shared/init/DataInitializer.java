@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ import static com.berkayb.soundconnect.modules.role.enums.PermissionEnum.*;
 import static com.berkayb.soundconnect.modules.role.enums.RoleEnum.*;
 
 @Component
+@ConditionalOnProperty(value = "app.data.init.enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class DataInitializer {

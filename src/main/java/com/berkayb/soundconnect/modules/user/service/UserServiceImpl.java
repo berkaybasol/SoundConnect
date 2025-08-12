@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.user.service;
 
-import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -18,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -96,6 +96,7 @@ public class UserServiceImpl implements UserService {
 	}
 	
 	// tum kullanicilari listeler
+	@Transactional(readOnly = true)
 	@Override
 	public List<UserListDto> getAllUsers() {
 		return userRepository.findAll().stream()

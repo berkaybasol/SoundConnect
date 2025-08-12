@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface MusicianProfileMapper {
+	@Mapping(source = "description", target = "bio")
 	@Mapping(target = "instruments", source = "instruments", qualifiedByName = "instrumentNames")
 	@Mapping(target = "activeVenues", source = "activeVenues", qualifiedByName = "venueNames")
 	MusicianProfileResponseDto toDto(MusicianProfile profile);

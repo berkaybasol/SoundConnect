@@ -212,7 +212,4 @@ public class EndPoints {
 		public static final String GET_BY_ID = "/get-by-id/{id}";
 		public static final String DELETE = "/delete/{id}";
 	}
-	
-	
-	
 }

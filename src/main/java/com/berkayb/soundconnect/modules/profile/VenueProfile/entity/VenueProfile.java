@@ -38,8 +38,4 @@ public class VenueProfile extends BaseEntity {
 	 *  yorumlar RabbitMQ uzerinden notification event'leri ile birlikte entegre edilecek.
 	 *  notification & comment modulleri mvp'den sonra, profil yapisi oturdugunda gelistirilecek.
  	 */
-	
-	
-	
-	
 }

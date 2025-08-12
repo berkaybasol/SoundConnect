@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
+
 @EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder
@@ -24,12 +25,6 @@ import java.util.UUID;
 @Entity
 @Table(name = "tbl_venues")
 public class Venue extends BaseEntity {
-	
-	@Id
-	@GeneratedValue(generator = "UUID")
-	@GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
-	@Column(name = "id", updatable = false, nullable = false)
-	private UUID id;
 	
 	@Column(nullable = false, length = 50)
 	private String name;

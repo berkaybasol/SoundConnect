@@ -26,7 +26,7 @@ public class VenueControllerImpl implements VenueController {
 	
 	private final VenueService venueService;
 	
-	@PreAuthorize("hasAuthority('WRITE_VENUE')")
+	//TODO @PreAuthorize("hasAuthority('WRITE_VENUE')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> save(@RequestBody @Valid VenueRequestDto dto) {
@@ -40,7 +40,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('WRITE_VENUE')")
+	//TODO @PreAuthorize("hasAuthority('WRITE_VENUE')")
 	@PutMapping(UPDATE)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> update(@PathVariable UUID id, @RequestBody @Valid VenueRequestDto dto) {
@@ -54,7 +54,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('READ_VENUE')")
+	//TODO @PreAuthorize("hasAuthority('READ_VENUE')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<VenueResponseDto>>> findAll() {
@@ -68,7 +68,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('READ_VENUE')")
+	//TODO @PreAuthorize("hasAuthority('READ_VENUE')")
 	@GetMapping(GET_BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> findById(@PathVariable UUID id) {
@@ -82,7 +82,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	@PreAuthorize("hasAuthority('DELETE_VENUE')")
+	//TODO @PreAuthorize("hasAuthority('DELETE_VENUE')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> delete(@PathVariable UUID id) {

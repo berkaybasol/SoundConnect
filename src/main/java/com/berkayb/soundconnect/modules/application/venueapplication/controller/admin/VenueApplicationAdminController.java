@@ -27,6 +27,20 @@ public class VenueApplicationAdminController {
 	private final VenueApplicationService venueApplicationService;
 	
 	
+	@PostMapping(APPROVE)
+	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> approveVenueApplication(
+			@PathVariable UUID applicationId,
+			@AuthenticationPrincipal UserDetailsImpl adminDetails) {
+		log.info("Admin {} approves venue application {}", adminDetails.getUsername(), applicationId);
+		var response = venueApplicationService.approveApplication(applicationId, adminDetails.getUser().getId());
+		return ResponseEntity.ok(BaseResponse.<VenueApplicationResponseDto>builder()
+		                                     .success(true)
+		                                     .message("Basvuru onaylandı")
+		                                     .code(200)
+		                                     .data(response)
+		                                     .build());
+	}
+	
 	@PostMapping(REJECT)
 	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> rejectVenueApplication(@PathVariable UUID applicationId, @RequestParam String reason, @AuthenticationPrincipal UserDetailsImpl adminDetails) {
 		log.info("Admin {} rejects venue application {} (reason: {})", adminDetails.getUsername(), applicationId, reason);
@@ -34,7 +48,6 @@ public class VenueApplicationAdminController {
 		return ResponseEntity.ok(BaseResponse.<VenueApplicationResponseDto>builder()
 				                         .success(true)
 				                         .message("Basvuru reddedildi")
-				                         .code(200)
 				                         .code(200)
 				                         .data(response)
 				                         .build());

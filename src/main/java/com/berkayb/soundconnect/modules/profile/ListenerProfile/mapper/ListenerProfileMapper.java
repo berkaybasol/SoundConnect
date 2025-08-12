@@ -8,6 +8,7 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface ListenerProfileMapper {
+	@Mapping(source = "description", target = "bio")
 	@Mapping(source = "user.id", target = "userId")
 	ListenerProfileResponseDto toDto(ListenerProfile entity);
 }

@@ -89,6 +89,7 @@ public class VenueServiceImpl implements VenueService {
 	}
 	
 	@Override
+	@Transactional // readOnly=false default; update için uygun
 	public VenueResponseDto update(UUID id, VenueRequestDto dto) {
 		log.info("Updating venue with id: {}", id);
 		
@@ -116,12 +117,14 @@ public class VenueServiceImpl implements VenueService {
 	}
 	
 	@Override
+	@Transactional(readOnly = true)
 	public List<VenueResponseDto> findAll() {
 		log.info("Retrieving all venues");
 		return venueMapper.toResponseList(venueRepository.findAll());
 	}
 	
 	@Override
+	@Transactional(readOnly = true)
 	public VenueResponseDto findById(UUID id) {
 		log.info("Finding venue by id: {}", id);
 		Venue venue = venueEntityFinder.getVenue(id);

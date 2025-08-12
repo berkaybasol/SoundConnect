@@ -8,6 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface VenueRepository extends JpaRepository<Venue, UUID> {
+
+
 List<Venue> findAllByOwnerId(UUID ownerId);
 Optional<Venue> findByIdAndOwnerId(UUID venueId, UUID ownerId);
 }

@@ -25,7 +25,7 @@ import java.util.UUID;
 public class CityControllerImpl implements CityController {
 	private final CityService cityService;
 	
-	@PreAuthorize("hasAuthority('WRITE_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('WRITE_LOCATION')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<CityResponseDto>> save(@RequestBody @Valid CityRequestDto dto) {
@@ -41,7 +41,7 @@ public class CityControllerImpl implements CityController {
 		);
 	
 	}
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@Override
 	@GetMapping(GET_ALL)
 	public ResponseEntity<BaseResponse<List<CityResponseDto>>> getAll() {
@@ -56,7 +56,7 @@ public class CityControllerImpl implements CityController {
 						.build()
 		);
 	}
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@Override
 	@GetMapping(GET_CITY)
 	public ResponseEntity<BaseResponse<CityResponseDto>> getById(@PathVariable UUID id) {
@@ -71,7 +71,7 @@ public class CityControllerImpl implements CityController {
 						.build()
 		);
 	}
-	@PreAuthorize("hasAuthority('DELETE_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('DELETE_LOCATION')")
 	@Override
 	@DeleteMapping(DELETE)
 	public ResponseEntity<BaseResponse<Void>> delete(@PathVariable UUID id) {
@@ -85,7 +85,7 @@ public class CityControllerImpl implements CityController {
 						.build()
 		);
 	}
-	@PreAuthorize("hasAuthority('READ_LOCATION')")
+	//TODO @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(PRETTY)
 	public ResponseEntity<List<CityPrettyDto>> getAllPretty() {
 		log.info("Get all cities with pretty structure");

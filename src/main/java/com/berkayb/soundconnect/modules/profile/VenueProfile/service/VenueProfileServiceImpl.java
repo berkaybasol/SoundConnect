@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class VenueProfileServiceImpl implements VenueProfileService {
 	
 	private final VenueProfileRepository venueProfileRepository;
@@ -46,6 +48,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public VenueProfileResponseDto updateProfileByVenueId(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto) {
 		// venueId gerçekten bu user’a mı ait?
 		Venue venue = venueRepository.findByIdAndOwnerId(venueId, userId)
@@ -54,6 +57,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public VenueProfileResponseDto createProfile(UUID venueId, VenueProfileSaveRequestDto dto) {
 		// venue getir.
 		Venue venue = venueEntityFinder.getVenue(venueId);
@@ -83,6 +87,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public VenueProfileResponseDto updateProfile(UUID venueId, VenueProfileSaveRequestDto dto) {
 		VenueProfile profile = venueProfileRepository.findByVenueId(venueId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
