@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = ProducerProfileUserController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
+@Tag("web")
 class ProducerProfileUserControllerTest {
 	
 	@Autowired MockMvc mockMvc;

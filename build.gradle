@@ -55,6 +55,7 @@ dependencies {
     // Spring Boot test altyapısı
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
+
     // Spring Security test (WithMockUser, MockMvc ile güvenlik)
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.testcontainers:junit-jupiter:1.21.3'

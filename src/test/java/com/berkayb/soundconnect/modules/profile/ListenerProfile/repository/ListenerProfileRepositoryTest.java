@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.ListenerProfile.repository;
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Tag("repo")
 class ListenerProfileRepositoryTest {
 	
 	@Autowired ListenerProfileRepository listenerRepo;

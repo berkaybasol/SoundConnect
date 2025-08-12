@@ -37,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @TestMethodOrder(OrderAnnotation.class)
+@Tag("web")
 class PermissionControllerTest {
 	
 	@Autowired MockMvc mockMvc;

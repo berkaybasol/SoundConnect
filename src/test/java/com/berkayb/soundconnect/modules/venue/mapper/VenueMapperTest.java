@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.venue.dto.request.VenueRequestDto;
 import com.berkayb.soundconnect.modules.venue.dto.response.VenueResponseDto;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 import org.mockito.Spy;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Not: Mapper componentModel="spring" ama unit testte Spring konteyneri açmadan
  * Mappers.getMapper(...) ile doğrudan kullanıyoruz.
  */
+@Tag("mapper")
 class VenueMapperTest {
 	
 	@Spy

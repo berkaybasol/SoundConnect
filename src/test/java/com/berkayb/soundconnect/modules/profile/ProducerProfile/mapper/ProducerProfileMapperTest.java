@@ -3,13 +3,14 @@ package com.berkayb.soundconnect.modules.profile.ProducerProfile.mapper;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.response.ProducerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class ProducerProfileMapperTest {
 	
 	private final ProducerProfileMapper mapper = Mappers.getMapper(ProducerProfileMapper.class);

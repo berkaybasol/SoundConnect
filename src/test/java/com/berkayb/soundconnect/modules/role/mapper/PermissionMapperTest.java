@@ -2,13 +2,14 @@ package com.berkayb.soundconnect.modules.role.mapper;
 
 import com.berkayb.soundconnect.modules.role.dto.response.PermissionResponse;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class PermissionMapperTest {
 	
 	private final PermissionMapper mapper = PermissionMapper.INSTANCE;

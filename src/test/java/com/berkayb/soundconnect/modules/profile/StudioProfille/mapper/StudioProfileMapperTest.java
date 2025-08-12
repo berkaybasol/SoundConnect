@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.Studi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.mapper.StudioProfileMapper;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
@@ -11,7 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class StudioProfileMapperTest {
 	
 	private final StudioProfileMapper mapper = Mappers.getMapper(StudioProfileMapper.class);

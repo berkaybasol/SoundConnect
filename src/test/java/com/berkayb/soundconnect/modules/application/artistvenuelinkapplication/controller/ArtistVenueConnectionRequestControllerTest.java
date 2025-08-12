@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.e
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,7 @@ import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 @WebMvcTest(controllers = ArtistVenueConnectionRequestControllerImpl.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
+@Tag("web")
 class ArtistVenueConnectionRequestControllerTest {
 	
 	private static final String BASE = "/api/v1/artist-venue-connections";

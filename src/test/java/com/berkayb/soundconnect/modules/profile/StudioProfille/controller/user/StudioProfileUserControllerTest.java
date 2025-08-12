@@ -10,6 +10,7 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProf
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @Import(StudioProfileUserControllerTest.TestMvcConfig.class)
+@Tag("web")
 class StudioProfileUserControllerTest {
 	
 	@MockitoBean StudioProfileService studioProfileService;

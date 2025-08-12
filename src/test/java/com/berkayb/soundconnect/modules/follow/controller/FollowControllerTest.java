@@ -45,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 // (opsiyonel) sınıf bitince context’i at → daha da izole
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Tag("web")
 class FollowControllerTest {
 	
 	@Autowired MockMvc mockMvc;

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.controller.admi
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = MusicianProfileAdminController.class)
 @AutoConfigureMockMvc(addFilters = false)
+@Tag("web")
 class MusicianProfileAdminControllerIT {
 	
 	@Autowired MockMvc mockMvc;

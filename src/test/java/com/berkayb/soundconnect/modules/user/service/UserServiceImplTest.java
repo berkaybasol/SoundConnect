@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.*;
  *    - roleId bulunamayınca hata fırlatıldığını,
  *    - Hiç alan gelmeyince save çağrılmadığını ve false döndüğünü doğrulamak.
  */
+@Tag("service")
 class UserServiceImplTest {
 	
 	// ==== Bağımlılıklar (mock) ====

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.role.dto.response.PermissionResponse;
 import com.berkayb.soundconnect.modules.role.dto.response.RoleResponse;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Uygulama komple ayağa kalkmıyor; sadece Impl sınıfları yükleniyor.
  */
 @SpringJUnitConfig(classes = { RoleMapperImpl.class, PermissionMapperImpl.class })
+@Tag("mapper")
 class RoleMapperTest {
 	
 	@Autowired RoleMapper roleMapper;

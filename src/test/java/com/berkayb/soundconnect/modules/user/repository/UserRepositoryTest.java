@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.user.repository;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -15,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@Tag("repo")
 class UserRepositoryTest {
 	
 	@Autowired

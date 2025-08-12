@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.instrument.mapper.InstrumentMapper;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
+@Tag("service")
 class InstrumentServiceImplTest {
 	
 	@Mock

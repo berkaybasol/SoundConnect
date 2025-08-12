@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.mail.MailProducer; // Auth → Mail gönderen boundary arayüzü
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
@@ -49,6 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test") // src/test/resources/application-test.yml devrede
 @WithMockUser(username = "admin", authorities = {"ADMIN:GET_ALL_USERS"}) // kendi authority stringin neyse
+@Tag("web")
 class UserControllerIT {
 	
 	@Autowired

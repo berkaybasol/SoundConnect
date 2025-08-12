@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.follow.mapper;
 import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
@@ -10,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-
+@Tag("mapper")
 class FollowMapperTest {
 	
 	private final FollowMapper mapper = Mappers.getMapper(FollowMapper.class);

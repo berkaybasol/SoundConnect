@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenuePr
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
@@ -11,7 +12,7 @@ import java.lang.reflect.Field;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class VenueProfileMapperTest {
 	
 	private final VenueProfileMapper mapper = Mappers.getMapper(VenueProfileMapper.class);

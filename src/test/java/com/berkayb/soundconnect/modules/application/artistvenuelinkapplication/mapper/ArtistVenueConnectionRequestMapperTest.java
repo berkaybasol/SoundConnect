@@ -6,13 +6,14 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.e
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class ArtistVenueConnectionRequestMapperTest {
 	
 	private final ArtistVenueConnectionRequestMapper mapper =

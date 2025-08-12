@@ -3,13 +3,14 @@ package com.berkayb.soundconnect.modules.profile.ListenerProfile.mapper;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class ListenerProfileMapperTest {
 	
 	private final ListenerProfileMapper mapper = Mappers.getMapper(ListenerProfileMapper.class);

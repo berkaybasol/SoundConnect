@@ -4,13 +4,14 @@ import com.berkayb.soundconnect.modules.location.dto.request.NeighborhoodRequest
 import com.berkayb.soundconnect.modules.location.dto.response.NeighborhoodResponseDto;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class NeighborhoodMapperTest {
 	
 	private final NeighborhoodMapper mapper = Mappers.getMapper(NeighborhoodMapper.class);

@@ -4,13 +4,14 @@ import com.berkayb.soundconnect.modules.instrument.dto.request.InstrumentSaveReq
 import com.berkayb.soundconnect.modules.instrument.dto.response.InstrumentResponseDto;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+@Tag("mapper")
 class InstrumentMapperTest {
 	
 	// Eğer componentModel = "spring" kullanacaksan, bu sınıfı @SpringBootTest ile açıp bean enjekte edebilirsin.

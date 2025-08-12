@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.role.repository;
 
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL) // <-- kritik
+@Tag("repo")
 class PermissionRepositoryTest {
 	
 	private final PermissionRepository permissionRepository;

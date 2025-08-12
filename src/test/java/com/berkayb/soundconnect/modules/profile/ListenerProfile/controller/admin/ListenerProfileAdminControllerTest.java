@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.List
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = ListenerProfileAdminController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
+@Tag("web")
 class ListenerProfileAdminControllerTest {
 	
 	@Autowired

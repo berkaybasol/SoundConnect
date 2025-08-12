@@ -45,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // method-level @PreAuthorize için sahte kullanıcı
 @WithMockUser(username = "test-admin",
 		authorities = {"READ_ROLE","WRITE_ROLE","DELETE_ROLE"})
+@Tag("web")
 class RoleControllerTest {
 	
 	@Autowired MockMvc mockMvc;

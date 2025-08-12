@@ -22,6 +22,7 @@ import com.berkayb.soundconnect.modules.venue.mapper.VenueMapper;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("service")
 class VenueServiceImplTest {
 	
 	@Mock private VenueRepository venueRepository;

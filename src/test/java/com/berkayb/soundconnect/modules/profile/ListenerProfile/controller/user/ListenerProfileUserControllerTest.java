@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = ListenerProfileUserController.class)
 @AutoConfigureMockMvc(addFilters = false) // filtre yok -> context'i biz set edeceğiz
 @ActiveProfiles("test")
+@Tag("web")
 class ListenerProfileUserControllerTest {
 	
 	@Autowired MockMvc mockMvc;
