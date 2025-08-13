@@ -57,7 +57,10 @@ public class SecurityConfig {
 								"/swagger-ui.html",
 								"/swagger-resources/**",
 								"/webjars/**",
-								"/api/v1/roles/get-all-roles"
+								"/api/v1/roles/get-all-roles",
+								"/api/v1/cities/get-all-cities",
+								"/api/v1/districts/get-all-districts",
+								"/api/v1/neighborhoods/get-all"
 						).permitAll()
 						.anyRequest().authenticated()
 				)
