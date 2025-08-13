@@ -17,6 +17,10 @@ spring:
     console:
       enabled: false
 
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration  # testte Rabbit kapalı
+
   security:
     oauth2:
       client:
@@ -25,20 +29,13 @@ spring:
             client-id: test-google-client-id
             client-secret: test-google-client-secret
             redirect-uri: "{baseUrl}/api/auth/google/callback"
-            scope:
-              - openid
-              - email
-              - profile
+            scope: [openid, email, profile]
         provider:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: email
-
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
 
 app:
   jwt:
@@ -48,13 +45,11 @@ app:
 
   data:
     init:
-      enabled: false
+      enabled: false        # ← TESTTE KAPALI
 
   location:
     seed:
-      enabled: false
-
-
+      enabled: false        # ← TESTTE KAPALI
 
 mailersend:
   api-key: test-mailersend-api-key
