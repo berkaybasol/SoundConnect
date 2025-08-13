@@ -1,14 +1,9 @@
 
 # SoundConnect SPRINT
 
-
-
-
 ---
 
 ## *Tamamı Bitmeyenler / Kısmen Bitmişler*
-
-🛠 Profile modülü (tüm profiller bitmedi, ör. Manager, Listener, Producer eksik olabilir)
 
 🛠 Veri seed (rol, permission, şehir vs. eksikleri var)
 
@@ -20,10 +15,6 @@
 ---
 
 ## *Sprint Planı (Yapılacaklar)*
-
-⏳ 1. Profile Sistemini Tamamlama
-
-⏳ 2. Follow Sistemi
 
 ⏳ 3. Job Board (BackStage İlan Modülü)
 
@@ -44,6 +35,11 @@
 ⏳ 11. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+
+✅ Follow modülü
+
+✅ Profile modülü
 
 ✅ User modülü
 
