@@ -15,13 +15,16 @@ spring:
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
 
   security:
     oauth2:
@@ -31,7 +34,10 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
             redirect-uri: "{baseUrl}/api/auth/google/callback"
-            scope: [openid, email, profile]
+            scope:
+              - openid
+              - email
+              - profile
         provider:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
@@ -39,29 +45,25 @@ spring:
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: email
 
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
-
 app:
   jwt:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
-  data:
-    init:
-      enabled: true         # ← RUNTIME’DA AÇIK
-  location:
-    seed:
-      enabled: true         # ← Ankara vb. başlangıç verisi gerekiyorsa AÇIK
 
-mailersend:
-  api-key: ${MAILERSEND_API_KEY}
-  from-email: ${MAILERSEND_SENDER_EMAIL}
-  from-name: SoundConnect
-  frontend-verify-url: http://localhost:3000/verify-email
+  jpa.database-platform: org.hibernate.dialect.PostgreSQLDialect
 
 logging:
   level:
     root: INFO
     org.springframework.web: DEBUG
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+mailersend:
+  api-key: ${MAILERSEND_API_KEY}
+  from-email: ${MAILERSEND_SENDER_EMAIL}
+  from-name: SoundConnect
+  frontend-verify-url: http://soundconnect.dev/verify-email
