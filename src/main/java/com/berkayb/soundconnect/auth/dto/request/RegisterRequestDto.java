@@ -17,7 +17,7 @@ public record RegisterRequestDto(
 		
 		@Size(min = 8, max = 20, message = "Şifreniz en az 8, en fazla 20 karakterden oluşmalıdır.")
 		@NotBlank(message = "Şifre boş olamaz.")
-		@Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@#$%*^&+=]).{8,20}$",
+		@Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@#$%*^&+=]).{8,20}$", //FIXME Bu iskence ya bunu basitlestir
 				message = "Şifre en az bir büyük harf, bir küçük harf, bir rakam ve bir özel karakter içermelidir.")
 		String password,
 		
