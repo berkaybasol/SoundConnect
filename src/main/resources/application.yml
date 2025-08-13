@@ -46,6 +46,9 @@ spring:
             user-name-attribute: email
 
 app:
+  data:
+    init:
+      enabled: true
   jwt:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
