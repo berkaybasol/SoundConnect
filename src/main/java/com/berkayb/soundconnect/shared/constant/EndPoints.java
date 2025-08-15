@@ -89,6 +89,20 @@ public class EndPoints {
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
 	}
 	
+	public static class DM {
+		public static final String USER_BASE = API + VERSION + "/user/dm";
+		// Mesaj işlemleri
+		public static final String MESSAGES = "/messages";
+		public static final String MESSAGE_SEND = "/messages";
+		public static final String MESSAGE_LIST = "/messages/conversation/{conversationId}";
+		public static final String MESSAGE_MARK_READ = "/messages/{messageId}/read";
+		// Conversation işlemleri
+		public static final String CONVERSATIONS = "/conversations";
+		public static final String CONVERSATION_LIST = "/conversations/my";
+		public static final String CONVERSATION_BETWEEN = "/conversations/between";
+	}
+	
+	
 	public static class OrganizerProfile {
 		public static final String USER_BASE = API + VERSION + "/user/organizer-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/organizer-profiles";

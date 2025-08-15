@@ -42,6 +42,15 @@ public enum ErrorType {
 	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.BAD_REQUEST, "Basvuru bulunamadi"),
 	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.BAD_REQUEST, "Bu basvuruya zaten islem yapilmis"),
 	
+	// DM
+	CANNOT_DM_SELF(1603, "You cannot dm yourself", HttpStatus.BAD_REQUEST, "Kendinize mesaj atamazsiniz."),
+	CONVERSATION_NOT_FOUND(1604,"Conversation not found", HttpStatus.NOT_FOUND, "Konusma bulunamadi."),
+	MESSAGE_NOT_FOUND(1605,"Message not found", HttpStatus.NOT_FOUND, "Mesaj bulunamadi."),
+	NOT_AUTHORIZED(1606,"User is not authorized to read this message", HttpStatus.FORBIDDEN, "Bu kullanicinin bu " +
+			"mesaji okumaya yetkisi yok"),
+	NOT_PARTICIPANT_OF_CONVERSATION(1607,"User is not a participant of the conversation",HttpStatus.FORBIDDEN,"Bu " +
+			"kullanici bu konusmanin katilimsici degil"),
+	
 	// VALIDATION (4000-4099)
 	VALIDATION_ERROR(4000, "Validation failed", HttpStatus.BAD_REQUEST, "Alanlardan biri ya da birkaçı doğrulama hatası verdi."),
 	
