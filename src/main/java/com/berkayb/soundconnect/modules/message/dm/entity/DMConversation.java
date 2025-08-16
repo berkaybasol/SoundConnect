@@ -27,7 +27,7 @@ import java.util.UUID;
 		name = "tbl_dm_conversation",
 		// indexes = butun veritabanini sorgulamak yerine direkt belirtilen yere gider. (bir kitabin icindekiler kismi gibi hayal et)
 		indexes = {
-				@Index(name = "idx_dm_conversation_last_message_at", columnList = "last_message_at DESC")
+				@Index(name = "idx_dm_conversation_last_message_at", columnList = "last_message_at")
 		}
 )
 public class DMConversation extends BaseEntity {

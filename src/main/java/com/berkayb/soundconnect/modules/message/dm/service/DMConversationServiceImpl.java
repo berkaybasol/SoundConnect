@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class DMConversationServiceImpl implements DMconversationService {
+public class DMConversationServiceImpl implements DMConversationService {
 	
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageRepository messageRepository;
@@ -102,7 +102,7 @@ public class DMConversationServiceImpl implements DMconversationService {
 				.orElseGet(() -> {
 					DMConversation conversation = DMConversation.builder()
 							.userAId(userAId)
-							.userAId(userBId)
+							.userBId(userBId)
 							.build();
 					conversationRepository.save(conversation);
 					return conversation.getId();

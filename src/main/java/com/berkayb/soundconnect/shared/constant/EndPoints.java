@@ -90,16 +90,45 @@ public class EndPoints {
 	}
 	
 	public static class DM {
+		
+		// === USER BASE ===
 		public static final String USER_BASE = API + VERSION + "/user/dm";
-		// Mesaj işlemleri
-		public static final String MESSAGES = "/messages";
-		public static final String MESSAGE_SEND = "/messages";
-		public static final String MESSAGE_LIST = "/messages/conversation/{conversationId}";
-		public static final String MESSAGE_MARK_READ = "/messages/{messageId}/read";
-		// Conversation işlemleri
-		public static final String CONVERSATIONS = "/conversations";
+		
+		// Conversation (user)
+		/** GET  /api/v1/user/dm/conversations/my */
 		public static final String CONVERSATION_LIST = "/conversations/my";
+		
+		/** POST /api/v1/user/dm/conversations/between?otherUserId={uuid} */
 		public static final String CONVERSATION_BETWEEN = "/conversations/between";
+		
+		// Message (user)
+		/** GET  /api/v1/user/dm/messages/conversation/{conversationId} */
+		public static final String MESSAGE_LIST = "/messages/conversation/{conversationId}";
+		
+		/** POST /api/v1/user/dm/messages  (body: DMMessageRequestDto) */
+		public static final String MESSAGE_SEND = "/messages";
+		
+		/** PATCH /api/v1/user/dm/messages/{messageId}/read */
+		public static final String MESSAGE_MARK_READ = "/messages/{messageId}/read";
+		
+		
+		// === ADMIN BASE ===
+		public static final String ADMIN_BASE = API + VERSION + "/admin/dm";
+		
+		// Conversation (admin)
+		/** GET    /api/v1/admin/dm/conversations */
+		public static final String ADMIN_CONVERSATIONS = "/conversations";
+		
+		/** GET    /api/v1/admin/dm/{conversationId}
+		 *  DELETE /api/v1/admin/dm/{conversationId} */
+		public static final String ADMIN_CONVERSATION_BY_ID = "/{conversationId}";
+		
+		// Message (admin)
+		/** GET    /api/v1/admin/dm/messages?conversationId={uuid} */
+		public static final String ADMIN_MESSAGES = "/messages";
+		
+		/** DELETE /api/v1/admin/dm/{conversationId}/messages/{messageId} */
+		public static final String ADMIN_DELETE_MESSAGE = "/{conversationId}/messages/{messageId}";
 	}
 	
 	

@@ -5,7 +5,7 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPr
 import java.util.List;
 import java.util.UUID;
 
-public interface DMconversationService {
+public interface DMConversationService {
 	// kullanicin dahil oldugu konusmalari ozet halinde getirir
 	List<DMConversationPreviewResponseDto> getAllConversationsForUser(UUID userId);
 	

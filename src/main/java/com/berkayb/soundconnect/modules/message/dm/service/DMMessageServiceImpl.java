@@ -91,12 +91,17 @@ public class DMMessageServiceImpl implements DMMessageService {
 			throw new SoundConnectException(ErrorType.NOT_AUTHORIZED);
 		}
 		// daha once okunduysa tekrar setleme
-		if (message.getReadAt() == null) {
-			return;
+		if (message.getReadAt() != null) {
+			return; // zaten okunmus
 		}
-		// okundu zamanini ayarla
 		message.setReadAt(LocalDateTime.now());
 		messageRepository.save(message);
+		
+		conversationRepository.findById(message.getConversationId())
+		                      .ifPresent(conv -> {
+			                      conv.setLastReadMessageId(message.getId());
+			                      conversationRepository.save(conv);
+		                      });
 		
 		
 	}

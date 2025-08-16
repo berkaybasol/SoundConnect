@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: 0.0.0.0  #//telefon erisimi ciin
 
 spring:
   datasource:
@@ -59,7 +60,8 @@ mailersend:
   api-key: ${MAILERSEND_API_KEY}
   from-email: ${MAILERSEND_SENDER_EMAIL}
   from-name: SoundConnect
-  frontend-verify-url: http://localhost:3000/verify-email
+  frontend-verify-url: soundconnect://verify-email
+
 
 logging:
   level:
