@@ -26,11 +26,9 @@ public class MailProducerImpl implements MailProducer {
 	private final RabbitTemplate rabbitTemplate; // Spring Boot'un mesaj gonderme arayuzu
 	
 	@Override
-	public void sendVerificationMail(String email, String verificationToken) {
+	public void sendVerificationMail(String email, String code) {
 		// DTO'dan nesne uret.
-		EmailVerificationMessage message = new EmailVerificationMessage(email, verificationToken);
-		
-		
+		EmailVerificationMessage message = new EmailVerificationMessage(email, code);
 		/**
 		 * Dis servislerden, frameworklerden alinan methodlar mutlaka try-catch'e sarilmalidir cunku
 		 * bu cagrilar dis sistemlere baglidir. ag hatasi, zaman asimi, yetki sorunu gibi beklenmeyen durumlar
@@ -44,11 +42,11 @@ public class MailProducerImpl implements MailProducer {
 			                              message // queue'ye gidecek mesaj. burasi convertAndSend. in payload kismi. mesaj burada otomatik
 			                              // olarak Json cevriliyor
 			);
-			log.info("Verification mail queued for email={} (token={})", email, verificationToken);
+			log.info("Verification code mail queued for email={} (code={})", email, code);
 		} catch (Exception e) {
-			log.error("Failed to queue verification mail for email={} (token={})", email, verificationToken, e);
+			log.error("Failed to queue verification code mail for email={} (code={})", email, code, e);
 			throw new SoundConnectException(ErrorType.MAIL_QUEUE_ERROR,
-			                                List.of("Mail adresi: " + email, "Token: " + verificationToken, "Hata: " + e.getMessage()));
+			                                List.of("Mail adresi: " + email, "Kod: " + code, "Hata: " + e.getMessage()));
 		}
 		// NOT: JSON'a cevirme islemini config dosyasinda tanimladigimiz Jackson2JsonMessageConverter otomatik yapiyor.
 		// boylelikle consumer tarafinda otomatik olarak EmailVerificationMessage dto'su ile alinabiliyor.

@@ -4,5 +4,5 @@ import java.io.Serializable;
 
 public record EmailVerificationMessage(
 		String email,
-		String token
+		String code
 ) implements Serializable {}

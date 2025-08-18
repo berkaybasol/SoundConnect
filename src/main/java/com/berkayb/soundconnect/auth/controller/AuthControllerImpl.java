@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.auth.controller;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -20,16 +21,16 @@ public class AuthControllerImpl implements AuthController {
 	private final AuthService authService;
 	
 	
-	@GetMapping(VERIFY_EMAIL)
+	@PostMapping(VERIFY_CODE)
 	@Override
-	public BaseResponse<Void> verifyEmail(@RequestParam String token) {
-		return authService.verifyEmail(token);
+	public BaseResponse<Void> verifyEmail(@RequestBody @Valid VerifyCodeRequestDto dto) {
+		return authService.verifyCode(dto);
 	}
 	
 	
 	@Override
 	@PostMapping(REGISTER)
-	public BaseResponse<LoginResponse> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
+	public BaseResponse<Void> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
 		return authService.register(registerRequestDto);
 	}
 	

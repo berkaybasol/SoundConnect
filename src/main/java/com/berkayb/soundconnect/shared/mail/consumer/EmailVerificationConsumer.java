@@ -31,15 +31,15 @@ public class EmailVerificationConsumer {
 	@RabbitListener(queues = EMAIL_VERIFICATION_QUEUE) // dinlenilen kuyruk
 	public void listenVerificationMail(EmailVerificationMessage message) {
 		try{
-			log.info("Received verification mail request for email={} (token={})", message.email(), message.token());
+			log.info("Received verification code mail request for email={} (code={})", message.email(), message.code());
 			// dogrulama mailini gonderiyoruz.
-			mailService.sendVerificationMail(message.email(), message.token());
+			mailService.sendVerificationMail(message.email(), message.code());
 			log.info("Verification mail sent to email={}", message.email());
 		} catch (Exception e){
-			log.error("Failed to process verification mail for email={} (token={})", message.email(), message.token(), e);
+			log.error("Failed to process verification code mail for email={} (code={})", message.email(), message.code(), e);
 			throw new SoundConnectException(ErrorType.MAIL_QUEUE_ERROR,
 			                                List.of("Mail adresi: " + message.email(),
-			                                        "Token: " + message.token(),
+			                                        "Token: " + message.code(),
 			                                        "Hata: " + e.getMessage()));
 		}
 	}

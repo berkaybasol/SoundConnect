@@ -35,36 +35,31 @@ public class MailServiceImpl implements MailService {
 	@Value("${mailersend.from-name}")
 	private String fromName;
 	
-	@Value("${mailersend.frontend-verify-url}")
-	private String frontendVerifyUrl;
+	@Value("${mailersend.otp-validity-minutes:5}")
+	private int otpValidityMinutes;
 	
 	// kullaniciya dogrulama maili gonderen method.
 	@Override
-	public void sendVerificationMail(String to, String verificationToken) {
-		// dogrulama linki
-		String verifyLink = frontendVerifyUrl + "?token=" + verificationToken;
-		
+	public void sendVerificationMail(String to, String code) {
 		// Mail içeriği
-		String subject = "E-posta Doğrulama Gerekiyor";
+		String subject = "E-posta Doğrulama Kodunuz";
 		
-		String html = "<p>Merhaba,</p>" +
-				"<p>Hesabınızı etkinleştirmek için lütfen aşağıdaki bağlantıya tıklayın:</p>" +
-				"<p><a href='" + verifyLink + "'>E-postanızı Doğrulayın</a></p>" +
-				"<p>Bu bağlantı yalnızca kısa bir süre geçerlidir.</p>" +
-				"<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>";
+		String html = """
+            <p>Merhaba,</p>
+            <p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
+            <h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
+            <p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
+            <p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
+            <p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
+            """.formatted(code, otpValidityMinutes);
 		
-		// MailerSend API için JSON body
 		Map<String, Object> body = Map.of(
-				"from", Map.of(
-						"email", fromEmail,
-						"name", fromName
-				),
-				"to", List.of(Map.of(
-						"email", to
-				)),
+				"from", Map.of("email", fromEmail, "name", fromName),
+				"to", List.of(Map.of("email", to)),
 				"subject", subject,
 				"html", html
 		);
+		
 		
 		// HTTP header’lar
 		HttpHeaders headers = new HttpHeaders();

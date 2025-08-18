@@ -39,6 +39,11 @@ spring:
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: email
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # password: koymadik
 
 springdoc:
   swagger-ui:
@@ -60,7 +65,7 @@ mailersend:
   api-key: ${MAILERSEND_API_KEY}
   from-email: ${MAILERSEND_SENDER_EMAIL}
   from-name: SoundConnect
-  frontend-verify-url: soundconnect://verify-email
+  otp-validity-minutes: 5 # kodun gecerlilik suresi
 
 
 logging:

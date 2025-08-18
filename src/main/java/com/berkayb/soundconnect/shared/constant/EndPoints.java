@@ -214,7 +214,7 @@ public class EndPoints {
 		public static final String BASE = API + VERSION + "/auth";
 		public static final String REGISTER = "/register";
 		public static final String LOGIN = "/login";
-		public static final String VERIFY_EMAIL = "/verify-email";
+		public static final String VERIFY_CODE = "/verify-code";
 		public static final String GOOGLE_SIGN_IN = "/google-sign-in";
 		public static final String COMPLETE_GOOGLE_PROFILE = "/complete-google-profile";
 	}

@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.auth.service;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
@@ -43,6 +45,7 @@ public class AuthService {
 	private final RoleRepository roleRepository;
 	private final MailProducer mailProducer;
 	private final ProfileFactory profileFactory;
+	private final OtpService otpService;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -87,32 +90,28 @@ public class AuthService {
 		                   .build();
 	}
 	
-	public BaseResponse<LoginResponse> register(RegisterRequestDto dto) {
-		// önce kullanıcı adı daha önce alınmış mı bak, varsa hata fırlat
+	public BaseResponse<Void> register(RegisterRequestDto dto) {
+		// kullanici adi daha once alinmis mi bak alinmissa hata firlat.
 		if (userRepository.existsByUsername(dto.username())){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
 		
-		// mail daha önce alınmış mı bak, varsa hata fırlat
+		// mail daha once alinmis mi bak alinsmissa hata firlat
 		if (userRepository.existsByEmail(dto.email())) {
 			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
 		}
 		
-		// sadece izin verilen rollerle kayıt olunabilir, yoksa hata fırlat
+		// sadece izin verilen rollerle kayit olunabilir. yoksa hata firlat.
 		if (!REGISTER_ALLOWED_ROLES.contains(dto.role())) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED,
 			                                List.of("bu rol ile kayıt olunamaz. sistem yöneticisiyle görüş."));
 		}
 		
-		// seçilen rolü kaydet
+		// secilen rolu kaydet.
 		RoleEnum selectedRoleEnum = dto.role();
 		
 		// şifreyi hashle
 		String encodedPassword = passwordEncoder.encode(dto.password());
-		
-		// email doğrulama tokeni ve son kullanma tarihi oluştur
-		String verificationToken = UUID.randomUUID().toString();
-		LocalDateTime expiry = LocalDateTime.now().plusHours(24);
 		
 		// eğer başvuru mekan sahibi (ROLE_VENUE) ise
 		if (selectedRoleEnum == RoleEnum.ROLE_VENUE) {
@@ -128,20 +127,21 @@ public class AuthService {
 			                .roles(Set.of(listenerRole))
 			                .password(encodedPassword)
 			                .status(UserStatus.PENDING_VENUE_REQUEST)
-			                .emailVerificationToken(verificationToken)
-			                .emailVerificationExpiry(expiry)
+			                .emailVerified(false)
 			                .build();
 			
 			// kullanıcıyı kaydet
 			userRepository.save(user);
 			
-			// todo: buraya admin'e başvuru bildirimi veya özel bir mail logic'i ekle
+			// TODO: buraya admin'e başvuru bildirimi veya özel bir mail logic'i ekle
 			
-			// kullanıcıya email doğrulama yolla
-			mailProducer.sendVerificationMail(user.getEmail(), verificationToken);
+			
+			// OTP kodu uret ve mail ile gonder (RabbitMQ uzerinden async)
+			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
+			mailProducer.sendVerificationMail(user.getEmail(), otpCode);
 			
 			// dinleyici olarak kaydoldu, frontend'e bilgi dön
-			return BaseResponse.<LoginResponse>builder()
+			return BaseResponse.<Void>builder()
 			                   .success(true)
 			                   .message("başvurun alındı, şu an dinleyici olarak kaydın yapıldı. en kısa sürede seninle iletişime geçeceğiz. lütfen e-posta adresinden hesabını doğrula.")
 			                   .code(201)
@@ -149,12 +149,12 @@ public class AuthService {
 			                   .build();
 		}
 		
-		// buradan sonrası diğer tüm roller (müzisyen, user vs.)
-		
-		// ilgili rolü bul
+		// burdan sonrasi tum roller..
+		// ilgili rolu bul
 		Role selectedRole = roleRepository.findByName(selectedRoleEnum.name())
 		                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
 		                                                                               List.of("geçersiz rol seçimi veya sistemde tanımlı değil.")));
+		
 		
 		// yeni kullanıcıyı oluştur
 		User user = User.builder()
@@ -163,8 +163,7 @@ public class AuthService {
 		                .roles(Set.of(selectedRole))
 		                .password(encodedPassword)
 		                .status(UserStatus.INACTIVE)
-		                .emailVerificationToken(verificationToken)
-		                .emailVerificationExpiry(expiry)
+		                .emailVerified(false)
 		                .build();
 		
 		// kullanıcıyı kaydet
@@ -175,11 +174,13 @@ public class AuthService {
 			profileFactory.createProfileIfNeeded(user, selectedRoleEnum);
 		}
 		
-		// kullanıcıya email doğrulama gönder
-		mailProducer.sendVerificationMail(user.getEmail(), verificationToken);
+		// OTP kodu uret ve mail ile gonder (RABBITMQ uzerinden async)
+		String otpCode = otpService.generateAndCacheOtp(user.getEmail());
+		mailProducer.sendVerificationMail(user.getEmail(), otpCode);
 		
-		// frontend'e kayıt başarılı mesajı dön
-		return BaseResponse.<LoginResponse>builder()
+		
+		// succes response
+		return BaseResponse.<Void>builder()
 		                   .success(true)
 		                   .message("kayıt alındı. lütfen e-posta adresinden kaydını doğrula.")
 		                   .code(201)
@@ -187,36 +188,32 @@ public class AuthService {
 		                   .build();
 	}
 	
-	public BaseResponse<Void> verifyEmail(String token){
-		// Token'dan kullanıcıyı bul
-		User user = userRepository.findByEmailVerificationToken(token)
-		                          .orElseThrow(() -> new SoundConnectException(ErrorType.TOKEN_NOT_FOUND, List.of("Geçersiz veya süresi dolmuş token.")));
+	public BaseResponse<Void> verifyCode(VerifyCodeRequestDto dto){
+		// kullaniciyi email ile bul
+		User user = userRepository.findByEmail(dto.email())
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
-		// Token süresi geçmiş mi kontrol et
-		if (user.getEmailVerificationExpiry() != null && user.getEmailVerificationExpiry().isBefore(LocalDateTime.now())) {
-			throw new SoundConnectException(ErrorType.TOKEN_EXPIRED, List.of("Doğrulama tokenının süresi dolmuş."));
-		}
-		
-		// Zaten doğrulanmış mı kontrol et
+		// kullanici zaten dogrulanmissa hgata firlat
 		if (Boolean.TRUE.equals(user.getEmailVerified())) {
-			return BaseResponse.<Void>builder()
-			                   .success(false)
-			                   .message("Email zaten doğrulanmış.")
-			                   .code(400)
-			                   .build();
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		}
+		// otp kodunu kontrol et (sure, brute-force vs.)
+		boolean valid = otpService.verifyOtp(dto.email(), dto.code());
+		if (!valid) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
 		}
 		
-		// Doğrula ve tokeni temizle
+		// kullanici dogrula ve status'u active'e cevir
 		user.setEmailVerified(true);
-		user.setEmailVerificationToken(null);
-		user.setStatus(UserStatus.ACTIVE); // Durumunu da aktif yapıyoruz
+		user.setStatus(UserStatus.ACTIVE);
 		userRepository.save(user);
 		
+		// succes reponse
 		return BaseResponse.<Void>builder()
-		                   .success(true)
-		                   .message("Email başarıyla doğrulandı!")
-		                   .code(200)
-		                   .build();
+				.success(true)
+				.code(200)
+				.message("mail basariyla dogrulandi")
+				.build();
 	}
 	
 }
