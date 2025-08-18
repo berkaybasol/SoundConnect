@@ -71,10 +71,11 @@ dependencies {
     // AssertJ (daha okunaklı assertion)
     testImplementation 'org.assertj:assertj-core'
 
-
-
     // test database
     testImplementation 'com.h2database:h2'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis:3.5.4'
 
 
 
