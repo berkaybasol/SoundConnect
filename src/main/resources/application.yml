@@ -66,6 +66,9 @@ otp:
     minutes: 3              # OtpService @Value("${otp.ttl.minutes:...}") ile okur
   length: 6                 # 6 haneli
   max-attempt: 5            # yanlis deneme limiti
+  resend:
+    cooldown:
+      seconds: 30
 
 mailersend:
   api-key: ${MAILERSEND_API_KEY}
