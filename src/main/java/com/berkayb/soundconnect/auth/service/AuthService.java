@@ -3,13 +3,14 @@ package com.berkayb.soundconnect.auth.service;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.dto.response.RegisterResponseDto;
+import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
+import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -20,6 +21,8 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,10 +31,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +47,7 @@ public class AuthService {
 	private final MailProducer mailProducer;
 	private final ProfileFactory profileFactory;
 	private final OtpService otpService;
+	private final EmailUtils emailUtils;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -90,14 +92,19 @@ public class AuthService {
 		                   .build();
 	}
 	
-	public BaseResponse<Void> register(RegisterRequestDto dto) {
+	
+	@Transactional
+	public BaseResponse<RegisterResponseDto> register(RegisterRequestDto dto) {
+		// normalize maili ekle
+		final String normalizedEmail = emailUtils.normalize(dto.email());
+		
 		// kullanici adi daha once alinmis mi bak alinmissa hata firlat.
 		if (userRepository.existsByUsername(dto.username())){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
 		
 		// mail daha once alinmis mi bak alinsmissa hata firlat
-		if (userRepository.existsByEmail(dto.email())) {
+		if (userRepository.existsByEmail(normalizedEmail)) {
 			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
 		}
 		
@@ -113,17 +120,21 @@ public class AuthService {
 		// şifreyi hashle
 		String encodedPassword = passwordEncoder.encode(dto.password());
 		
+		// mail kuyruguna sorunsuz gitti mi? default false
+		boolean mailQueued = false;
+		
 		// eğer başvuru mekan sahibi (ROLE_VENUE) ise
 		if (selectedRoleEnum == RoleEnum.ROLE_VENUE) {
 			// dinleyici rolünü ver
-			Role listenerRole = roleRepository.findByName(RoleEnum.ROLE_USER.name())
+			Role listenerRole = roleRepository.findByName(RoleEnum.ROLE_LISTENER.name())
 			                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
-			                                                                               List.of("ROLE_USER bulunamadı!")));
+			                                                                               List.of("ROLE_LISTENER " +
+					                                                                                       "bulunamadı!")));
 			
 			// user'ı dinleyici olarak kaydet, status pending_venue_request olsun
 			User user = User.builder()
 			                .username(dto.username())
-			                .email(dto.email())
+			                .email(normalizedEmail)
 			                .roles(Set.of(listenerRole))
 			                .password(encodedPassword)
 			                .status(UserStatus.PENDING_VENUE_REQUEST)
@@ -138,15 +149,23 @@ public class AuthService {
 			
 			// OTP kodu uret ve mail ile gonder (RabbitMQ uzerinden async)
 			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
-			mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+			try {
+				mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+				mailQueued = true;
+			} catch (Exception e) {
+				log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
+			}
 			
-			// dinleyici olarak kaydoldu, frontend'e bilgi dön
-			return BaseResponse.<Void>builder()
-			                   .success(true)
-			                   .message("başvurun alındı, şu an dinleyici olarak kaydın yapıldı. en kısa sürede seninle iletişime geçeceğiz. lütfen e-posta adresinden hesabını doğrula.")
-			                   .code(201)
-			                   .data(null)
-			                   .build();
+			long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
+			
+			return BaseResponse.<RegisterResponseDto>builder()
+					.success(true)
+					.message("Basvurun alindi. biz sizinle iletisime gecene kadar gecici olarak dinleyici olarak " +
+							         "kaydedildin. size en kisa sure icerisinde geri donus yapacagiz! Mail adresinden" +
+							         " kaydini onaylamayi unutma!")
+					.code(201)
+					.data(new RegisterResponseDto(user.getEmail(), UserStatus.PENDING_VENUE_REQUEST, ttl, mailQueued))
+					.build();
 		}
 		
 		// burdan sonrasi tum roller..
@@ -159,7 +178,7 @@ public class AuthService {
 		// yeni kullanıcıyı oluştur
 		User user = User.builder()
 		                .username(dto.username())
-		                .email(dto.email())
+		                .email(normalizedEmail)
 		                .roles(Set.of(selectedRole))
 		                .password(encodedPassword)
 		                .status(UserStatus.INACTIVE)
@@ -176,43 +195,112 @@ public class AuthService {
 		
 		// OTP kodu uret ve mail ile gonder (RABBITMQ uzerinden async)
 		String otpCode = otpService.generateAndCacheOtp(user.getEmail());
-		mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+		try {
+			mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+			mailQueued = true;
+		} catch (Exception e) {
+			log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
+		}
 		
+		long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
 		
 		// succes response
-		return BaseResponse.<Void>builder()
+		return BaseResponse.<RegisterResponseDto>builder()
 		                   .success(true)
 		                   .message("kayıt alındı. lütfen e-posta adresinden kaydını doğrula.")
 		                   .code(201)
-		                   .data(null)
+		                   .data(new RegisterResponseDto(user.getEmail(), UserStatus.INACTIVE, ttl, mailQueued))
 		                   .build();
 	}
 	
 	public BaseResponse<Void> verifyCode(VerifyCodeRequestDto dto){
 		// kullaniciyi email ile bul
-		User user = userRepository.findByEmail(dto.email())
+		final String email = emailUtils.normalize(dto.email());
+		User user = userRepository.findByEmail(email)
 		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
-		// kullanici zaten dogrulanmissa hgata firlat
+		// kullanici zaten dogrulanmissa response don
 		if (Boolean.TRUE.equals(user.getEmailVerified())) {
-			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+			return BaseResponse.<Void>builder()
+					.success(true)
+					.code(200)
+					.message("zaten dogrulanmis")
+					.data(null)
+					.build();
 		}
 		// otp kodunu kontrol et (sure, brute-force vs.)
-		boolean valid = otpService.verifyOtp(dto.email(), dto.code());
+		boolean valid = otpService.verifyOtp(email, dto.code());
 		if (!valid) {
 			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
 		}
 		
-		// kullanici dogrula ve status'u active'e cevir
+		// kullanici dogrula
 		user.setEmailVerified(true);
-		user.setStatus(UserStatus.ACTIVE);
+		
+		// kullanici venue degilse status'u aktif yap ve kaydet
+		if (user.getStatus() != UserStatus.PENDING_VENUE_REQUEST) {
+			user.setStatus(UserStatus.ACTIVE);
+		}
 		userRepository.save(user);
+		
 		
 		// succes reponse
 		return BaseResponse.<Void>builder()
 				.success(true)
 				.code(200)
 				.message("mail basariyla dogrulandi")
+				.build();
+	}
+	
+	@Transactional
+	public BaseResponse<ResendCodeResponseDto> resendCode (ResendCodeRequestDto dto) {
+		final String email = emailUtils.normalize(dto.email());
+		
+		User user = userRepository.findByEmail(email)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		
+		// zaten dogrulanmis ise idempotent (kac kere denerse denesin ayi sonuc) 200 don.
+		if (Boolean.TRUE.equals(user.getEmailVerified())) {
+			return BaseResponse.<ResendCodeResponseDto>builder()
+					.success(true)
+					.code(200)
+					.message("hesabin zaten dogrulanmis. yeni kod gondermedik")
+					.data(new ResendCodeResponseDto(0, false, 0))
+					.build();
+		}
+		
+		// cooldown kontrolu
+		long cooldownLeft = otpService.getResendCooldownLeftSeconds(email);
+		if (cooldownLeft > 0) {
+			long currentOtpTtl = otpService.getOtpTimeLeftSeconds(email);
+			return BaseResponse.<ResendCodeResponseDto>builder()
+					.success(false)
+					.code(429) // Too Many Requests semantigi (HTTP 200 donecek olsa da kod alani 429)
+					.message("cok sik istek: lutfen biraz bekleyip tekrar deneyin..")
+					.data(new ResendCodeResponseDto(currentOtpTtl, false, cooldownLeft))
+					.build();
+		}
+		
+		// yeni OTP uret ve mail at
+		String otpCode = otpService.generateAndCacheOtp(email);
+		boolean mailQueued = false;
+		
+		try {
+			mailProducer.sendVerificationMail(email, otpCode);
+			mailQueued = true;
+		} catch (Exception e) {
+			log.error("mail queue error (resend) for email={} code={}", email, otpCode, e);
+		}
+		
+		// cooldown'i baslat
+		otpService.startResendCooldown(email);
+		
+		long ttl = otpService.getOtpTimeLeftSeconds(email);
+		return BaseResponse.<ResendCodeResponseDto>builder()
+				.success(true)
+				.code(200)
+				.message("yeni dogrulama kodu e-postana gonderildi")
+				.data(new ResendCodeResponseDto(ttl, mailQueued, otpService.getResendCooldownLeftSeconds(email)))
 				.build();
 	}
 	

@@ -3,7 +3,10 @@ package com.berkayb.soundconnect.auth.controller;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.dto.response.RegisterResponseDto;
+import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
+import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -30,14 +33,21 @@ public class AuthControllerImpl implements AuthController {
 	
 	@Override
 	@PostMapping(REGISTER)
-	public BaseResponse<Void> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
+	public BaseResponse<RegisterResponseDto> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
 		return authService.register(registerRequestDto);
 	}
 	
 	
 	@Override
-	@PostMapping(LOGIN)                 // FIXME: buraya valid koymadik admin girisi kolayligi icin prod. da koyulcak
-	public BaseResponse<LoginResponse> login(@RequestBody LoginRequestDto loginRequestDto) {
+	@PostMapping(LOGIN)
+	public BaseResponse<LoginResponse> login(@RequestBody @Valid LoginRequestDto loginRequestDto) {
 		return authService.login(loginRequestDto);
+	}
+	
+	
+	@Override
+	@PostMapping(RESEND_CODE)
+	public BaseResponse<ResendCodeResponseDto> resendCode(@RequestBody @Valid ResendCodeRequestDto dto) {
+		return authService.resendCode(dto);
 	}
 }

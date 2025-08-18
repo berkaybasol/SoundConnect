@@ -2,15 +2,10 @@ package com.berkayb.soundconnect.auth.otp.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 
-public record VerifyCodeRequestDto(
+public record ResendCodeRequestDto(
 		@NotBlank(message = "email boş olamaz")
 		@Email(message = "geçerli bir email giriniz")
-		String email,
-		
-		@NotBlank(message = "kod boş olamaz")
-		@Pattern(regexp = "^\\d{6}$", message = "kod 6 haneli olmalı")
-		String code
+		String email
 ) {
 }

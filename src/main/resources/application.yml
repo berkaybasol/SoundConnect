@@ -61,11 +61,17 @@ app:
     seed:
       enabled: true         # ← Ankara vb. başlangıç verisi gerekiyorsa AÇIK
 
+otp:
+  ttl:
+    minutes: 3              # OtpService @Value("${otp.ttl.minutes:...}") ile okur
+  length: 6                 # 6 haneli
+  max-attempt: 5            # yanlis deneme limiti
+
 mailersend:
   api-key: ${MAILERSEND_API_KEY}
   from-email: ${MAILERSEND_SENDER_EMAIL}
   from-name: SoundConnect
-  otp-validity-minutes: 5 # kodun gecerlilik suresi
+  otp-validity-minutes: 3  # mail icerigindeki "kod suresi" — otp.ttl ile SENKRON
 
 
 logging:
