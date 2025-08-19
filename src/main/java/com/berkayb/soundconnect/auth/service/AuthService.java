@@ -66,10 +66,8 @@ public class AuthService {
 				orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		// email dogrulanmis mi kontrol et
-		if (user.getStatus() != UserStatus.ACTIVE) {
-			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış." +
-					                                                                " Lütfen gelen kutunuzu kontrol " +
-					                                                                "edin."));
+		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzu kontrol edin."));
 		}
 		
 		// Spring Security authentication ile kullaniciyi dogrula.

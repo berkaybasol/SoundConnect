@@ -1,3 +1,7 @@
+## *ASLA UNUTMAMAN GEREKENLER*
+- venueapplicationrequestte phone yok onu hallet bir ara
+- flutter tarafinda google ile giris yap buton var ama backendi entegre etmedin o da halledilcek
+
 
 # SoundConnect SPRINT
 
@@ -36,6 +40,7 @@
 
 ## *Bitenler*
 
+✅ DM modülü
 
 ✅ Follow modülü
 

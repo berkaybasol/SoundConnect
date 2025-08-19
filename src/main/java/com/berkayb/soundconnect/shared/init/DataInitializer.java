@@ -161,6 +161,7 @@ public class DataInitializer {
 			                 .city(cityEntity)
 			                 .gender(Gender.MALE)
 			                 .status(UserStatus.ACTIVE)
+							 .emailVerified(true)
 			                 .roles(Set.of(owner))
 			                 .createdAt(LocalDateTime.now())
 			                 .updatedAt(LocalDateTime.now())
