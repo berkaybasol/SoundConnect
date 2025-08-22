@@ -12,132 +12,122 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Tag("repo")
 class VenueApplicationRepositoryTest {
 	
-	@Autowired VenueApplicationRepository venueAppRepo;
-	@Autowired UserRepository userRepo;
-	@Autowired CityRepository cityRepo;
-	@Autowired DistrictRepository districtRepo;
-	@Autowired NeighborhoodRepository neighborhoodRepo;
+	@org.springframework.beans.factory.annotation.Autowired VenueApplicationRepository repo;
+	@org.springframework.beans.factory.annotation.Autowired UserRepository userRepo;
+	@org.springframework.beans.factory.annotation.Autowired CityRepository cityRepo;
+	@org.springframework.beans.factory.annotation.Autowired DistrictRepository districtRepo;
+	@org.springframework.beans.factory.annotation.Autowired NeighborhoodRepository neighborhoodRepo;
 	
 	City city;
 	District district;
 	Neighborhood neighborhood;
-	User userA;
-	User userB;
-	VenueApplication appA1_pending;
-	VenueApplication appA2_approved;
+	User u1, u2;
 	
 	@BeforeEach
-	void setUp() {
-		// FK sırası: önce child tablolar
-		venueAppRepo.deleteAll();
+	void setup() {
+		// FK sırasına göre temizle
+		repo.deleteAll();
 		userRepo.deleteAll();
 		neighborhoodRepo.deleteAll();
 		districtRepo.deleteAll();
 		cityRepo.deleteAll();
 		
-		city = cityRepo.save(City.builder().name("TestCity").build());
-		district = districtRepo.save(District.builder().name("TestDistrict").city(city).build());
-		neighborhood = neighborhoodRepo.save(Neighborhood.builder().name("TestNeighborhood").district(district).build());
+		// location
+		city = cityRepo.save(City.builder().name("C_" + UUID.randomUUID()).build());
+		district = districtRepo.save(District.builder().name("D_" + UUID.randomUUID()).city(city).build());
+		neighborhood = neighborhoodRepo.save(Neighborhood.builder().name("N_" + UUID.randomUUID()).district(district).build());
 		
-		userA = userRepo.save(User.builder()
-		                          .username("userA")
-		                          .password("pwd")
-		                          .provider(AuthProvider.LOCAL)
-		                          .emailVerified(true)
-		                          .city(city)
+		// users (email zorunlu!)
+		u1 = userRepo.save(User.builder()
+		                       .username("u1_" + UUID.randomUUID())
+		                       .email("u1_"+UUID.randomUUID()+"@t.local")
+		                       .password("pw")
+		                       .provider(AuthProvider.LOCAL)
+		                       .emailVerified(true)
+		                       .city(city)
+		                       .build());
+		u2 = userRepo.save(User.builder()
+		                       .username("u2_" + UUID.randomUUID())
+		                       .email("u2_"+UUID.randomUUID()+"@t.local")
+		                       .password("pw")
+		                       .provider(AuthProvider.LOCAL)
+		                       .emailVerified(true)
+		                       .city(city)
+		                       .build());
+		
+		// seed applications
+		repo.save(VenueApplication.builder()
+		                          .applicant(u1).venueName("V1").venueAddress("A1").phone("1")
+		                          .status(ApplicationStatus.PENDING)
+		                          .applicationDate(LocalDateTime.now())
+		                          .city(city).district(district).neighborhood(neighborhood)
 		                          .build());
 		
-		userB = userRepo.save(User.builder()
-		                          .username("userB")
-		                          .password("pwd")
-		                          .provider(AuthProvider.LOCAL)
-		                          .emailVerified(true)
-		                          .city(city)
+		repo.save(VenueApplication.builder()
+		                          .applicant(u1).venueName("V2").venueAddress("A2").phone("2")
+		                          .status(ApplicationStatus.APPROVED)
+		                          .applicationDate(LocalDateTime.now())
+		                          .decisionDate(LocalDateTime.now())
+		                          .city(city).district(district).neighborhood(neighborhood)
 		                          .build());
 		
-		appA1_pending = venueAppRepo.save(VenueApplication.builder()
-		                                                  .applicant(userA)
-		                                                  .venueName("A1 Venue")
-		                                                  .venueAddress("A1 Addr")
-		                                                  .phone("111")
-		                                                  .status(ApplicationStatus.PENDING)
-		                                                  .applicationDate(LocalDateTime.now())
-		                                                  .decisionDate(null)
-		                                                  .city(city)
-		                                                  .district(district)
-		                                                  .neighborhood(neighborhood)
-		                                                  .build());
-		
-		appA2_approved = venueAppRepo.save(VenueApplication.builder()
-		                                                   .applicant(userA)
-		                                                   .venueName("A2 Venue")
-		                                                   .venueAddress("A2 Addr")
-		                                                   .phone("222")
-		                                                   .status(ApplicationStatus.APPROVED)
-		                                                   .applicationDate(LocalDateTime.now().minusDays(1))
-		                                                   .decisionDate(LocalDateTime.now())
-		                                                   .city(city)
-		                                                   .district(district)
-		                                                   .neighborhood(neighborhood)
-		                                                   .build());
-		
-		// extra: userB için bir pending örnek (liste testinde sayıyı artırmak istersen)
-		venueAppRepo.save(VenueApplication.builder()
-		                                  .applicant(userB)
-		                                  .venueName("B1 Venue")
-		                                  .venueAddress("B1 Addr")
-		                                  .phone("333")
-		                                  .status(ApplicationStatus.PENDING)
-		                                  .applicationDate(LocalDateTime.now())
-		                                  .decisionDate(null)
-		                                  .city(city)
-		                                  .district(district)
-		                                  .neighborhood(neighborhood)
-		                                  .build());
+		repo.save(VenueApplication.builder()
+		                          .applicant(u2).venueName("V3").venueAddress("A3").phone("3")
+		                          .status(ApplicationStatus.PENDING)
+		                          .applicationDate(LocalDateTime.now())
+		                          .city(city).district(district).neighborhood(neighborhood)
+		                          .build());
 	}
 	
 	@Test
 	void findAllByApplicant_should_return_apps_of_that_user() {
-		List<VenueApplication> list = venueAppRepo.findAllByApplicant(userA);
+		List<VenueApplication> list = repo.findAllByApplicant(u1);
 		assertThat(list).hasSize(2);
-		assertThat(list).allMatch(a -> a.getApplicant().getId().equals(userA.getId()));
+		assertThat(list.stream().allMatch(a -> a.getApplicant().getId().equals(u1.getId()))).isTrue();
 	}
 	
 	@Test
 	void findByApplicantAndStatus_should_return_only_matching() {
-		var opt = venueAppRepo.findByApplicantAndStatus(userA, ApplicationStatus.PENDING);
+		var opt = repo.findByApplicantAndStatus(u1, ApplicationStatus.PENDING);
 		assertThat(opt).isPresent();
-		assertThat(opt.get().getId()).isEqualTo(appA1_pending.getId());
+		assertThat(opt.get().getApplicant().getId()).isEqualTo(u1.getId());
+		assertThat(opt.get().getStatus()).isEqualTo(ApplicationStatus.PENDING);
 		
-		var optAbsent = venueAppRepo.findByApplicantAndStatus(userA, ApplicationStatus.REJECTED);
-		assertThat(optAbsent).isEmpty();
+		var notFound = repo.findByApplicantAndStatus(u1, ApplicationStatus.REJECTED);
+		assertThat(notFound).isNotPresent();
 	}
 	
 	@Test
 	void findAllByStatus_should_return_all_with_that_status() {
-		List<VenueApplication> pendings = venueAppRepo.findAllByStatus(ApplicationStatus.PENDING);
-		assertThat(pendings).isNotEmpty();
-		assertThat(pendings).extracting(VenueApplication::getStatus)
-		                    .allMatch(s -> s == ApplicationStatus.PENDING);
+		List<VenueApplication> list = repo.findAllByStatus(ApplicationStatus.PENDING);
+		assertThat(list).hasSize(2);
+		assertThat(list.stream().allMatch(a -> a.getStatus() == ApplicationStatus.PENDING)).isTrue();
 	}
 }

@@ -31,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -48,6 +49,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+// Her test sınıfı kendi H2'sini kullansın + temiz şema
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @Tag("web")
 class UserVenueProfileControllerTest {
 	
@@ -61,10 +67,8 @@ class UserVenueProfileControllerTest {
 	@Autowired VenueRepository venueRepository;
 	@Autowired VenueProfileRepository venueProfileRepository;
 	
-	// Diğer testlerden gelebilecek referansları temizlemek için
 	@Autowired VenueApplicationRepository venueApplicationRepository;
 	
-	// Başka modüller bean isterse patlamasın diye
 	@MockitoBean
 	RabbitTemplate rabbitTemplate;
 	
@@ -91,9 +95,10 @@ class UserVenueProfileControllerTest {
 		district = districtRepository.save(District.builder().name("District").city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("Neighborhood").district(district).build());
 		
-		// User
+		// User (email zorunlu)
 		ownerUser = userRepository.save(User.builder()
 		                                    .username("user_" + UUID.randomUUID())
+		                                    .email("user_" + UUID.randomUUID() + "@t.local")
 		                                    .password("pw")
 		                                    .provider(AuthProvider.LOCAL)
 		                                    .emailVerified(true)
@@ -168,6 +173,7 @@ class UserVenueProfileControllerTest {
 		// login’i venue’suz kullanıcıyla değiştir
 		User noVenueUser = userRepository.save(User.builder()
 		                                           .username("empty_" + UUID.randomUUID())
+		                                           .email("empty_" + UUID.randomUUID() + "@t.local")
 		                                           .password("pw")
 		                                           .provider(AuthProvider.LOCAL)
 		                                           .emailVerified(true)

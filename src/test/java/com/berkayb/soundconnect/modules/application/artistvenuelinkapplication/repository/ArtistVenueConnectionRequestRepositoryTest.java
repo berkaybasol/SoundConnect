@@ -80,6 +80,7 @@ class ArtistVenueConnectionRequestRepositoryTest {
 		// users
 		User owner = userRepo.save(User.builder()
 		                               .username("owner_" + UUID.randomUUID())
+		                               .email("owner_" + UUID.randomUUID() + "@sc.test") // -> eklendi
 		                               .password("pw")
 		                               .provider(AuthProvider.LOCAL)
 		                               .emailVerified(true)
@@ -88,6 +89,7 @@ class ArtistVenueConnectionRequestRepositoryTest {
 		
 		User musicianUser = userRepo.save(User.builder()
 		                                      .username("artist_" + UUID.randomUUID())
+		                                      .email("artist_" + UUID.randomUUID() + "@sc.test") // -> eklendi
 		                                      .password("pw")
 		                                      .provider(AuthProvider.LOCAL)
 		                                      .emailVerified(true)

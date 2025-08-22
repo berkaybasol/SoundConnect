@@ -37,6 +37,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.TestPropertySource; // -> eklendi
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -53,6 +54,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+@TestPropertySource(properties = { // -> eklendi
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", // -> eklendi
+		"spring.jpa.hibernate.ddl-auto=create-drop" // -> eklendi
+})
 class VenueApplicationAdminControllerTest {
 	
 	private static final String BASE = "/api/v1/admin/venue-applications";
@@ -102,6 +107,7 @@ class VenueApplicationAdminControllerTest {
 		// --- seed admin & auth context ---
 		admin = userRepository.save(User.builder()
 		                                .username("admin_"+UUID.randomUUID())
+		                                .email("admin_"+UUID.randomUUID()+"@test.local") // -> eklendi
 		                                .password("x")
 		                                .provider(AuthProvider.LOCAL)
 		                                .emailVerified(true)
@@ -122,6 +128,7 @@ class VenueApplicationAdminControllerTest {
 	private User seedApplicant() {
 		return userRepository.save(User.builder()
 		                               .username("applicant_"+UUID.randomUUID())
+		                               .email("applicant_"+UUID.randomUUID()+"@test.local") // -> eklendi
 		                               .password("x")
 		                               .provider(AuthProvider.LOCAL)
 		                               .emailVerified(true)

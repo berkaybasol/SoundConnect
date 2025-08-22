@@ -13,7 +13,6 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -22,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -33,6 +33,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+// her test run'ında benzersiz H2 veritabanı + ddl
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @Tag("repo")
 class VenueProfileRepositoryTest {
 	
@@ -57,7 +62,7 @@ class VenueProfileRepositoryTest {
 	
 	@BeforeEach
 	void setUp() {
-		// FK sırası: önce child tablolardan başla
+		// FK sırası
 		venueProfileRepository.deleteAll();
 		venueRepository.deleteAll();
 		userRepository.deleteAll();
@@ -81,6 +86,7 @@ class VenueProfileRepositoryTest {
 		
 		owner = userRepository.save(User.builder()
 		                                .username("owner_" + UUID.randomUUID())
+		                                .email("owner_"+UUID.randomUUID()+"@t.local") // <-- email zorunlu
 		                                .password("pass")
 		                                .provider(AuthProvider.LOCAL)
 		                                .emailVerified(true)

@@ -81,7 +81,9 @@ public class SecurityConfig {
 								"/api/v1/roles/get-all-roles",
 								"/api/v1/cities/get-all-cities",
 								"/api/v1/districts/get-all-districts",
-								"/api/v1/neighborhoods/get-all"
+								"/api/v1/neighborhoods/get-all",
+								"/192.168.1.101:8080/actuator/health"
+								
 						).permitAll()
 						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister
 				)

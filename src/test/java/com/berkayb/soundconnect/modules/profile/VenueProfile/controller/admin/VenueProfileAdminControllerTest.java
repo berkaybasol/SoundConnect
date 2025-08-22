@@ -28,15 +28,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -46,6 +45,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+// Her test sınıfı izole H2 + temiz şema
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @Tag("web")
 class VenueProfileAdminControllerTest {
 	
@@ -59,10 +63,8 @@ class VenueProfileAdminControllerTest {
 	@Autowired VenueRepository venueRepository;
 	@Autowired VenueProfileRepository venueProfileRepository;
 	
-	// Bazı testlerde FK yüzünden temizlikte lazım olabilir
 	@Autowired VenueApplicationRepository venueApplicationRepository;
 	
-	// Başka bean'ler isterse patlamasın
 	@MockitoBean
 	RabbitTemplate rabbitTemplate;
 	
@@ -90,9 +92,10 @@ class VenueProfileAdminControllerTest {
 		district = districtRepository.save(District.builder().name("District").city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("Neighborhood").district(district).build());
 		
-		// Owner
+		// Owner (email zorunlu!)
 		owner = userRepository.save(User.builder()
 		                                .username("owner_" + UUID.randomUUID())
+		                                .email("owner_" + UUID.randomUUID() + "@t.local")
 		                                .password("pw")
 		                                .provider(AuthProvider.LOCAL)
 		                                .emailVerified(true)
@@ -132,7 +135,7 @@ class VenueProfileAdminControllerTest {
 	
 	@Test
 	void getProfilesByUserId_ok() throws Exception {
-		// venue2 için de profil oluşturalım ki liste 2 olsun
+		// venue2 için de profil
 		venueProfileRepository.save(VenueProfile.builder()
 		                                        .venue(venue2)
 		                                        .bio("bio two")
@@ -193,7 +196,7 @@ class VenueProfileAdminControllerTest {
 				                .contentType(MediaType.APPLICATION_JSON)
 				                .content(body))
 		       .andDo(print())
-		       .andExpect(status().isOk())              // HTTP 200
+		       .andExpect(status().isOk())               // HTTP 200
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.code").value(201)) // body.code 201
 		       .andExpect(jsonPath("$.data.venueId").value(venue2.getId().toString()))
@@ -204,9 +207,7 @@ class VenueProfileAdminControllerTest {
 	
 	@Test
 	void adminUpdateProfile_wrongUser_404() throws Exception {
-		// owner dışında random userId verelim, venue1 owner’a ait, eşleşmeyecek -> 404
 		UUID wrongUserId = UUID.randomUUID();
-		
 		String body = """
         { "bio": "should not update" }
         """;
@@ -222,7 +223,6 @@ class VenueProfileAdminControllerTest {
 	
 	@Test
 	void adminCreateProfile_alreadyExists_400() throws Exception {
-		// venue1’in profili zaten var
 		String body = """
         { "bio": "dup" }
         """;

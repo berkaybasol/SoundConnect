@@ -1,15 +1,21 @@
 package com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository;
 
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -21,17 +27,38 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @Tag("repo")
 class OrganizerProfileRepositoryTest {
 	
 	@Autowired OrganizerProfileRepository organizerRepo;
-	@Autowired com.berkayb.soundconnect.modules.user.repository.UserRepository userRepo;
+	@Autowired UserRepository userRepo;
+	@Autowired CityRepository cityRepo;
+	
+	City city;
+	
+	@BeforeEach
+	void setup() {
+		// child -> parent
+		organizerRepo.deleteAll();
+		userRepo.deleteAll();
+		cityRepo.deleteAll();
+		
+		city = cityRepo.save(City.builder().name("C_" + UUID.randomUUID()).build());
+	}
 	
 	@Test
 	void findByUserId_should_return_profile_when_exists() {
 		User user = userRepo.save(User.builder()
-		                              .username("bob")
+		                              .username("bob_" + UUID.randomUUID())
+		                              .email("bob_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
+		                              .provider(AuthProvider.LOCAL)
+		                              .emailVerified(true)
+		                              .city(city)
 		                              .build());
 		
 		OrganizerProfile profile = organizerRepo.save(OrganizerProfile.builder()
@@ -54,8 +81,12 @@ class OrganizerProfileRepositoryTest {
 	@Test
 	void findOrganizerProfileByName_should_work() {
 		User user = userRepo.save(User.builder()
-		                              .username("kate")
+		                              .username("kate_" + UUID.randomUUID())
+		                              .email("kate_" + UUID.randomUUID() + "@t.local")
 		                              .password("pw")
+		                              .provider(AuthProvider.LOCAL)
+		                              .emailVerified(true)
+		                              .city(city)
 		                              .build());
 		
 		organizerRepo.save(OrganizerProfile.builder()

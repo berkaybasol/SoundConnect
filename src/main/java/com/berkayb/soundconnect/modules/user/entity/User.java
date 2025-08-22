@@ -35,11 +35,11 @@ public class User extends BaseEntity {
 	@Column(nullable = false)
 	private String password;
 	
-	// FIXME @Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
+	@Column(unique = true, nullable = false)
 	private String email;
 	
 	// Telefon numarası benzersiz ve zorunlu.
-	// FIXME @Column(unique = true, nullable = false) testte aci cekmek istemiyom :D
+	
 	private String phone;
 	
 	private String description;

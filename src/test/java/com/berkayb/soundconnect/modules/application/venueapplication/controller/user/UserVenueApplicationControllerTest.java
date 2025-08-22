@@ -27,6 +27,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.TestPropertySource; // -> eklendi
 
 import java.util.UUID;
 
@@ -44,6 +45,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+@TestPropertySource(properties = { // -> eklendi
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", // -> eklendi
+		"spring.jpa.hibernate.ddl-auto=create-drop" // -> eklendi
+})
 class UserVenueApplicationControllerTest {
 	
 	@Autowired MockMvc mockMvc;
@@ -84,6 +89,7 @@ class UserVenueApplicationControllerTest {
 		applicant = userRepository.save(
 				User.builder()
 				    .username("user_" + UUID.randomUUID())
+				    .email("user_"+UUID.randomUUID()+"@test.local") // -> eklendi
 				    .password("secret")
 				    .provider(com.berkayb.soundconnect.modules.user.enums.AuthProvider.LOCAL)
 				    .emailVerified(true)

@@ -27,6 +27,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
@@ -39,6 +40,11 @@ import static org.assertj.core.api.Assertions.*;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+// İzole H2 ve net şema yönetimi
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @Tag("service")
 class VenueProfileServiceImplTest {
 	
@@ -85,9 +91,10 @@ class VenueProfileServiceImplTest {
 		district = districtRepository.save(District.builder().name("District_" + UUID.randomUUID()).city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("Neighborhood_" + UUID.randomUUID()).district(district).build());
 		
-		// users
+		// users (email eklendi)
 		ownerA = userRepository.save(User.builder()
 		                                 .username("ownerA_" + UUID.randomUUID())
+		                                 .email("ownera_"+UUID.randomUUID()+"@t.local")
 		                                 .password("pass")
 		                                 .provider(AuthProvider.LOCAL)
 		                                 .emailVerified(true)
@@ -96,6 +103,7 @@ class VenueProfileServiceImplTest {
 		
 		ownerB = userRepository.save(User.builder()
 		                                 .username("ownerB_" + UUID.randomUUID())
+		                                 .email("ownerb_"+UUID.randomUUID()+"@t.local")
 		                                 .password("pass")
 		                                 .provider(AuthProvider.LOCAL)
 		                                 .emailVerified(true)

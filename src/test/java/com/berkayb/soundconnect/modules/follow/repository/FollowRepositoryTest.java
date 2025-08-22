@@ -68,8 +68,13 @@ class FollowRepositoryTest {
 		district = districtRepository.save(District.builder().name("D_" + UUID.randomUUID()).city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("N_" + UUID.randomUUID()).district(district).build());
 		
+		String s1 = UUID.randomUUID().toString(); // -> eklendi
+		String s2 = UUID.randomUUID().toString(); // -> eklendi
+		String s3 = UUID.randomUUID().toString(); // -> eklendi
+		
 		u1 = userRepository.save(User.builder()
-		                             .username("u1_" + UUID.randomUUID())
+		                             .username("u1_" + s1)
+		                             .email("u1_" + s1 + "@t.dev") // -> eklendi (NOT NULL & UNIQUE)
 		                             .password("pwd")
 		                             .provider(AuthProvider.LOCAL)
 		                             .emailVerified(true)
@@ -77,7 +82,8 @@ class FollowRepositoryTest {
 		                             .build());
 		
 		u2 = userRepository.save(User.builder()
-		                             .username("u2_" + UUID.randomUUID())
+		                             .username("u2_" + s2)
+		                             .email("u2_" + s2 + "@t.dev") // -> eklendi (NOT NULL & UNIQUE)
 		                             .password("pwd")
 		                             .provider(AuthProvider.LOCAL)
 		                             .emailVerified(true)
@@ -85,7 +91,8 @@ class FollowRepositoryTest {
 		                             .build());
 		
 		u3 = userRepository.save(User.builder()
-		                             .username("u3_" + UUID.randomUUID())
+		                             .username("u3_" + s3)
+		                             .email("u3_" + s3 + "@t.dev") // -> eklendi (NOT NULL & UNIQUE)
 		                             .password("pwd")
 		                             .provider(AuthProvider.LOCAL)
 		                             .emailVerified(true)

@@ -89,6 +89,7 @@ class VenueApplicationServiceTest {
 		// seed user (başvuru sahibi)
 		applicant = userRepo.save(User.builder()
 		                              .username("user_" + UUID.randomUUID())
+		                              .email("test+" + UUID.randomUUID() + "@mail.test") // -> eklendi
 		                              .password("pwd")
 		                              .provider(AuthProvider.LOCAL)
 		                              .emailVerified(true)
