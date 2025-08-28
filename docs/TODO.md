@@ -1,6 +1,8 @@
 ## *ASLA UNUTMAMAN GEREKENLER*
 - venueapplicationrequestte phone yok onu hallet bir ara
 - flutter tarafinda google ile giris yap buton var ama backendi entegre etmedin o da halledilcek
+- Pagination'u medya da yapiyorsun suan ama diger modullere buyuk refact gerekiyo olabilir. diger modullerde hangisinde gerekli ogren ve entegre et medya modulunu bitirince.
+- PROD oncesi CloudFront Distribution’a custom domain ekle.
 
 
 # SoundConnect SPRINT

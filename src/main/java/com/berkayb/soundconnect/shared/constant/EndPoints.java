@@ -45,6 +45,24 @@ public class EndPoints {
 		public static final String REJECT = "/reject/{applicationId}";
 	}
 	
+	public static class Media {
+		// user
+		public static final String USER_BASE = API + VERSION + "/user/media";
+		public static final String INIT_UPLOAD = "/init-upload";           // POST
+		public static final String COMPLETE_UPLOAD = "/complete-upload";   // POST
+		public static final String LIST_BY_OWNER = "/owner/{ownerType}/{ownerId}"; // GET ?page=..&size=..
+		public static final String LIST_BY_OWNER_AND_KIND = "/owner/{ownerType}/{ownerId}/kind/{kind}"; // GET
+		public static final String DELETE = "/{assetId}";                  // DELETE
+		
+		// public
+		public static final String PUBLIC_BASE = API + VERSION + "/public/media";
+		public static final String PUBLIC_BY_OWNER = "/owner/{ownerType}/{ownerId}";              // GET
+		public static final String PUBLIC_BY_OWNER_AND_KIND = "/owner/{ownerType}/{ownerId}/kind/{kind}"; // GET
+		
+		// admin (gerekirse)
+		public static final String ADMIN_BASE = API + VERSION + "/admin/media";
+		public static final String ADMIN_LIST_BY_STATUS = "/by-status/{status}"; // GET
+	}
 	
 	public static class VenueProfile {
 		

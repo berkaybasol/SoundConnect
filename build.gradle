@@ -77,7 +77,11 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis:3.5.4'
 
-
+    // Amazon
+    implementation platform('software.amazon.awssdk:bom:2.26.23')
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:sts'
+    implementation("software.amazon.awssdk:url-connection-client")
 
 }
 

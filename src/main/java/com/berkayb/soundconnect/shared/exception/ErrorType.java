@@ -51,6 +51,16 @@ public enum ErrorType {
 	NOT_PARTICIPANT_OF_CONVERSATION(1607,"User is not a participant of the conversation",HttpStatus.FORBIDDEN,"Bu " +
 			"kullanici bu konusmanin katilimsici degil"),
 	
+	// MEDIA ( 1800 - 1900)
+	MEDIA_ASSET_NOT_FOUND(1800, "Media asset not found", HttpStatus.NOT_FOUND, "Yüklenmek istenen medya varlığı bulunamadı."),
+	MEDIA_ASSET_DELETE_FORBIDDEN(1801, "You are not allowed to delete this media",HttpStatus.FORBIDDEN,"Bu medya " +
+			"varligini silmeye yetkiniz yok"),
+	MEDIA_UPLOAD_INVALID_REQUEST(1802,"Invalid media upload request",HttpStatus.BAD_REQUEST,"Medya yukleme istegi gecersiz. Tur, mimeType veya boyut hatali"),
+	MEDIA_UPLOAD_UNSUPPORTED_MIME(1803,"Unsupported MIME type",HttpStatus.BAD_REQUEST,"Bu Mime turune izin verilmiyor"),
+	MEDIA_UPLOAD_SIZE_EXCEEDED(1804,"Upload size exceeded",HttpStatus.BAD_REQUEST,"Dosya boyutu limitini asiyor"),
+	MEDIA_ASSET_ID_REQUIRED(1805,"Asset ID is required", HttpStatus.BAD_REQUEST,"assetId bos olamaz"),
+	
+	
 	// VALIDATION (4000-4099)
 	VALIDATION_ERROR(4000, "Validation failed", HttpStatus.BAD_REQUEST, "Alanlardan biri ya da birkaçı doğrulama hatası verdi."),
 	

@@ -26,6 +26,9 @@ spring:
     port: 5672
     username: guest
     password: guest
+    virtual-host: /
+    publisher-confirm-type: correlated   # -> eklendi
+    publisher-returns: true              # -> eklendi
 
   security:
     oauth2:
@@ -47,6 +50,10 @@ spring:
       host: localhost
       port: 6379
       # password: koymadik
+    rest:
+      default-media-type:
+  hateoas:
+    use-hal-as-default-json-media-type:
 
 springdoc:
   swagger-ui:
@@ -84,3 +91,44 @@ logging:
     root: INFO
     org.springframework.web: DEBUG
     org.hibernate.SQL: DEBUG
+
+# --- MEDIA / STORAGE ---
+cloud:
+  storage:
+    provider: s3
+    bucket: soundconnect-media
+    region: eu-central-1
+    accessKey: ${S3_ACCESS_KEY}
+    secretKey: ${S3_SECRET_KEY}
+    cdnBaseUrl: https://du3pguch18ell.cloudfront.net
+    endpoint: ""
+    pathStyleAccess: false
+    presign:
+      expirySeconds: 900
+    aclPublicReadOnPut: false
+
+media:
+  limits:
+    imageMaxBytes: 20000000
+    audioMaxBytes: 200000000         # 200mb (
+    videoMaxBytes: 4000000000        # 4GB
+  allowedMime:
+    image: [image/png, image/jpeg, image/webp]
+    audio: [audio/mpeg, audio/aac, audio/wav, audio/x-wav, audio/ogg]
+    video: [video/mp4, video/quicktime, video/x-matroska]
+
+  paths:
+    root: media
+    hlsDir: hls
+    sourceBasename: source
+
+rabbitmq:                              # -> eklendi
+  media:                               # -> eklendi
+    exchange: media.transcode          # -> eklendi
+    dlx: media.transcode.dlx           # -> eklendi
+    queues:                            # -> eklendi
+      videoHls: media.transcode.video.hls      # -> eklendi
+      videoHlsDlq: media.transcode.video.hls.dlq  # -> eklendi
+    routingKeys:                       # -> eklendi
+      videoHlsRequest: video.hls.request        # -> eklendi
+      videoHlsRequestDlq: video.hls.request.dlq # -> eklendi
