@@ -13,8 +13,11 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -64,6 +67,8 @@ public class UserMediaAssetController {
 	public BaseResponse<Page<MediaResponseDto>> listByOwner(
 			@PathVariable MediaOwnerType ownerType,
 			@PathVariable UUID ownerId,
+			@ParameterObject
+			@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
 			Pageable pageable
 	) {
 		var page = mediaAssetService.listByOwner(ownerType, ownerId, pageable).map(mapper::toDto);
@@ -80,6 +85,8 @@ public class UserMediaAssetController {
 			@PathVariable MediaOwnerType ownerType,
 			@PathVariable UUID ownerId,
 			@PathVariable MediaKind kind,
+			@ParameterObject
+			@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
 			Pageable pageable
 	) {
 		var page = mediaAssetService.listByOwnerAndKind(ownerType, ownerId, kind, pageable).map(mapper::toDto);
