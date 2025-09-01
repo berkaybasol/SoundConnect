@@ -11,6 +11,7 @@ import com.berkayb.soundconnect.shared.mail.MailProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -39,6 +40,9 @@ class CityControllerIT {
 	@MockitoBean private MailProducer mailProducer;
 	@MockitoBean(name = "rabbitListenerContainerFactory")
 	private RabbitListenerContainerFactory<?> rabbitFactory;
+	
+	@MockitoBean
+	private RabbitTemplate rabbitTemplate;
 	
 	private static final String BASE = EndPoints.City.BASE;
 	

@@ -19,7 +19,7 @@ spring:
 
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration  # testte Rabbit kapalı
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
 
   security:
     oauth2:
@@ -37,6 +37,19 @@ spring:
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: email
 
+  # Redis’i dummyye al (gerçek bağlantı istemiyorsan testte kapatabilirsin)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+
 app:
   jwt:
     secret: test-jwt-secret-key
@@ -45,16 +58,26 @@ app:
 
   data:
     init:
-      enabled: false        # ← TESTTE KAPALI
+      enabled: false
 
   location:
     seed:
-      enabled: false        # ← TESTTE KAPALI
+      enabled: false
+
+otp:
+  ttl:
+    minutes: 3
+  length: 6
+  max-attempt: 5
+  resend:
+    cooldown:
+      seconds: 30
 
 mailersend:
   api-key: test-mailersend-api-key
   from-email: test@soundconnect.app
   from-name: SoundConnect Test
+  otp-validity-minutes: 3
   frontend-verify-url: http://localhost:3000/verify-email
 
 logging:
@@ -62,3 +85,58 @@ logging:
     root: INFO
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql: WARN
+
+# --- MEDIA / STORAGE (DUMMY / TEST) ---
+cloud:
+  storage:
+    provider: s3
+    bucket: soundconnect-media-test
+    region: eu-central-1
+    accessKey: test-s3-access-key
+    secretKey: test-s3-secret-key
+    cdnBaseUrl: https://cdn.soundconnect.test
+    endpoint: ""
+    pathStyleAccess: false
+    presign:
+      expirySeconds: 900
+    aclPublicReadOnPut: false
+
+media:
+  limits:
+    imageMaxBytes: 20000000
+    audioMaxBytes: 200000000
+    videoMaxBytes: 4000000000
+  allowedMime:
+    image: [image/png, image/jpeg, image/webp]
+    audio: [audio/mpeg, audio/aac, audio/wav, audio/x-wav, audio/ogg]
+    video: [video/mp4, video/quicktime, video/x-matroska]
+  paths:
+    root: media
+    hlsDir: hls
+    sourceBasename: source
+
+rabbitmq:
+  media:
+    exchange: media.transcode
+    dlx: media.transcode.dlx
+    queues:
+      videoHls: media.transcode.video.hls
+      videoHlsDlq: media.transcode.video.hls.dlq
+    routingKeys:
+      videoHlsRequest: video.hls.request
+      videoHlsRequestDlq: video.hls.request.dlq
+    listenerConcurrency: 1-3
+
+transcode:
+  ladder:
+    - { height: 1080, videoBitrate: "6000k", audioBitrate: "192k" }
+    - { height: 720,  videoBitrate: "3000k", audioBitrate: "160k" }
+    - { height: 480,  videoBitrate: "1200k", audioBitrate: "128k" }
+    - { height: 360,  videoBitrate: "600k",  audioBitrate: "96k"  }
+  gop: 48
+  preset: veryfast
+  crf: 21
+  container: FMP4
+  segmentDurationSec: 4
+  ffprobeBinary: ffprobe
+  ffprobeTimeoutSec: 30

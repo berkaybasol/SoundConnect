@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -63,6 +64,9 @@ class UserControllerIT {
 	// Bu mock, gerçek MailProducerImpl yerine enjekte edilir; böylece RabbitTemplate ihtiyacı ortadan kalkar.
 	@MockitoBean
 	private MailProducer mailProducer;
+	
+	@MockitoBean
+	private RabbitTemplate rabbitTemplate;
 	
 	@MockitoBean(name = "rabbitListenerContainerFactory")   // ⚠️ isim birebir böyle olmalı
 	private RabbitListenerContainerFactory<?> rabbitFactory;
