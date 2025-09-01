@@ -51,7 +51,7 @@ public enum ErrorType {
 	NOT_PARTICIPANT_OF_CONVERSATION(1607,"User is not a participant of the conversation",HttpStatus.FORBIDDEN,"Bu " +
 			"kullanici bu konusmanin katilimsici degil"),
 	
-	// MEDIA ( 1800 - 1900)
+	// MEDIA & HLS ( 1800 - 1900)
 	MEDIA_ASSET_NOT_FOUND(1800, "Media asset not found", HttpStatus.NOT_FOUND, "Yüklenmek istenen medya varlığı bulunamadı."),
 	MEDIA_ASSET_DELETE_FORBIDDEN(1801, "You are not allowed to delete this media",HttpStatus.FORBIDDEN,"Bu medya " +
 			"varligini silmeye yetkiniz yok"),
@@ -59,6 +59,12 @@ public enum ErrorType {
 	MEDIA_UPLOAD_UNSUPPORTED_MIME(1803,"Unsupported MIME type",HttpStatus.BAD_REQUEST,"Bu Mime turune izin verilmiyor"),
 	MEDIA_UPLOAD_SIZE_EXCEEDED(1804,"Upload size exceeded",HttpStatus.BAD_REQUEST,"Dosya boyutu limitini asiyor"),
 	MEDIA_ASSET_ID_REQUIRED(1805,"Asset ID is required", HttpStatus.BAD_REQUEST,"assetId bos olamaz"),
+	INVALID_HLS_REQUEST(1806,"Invalid HLS request", HttpStatus.BAD_REQUEST, "HLS istegi gecersiz, gerekli alanlar eksik."),
+	HLS_PREFIX_REQUIRED(1807,"HLS prefix is required", HttpStatus.BAD_REQUEST, "HLS prefix bos olamaz"),
+	SOURCE_KEY_REQUIRED(1808,"Source key is required", HttpStatus.BAD_REQUEST, "Source key bos olamaz"),
+	ASSET_ID_REQUIRED(1809,"Asset ID is required", HttpStatus.BAD_REQUEST, "assetId bos olamaz"),
+	HLS_PROCESS_SKIPPED_TERMINAL(1810,"HLS proces skipped due to terminal asset state",HttpStatus.CONFLICT,"Asset terminal durumda oldugu icin islem atlandi." ),
+	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
 	
 	
 	// VALIDATION (4000-4099)

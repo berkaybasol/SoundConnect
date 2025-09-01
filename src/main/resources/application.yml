@@ -17,9 +17,9 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        type:                # -> eklendi
-          descriptor:        # -> eklendi
-            sql: trace       # -> eklendi
+        type:
+          descriptor:
+            sql: trace
 
   rabbitmq:
     host: localhost
@@ -27,8 +27,8 @@ spring:
     username: guest
     password: guest
     virtual-host: /
-    publisher-confirm-type: correlated   # -> eklendi
-    publisher-returns: true              # -> eklendi
+    publisher-confirm-type: correlated
+    publisher-returns: true
 
   security:
     oauth2:
@@ -42,9 +42,9 @@ spring:
         provider:
           google:
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
-            token-uri: https://oauth2.googleapis.com/token
-            user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
-            user-name-attribute: email
+            token-uri: https://oauth2.googleapis.com/token          # ← indent düzeltildi
+            user-info-uri: https://openidconnect.googleapis.com/v1/userinfo   # ← indent düzeltildi
+            user-name-attribute: email                                        # ← indent düzeltildi
   data:
     redis:
       host: localhost
@@ -122,13 +122,28 @@ media:
     hlsDir: hls
     sourceBasename: source
 
-rabbitmq:                              # -> eklendi
-  media:                               # -> eklendi
-    exchange: media.transcode          # -> eklendi
-    dlx: media.transcode.dlx           # -> eklendi
-    queues:                            # -> eklendi
-      videoHls: media.transcode.video.hls      # -> eklendi
-      videoHlsDlq: media.transcode.video.hls.dlq  # -> eklendi
-    routingKeys:                       # -> eklendi
-      videoHlsRequest: video.hls.request        # -> eklendi
-      videoHlsRequestDlq: video.hls.request.dlq # -> eklendi
+rabbitmq:
+  media:
+    exchange: media.transcode
+    dlx: media.transcode.dlx
+    queues:
+      videoHls: media.transcode.video.hls
+      videoHlsDlq: media.transcode.video.hls.dlq
+    routingKeys:
+      videoHlsRequest: video.hls.request
+      videoHlsRequestDlq: video.hls.request.dlq
+    listenerConcurrency: 1-3   # -> eklendi
+
+transcode:
+  ladder:
+    - { height: 1080, videoBitrate: "6000k", audioBitrate: "192k" }
+    - { height: 720,  videoBitrate: "3000k", audioBitrate: "160k" }
+    - { height: 480,  videoBitrate: "1200k", audioBitrate: "128k" }
+    - { height: 360,  videoBitrate: "600k",  audioBitrate: "96k"  }
+  gop: 48
+  preset: veryfast
+  crf: 21
+  container: FMP4
+  segmentDurationSec: 4    # -> eklendi
+  ffprobeBinary: ffprobe   # -> eklendi
+  ffprobeTimeoutSec: 30    # -> eklendi

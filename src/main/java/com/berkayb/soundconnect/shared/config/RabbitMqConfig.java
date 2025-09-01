@@ -13,8 +13,11 @@ import org.springframework.context.annotation.Profile;
 public class RabbitMqConfig {
 	@Bean
 	public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {
-		return new Jackson2JsonMessageConverter("com.berkayb.soundconnect.*");
-		// mesajlari otomatik olarak json formatina cevirdigimiz kod.
-		// "com.berkayb.soundconnect.shared.mail.dto" derken yalnizca burdaki dosyalari cevir demis oluyoruz.
+		return new Jackson2JsonMessageConverter(
+				"com.berkayb.soundconnect",
+				"com.berkayb.soundconnect.modules.media.dto.request",
+				"java.util",
+				"java.lang"
+		);
 	}
 }

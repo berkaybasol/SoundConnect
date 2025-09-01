@@ -2,10 +2,10 @@ package com.berkayb.soundconnect.modules.media.enums;
 
 
 /**
- * Bu enum medya dosyasinin yasam dongususnu temsil eder.
+ * MediaStatus - bir medya dosyasinin sistemdeki yasam dongusunu temsil eder.
  *
  * Akis:
- * 1- UPLOADING: istemci presigned url ile dosyayi storage'a put ederken.
+ * 1- UPLOADING: istemci presigned url ile dosyayi storage'a put ederken. (yukleme baslatildi ama henuz tamamlanmadi)
  * 2- PROCESSING: Sunucu tarafi islem/indeks/thumnail/trasncode asamasi.
  * 3- READY: Yayina hazir. URL'ler (playpack/thumbnail) son kullaniciya servis edilebilir.
  * 4- FAILED: Yukleme ya da isletme kirildi. kullaniciya yeniden deneme/teshis mesaji verilir/

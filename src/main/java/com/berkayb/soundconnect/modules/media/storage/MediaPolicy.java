@@ -4,12 +4,17 @@ import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 
 import java.util.UUID;
 
+/**
+ * MediaPolicy - Medya yukeleme kurallarini ve storage anahtar uretimini merkezi sekilde yoneten interface
+ *
+ */
+
 public interface MediaPolicy {
 	
-	// tur + mime + boyut dogrulama (limitler)
+	// yuklenen dosyanin gecerli olup olmadigini dogrular parametreleri goruyorsun uzun uzun yazmaya gerek yok
 	void validate(MediaKind kind, String mimeType, long sizeBytes);
 	
-	// soruce dosyasi icin object key or: media/{assetId}source.mp4
+	// yuklenen dosyanin storage'da (S3/R2) tuttulacagi anahtar bilgisini uretir
 	String buildSourceKey(UUID assetId, String originalFileName);
 	
 	// HLS ciktilari icin klasor prefix(orn: media/{assetId}/hls

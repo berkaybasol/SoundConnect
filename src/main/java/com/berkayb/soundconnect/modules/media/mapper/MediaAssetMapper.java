@@ -4,6 +4,7 @@ package com.berkayb.soundconnect.modules.media.mapper;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
 public interface MediaAssetMapper {
 	
 	// entity -> dto
+	@Mapping(target = "uuid", source = "id")
 	MediaResponseDto toDto(MediaAsset entity);
 	
 	// list helper

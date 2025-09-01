@@ -6,7 +6,7 @@ import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
-import com.berkayb.soundconnect.modules.media.storage.TranscodePublisher;
+import com.berkayb.soundconnect.modules.media.transcode.TranscodePublisher;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +62,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 				.status(MediaStatus.UPLOADING)
 				.visibility(visibility)
 				.ownerType(ownerType)
+				.ownerId(ownerId)
 				.mimeType(mimeType)
 				.size(sizeBytes)
 				.streamingProtocol(

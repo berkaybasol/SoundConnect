@@ -35,9 +35,10 @@ import java.util.UUID;
 		}
 )
 public class MediaAsset extends BaseEntity {
+	
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 16)
-	private MediaKind kind; // medya turu image,auido,video
+	private MediaKind kind; // medya turu image,audio,video
 	
 	
 	@Enumerated(EnumType.STRING)
@@ -60,9 +61,13 @@ public class MediaAsset extends BaseEntity {
 	@Column(columnDefinition = "uuid")
 	private UUID ownerId;
 	
-	
-	@Column(nullable = false, length = 512)
-	private String storageKey; // obje depolamadaki key s3/r2. dosyanin fiziksel konumunu temsil eder
+	/**
+	 * obje depolamadaki (S3/R2) anahtar/konum bilgisi
+	 * orn: media/{assetId}/source.mp4
+	 * sadece sistem ici takipte kullanilir. client gormez.
+	 */
+	@Column(length = 512)
+	private String storageKey;
 	
 	
 	/**
@@ -70,7 +75,7 @@ public class MediaAsset extends BaseEntity {
 	 * image genellikle direkt gosterilir.
 	 * biz videoda hls kullanicaz image ve audio da ise proggresiveplayback
 	 */
-	@Column(nullable = false, length = 1024)
+	@Column(length = 1024)
 	private String sourceUrl;
 	
 	

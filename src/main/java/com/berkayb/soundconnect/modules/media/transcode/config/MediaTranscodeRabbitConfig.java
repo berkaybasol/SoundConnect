@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.media.config;
+package com.berkayb.soundconnect.modules.media.transcode.config;
 
 import org.springframework.amqp.core.*;
 import org.springframework.beans.factory.annotation.Qualifier;

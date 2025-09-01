@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.media.storage;
+package com.berkayb.soundconnect.modules.media.transcode;
 
 import java.util.UUID;
 

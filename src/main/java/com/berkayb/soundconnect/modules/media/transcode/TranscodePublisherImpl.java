@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.media.storage;
+package com.berkayb.soundconnect.modules.media.transcode;
 
 import com.berkayb.soundconnect.modules.media.dto.request.VideoHlsRequest;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
