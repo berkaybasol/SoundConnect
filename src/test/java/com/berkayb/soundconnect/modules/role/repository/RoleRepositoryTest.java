@@ -15,9 +15,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DataJpaTest
+@DataJpaTest(properties = {
+		"spring.jpa.hibernate.ddl-auto=create-drop",
+		"spring.flyway.enabled=false",
+		"spring.sql.init.mode=never"
+})
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @ActiveProfiles("test")
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Tag("repo")
 class RoleRepositoryTest {
 	

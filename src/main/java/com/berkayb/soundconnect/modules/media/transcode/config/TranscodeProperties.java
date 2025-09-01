@@ -61,12 +61,14 @@ public class TranscodeProperties {
 	// Config yuklendiginde calisir. siralama & validasyon ve loglama yapar
 	@PostConstruct
 	void afterBind() {
+		this.ladder = new ArrayList<>(this.ladder != null ? this.ladder : List.of());
+		
 		// Ladder (variant listesi) yukseklik sirasina gore buytukten kucuge sirala
-		ladder.sort(Comparator.comparingInt(TranscodeVariant::getHeight).reversed());
+		this.ladder.sort(Comparator.comparingInt(TranscodeVariant::getHeight).reversed());
 		
 		// en az 2 variant olmasi onerilir. adaptive bitrate icin gerekli
-		if (ladder.size() < 2 ) {
-			log.warn("[transcode] Ladder 2’den az. ABR (adaptif) faydası düşer: size={}", ladder.size());
+		if (ladder.size() < 2) {
+			log.warn("[transcode] Ladder 2’den az. ABR faydası düşer: size={}", ladder.size());
 		}
 		log.info("[transcode] container={} segment={}s gop={} preset={} crf={} thumbAt={}s ladder={}",
 		         container, segmentDurationSec, gop, preset, crf, thumbnailSecond, ladderToString());

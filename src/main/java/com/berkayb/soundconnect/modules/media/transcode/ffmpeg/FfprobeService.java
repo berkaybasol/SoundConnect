@@ -107,7 +107,7 @@ public class FfprobeService {
 				}
 			}
 		}
-		if (durStr == null) durationSeconds = parseDurationSeconds(durStr);
+		if (durStr != null) durationSeconds = parseDurationSeconds(durStr);
 		
 		// 2) width/height: ilk video stream
 		JsonNode streams = root.get("streams");

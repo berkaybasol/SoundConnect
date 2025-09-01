@@ -3,7 +3,7 @@
 - flutter tarafinda google ile giris yap buton var ama backendi entegre etmedin o da halledilcek
 - Pagination'u medya da yapiyorsun suan ama diger modullere buyuk refact gerekiyo olabilir. diger modullerde hangisinde gerekli ogren ve entegre et medya modulunu bitirince.
 - PROD oncesi CloudFront Distribution’a custom domain ekle.
-- Dockerfile'a ffmpeg kurulumu yapmayi unutma. 
+- Dockerfile'a ffmpeg ve ffprobe kurulumu yapmayi unutma. 
 
 
 # SoundConnect SPRINT
@@ -23,25 +23,25 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 3. Job Board (BackStage İlan Modülü)
+⏳ 3. İlan Modülü
 
 ⏳ 4. Setlist Creator
 
 ⏳ 5. Müzik Birleştirir (Masa Aç – Yalnız Değilsin)
 
-⏳ 6. Event Modülü
+⏳ 6. Event Modülü (Konuma göre nerde kim çalıyor?)
 
-⏳ 7. Overthink & Memory Sharing (Sosyal Paylaşım)
+⏳ 7. Overthinking Modülü
 
-⏳ 8. Email & Notification Sistemi
+⏳ 8. Notification Modülü
 
 ⏳ 9. Stabilizasyon & MVP Final
 
-⏳ 10. Sosyal Etkileşim & Notification Finali (Yayın Öncesi)
-
-⏳ 11. Activity Feed & Admin Monitoring
+⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ Media modülü (RabbitMQ & AWS S3)
 
 ✅ DM modülü
 
@@ -63,24 +63,14 @@
 
 ✅ JWT authentication & SecurityConfig
 
-✅ Exception modülü
-
-✅ Swagger dökümantasyonu
+✅ Exception mimarisi
 
 ✅ RabbitMQ & MailerSend
-
-✅ Register/Login endpointleri
 
 ✅ Google ile OAuth2 register/login
 
 ✅ CORS & environment config
 
 ✅ Logging & SLF4J
-
-✅ UUID id geçişi
-
-✅ MusicianProfile modülü
-
-✅ VenueProfile modülü
 
 ✅ VenueApplication modülü
