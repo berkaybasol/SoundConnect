@@ -74,6 +74,9 @@ dependencies {
     // test database
     testImplementation 'com.h2database:h2'
 
+    // test rabbitmq
+    testImplementation 'org.testcontainers:rabbitmq:1.21.3'
+
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis:3.5.4'
 
