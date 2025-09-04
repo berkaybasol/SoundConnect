@@ -4,7 +4,7 @@
 - Pagination'u medya da yapiyorsun suan ama diger modullere buyuk refact gerekiyo olabilir. diger modullerde hangisinde gerekli ogren ve entegre et medya modulunu bitirince.
 - PROD oncesi CloudFront Distribution’a custom domain ekle.
 - Dockerfile'a ffmpeg ve ffprobe kurulumu yapmayi unutma. 
-
+- ElasticSearch butun moduller bittikten sonra kurulacak.
 
 # SoundConnect SPRINT
 
@@ -33,7 +33,7 @@
 
 ⏳ 7. Overthinking Modülü
 
-⏳ 8. Notification Modülü
+⏳ 8. Notification Modulü (RabbitMQ + Redis + WebSocket + MailerSend)
 
 ⏳ 9. Stabilizasyon & MVP Final
 

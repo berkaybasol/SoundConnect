@@ -17,7 +17,8 @@ public class RabbitMqConfig {
 				"com.berkayb.soundconnect",
 				"com.berkayb.soundconnect.modules.media.dto.request",
 				"java.util",
-				"java.lang"
+				"java.lang",
+				"com.berkayb.soundconnect.shared.messaging.events.notification"
 		);
 	}
 }

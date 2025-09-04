@@ -70,6 +70,13 @@ app:
   location:
     seed:
       enabled: true         # ← Ankara vb. başlangıç verisi gerekiyorsa AÇIK
+  messaging: # -> eklendi
+    notification: # -> eklendi
+      exchange: notification.exchange    # -> eklendi
+      queue: notification.queue          # -> eklendi
+      routingKey: notification.#         # -> eklendi
+      dlxExchange: notification.dlx      # -> eklendi
+      dlq: notification.queue.dlq        # -> eklendi
 
 otp:
   ttl:

@@ -82,7 +82,11 @@ public class SecurityConfig {
 								"/api/v1/cities/get-all-cities",
 								"/api/v1/districts/get-all-districts",
 								"/api/v1/neighborhoods/get-all",
-								"/192.168.1.101:8080/actuator/health"
+								"/192.168.1.101:8080/actuator/health",
+								"/ws",             // EKLENDİ
+								"/ws/**",          // EKLENDİ
+								"/topic/**",       // (opsiyonel)
+								"/app/**"          // (opsiyonel)
 								
 						).permitAll()
 						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister
@@ -102,7 +106,8 @@ public class SecurityConfig {
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+		//configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+		configuration.setAllowedOriginPatterns(List.of("*"));
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);

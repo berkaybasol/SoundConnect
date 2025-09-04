@@ -12,6 +12,7 @@ import java.io.Serial;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 /*
  Bu sinif User entity’sini, Spring Security’nin iç mekanizmasının “tanıyacağı” şekilde bir UserDetails nesnesine sarar.
@@ -36,6 +37,11 @@ public class UserDetailsImpl implements UserDetails {
 	// User alanı doğrudan serialize edilemeyeceği için genelde bu gibi özel methodlarla erişilir
 	public User getUser() {
 		return this.user;
+	}
+	
+	
+	public UUID getId() {
+		return user.getId();
 	}
 	
 	// Spring Security'de bir kullanıcının sahip olduğu yetkileri (roller veya izinler) temsil eden interface: GrantedAuthority

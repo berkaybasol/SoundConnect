@@ -15,6 +15,16 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Notification {
+		public static final String USER_BASE = API + VERSION + "/user/notifications";
+		public static final String LIST = "";
+		public static final String RECENT = "/recent";
+		public static final String UNREAD_COUNT = "/unread-count";
+		public static final String MARK_READ = "/{id}/read";
+		public static final String MARK_ALL_READ = "/read-all";
+		public static final String DELETE = "/{id}";
+	}
+	
 	public static class MusicianProfile {
 		public static final String USER_BASE = API + VERSION + "/user/musician-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/musician-profiles";

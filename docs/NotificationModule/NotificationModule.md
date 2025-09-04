@@ -1,0 +1,1 @@
+# Full Stack Nofitication Module (RabbitMQ + Redis + WebSocket + MailerSend)

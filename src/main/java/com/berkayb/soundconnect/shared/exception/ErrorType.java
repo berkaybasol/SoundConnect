@@ -66,6 +66,11 @@ public enum ErrorType {
 	HLS_PROCESS_SKIPPED_TERMINAL(1810,"HLS proces skipped due to terminal asset state",HttpStatus.CONFLICT,"Asset terminal durumda oldugu icin islem atlandi." ),
 	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
 	
+	// NOTIFICATION (1900 - 2000)
+	NOTIFICATION_NOT_FOUND(1900,"Notification not found", HttpStatus.NOT_FOUND, "Bildirim bulunamadi." ),
+	NOTIFICATION_ALREADY_READ(1901,"Notification already read", HttpStatus.CONFLICT, "Bildirim zaten okunmus" ),
+	NOTIFICATION_UPDATE_FAILED(1902,"Notification updated failed", HttpStatus.INTERNAL_SERVER_ERROR,"Bildirim guncellenemedi."),
+	NOTIFICATION_ALREADY_DELETED(1903,"Notification already deleted.", HttpStatus.CONFLICT, "Bildirim zaten silinmis." ),
 	
 	// VALIDATION (4000-4099)
 	VALIDATION_ERROR(4000, "Validation failed", HttpStatus.BAD_REQUEST, "Alanlardan biri ya da birkaçı doğrulama hatası verdi."),
