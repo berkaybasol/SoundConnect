@@ -16,7 +16,7 @@ import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.response.BaseResponse;

@@ -5,7 +5,7 @@ import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCac
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
-import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;

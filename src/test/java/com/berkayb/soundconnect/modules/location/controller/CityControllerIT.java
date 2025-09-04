@@ -3,11 +3,8 @@ package com.berkayb.soundconnect.modules.location.controller;
 
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
-import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
-import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
-import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

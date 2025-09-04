@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.shared.mail;
+package com.berkayb.soundconnect.shared.mail.producer;
 
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 

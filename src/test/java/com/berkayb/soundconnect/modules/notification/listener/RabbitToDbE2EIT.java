@@ -4,7 +4,7 @@ import com.berkayb.soundconnect.modules.notification.config.NotificationRabbitCo
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
-import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;

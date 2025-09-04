@@ -1,7 +1,5 @@
-package com.berkayb.soundconnect.shared.mail;
+package com.berkayb.soundconnect.shared.mail.producer;
 
-import com.berkayb.soundconnect.shared.exception.ErrorType;
-import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,12 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 
-import static com.berkayb.soundconnect.shared.config.MailQueueConfig.*;
-
-
-     // ------------------- DİKKAT: TERİMLERDE TAKILIRSAN 'DOCS/RABBITMQ.MD' DOSYASINA GİT! -------------------
+// ------------------- DİKKAT: TERİMLERDE TAKILIRSAN 'DOCS/RABBITMQ.MD' DOSYASINA GİT! -------------------
 
 
 

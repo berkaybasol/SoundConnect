@@ -5,7 +5,7 @@ import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
-import com.berkayb.soundconnect.shared.mail.MailProducer; // Auth → Mail gönderen boundary arayüzü
+import com.berkayb.soundconnect.shared.mail.producer.MailProducer; // Auth → Mail gönderen boundary arayüzü
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -22,8 +22,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean; // ✅ Spring 6.2 / Boot 3.4 önerilen mock anotasyonu
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;

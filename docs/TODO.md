@@ -18,6 +18,8 @@
 
 🛠 Forgot Password (useniyorum :D)
 
+🛠 Change Password (useniyorum :D)
+
 
 ---
 
