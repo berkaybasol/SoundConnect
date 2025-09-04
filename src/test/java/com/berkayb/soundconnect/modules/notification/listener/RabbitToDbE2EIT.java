@@ -2,9 +2,9 @@ package com.berkayb.soundconnect.modules.notification.listener;
 
 import com.berkayb.soundconnect.modules.notification.config.NotificationRabbitConfig;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
-import com.berkayb.soundconnect.modules.notification.mail.MailNotificationService;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.shared.mail.MailProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -16,7 +16,6 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
@@ -77,9 +76,11 @@ class RabbitToDbE2E {
 	// --- Testcontainers ---
 	@Container
 	static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:3.13-alpine");
-	@Container static final PostgreSQLContainer<?> POSTGRES =
+	@Container
+	static final PostgreSQLContainer<?> POSTGRES =
 			new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("sc").withUsername("sc").withPassword("sc");
-	@Container static final GenericContainer<?> REDIS =
+	@Container
+	static final GenericContainer<?> REDIS =
 			new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
 	
 	@DynamicPropertySource
@@ -96,19 +97,14 @@ class RabbitToDbE2E {
 		r.add("spring.data.redis.ssl.enabled", () -> false);
 	}
 	
-	@Autowired
-	RabbitTemplate rabbitTemplate;
-	@Autowired
-	NotificationRepository repo;
+	@Autowired RabbitTemplate rabbitTemplate;
+	@Autowired NotificationRepository repo;
 	@Autowired NotificationBadgeCacheHelper badge;
-	@Autowired
-	StringRedisTemplate redis;
+	@Autowired StringRedisTemplate redis;
 	
 	// WS & Mail’i mock’la (yan etkiyi doğrulamak istemiyoruz burada)
-	@MockitoBean
-	NotificationWebSocketService ws;
-	@MockitoBean
-	MailNotificationService mail;
+	@MockitoBean NotificationWebSocketService ws;
+	@MockitoBean MailProducer mailProducer; // ✅ EKSİK OLAN MOCK (context için gerekli)
 	
 	@BeforeEach
 	void clean() {

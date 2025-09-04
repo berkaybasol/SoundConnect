@@ -2,8 +2,9 @@ package com.berkayb.soundconnect.shared.mail;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.mail.dto.EmailVerificationMessage;
+import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
@@ -16,8 +17,6 @@ import static com.berkayb.soundconnect.shared.config.MailQueueConfig.*;
      // ------------------- DİKKAT: TERİMLERDE TAKILIRSAN 'DOCS/RABBITMQ.MD' DOSYASINA GİT! -------------------
 
 
-// Email dogrulama mesajini RabbitMQ'ya atan Producer servisidir.
-
 
 @Service
 @RequiredArgsConstructor
@@ -25,30 +24,22 @@ import static com.berkayb.soundconnect.shared.config.MailQueueConfig.*;
 public class MailProducerImpl implements MailProducer {
 	private final RabbitTemplate rabbitTemplate; // Spring Boot'un mesaj gonderme arayuzu
 	
+	@Value("${mail.queue.exchange:mail-exchange}")
+	private String mailExchange;
+	
+	@Value("${mail.queue.routingKey:mail.send}")
+	private String mailRoutingKey;
+	
+	
+	
 	@Override
-	public void sendVerificationMail(String email, String code) {
-		// DTO'dan nesne uret.
-		EmailVerificationMessage message = new EmailVerificationMessage(email, code);
-		/**
-		 * Dis servislerden, frameworklerden alinan methodlar mutlaka try-catch'e sarilmalidir cunku
-		 * bu cagrilar dis sistemlere baglidir. ag hatasi, zaman asimi, yetki sorunu gibi beklenmeyen durumlar
-		 * olusabilir.
-		 */
+	public void send(MailSendRequest request) {
 		try {
-			// mesaji exhange + routing key ile kuyruga gonder
-			// (convertAndSend: exchange, routinKey, payload)
-			rabbitTemplate.convertAndSend(EMAIL_VERIFICATION_EXCHANGE, // Hangi exchange'e gidecek
-			                              EMAIL_VERIFICATION_ROUTINGKEY, // Hangi routing key ile yonlendirilecek
-			                              message // queue'ye gidecek mesaj. burasi convertAndSend. in payload kismi. mesaj burada otomatik
-			                              // olarak Json cevriliyor
-			);
-			log.info("Verification code mail queued for email={} (code={})", email, code);
+			rabbitTemplate.convertAndSend(mailExchange, mailRoutingKey, request);
+			log.info("Mail job queued: kind={}, to={}, subject={}", request.kind(), request.to(), request.subject());
 		} catch (Exception e) {
-			log.error("Failed to queue verification code mail for email={} (code={})", email, code, e);
-			throw new SoundConnectException(ErrorType.MAIL_QUEUE_ERROR,
-			                                List.of("Mail adresi: " + email, "Kod: " + code, "Hata: " + e.getMessage()));
+			log.error("Failed to queue mail job: kind={}, to={}, subject={}", request.kind(), request.to(), request.subject(), e);
+			
 		}
-		// NOT: JSON'a cevirme islemini config dosyasinda tanimladigimiz Jackson2JsonMessageConverter otomatik yapiyor.
-		// boylelikle consumer tarafinda otomatik olarak EmailVerificationMessage dto'su ile alinabiliyor.
 	}
 }

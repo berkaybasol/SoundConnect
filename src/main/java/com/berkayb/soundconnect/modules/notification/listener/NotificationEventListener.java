@@ -2,10 +2,12 @@ package com.berkayb.soundconnect.modules.notification.listener;
 
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
-import com.berkayb.soundconnect.modules.notification.mail.MailNotificationService;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
+import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +33,7 @@ public class NotificationEventListener {
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
 	private final NotificationMapper notificationMapper;
 	private final NotificationWebSocketService notificationWebSocketService;
-	private final MailNotificationService mailNotificationService;
+	private final MailProducer mailProducer;
 	
 	
 	// RabbitMQ'dan notification queue'undan mesajlari dinler. her gelen event icin bu method cagrilir
@@ -91,10 +93,46 @@ public class NotificationEventListener {
 		}
 		
 		try {
-			mailNotificationService.maybeSendNotificationEmail(entity, event.emailForce());
+			boolean sendMail = event.emailForce() != null
+					? event.emailForce()
+					: entity.getType().isEmailRecommended();
+			
+			if (sendMail) {
+				String to = null;
+				if (entity.getPayload() != null) {
+					Object email = entity.getPayload().get("recipientEmail");
+					if (email == null) email = entity.getPayload().get("email");
+					if (email != null) to = String.valueOf(email);
+				}
+				if (to != null && !to.isBlank()) {
+					String subject = "[SoundConnect] " +
+							((entity.getTitle() == null || entity.getTitle().isBlank())
+									? entity.getType().getDefaultTitle()
+									: entity.getTitle());
+					
+					String text = subject + "\n\n" +
+							(entity.getMessage() != null ? entity.getMessage() + "\n\n" : "") +
+							"Bu e-posta SoundConnect tarafından otomatik gönderildi.";
+					
+					String html = null; // ister ileride html şablonla değiştirirsin
+					
+					mailProducer.send(
+							new MailSendRequest(
+									to,
+									subject,
+									html,
+									text,
+									MailKind.NOTIFICATION,
+									entity.getPayload()
+							)
+					);
+					log.debug("Notification mail pipeline'a gönderildi. to={}, notifId={}", to, entity.getId());
+				} else {
+					log.warn("Mail gönderilemedi: notification payload'da email yok! notifId={}", entity.getId());
+				}
+			}
 		} catch (Exception e) {
-			log.error("Mail send failed for notifId={}, user={}, err={}",
-			          entity.getId(), entity.getRecipientId(), e.toString());
+			log.error("Mail pipeline'a gönderme hatası! notifId={}, err={}", entity.getId(), e.toString());
 		}
 		
 		// TODO: elasticSearchService.indexNotification(entity);

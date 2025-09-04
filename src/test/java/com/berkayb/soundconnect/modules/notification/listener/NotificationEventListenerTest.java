@@ -4,10 +4,11 @@ import com.berkayb.soundconnect.modules.notification.dto.response.NotificationRe
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
-import com.berkayb.soundconnect.modules.notification.mail.MailNotificationService;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +21,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @org.junit.jupiter.api.extension.ExtendWith(MockitoExtension.class)
 class NotificationEventListenerTest {
@@ -28,7 +30,7 @@ class NotificationEventListenerTest {
 	@Mock private NotificationBadgeCacheHelper badgeCacheHelper;
 	@Mock private NotificationMapper notificationMapper;
 	@Mock private NotificationWebSocketService notificationWebSocketService;
-	@Mock private MailNotificationService mailNotificationService;
+	@Mock private MailProducer mailProducer; // YENİ: MailProducer mock'u
 	
 	private NotificationEventListener listener;
 	
@@ -41,7 +43,7 @@ class NotificationEventListenerTest {
 				badgeCacheHelper,
 				notificationMapper,
 				notificationWebSocketService,
-				mailNotificationService
+				mailProducer   // YENİ: mailProducer eklendi
 		);
 		userId = UUID.randomUUID();
 	}
@@ -69,17 +71,17 @@ class NotificationEventListenerTest {
 		listener.handle(e2);
 		
 		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
-		                     notificationWebSocketService, mailNotificationService);
+		                     notificationWebSocketService, mailProducer); // YENİ: mailProducer eklendi
 	}
 	
 	@Test
-	@DisplayName("Happy path: save → unread count → cache set → WS notif+badge → mail maybeSend")
+	@DisplayName("Happy path: save → unread count → cache set → WS notif+badge → mail pipeline'a gönderim")
 	void handle_happyPath() {
 		NotificationInboundEvent event = NotificationInboundEvent.builder()
 		                                                         .recipientId(userId)
-		                                                         .type(NotificationType.MEDIA_TRANSCODE_READY)
-		                                                         .title("Medya hazır")
-		                                                         .message("Hadi izleyelim")
+		                                                         .type(NotificationType.MEDIA_TRANSCODE_FAILED) // <-- emailRecommended=true
+		                                                         .title("Medya işleme başarısız")
+		                                                         .message("Parça işlenemedi")
 		                                                         .payload(Map.of("recipientEmail", "user@example.com"))
 		                                                         .emailForce(null) // type.emailRecommended() devrede
 		                                                         .build();
@@ -87,9 +89,9 @@ class NotificationEventListenerTest {
 		// repo.save(entity) → entity + id dönsün
 		Notification saved = Notification.builder()
 		                                 .recipientId(userId)
-		                                 .type(NotificationType.MEDIA_TRANSCODE_READY)
-		                                 .title("Medya hazır")
-		                                 .message("Hadi izleyelim")
+		                                 .type(NotificationType.MEDIA_TRANSCODE_FAILED)
+		                                 .title("Medya işleme başarısız")
+		                                 .message("Parça işlenemedi")
 		                                 .payload(Map.of("recipientEmail", "user@example.com"))
 		                                 .read(false)
 		                                 .build();
@@ -104,8 +106,8 @@ class NotificationEventListenerTest {
 		
 		// mapper
 		NotificationResponseDto dto = new NotificationResponseDto(
-				notifId, userId, NotificationType.MEDIA_TRANSCODE_READY,
-				"Medya hazır", "Hadi izleyelim", false, null, Map.of("recipientEmail", "user@example.com")
+				notifId, userId, NotificationType.MEDIA_TRANSCODE_FAILED,
+				"Medya işleme başarısız", "Parça işlenemedi", false, null, Map.of("recipientEmail", "user@example.com")
 		);
 		when(notificationMapper.toDto(saved)).thenReturn(dto);
 		
@@ -119,9 +121,9 @@ class NotificationEventListenerTest {
 		ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 		verify(notificationRepository).save(captor.capture());
 		Notification toSave = captor.getValue();
-		org.assertj.core.api.Assertions.assertThat(toSave.getRecipientId()).isEqualTo(userId);
-		org.assertj.core.api.Assertions.assertThat(toSave.getType()).isEqualTo(NotificationType.MEDIA_TRANSCODE_READY);
-		org.assertj.core.api.Assertions.assertThat(toSave.isRead()).isFalse();
+		assertThat(toSave.getRecipientId()).isEqualTo(userId);
+		assertThat(toSave.getType()).isEqualTo(NotificationType.MEDIA_TRANSCODE_FAILED);
+		assertThat(toSave.isRead()).isFalse();
 		
 		// unread count → cache set
 		verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
@@ -132,8 +134,8 @@ class NotificationEventListenerTest {
 		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
 		verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 7L);
 		
-		// mail kararı
-		verify(mailNotificationService).maybeSendNotificationEmail(saved, null);
+		// mail kararı: **Artık mailProducer üzerinden**
+		verify(mailProducer).send(any(MailSendRequest.class));
 	}
 	
 	@Test
@@ -172,9 +174,9 @@ class NotificationEventListenerTest {
 		doThrow(new RuntimeException("ws down"))
 				.when(notificationWebSocketService).sendNotificationToUser(userId, dto);
 		
-		// Mail de fail etsin ama swallow edilsin
+		// Mail de fail etsin ama swallow edilsin (simule amaçlı)
 		doThrow(new RuntimeException("mail down"))
-				.when(mailNotificationService).maybeSendNotificationEmail(saved, true);
+				.when(mailProducer).send(any(MailSendRequest.class));
 		
 		// act
 		listener.handle(event);
@@ -187,7 +189,8 @@ class NotificationEventListenerTest {
 		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
 		verify(notificationWebSocketService, never()).sendUnreadBadgeToUser(any(), anyLong());
 		
-		verify(mailNotificationService).maybeSendNotificationEmail(saved, true);
+		// MailProducer çağrılır ama hata swallow edilir
+		verify(mailProducer).send(any(MailSendRequest.class));
 	}
 	
 }

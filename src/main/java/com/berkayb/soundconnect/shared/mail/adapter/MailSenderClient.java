@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.shared.mail;
+package com.berkayb.soundconnect.shared.mail.adapter;
 
 /**
  * Transactional e-postalar icin genel gonderim portu

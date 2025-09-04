@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.otp.service;
 
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,11 +20,14 @@ import java.util.concurrent.TimeUnit;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Getter
 public class OtpService {
 	private final EmailUtils emailUtils;
 	
 	// asagida yazdigimiz butun OTP kodlarini burada redis template uzerinden String tipinde sakliyoruz.
 	private final RedisTemplate<String, String> redisTemplate;
+	
+	
 	
 	// OTP'nin gecerli olacagi sure(3dk) from yml
 	@Value("${otp.ttl.minutes:${mailersend.otp-validity-minutes:3}}")

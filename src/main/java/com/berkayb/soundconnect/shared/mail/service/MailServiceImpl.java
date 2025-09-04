@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.shared.mail.service;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.mail.MailSenderClient; // -> eklendi
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient; // -> eklendi
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

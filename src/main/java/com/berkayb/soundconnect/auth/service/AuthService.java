@@ -17,6 +17,8 @@ import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.MailProducer;
+import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
+import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -32,6 +34,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -148,7 +151,23 @@ public class AuthService {
 			// OTP kodu uret ve mail ile gonder (RabbitMQ uzerinden async)
 			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
 			try {
-				mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+				mailProducer.send(
+						new MailSendRequest(
+								user.getEmail(),
+								"E-posta Doğrulama Kodunuz",
+								"""
+								<p>Merhaba,</p>
+								<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
+								<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
+								<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
+								<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
+								<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
+								""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
+								null,
+								MailKind.OTP,
+								Map.of("code", otpCode)
+						)
+				);
 				mailQueued = true;
 			} catch (Exception e) {
 				log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
@@ -157,13 +176,13 @@ public class AuthService {
 			long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
 			
 			return BaseResponse.<RegisterResponseDto>builder()
-					.success(true)
-					.message("Basvurun alindi. biz sizinle iletisime gecene kadar gecici olarak dinleyici olarak " +
-							         "kaydedildin. size en kisa sure icerisinde geri donus yapacagiz! Mail adresinden" +
-							         " kaydini onaylamayi unutma!")
-					.code(201)
-					.data(new RegisterResponseDto(user.getEmail(), UserStatus.PENDING_VENUE_REQUEST, ttl, mailQueued))
-					.build();
+			                   .success(true)
+			                   .message("Basvurun alindi. biz sizinle iletisime gecene kadar gecici olarak dinleyici olarak " +
+					                            "kaydedildin. size en kisa sure icerisinde geri donus yapacagiz! Mail adresinden" +
+					                            " kaydini onaylamayi unutma!")
+			                   .code(201)
+			                   .data(new RegisterResponseDto(user.getEmail(), UserStatus.PENDING_VENUE_REQUEST, ttl, mailQueued))
+			                   .build();
 		}
 		
 		// burdan sonrasi tum roller..
@@ -194,7 +213,23 @@ public class AuthService {
 		// OTP kodu uret ve mail ile gonder (RABBITMQ uzerinden async)
 		String otpCode = otpService.generateAndCacheOtp(user.getEmail());
 		try {
-			mailProducer.sendVerificationMail(user.getEmail(), otpCode);
+			mailProducer.send(
+					new MailSendRequest(
+							user.getEmail(),
+							"E-posta Doğrulama Kodunuz",
+							"""
+							<p>Merhaba,</p>
+							<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
+							<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
+							<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
+							<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
+							<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
+							""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
+							null,
+							MailKind.OTP,
+							Map.of("code", otpCode)
+					)
+			);
 			mailQueued = true;
 		} catch (Exception e) {
 			log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
@@ -220,11 +255,11 @@ public class AuthService {
 		// kullanici zaten dogrulanmissa response don
 		if (Boolean.TRUE.equals(user.getEmailVerified())) {
 			return BaseResponse.<Void>builder()
-					.success(true)
-					.code(200)
-					.message("zaten dogrulanmis")
-					.data(null)
-					.build();
+			                   .success(true)
+			                   .code(200)
+			                   .message("zaten dogrulanmis")
+			                   .data(null)
+			                   .build();
 		}
 		// otp kodunu kontrol et (sure, brute-force vs.)
 		boolean valid = otpService.verifyOtp(email, dto.code());
@@ -244,10 +279,10 @@ public class AuthService {
 		
 		// succes reponse
 		return BaseResponse.<Void>builder()
-				.success(true)
-				.code(200)
-				.message("mail basariyla dogrulandi")
-				.build();
+		                   .success(true)
+		                   .code(200)
+		                   .message("mail basariyla dogrulandi")
+		                   .build();
 	}
 	
 	@Transactional
@@ -255,16 +290,16 @@ public class AuthService {
 		final String email = emailUtils.normalize(dto.email());
 		
 		User user = userRepository.findByEmail(email)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		// zaten dogrulanmis ise idempotent (kac kere denerse denesin ayi sonuc) 200 don.
 		if (Boolean.TRUE.equals(user.getEmailVerified())) {
 			return BaseResponse.<ResendCodeResponseDto>builder()
-					.success(true)
-					.code(200)
-					.message("hesabin zaten dogrulanmis. yeni kod gondermedik")
-					.data(new ResendCodeResponseDto(0, false, 0))
-					.build();
+			                   .success(true)
+			                   .code(200)
+			                   .message("hesabin zaten dogrulanmis. yeni kod gondermedik")
+			                   .data(new ResendCodeResponseDto(0, false, 0))
+			                   .build();
 		}
 		
 		// cooldown kontrolu
@@ -272,11 +307,11 @@ public class AuthService {
 		if (cooldownLeft > 0) {
 			long currentOtpTtl = otpService.getOtpTimeLeftSeconds(email);
 			return BaseResponse.<ResendCodeResponseDto>builder()
-					.success(false)
-					.code(429) // Too Many Requests semantigi (HTTP 200 donecek olsa da kod alani 429)
-					.message("cok sik istek: lutfen biraz bekleyip tekrar deneyin..")
-					.data(new ResendCodeResponseDto(currentOtpTtl, false, cooldownLeft))
-					.build();
+			                   .success(false)
+			                   .code(429) // Too Many Requests semantigi (HTTP 200 donecek olsa da kod alani 429)
+			                   .message("cok sik istek: lutfen biraz bekleyip tekrar deneyin..")
+			                   .data(new ResendCodeResponseDto(currentOtpTtl, false, cooldownLeft))
+			                   .build();
 		}
 		
 		// yeni OTP uret ve mail at
@@ -284,7 +319,23 @@ public class AuthService {
 		boolean mailQueued = false;
 		
 		try {
-			mailProducer.sendVerificationMail(email, otpCode);
+			mailProducer.send(
+					new MailSendRequest(
+							email,
+							"E-posta Doğrulama Kodunuz",
+							"""
+							<p>Merhaba,</p>
+							<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
+							<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
+							<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
+							<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
+							<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
+							""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
+							null,
+							MailKind.OTP,
+							Map.of("code", otpCode)
+					)
+			);
 			mailQueued = true;
 		} catch (Exception e) {
 			log.error("mail queue error (resend) for email={} code={}", email, otpCode, e);
@@ -295,11 +346,11 @@ public class AuthService {
 		
 		long ttl = otpService.getOtpTimeLeftSeconds(email);
 		return BaseResponse.<ResendCodeResponseDto>builder()
-				.success(true)
-				.code(200)
-				.message("yeni dogrulama kodu e-postana gonderildi")
-				.data(new ResendCodeResponseDto(ttl, mailQueued, otpService.getResendCooldownLeftSeconds(email)))
-				.build();
+		                   .success(true)
+		                   .code(200)
+		                   .message("yeni dogrulama kodu e-postana gonderildi")
+		                   .data(new ResendCodeResponseDto(ttl, mailQueued, otpService.getResendCooldownLeftSeconds(email)))
+		                   .build();
 	}
 	
 }
