@@ -20,6 +20,8 @@
 
 🛠 Change Password (useniyorum :D)
 
+🛠 2 yeni profile olusturulacak (Music House Profile, Band Profile(bu registerda degil yalnizca musician profile'a sahip kullanicilarin acabilecegi bir profil olcak.))
+
 
 ---
 
@@ -35,13 +37,13 @@
 
 ⏳ 7. Overthinking Modülü
 
-⏳ 8. Notification Modulü (RabbitMQ + Redis + WebSocket + MailerSend)
-
 ⏳ 9. Stabilizasyon & MVP Final
 
 ⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ Notification modülü (RabbitMQ + Redis + WebSocket + MailerSend)
 
 ✅ Media modülü (RabbitMQ & AWS S3)
 
@@ -51,28 +53,30 @@
 
 ✅ Profile modülü
 
-✅ User modülü
+✅ Instrument modülü
 
-✅ Role & Permission modülü
+✅ Mail mimarisi
 
 ✅ ArtistVenueConnection modülü
 
-✅ Instrument modülü
+✅ VenueApplication modülü
+
+✅ Google ile OAuth2 register/login
 
 ✅ Location modülü (City, District, Neighborhood)
 
 ✅ Venue modülü
 
-✅ JWT authentication & SecurityConfig
-
-✅ Exception mimarisi
+✅ Auth yapısı (JWT + OTP)
 
 ✅ RabbitMQ & MailerSend
 
-✅ Google ile OAuth2 register/login
-
 ✅ CORS & environment config
 
-✅ Logging & SLF4J
+✅ Logging & SLF4J yapısı
 
-✅ VenueApplication modülü
+✅ Exception mimarisi
+
+✅ Role & Permission modülü
+
+✅ User modülü

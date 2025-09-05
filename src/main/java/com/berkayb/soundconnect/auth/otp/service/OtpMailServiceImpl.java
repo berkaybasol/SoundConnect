@@ -1,8 +1,9 @@
-package com.berkayb.soundconnect.shared.mail.service;
+package com.berkayb.soundconnect.auth.otp.service;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient; // -> eklendi
+import com.berkayb.soundconnect.shared.mail.helper.MailContentBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,33 +13,35 @@ import java.util.List;
 
 /**
  * MailerSend ile e-posta DOĞRULAMA (OTP) gönderimi.
- * HTTP çağrılarını doğrudan burada yapmak yerine MailSenderClient port'una devrediyoruz.
+ * Amac:
+ * - Mail icerigini MailContentBuilder ile disaridan hazirla.
+ * - MailSenderClient ile asenkron mail gonderimini yonet
  */
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class MailServiceImpl implements MailService {
+public class OtpMailServiceImpl implements OtpMailService {
 	
-	private final MailSenderClient mailSenderClient; // -> eklendi
+	private final MailSenderClient mailSenderClient;
+	private final MailContentBuilder mailContentBuilder; // Artık builder kullanıyoruz!
 	
 	@Value("${mailersend.otp-validity-minutes:5}")
 	private int otpValidityMinutes;
 	
+	/**
+	 * Doğrulama maili gönderir (OTP).
+	 * @param to Kullanıcının mail adresi
+	 * @param code 6 haneli doğrulama kodu
+	 */
 	@Override
 	public void sendVerificationMail(String to, String code) {
 		String subject = "E-posta Doğrulama Kodunuz";
-		
-		String html = """
-            <p>Merhaba,</p>
-            <p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
-            <h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
-            <p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
-            <p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
-            <p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
-            """.formatted(code, otpValidityMinutes);
-		
+		// HTML body'yi builder ile dışarıdan template olarak üret!
+		String html = mailContentBuilder.buildVerificationMail(code, otpValidityMinutes);
 		try {
-			mailSenderClient.send(to, subject, null, html); // -> eklendi (artık tek port üzerinden gönderiyoruz)
+			// MailSenderClient ile gönder (asenkron, provider agnostic)
+			mailSenderClient.send(to, subject, null, html);
 			log.info("Verification mail sent via MailSenderClient to email={}", to);
 		} catch (Exception e) {
 			log.error("Failed to send verification mail to email={}", to, e);

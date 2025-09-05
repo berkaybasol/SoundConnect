@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.auth.otp.service.OtpMailService; // <-- yeni eklendi!
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
@@ -16,9 +17,6 @@ import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
-import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
-import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -34,7 +32,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -47,9 +44,9 @@ public class AuthService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
-	private final MailProducer mailProducer;
 	private final ProfileFactory profileFactory;
 	private final OtpService otpService;
+	private final OtpMailService otpMailService; // <-- yeni eklendi!
 	private final EmailUtils emailUtils;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
@@ -92,7 +89,6 @@ public class AuthService {
 		                   .data(new LoginResponse(token))
 		                   .build();
 	}
-	
 	
 	@Transactional
 	public BaseResponse<RegisterResponseDto> register(RegisterRequestDto dto) {
@@ -147,30 +143,13 @@ public class AuthService {
 			
 			// TODO: buraya admin'e başvuru bildirimi veya özel bir mail logic'i ekle
 			
-			
-			// OTP kodu uret ve mail ile gonder (RabbitMQ uzerinden async)
+			// OTP kodu uret ve mail ile gonder
 			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
 			try {
-				mailProducer.send(
-						new MailSendRequest(
-								user.getEmail(),
-								"E-posta Doğrulama Kodunuz",
-								"""
-								<p>Merhaba,</p>
-								<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
-								<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
-								<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
-								<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
-								<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
-								""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
-								null,
-								MailKind.OTP,
-								Map.of("code", otpCode)
-						)
-				);
+				otpMailService.sendVerificationMail(user.getEmail(), otpCode); // ARTIK BURADA!
 				mailQueued = true;
 			} catch (Exception e) {
-				log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
+				log.error("Verification mail send error for email={} code={}", user.getEmail(), otpCode, e);
 			}
 			
 			long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
@@ -191,7 +170,6 @@ public class AuthService {
 		                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
 		                                                                               List.of("geçersiz rol seçimi veya sistemde tanımlı değil.")));
 		
-		
 		// yeni kullanıcıyı oluştur
 		User user = User.builder()
 		                .username(dto.username())
@@ -210,29 +188,13 @@ public class AuthService {
 			profileFactory.createProfileIfNeeded(user, selectedRoleEnum);
 		}
 		
-		// OTP kodu uret ve mail ile gonder (RABBITMQ uzerinden async)
+		// OTP kodu uret ve mail ile gonder
 		String otpCode = otpService.generateAndCacheOtp(user.getEmail());
 		try {
-			mailProducer.send(
-					new MailSendRequest(
-							user.getEmail(),
-							"E-posta Doğrulama Kodunuz",
-							"""
-							<p>Merhaba,</p>
-							<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
-							<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
-							<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
-							<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
-							<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
-							""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
-							null,
-							MailKind.OTP,
-							Map.of("code", otpCode)
-					)
-			);
+			otpMailService.sendVerificationMail(user.getEmail(), otpCode); // ARTIK BURADA!
 			mailQueued = true;
 		} catch (Exception e) {
-			log.error("mail queue error for email={} code={}", user.getEmail(), otpCode, e);
+			log.error("Verification mail send error for email={} code={}", user.getEmail(), otpCode, e);
 		}
 		
 		long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
@@ -276,7 +238,6 @@ public class AuthService {
 		}
 		userRepository.save(user);
 		
-		
 		// succes reponse
 		return BaseResponse.<Void>builder()
 		                   .success(true)
@@ -319,26 +280,10 @@ public class AuthService {
 		boolean mailQueued = false;
 		
 		try {
-			mailProducer.send(
-					new MailSendRequest(
-							email,
-							"E-posta Doğrulama Kodunuz",
-							"""
-							<p>Merhaba,</p>
-							<p>Hesabınızı doğrulamak için aşağıdaki <b>6 haneli</b> kodu uygulamaya girin:</p>
-							<h2 style='letter-spacing:5px; font-size: 2em;'>%s</h2>
-							<p>Kodunuz <b>%d dakika</b> boyunca geçerlidir.</p>
-							<p>Eğer bu isteği siz yapmadıysanız, lütfen bu maili dikkate almayın.</p>
-							<p>Teşekkürler,<br/>SoundConnect Ekibi &#10084;&#65039;</p>
-							""".formatted(otpCode, otpService.getOtpExpiredMinutes()),
-							null,
-							MailKind.OTP,
-							Map.of("code", otpCode)
-					)
-			);
+			otpMailService.sendVerificationMail(email, otpCode);
 			mailQueued = true;
 		} catch (Exception e) {
-			log.error("mail queue error (resend) for email={} code={}", email, otpCode, e);
+			log.error("Verification mail send error (resend) for email={} code={}", email, otpCode, e);
 		}
 		
 		// cooldown'i baslat
