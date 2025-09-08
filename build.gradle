@@ -89,6 +89,8 @@ dependencies {
     // Template Engine
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf:3.5.3'
 
+    // WebClient
+    implementation 'org.springframework.boot:spring-boot-starter-webflux:3.5.5'
 
     // websocket
     implementation 'org.springframework.boot:spring-boot-starter-websocket:3.5.4'

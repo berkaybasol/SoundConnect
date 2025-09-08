@@ -55,7 +55,7 @@
 
 ✅ Instrument modülü
 
-✅ Mail mimarisi
+✅ Mail mimarisi (RabbitMQ, Redis)
 
 ✅ ArtistVenueConnection modülü
 
