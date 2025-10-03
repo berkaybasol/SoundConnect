@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
  * - Basariyla publish olursa log'a PII maskeli bilgi yazilir.
  *
  * Amac:
- * - Mail job'lari RabitMQ'ya publish eder ve broker confirm/retrun ile dogrular
+ * - Mail job'lari RabitMQ'ya publish eder ve broker confirm/return ile dogrular
  */
 
 @Service
@@ -56,10 +56,10 @@ public class MailProducerImpl implements MailProducer {
 		final CorrelationData cd = new CorrelationData(correlationId);
 		try {
 			
-			// mesaji publish et
+			// mesaji exchange + routingKey ile publish et
 			rabbitTemplate.convertAndSend(mailExchange, mailRoutingKey, request, cd);
 			
-			// confirm/ return bekle ve hatayi yuzeye cikar
+			// confirm bekle (ACK/NACK)
 			CorrelationData.Confirm confirm =
 					cd.getFuture().get(confirmTimeoutSec, TimeUnit.SECONDS);
 			

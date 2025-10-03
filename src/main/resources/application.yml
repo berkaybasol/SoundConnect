@@ -114,7 +114,7 @@ mail:
     confirmTimeoutSec: 5      # producer confirm timeout
   maxRedeliveries: 5          # tüketicide retry limiti
   delayed:
-    exchange: mail.delayed    # x-delayed-message exchange adı  (YAZIM DÜZELTİLDİ)
+    exchange: mail.delayed    # x-delayed-message exchange adı
   retry:
     delaysMs: [3000, 10000, 30000]  # 3s -> 10s -> 30s (attempt 1/2/3 ...)
     useRetryAfter: true             # 429 varsa Retry-After'ı dikkate al

@@ -4,7 +4,7 @@ import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 
 import java.util.Map;
 
-// tum modullerin kullanacagi generic mail is tanimi.
+// Mail gonderiminde kullanilacak verileri tasiyan dto.
 public record MailSendRequest(
 		String to,
 		String subject,

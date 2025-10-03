@@ -92,7 +92,7 @@ public class MailJobConsumer {
 			
 			if (transientErr && limitOk) {
 				long delay = helper.chooseDelayMs(e, deaths, delaysMs, useRetryAfter);
-				String note = "deaths=" + deaths + (helper.isRateLimited(e) ? ",429" : "");
+ 				String note = "deaths=" + deaths + (helper.isRateLimited(e) ? ",429" : "");
 				
 				// --- YENİ SIRALAMA: önce gecikmeli publish dene, sonra ACK ---
 				try {
