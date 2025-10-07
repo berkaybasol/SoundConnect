@@ -4,6 +4,8 @@ import com.berkayb.soundconnect.modules.message.dm.dto.request.DMMessageRequestD
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
+import com.berkayb.soundconnect.modules.message.dm.event.DmMessageEventPublisher;
+import com.berkayb.soundconnect.modules.message.dm.event.DmMessageSentEvent;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
@@ -24,6 +26,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 	private final DMMessageRepository messageRepository;
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageMapper messageMapper;
+	private final DmMessageEventPublisher dmMessageEventPublisher;
 	
 	// belirli bir conversation'in tum mesajlarini gonderim sirasina gore doner.
 	@Override
@@ -75,6 +78,19 @@ public class DMMessageServiceImpl implements DMMessageService {
 		conversation.setLastReadMessageId(null);
 		conversationRepository.save(conversation);
 		
+		// Event Fire
+		DmMessageSentEvent event = DmMessageSentEvent.builder()
+		                                             .messageId(message.getId())
+		                                             .conversationId(message.getConversationId())
+		                                             .senderId(message.getSenderId())
+		                                             .recipientId(message.getRecipientId())
+		                                             .content(message.getContent())
+		                                             .messageType(message.getMessageType())
+		                                             .sentAt(message.getCreatedAt())
+		                                             .build();
+		
+		dmMessageEventPublisher.publishMessageSentEvent(event);
+		
 		// response dto'ya cevir
 		return messageMapper.toResponseDto(message);
 	}
@@ -102,8 +118,5 @@ public class DMMessageServiceImpl implements DMMessageService {
 			                      conv.setLastReadMessageId(message.getId());
 			                      conversationRepository.save(conv);
 		                      });
-		
-		
 	}
-	
 }

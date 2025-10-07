@@ -22,5 +22,11 @@ public class WebSocketChannels {
 		return TOPIC_NOTIFICATIONS + "/" + userId + "/badge";
 	}
 	
-	// TODO DM Module
+	public static final String TOPIC_DM = "/topic/dm";
+	public static String dm(UUID userId) { return TOPIC_DM + "/" + userId; }
+	
+	public static String dmBadge(UUID userId) {
+		return TOPIC_DM + "/" + userId + "/badge";
+	}
+	
 }
