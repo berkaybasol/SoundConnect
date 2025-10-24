@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.service;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.response.VenueApplicationResponseDto;
 import com.berkayb.soundconnect.modules.application.venueapplication.entity.VenueApplication;
@@ -23,6 +24,8 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
+import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -31,6 +34,9 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -57,8 +63,35 @@ class VenueApplicationServiceTest {
 	@Autowired VenueProfileRepository venueProfileRepo;
 	
 	// Rabbit ihtiyacı olan bean’ler için
+	// MailProducerImpl yüzünden gerekecek
+	@MockitoBean RabbitTemplate rabbitTemplate;
 	@MockitoBean
-	RabbitTemplate rabbitTemplate;
+	RedisConnectionFactory redisConnectionFactory;
+	@MockitoBean
+	RedisTemplate<String, String> redisTemplate;
+	@MockitoBean
+	OtpService otpService;
+	
+	@MockitoBean
+	StringRedisTemplate stringRedisTemplate;
+	
+	@MockitoBean
+	MailJobHelper mailJobHelper;
+	
+	@MockitoBean
+	MailSenderClient mailSenderClient;
+	
+	@MockitoBean
+	org.springframework.amqp.support.converter.Jackson2JsonMessageConverter jackson2JsonMessageConverter;
+	
+	// Bazı config'ler ConnectionFactory isterse güvence:
+	@MockitoBean(name = "rabbitConnectionFactory")
+	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	
+	
+	// İstersen tüketiciyi de körle (gerekmeden geçmesi lazım ama garanti):
+	@MockitoBean
+	com.berkayb.soundconnect.shared.mail.consumer.DlqMailJobConsumer dlqMailJobConsumer;
 	
 	private City city;
 	private District district;

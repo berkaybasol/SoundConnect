@@ -6,12 +6,16 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.event.DmMessageEventPublisher;
 import com.berkayb.soundconnect.modules.message.dm.event.DmMessageSentEvent;
+import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,11 +26,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DMMessageServiceImpl implements DMMessageService {
 	private final DMMessageRepository messageRepository;
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageMapper messageMapper;
 	private final DmMessageEventPublisher dmMessageEventPublisher;
+	private final DmBadgeCacheHelper dmBadgeCacheHelper;
+	private final SimpMessagingTemplate messagingTemplate;
 	
 	// belirli bir conversation'in tum mesajlarini gonderim sirasina gore doner.
 	@Override
@@ -113,10 +120,26 @@ public class DMMessageServiceImpl implements DMMessageService {
 		message.setReadAt(LocalDateTime.now());
 		messageRepository.save(message);
 		
+		// konusmanin "lastReadMessageId" guncellemesi (UI icin)
 		conversationRepository.findById(message.getConversationId())
 		                      .ifPresent(conv -> {
 			                      conv.setLastReadMessageId(message.getId());
 			                      conversationRepository.save(conv);
 		                      });
+		
+		// Unread badge'i guncelle ve WebSocket badge push yap
+		// guncel unread sayisini db'den cek
+		long unread = messageRepository.findByRecipientIdAndReadAtIsNull(readerId).size();
+		
+		// badge cache'i guncelle
+		dmBadgeCacheHelper.setUnread(readerId, unread);
+		
+		// WebSocket ile badge'i pushla
+		Long cacheUnread = dmBadgeCacheHelper.getCacheUnread(readerId);
+		String badgeDestination = WebSocketChannels.dmBadge(readerId);
+		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
+		log.debug("DM badge (okundu) WS push: userId={}, badge={}", readerId, cacheUnread);
+		
+		
 	}
 }

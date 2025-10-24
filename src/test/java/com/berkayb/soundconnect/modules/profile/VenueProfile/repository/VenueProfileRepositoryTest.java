@@ -16,10 +16,12 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -33,26 +35,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
-// her test run'ında benzersiz H2 veritabanı + ddl
 @TestPropertySource(properties = {
-		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-		"spring.jpa.hibernate.ddl-auto=create-drop"
+		// Her sınıfa benzersiz H2 + ddl
+		"spring.datasource.url=jdbc:h2:mem:sc-venue-repo-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop",
+		// İhtiyaten AMQP autostart kapalı (slice testini tetiklemesin)
+		"spring.rabbitmq.listener.simple.auto-startup=false",
+		"spring.rabbitmq.listener.direct.auto-startup=false"
 })
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("repo")
 class VenueProfileRepositoryTest {
 	
-	@org.springframework.beans.factory.annotation.Autowired
-	VenueProfileRepository venueProfileRepository;
-	@org.springframework.beans.factory.annotation.Autowired
-	VenueRepository venueRepository;
-	@org.springframework.beans.factory.annotation.Autowired
-	UserRepository userRepository;
-	@org.springframework.beans.factory.annotation.Autowired
-	CityRepository cityRepository;
-	@org.springframework.beans.factory.annotation.Autowired
-	DistrictRepository districtRepository;
-	@org.springframework.beans.factory.annotation.Autowired
-	NeighborhoodRepository neighborhoodRepository;
+	@Autowired VenueProfileRepository venueProfileRepository;
+	@Autowired VenueRepository venueRepository;
+	@Autowired UserRepository userRepository;
+	@Autowired CityRepository cityRepository;
+	@Autowired DistrictRepository districtRepository;
+	@Autowired NeighborhoodRepository neighborhoodRepository;
 	
 	City city;
 	District district;
@@ -86,7 +86,7 @@ class VenueProfileRepositoryTest {
 		
 		owner = userRepository.save(User.builder()
 		                                .username("owner_" + UUID.randomUUID())
-		                                .email("owner_"+UUID.randomUUID()+"@t.local") // <-- email zorunlu
+		                                .email("owner_" + UUID.randomUUID() + "@t.local") // email zorunlu
 		                                .password("pass")
 		                                .provider(AuthProvider.LOCAL)
 		                                .emailVerified(true)

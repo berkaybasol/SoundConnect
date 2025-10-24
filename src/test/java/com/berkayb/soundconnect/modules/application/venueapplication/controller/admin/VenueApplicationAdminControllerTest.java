@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.controller.admin;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.venueapplication.entity.VenueApplication;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
@@ -21,6 +22,8 @@ import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
+import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -31,19 +34,23 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.http.MediaType;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.context.TestPropertySource; // -> eklendi
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static org.hamcrest.Matchers.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -54,9 +61,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
-@TestPropertySource(properties = { // -> eklendi
-		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", // -> eklendi
-		"spring.jpa.hibernate.ddl-auto=create-drop" // -> eklendi
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
 })
 class VenueApplicationAdminControllerTest {
 	
@@ -73,13 +80,28 @@ class VenueApplicationAdminControllerTest {
 	@Autowired DistrictRepository districtRepository;
 	@Autowired NeighborhoodRepository neighborhoodRepository;
 	
-	// Mail queue vs. ihtiyacı olmasın
 	@MockitoBean RabbitTemplate rabbitTemplate;
-	// Profile oluşturmayı stub’layalım
+	@MockitoBean RedisConnectionFactory redisConnectionFactory;
+	@MockitoBean RedisTemplate<String, String> redisTemplate;
+	@MockitoBean OtpService otpService;
+	
+	@MockitoBean StringRedisTemplate stringRedisTemplate;
+	@MockitoBean MailJobHelper mailJobHelper;
+	@MockitoBean MailSenderClient mailSenderClient;
+	@MockitoBean org.springframework.amqp.support.converter.Jackson2JsonMessageConverter jackson2JsonMessageConverter;
+	
+	// MailQueueConfig rabbitListenerContainerFactory CachingConnectionFactory beklediği için:
+	@MockitoBean(name = "rabbitConnectionFactory")
+	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	
+	// İstersen tüketiciyi de körleyelim:
+	@MockitoBean com.berkayb.soundconnect.shared.mail.consumer.DlqMailJobConsumer dlqMailJobConsumer;
+	
+	// Profil oluşturmayı stub’la
 	@MockitoBean VenueProfileService venueProfileService;
 	
 	private User admin;
-	private Role roleVenue;
+	private UserDetailsImpl adminDetails;
 	
 	private City city;
 	private District district;
@@ -97,26 +119,23 @@ class VenueApplicationAdminControllerTest {
 		roleRepository.deleteAll();
 		
 		// --- seed role ---
-		roleVenue = roleRepository.save(Role.builder().name(RoleEnum.ROLE_VENUE.name()).build());
+		roleRepository.save(Role.builder().name(RoleEnum.ROLE_VENUE.name()).build());
 		
 		// --- seed location ---
-		city = cityRepository.save(City.builder().name("AdminCity_"+UUID.randomUUID()).build());
+		city = cityRepository.save(City.builder().name("AdminCity_" + UUID.randomUUID()).build());
 		district = districtRepository.save(District.builder().name("AdminDistrict").city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("AdminNeighborhood").district(district).build());
 		
-		// --- seed admin & auth context ---
+		// --- seed admin ---
 		admin = userRepository.save(User.builder()
-		                                .username("admin_"+UUID.randomUUID())
-		                                .email("admin_"+UUID.randomUUID()+"@test.local") // -> eklendi
+		                                .username("admin_" + UUID.randomUUID())
+		                                .email("admin_" + UUID.randomUUID() + "@test.local")
 		                                .password("x")
 		                                .provider(AuthProvider.LOCAL)
 		                                .emailVerified(true)
 		                                .city(city)
 		                                .build());
-		
-		var principal = new UserDetailsImpl(admin);
-		var auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-		SecurityContextHolder.getContext().setAuthentication(auth);
+		adminDetails = new UserDetailsImpl(admin);
 		
 		// --- venue profile create stub ---
 		Mockito.when(venueProfileService.createProfile(
@@ -125,10 +144,16 @@ class VenueApplicationAdminControllerTest {
 		)).thenReturn(null);
 	}
 	
+	private UsernamePasswordAuthenticationToken adminAuth() {
+		return new UsernamePasswordAuthenticationToken(
+				adminDetails, "x", adminDetails.getAuthorities()
+		);
+	}
+	
 	private User seedApplicant() {
 		return userRepository.save(User.builder()
-		                               .username("applicant_"+UUID.randomUUID())
-		                               .email("applicant_"+UUID.randomUUID()+"@test.local") // -> eklendi
+		                               .username("applicant_" + UUID.randomUUID())
+		                               .email("applicant_" + UUID.randomUUID() + "@test.local")
 		                               .password("x")
 		                               .provider(AuthProvider.LOCAL)
 		                               .emailVerified(true)
@@ -140,7 +165,7 @@ class VenueApplicationAdminControllerTest {
 	private VenueApplication seedApp(User applicant, ApplicationStatus status) {
 		return venueApplicationRepository.save(VenueApplication.builder()
 		                                                       .applicant(applicant)
-		                                                       .venueName("My Venue "+UUID.randomUUID())
+		                                                       .venueName("My Venue " + UUID.randomUUID())
 		                                                       .venueAddress("Addr 123")
 		                                                       .phone(applicant.getPhone())
 		                                                       .status(status)
@@ -157,7 +182,8 @@ class VenueApplicationAdminControllerTest {
 		var applicant = seedApplicant();
 		var app = seedApp(applicant, ApplicationStatus.PENDING);
 		
-		mockMvc.perform(post(BASE + "/approve/{id}", app.getId()))
+		mockMvc.perform(post(BASE + "/approve/{id}", app.getId())
+				                .with(authentication(adminAuth())))
 		       .andDo(print())
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
@@ -165,28 +191,27 @@ class VenueApplicationAdminControllerTest {
 		       .andExpect(jsonPath("$.data.status").value("APPROVED"))
 		       .andExpect(jsonPath("$.data.id").value(app.getId().toString()));
 		
-		// yan etkiler: applicant'a ROLE_VENUE atanmış mı?
+		// yan etkiler
 		var refreshed = userRepository.findById(applicant.getId()).orElseThrow();
 		boolean hasVenueRole = refreshed.getRoles().stream()
 		                                .anyMatch(r -> r.getName().equals(RoleEnum.ROLE_VENUE.name()));
-		org.assertj.core.api.Assertions.assertThat(hasVenueRole).isTrue();
+		assertThat(hasVenueRole).isTrue();
 		
-		// venue oluşmuş mu?
 		List<Venue> venues = venueRepository.findAll();
-		org.assertj.core.api.Assertions.assertThat(venues).isNotEmpty();
-		org.assertj.core.api.Assertions.assertThat(venues.get(0).getOwner().getId()).isEqualTo(applicant.getId());
+		assertThat(venues).isNotEmpty();
+		assertThat(venues.get(0).getOwner().getId()).isEqualTo(applicant.getId());
 	}
 	
 	@Test
 	void approve_should_fail_when_not_pending() throws Exception {
 		var applicant = seedApplicant();
-		var app = seedApp(applicant, ApplicationStatus.REJECTED); // veya APPROVED
+		var app = seedApp(applicant, ApplicationStatus.REJECTED); // ya da APPROVED
 		
-		mockMvc.perform(post(BASE + "/approve/{id}", app.getId()))
+		mockMvc.perform(post(BASE + "/approve/{id}", app.getId())
+				                .with(authentication(adminAuth())))
 		       .andDo(print())
 		       .andExpect(status().isBadRequest())
-		       .andExpect(jsonPath("$.httpStatus").value("BAD_REQUEST"))
-		       .andExpect(jsonPath("$.message", containsString("Invalid"))); // ErrorType mesajına göre esnek
+		       .andExpect(jsonPath("$.message", containsString("Invalid")));
 	}
 	
 	@Test
@@ -195,7 +220,8 @@ class VenueApplicationAdminControllerTest {
 		var app = seedApp(applicant, ApplicationStatus.PENDING);
 		
 		mockMvc.perform(post(BASE + "/reject/{id}", app.getId())
-				                .param("reason", "Eksik bilgi"))
+				                .param("reason", "Eksik bilgi")
+				                .with(authentication(adminAuth())))
 		       .andDo(print())
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))

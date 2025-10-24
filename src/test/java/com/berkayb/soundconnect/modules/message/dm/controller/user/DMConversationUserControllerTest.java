@@ -2,12 +2,15 @@
 package com.berkayb.soundconnect.modules.message.dm.controller.user;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.message.dm.service.DMConversationService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
+import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -43,7 +49,35 @@ class DMConversationUserControllerTest {
 	@Autowired UserRepository userRepo;
 	@Autowired DMConversationService conversationService;
 	
+	// MailProducerImpl yüzünden gerekecek
 	@MockitoBean RabbitTemplate rabbitTemplate;
+	@MockitoBean
+	RedisConnectionFactory redisConnectionFactory;
+	@MockitoBean
+	RedisTemplate<String, String> redisTemplate;
+	@MockitoBean
+	OtpService otpService;
+	
+	@MockitoBean
+	StringRedisTemplate stringRedisTemplate;
+	
+	@MockitoBean
+	MailJobHelper mailJobHelper;
+	
+	@MockitoBean
+	MailSenderClient mailSenderClient;
+	
+	@MockitoBean
+	org.springframework.amqp.support.converter.Jackson2JsonMessageConverter jackson2JsonMessageConverter;
+	
+	// Bazı config'ler ConnectionFactory isterse güvence:
+	@MockitoBean(name = "rabbitConnectionFactory")
+	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	
+	
+	// İstersen tüketiciyi de körle (gerekmeden geçmesi lazım ama garanti):
+	@MockitoBean
+	com.berkayb.soundconnect.shared.mail.consumer.DlqMailJobConsumer dlqMailJobConsumer;
 	
 	User me, other;
 	

@@ -1,0 +1,112 @@
+<!-- src/main/resources/static/test-ws.html -->
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>SoundConnect WebSocket Test Panel</title>
+    <style>
+        body { font-family: 'JetBrains Mono', 'Fira Mono', 'monospace', sans-serif; background: #f4f3fa; padding: 32px; }
+        input, button { font-size: 1rem; padding: 5px 8px; border-radius: 4px; border: 1px solid #c6c6d2; }
+        #log { background: #fff; border-radius: 8px; margin-top: 24px; padding: 18px; min-height: 200px; font-size: 1rem; border: 1px solid #eaeaea; overflow: auto; max-height: 400px;}
+    </style>
+</head>
+<body>
+<h2>SoundConnect WebSocket Test Panel 🎸</h2>
+<p><b>Not:</b> Sadece backend çalışıyorken açabilirsin. <br>
+    DM veya notification badge için doğru userId ile subscribe ol!</p>
+
+<div>
+    <label for="userId">Kullanıcı ID (UUID): </label>
+    <input id="userId" style="width:380px" placeholder="Kendi UUID'ni gir"/>
+    <button onclick="connect()">Bağlan</button>
+    <button onclick="disconnect()">Bağlantıyı Kes</button>
+</div>
+
+<div style="margin-top:18px;">
+    <label>Abone Ol: </label>
+    <button onclick="subscribeDm()">DM Mesaj Kanalı</button>
+    <button onclick="subscribeDmBadge()">DM Badge Kanalı</button>
+    <button onclick="subscribeNotif()">Notification Kanalı</button>
+    <button onclick="subscribeNotifBadge()">Notification Badge</button>
+</div>
+
+<pre id="log"></pre>
+
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+<script>
+    let stompClient = null;
+    let subscriptions = [];
+
+    function log(msg) {
+        const logDiv = document.getElementById('log');
+        logDiv.textContent += msg + "\n";
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function connect() {
+        const socket = new SockJS('/ws');
+        stompClient = Stomp.over(socket);
+        stompClient.debug = false;
+        stompClient.connect({}, function (frame) {
+            log('Bağlantı açıldı! ' + frame);
+        }, function (error) {
+            log('Bağlantı hatası: ' + error);
+        });
+    }
+
+    function disconnect() {
+        subscriptions.forEach(sub => sub.unsubscribe && sub.unsubscribe());
+        subscriptions = [];
+        if (stompClient !== null) {
+            stompClient.disconnect(() => log("Bağlantı kapatıldı!"));
+        }
+    }
+
+    function subscribeDm() {
+        const userId = document.getElementById('userId').value.trim();
+        if (!userId) { log('UserId gir!'); return; }
+        const dest = '/topic/dm/' + userId;
+        const sub = stompClient.subscribe(dest, function (message) {
+            log('DM Mesaj (' + dest + '):\n' + JSON.stringify(JSON.parse(message.body), null, 2));
+        });
+        subscriptions.push(sub);
+        log('DM Mesaj kanalına abone olundu: ' + dest);
+    }
+
+    function subscribeDmBadge() {
+        const userId = document.getElementById('userId').value.trim();
+        if (!userId) { log('UserId gir!'); return; }
+        const dest = '/topic/dm/' + userId + '/badge';
+        const sub = stompClient.subscribe(dest, function (message) {
+            log('DM Badge (' + dest + '): ' + message.body);
+        });
+        subscriptions.push(sub);
+        log('DM Badge kanalına abone olundu: ' + dest);
+    }
+
+    function subscribeNotif() {
+        const userId = document.getElementById('userId').value.trim();
+        if (!userId) { log('UserId gir!'); return; }
+        const dest = '/topic/notifications/' + userId;
+        const sub = stompClient.subscribe(dest, function (message) {
+            log('Notification (' + dest + '):\n' + JSON.stringify(JSON.parse(message.body), null, 2));
+        });
+        subscriptions.push(sub);
+        log('Notification kanalına abone olundu: ' + dest);
+    }
+
+    function subscribeNotifBadge() {
+        const userId = document.getElementById('userId').value.trim();
+        if (!userId) { log('UserId gir!'); return; }
+        const dest = '/topic/notifications/' + userId + '/badge';
+        const sub = stompClient.subscribe(dest, function (message) {
+            log('Notification Badge (' + dest + '): ' + message.body);
+        });
+        subscriptions.push(sub);
+        log('Notification Badge kanalına abone olundu: ' + dest);
+    }
+</script>
+</body>
+</html>

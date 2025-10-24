@@ -1,6 +1,6 @@
 spring:
   datasource:
-    # Her test için random bir H2 DB! Tablo çakışmaz.
+    # Her test için random H2 (PostgreSQL uyum modu)
     url: jdbc:h2:mem:testdb-${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false
     username: sa
     password:
@@ -8,11 +8,13 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create-drop # Her context başlarken create-drop
+      ddl-auto: create-drop
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
     open-in-view: false
+    show-sql: false
 
   h2:
     console:
@@ -20,8 +22,21 @@ spring:
 
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+      # Rabbit tamamen kapalı (iki konfig de)
+      - org.springframework.amqp.rabbit.autoconfigure.RabbitAutoConfiguration
+      - org.springframework.amqp.rabbit.autoconfigure.RabbitAnnotationDrivenConfiguration
+      # Redis kapalı
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false
+      direct:
+        auto-startup: false
+
+  # OAuth2 client test stub değerleri (gerekirse)
   security:
     oauth2:
       client:
@@ -38,19 +53,12 @@ spring:
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: email
 
-  # Redis’i dummyye al (testte gerçek bağlantı gerekmiyor)
   data:
     redis:
-      host: localhost
-      port: 6379
+      # Redis'i tamamen devre dışı bırak
+      client-type: none
 
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
-    virtual-host: /
-
+# Uygulama konfigleri (test modu)
 app:
   jwt:
     secret: test-jwt-secret-key
@@ -74,6 +82,7 @@ otp:
     cooldown:
       seconds: 30
 
+# Mail test stub (MailerSend'e çıkmasın)
 mailersend:
   api-key: test-mailersend-api-key
   from-email: test@soundconnect.app
@@ -81,16 +90,10 @@ mailersend:
   otp-validity-minutes: 3
   frontend-verify-url: http://localhost:3000/verify-email
 
-logging:
-  level:
-    root: INFO
-    org.hibernate.SQL: WARN
-    org.hibernate.type.descriptor.sql: WARN
-
-# --- MEDIA / STORAGE (DUMMY / TEST) ---
+# MEDIA / STORAGE (test/dummy)
 cloud:
   storage:
-    provider: s3
+    provider: fake          # Gerçek S3 yerine test double (kodda destekliyorsun)
     bucket: soundconnect-media-test
     region: eu-central-1
     accessKey: test-s3-access-key
@@ -116,19 +119,9 @@ media:
     hlsDir: hls
     sourceBasename: source
 
-rabbitmq:
-  media:
-    exchange: media.transcode
-    dlx: media.transcode.dlx
-    queues:
-      videoHls: media.transcode.video.hls
-      videoHlsDlq: media.transcode.video.hls.dlq
-    routingKeys:
-      videoHlsRequest: video.hls.request
-      videoHlsRequestDlq: video.hls.request.dlq
-    listenerConcurrency: 1-3
-
+# Transcode ve kuyruklar testte kapalı
 transcode:
+  enabled: false
   ladder:
     - { height: 1080, videoBitrate: "6000k", audioBitrate: "192k" }
     - { height: 720,  videoBitrate: "3000k", audioBitrate: "160k" }
@@ -141,3 +134,22 @@ transcode:
   segmentDurationSec: 4
   ffprobeBinary: ffprobe
   ffprobeTimeoutSec: 30
+
+# Rabbit tanımları dursa da autoconfig kapalı olduğu için listener açılmaz
+rabbitmq:
+  media:
+    exchange: media.transcode
+    dlx: media.transcode.dlx
+    queues:
+      videoHls: media.transcode.video.hls
+      videoHlsDlq: media.transcode.video.hls.dlq
+    routingKeys:
+      videoHlsRequest: video.hls.request
+      videoHlsRequestDlq: video.hls.request.dlq
+    listenerConcurrency: 1-3
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql: WARN

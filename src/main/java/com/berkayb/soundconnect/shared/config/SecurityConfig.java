@@ -86,7 +86,8 @@ public class SecurityConfig {
 								"/ws",             // EKLENDİ
 								"/ws/**",          // EKLENDİ
 								"/topic/**",       // (opsiyonel)
-								"/app/**"          // (opsiyonel)
+								"/app/**",          // (opsiyonel)
+								"/test-ws.html"          // (opsiyonel)
 								
 						).permitAll()
 						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister

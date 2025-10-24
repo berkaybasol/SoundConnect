@@ -1,9 +1,12 @@
 package com.berkayb.soundconnect.modules.role.controller;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.mapper.PermissionMapper;
 import com.berkayb.soundconnect.modules.role.repository.PermissionRepository;
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
+import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
@@ -14,6 +17,9 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
@@ -44,8 +50,35 @@ class PermissionControllerTest {
 	@Autowired PermissionRepository permissionRepository;
 	
 	// Rabbit lazım: MailProducerImpl için mock
+	// MailProducerImpl yüzünden gerekecek
+	@MockitoBean RabbitTemplate rabbitTemplate;
 	@MockitoBean
-	RabbitTemplate rabbitTemplate;
+	RedisConnectionFactory redisConnectionFactory;
+	@MockitoBean
+	RedisTemplate<String, String> redisTemplate;
+	@MockitoBean
+	OtpService otpService;
+	
+	@MockitoBean
+	StringRedisTemplate stringRedisTemplate;
+	
+	@MockitoBean
+	MailJobHelper mailJobHelper;
+	
+	@MockitoBean
+	MailSenderClient mailSenderClient;
+	
+	@MockitoBean
+	org.springframework.amqp.support.converter.Jackson2JsonMessageConverter jackson2JsonMessageConverter;
+	
+	// Bazı config'ler ConnectionFactory isterse güvence:
+	@MockitoBean(name = "rabbitConnectionFactory")
+	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	
+	
+	// İstersen tüketiciyi de körle (gerekmeden geçmesi lazım ama garanti):
+	@MockitoBean
+	com.berkayb.soundconnect.shared.mail.consumer.DlqMailJobConsumer dlqMailJobConsumer;
 	
 	// MapStruct bean’i garanti olsun diye spy’lıyoruz
 	@MockitoSpyBean

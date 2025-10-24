@@ -50,6 +50,14 @@ public class DmMessageEventListener {
 		}
 		long unread = messageRepository.findByConversationIdAndRecipientIdAndReadAtIsNull(
 				event.getConversationId(), event.getRecipientId()
-		).size(); // BURDASIN
+		).size(); // veya tek query ile recipient'in tum okunmamis DM'lerini sayabiliriz.
+		
+		badgeCacheHelper.setUnread(event.getRecipientId(), unread);
+		
+		// WS ile badge push
+		Long cacheUnread = badgeCacheHelper.getCacheUnread(event.getRecipientId());
+		String badgeDestination = WebSocketChannels.dmBadge(event.getRecipientId());
+		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
+		log.debug("DM unread badge WS push: userId={}, badge={}", event.getRecipientId(), cacheUnread);
 	}
 }

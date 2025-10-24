@@ -35,7 +35,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 	public void registerStompEndpoints(StompEndpointRegistry registry) {
 		// STOMP endpoint: ws(s)://host/ws
 		registry.addEndpoint("/ws")
-				.setAllowedOriginPatterns("*"); //FIXME prod'da kisitlicaz
-		// .withSockJS(); // Gerekirse aç (eski tarayıcılar için)
+				.setAllowedOriginPatterns("*") //FIXME prod'da kisitlicaz
+		 .withSockJS(); // Gerekirse aç (eski tarayıcılar için)
 	}
 }

@@ -1,19 +1,30 @@
 package com.berkayb.soundconnect.modules.location.controller;
 
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
+import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -25,6 +36,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @Tag("web")
+@EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
+@EntityScan(basePackages = "com.berkayb.soundconnect")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@TestPropertySource(properties = {
+		"spring.datasource.url=jdbc:h2:mem:sc-neighborhood-it-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop"
+})
 class NeighborhoodControllerIT {
 	
 	@Autowired MockMvc mockMvc;
@@ -32,29 +50,40 @@ class NeighborhoodControllerIT {
 	@Autowired DistrictRepository districtRepository;
 	@Autowired NeighborhoodRepository neighborhoodRepository;
 	
+	// --- AMQP listener’ı devre dışı bırak ---
+	@MockitoBean RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry;
+	@MockitoBean org.springframework.amqp.support.converter.Jackson2JsonMessageConverter jackson2JsonMessageConverter;
+	@MockitoBean(name = "rabbitConnectionFactory")
+	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	
+	// --- Diğer altyapı bağımlılıkları (stub) ---
+	@MockitoBean RedisConnectionFactory redisConnectionFactory;
+	@MockitoBean RedisTemplate<String, String> redisTemplate;
+	@MockitoBean StringRedisTemplate stringRedisTemplate;
+	@MockitoBean OtpService otpService;
+	@MockitoBean MailJobHelper mailJobHelper;
+	@MockitoBean MailSenderClient mailSenderClient;
 	@MockitoBean
-	org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
+	com.berkayb.soundconnect.shared.mail.consumer.DlqMailJobConsumer dlqMailJobConsumer;
 	
 	private District district;
 	
-	private static final String BASE = EndPoints.Neighborhood.BASE; // "/api/v1/neighborhoods"
-	private static final String SAVE = BASE + EndPoints.Neighborhood.SAVE;
+	private static final String BASE = EndPoints.Neighborhood.BASE;              // "/api/v1/neighborhoods"
+	private static final String SAVE = BASE + EndPoints.Neighborhood.SAVE;       // "/save"
 	private static final String GET_ALL = BASE + EndPoints.Neighborhood.GET_ALL;
-	private static final String GET_BY_ID = BASE + EndPoints.Neighborhood.GET_BY_ID;               // "/get-by-id/{id}"
-	private static final String GET_BY_DISTRICT = BASE + EndPoints.Neighborhood.GET_BY_DISTRICT;   // "/get-by-district/{districtId}"
-	private static final String DELETE = BASE + EndPoints.Neighborhood.DELETE;                     // "/delete/{id}"
+	private static final String GET_BY_ID = BASE + EndPoints.Neighborhood.GET_BY_ID;             // "/get-by-id/{id}"
+	private static final String GET_BY_DISTRICT = BASE + EndPoints.Neighborhood.GET_BY_DISTRICT; // "/get-by-district/{districtId}"
+	private static final String DELETE = BASE + EndPoints.Neighborhood.DELETE;                   // "/delete/{id}"
 	
 	@BeforeEach
 	void setup() {
-		// FK sırası: önce neighborhood → district → city
+		// FK sırası: neighborhood -> district -> city
 		neighborhoodRepository.deleteAll();
 		districtRepository.deleteAll();
 		cityRepository.deleteAll();
 		
 		City city = cityRepository.save(City.builder().name("TestCity2").build());
-		district = districtRepository.save(
-				District.builder().name("Merkez-2").city(city).build()
-		);
+		district = districtRepository.save(District.builder().name("Merkez-2").city(city).build());
 	}
 	
 	@Test

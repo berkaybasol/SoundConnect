@@ -1,9 +1,8 @@
-package com.berkayb.soundconnect.modules.profile.StudioProfille.repository;
+package com.berkayb.soundconnect.modules.profile.StudioProfile.repository;
 
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
-import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
@@ -16,6 +15,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -31,9 +31,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @TestPropertySource(properties = {
-		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-		"spring.jpa.hibernate.ddl-auto=create-drop"
+		"spring.datasource.url=jdbc:h2:mem:sc-studio-repo-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.jpa.hibernate.ddl-auto=create-drop",
+		"spring.rabbitmq.listener.simple.auto-startup=false",
+		"spring.rabbitmq.listener.direct.auto-startup=false"
 })
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("repo")
 class StudioProfileRepositoryTest {
 	
