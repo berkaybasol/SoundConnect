@@ -6,5 +6,6 @@ public enum ParticipantStatus {
 	PENDING,
 	ACCEPTED,
 	REJECTED,
-	KICKED
+	KICKED,
+	LEFT
 }

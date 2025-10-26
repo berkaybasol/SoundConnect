@@ -20,5 +20,17 @@ public interface TableGroupService {
 	// tek bir masanin detayini getirir
 	TableGroupResponseDto getTableGroupDetail(UUID tableGroupId);
 	
+	// masaya katilma istegi
+	void joinTableGroup(UUID userId, UUID tableGroupId);
+	
+	// masa sahibi katilim istegini onaylar
+	void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);
+	
+	// masa sahibi katilim istegini reddeder
+	void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);
+	
+	// katilimci masadan kendisi ayrilir
+	void leaveTableGroup(UUID userId, UUID tableGroupId);
+	
 	//TODO masaya katilim/istek notification, update/delete vs methodlar eklencek
 }

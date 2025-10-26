@@ -39,6 +39,101 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
 	
+	@Override
+	public void joinTableGroup(UUID userId, UUID tableGroupId) {
+		// masa var mi aktif mi ve suresi gecmis mi?
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		if (tableGroup.getStatus() != TableGroupStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND);
+		}
+		if (tableGroup.getExpiresAt().isBefore(LocalDateTime.now())) {
+			throw new SoundConnectException(ErrorType.TABLE_END_DATE_PASSED);
+		}
+		
+		// katilimci limiti dolmus mu?
+		long activeParticipants = tableGroup.getParticipants().stream()
+				.filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED || p.getStatus() == ParticipantStatus.PENDING)
+				.count();
+		if (activeParticipants >= tableGroup.getMaxPersonCount()) {
+			throw new SoundConnectException(ErrorType.MAX_PARTICIPANT_LIMIT);
+		}
+		
+		// zaten katilimci mi?
+		boolean alreadyParticipant = tableGroup.getParticipants().stream()
+				.anyMatch(p-> p.getUserId().equals(userId) &&
+						(p.getStatus() == ParticipantStatus.ACCEPTED || p.getStatus() == ParticipantStatus.PENDING));
+		if (alreadyParticipant) {
+			throw new SoundConnectException(ErrorType.ALREADY_PARTICIPANT);
+		}
+		
+		// katilim istegi olarak yeni participant ekle (pending)
+		TableGroupParticipant joinRequest = TableGroupParticipant.builder()
+				.userId(userId)
+				.joinedAt(LocalDateTime.now())
+				.status(ParticipantStatus.PENDING)
+				.build();
+		tableGroup.getParticipants().add(joinRequest);
+		
+		tableGroupRepository.save(tableGroup);
+		log.info("Join request: user={} tableGroup={} status={}", userId, tableGroupId, joinRequest.getStatus());
+		
+		// 6. Notification Event (owner'a başvuru bildirimi fire et)
+		// notificationEventPublisher.publishJoinRequest(tableGroup.getOwnerId(), tableGroup.getId(), userId);
+		// (Notification tipi: JOIN_REQUEST_RECEIVED)
+		
+		// 7. Badge ve WebSocket noktası (owner'a WS unread badge push yapılabilir)
+		// badgeCacheHelper.incrementUnread(tableGroup.getOwnerId());
+		// notificationWebSocketService.sendUnreadBadgeToUser(tableGroup.getOwnerId(), ...);
+	}
+	
+	@Override
+	public void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
+		// masa var mi?
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		
+		if (!tableGroup.getOwnerId().equals(ownerId)) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		}
+		if (tableGroup.getStatus() != TableGroupStatus.ACTIVE || tableGroup.getExpiresAt().isBefore(LocalDateTime.now())) {
+			throw new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND);
+		}
+		
+		// participant pending mi?
+		TableGroupParticipant participant = tableGroup.getParticipants().stream()
+				.filter(p -> p.getUserId().equals(participantId) && p.getStatus() == ParticipantStatus.PENDING)
+				.findFirst()
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+				
+		// katilimci limiti dolmus mu
+		long activeCount = tableGroup.getParticipants().stream()
+				.filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED)
+				.count();
+		if (activeCount >= tableGroup.getMaxPersonCount()) {
+			throw new SoundConnectException(ErrorType.MAX_PARTICIPANT_LIMIT);
+		}
+		
+		participant.setStatus(ParticipantStatus.ACCEPTED);
+		
+		tableGroupRepository.save(tableGroup);
+		log.info("Join request APPROVED: tableGroup={}, participant={}", tableGroupId, participantId);
+		// 6. Notification & Badge & WS
+		// notificationEventPublisher.publishJoinApproved(participantId, tableGroupId, ...);
+		// badgeCacheHelper.incrementUnread(participantId);
+		// notificationWebSocketService.sendUnreadBadgeToUser(participantId, ...);
+		
+	}
+	
+	@Override
+	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
+	
+	}
+	
+	@Override
+	public void leaveTableGroup(UUID userId, UUID tableGroupId) {
+	
+	}
 	
 	@Override
 	public TableGroupResponseDto createTableGroup(UUID ownerId, TableGroupCreateRequestDto requestDto) {

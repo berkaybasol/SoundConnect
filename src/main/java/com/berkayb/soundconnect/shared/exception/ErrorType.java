@@ -108,8 +108,11 @@ public enum ErrorType {
 	VENUE_INFORMATION_REQUIRED(9101,"Venue information is required", HttpStatus.BAD_REQUEST, "Mekan bilgisi (venue) girilmeli."),
 	INVALID_AGE_RANGE(9102, "Invalid age range", HttpStatus.BAD_REQUEST,"Yas araligi gecersiz"),
 	GENDER_AND_COUNT_MISMATCH(9103,"Gender preference and participant count mismatch", HttpStatus.BAD_REQUEST,"Cinsiyet tercihi ve kisi sayisi esit olmali"),
-	TABLE_END_DATE_PASSED(9104,"Table end date has already passed", HttpStatus.BAD_REQUEST,"Masa bitis tarihi bitmis olamaz"),
+	TABLE_END_DATE_PASSED(9104,"Table end date has already passed", HttpStatus.BAD_REQUEST,"Masa bitis tarihi bitmis olamaz veya masa suresi bitmis"),
 	TABLE_GROUP_NOT_FOUND(9105,"Table group not found", HttpStatus.NOT_FOUND,"Table group bulunamadi"),
+	MAX_PARTICIPANT_LIMIT(9106,"Max participant limit",HttpStatus.BAD_REQUEST,"Masa dolu."),
+	ALREADY_PARTICIPANT(9107,"Already participant",HttpStatus.BAD_REQUEST,"Zaten masadasin veya basvuru yapmissin"),
+	PARTICIPANT_NOT_FOUND(9108,"Participant not found",HttpStatus.NOT_FOUND,"Basvuru bulunamadi"),
 	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
