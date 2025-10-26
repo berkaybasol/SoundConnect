@@ -24,7 +24,7 @@ public record TableGroupCreateRequestDto(
 		// Cinsiyet tercihleri
 		@NotNull
 		@Size (min = 2, max = 6, message = "Cinsiyet listesi masa kapasitesiyle uyumlu olmali")
-		List<@Pattern(regexp = "FEMALE|MALE|OTHER") String> genderPresfs,
+		List<@Pattern(regexp = "FEMALE|MALE|OTHER") String> genderPrefs,
 		
 		// yas araligi
 		@Min(19) @Max(99)

@@ -24,6 +24,15 @@ public interface TableGroupMapper {
 	
 	Set<TableGroupParticipantDto> toParticipantDtoSet(Set<TableGroupParticipant> entities);
 	
+	// DTO -> Entity
+	@Mapping(target = "id", ignore = true) // ID genellikle DB tarafından atanır
+	@Mapping(target = "city", ignore = true) // Bunlar genellikle service layer'da set edilir
+	@Mapping(target = "district", ignore = true)
+	@Mapping(target = "neighborhood", ignore = true)
+	@Mapping(target = "participants", ignore = true) // Katılımcılar ayrı eklenir
+	TableGroup toEntity(TableGroupCreateRequestDto dto);
+	
+	
 	// Helper: Location entity -> LocationDto
 	default TableGroupResponseDto.LocationDto toLocationDto(City city) {
 		return city == null ? null : new TableGroupResponseDto.LocationDto(city.getId(), city.getName());

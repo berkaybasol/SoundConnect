@@ -89,6 +89,10 @@ public enum ErrorType {
 	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.BAD_REQUEST, "Bu mahalle zaten mevcut."),
 	NEIGHBORHOOD_NOT_FOUND(6006, "Neighborhood not found", HttpStatus.NOT_FOUND, "Mahalle bilgisi bulunamadı."),
 	INVALID_CITY_NAME(6007, "Invalid city name", HttpStatus.BAD_REQUEST, "Geçersiz şehir adı girdiniz."),
+	DISTRICT_CITY_MISMATCH(6008, "District does not belong to the selected city", HttpStatus.BAD_REQUEST, "Ilce secilen sehre ait degil"),
+	NEIGHBORHOOD_DISTRICT_MISMATCH(6009, "Neighborhood does not belong to the selected district",
+	                               HttpStatus.BAD_REQUEST,
+	                               "mahalle secilen ilceye ait degil"),
 	
 	// VENUE (7000-7099)
 	VENUE_NOT_FOUND(7001, "Venue not found", HttpStatus.NOT_FOUND, "Mekan bilgisi bulunamadı."),
@@ -98,6 +102,14 @@ public enum ErrorType {
 	
 	// MAIL (9000-9099)
 	MAIL_QUEUE_ERROR(9001, "Mail could not be queued", HttpStatus.INTERNAL_SERVER_ERROR, "Mail kuyruğa alınamadı."),
+	
+	// TABLEGROUP (9100-9200)
+	VENUE_ID_AND_NAME_CONFLICT(9100,"Both venueId and venueName are provided", HttpStatus.BAD_REQUEST, "Hem venueId hem de venueName dolu olamaz"),
+	VENUE_INFORMATION_REQUIRED(9101,"Venue information is required", HttpStatus.BAD_REQUEST, "Mekan bilgisi (venue) girilmeli."),
+	INVALID_AGE_RANGE(9102, "Invalid age range", HttpStatus.BAD_REQUEST,"Yas araligi gecersiz"),
+	GENDER_AND_COUNT_MISMATCH(9103,"Gender preference and participant count mismatch", HttpStatus.BAD_REQUEST,"Cinsiyet tercihi ve kisi sayisi esit olmali"),
+	TABLE_END_DATE_PASSED(9104,"Table end date has already passed", HttpStatus.BAD_REQUEST,"Masa bitis tarihi bitmis olamaz"),
+	TABLE_GROUP_NOT_FOUND(9105,"Table group not found", HttpStatus.NOT_FOUND,"Table group bulunamadi"),
 	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

@@ -13,7 +13,12 @@ public interface TableGroupService {
 	TableGroupResponseDto createTableGroup(UUID ownerId, TableGroupCreateRequestDto requestDto);
 	
 	// Aktif masalari listeler
-	Page<TableGroupResponseDto> listActiveTableGroups(Pageable pageable);
+	Page<TableGroupResponseDto> listActiveTableGroups(UUID cityId, UUID districtId,
+	                                                  UUID neighborhoodId, Pageable pageable);
 	
 	
+	// tek bir masanin detayini getirir
+	TableGroupResponseDto getTableGroupDetail(UUID tableGroupId);
+	
+	//TODO masaya katilim/istek notification, update/delete vs methodlar eklencek
 }
