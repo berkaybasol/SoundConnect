@@ -113,6 +113,7 @@ public enum ErrorType {
 	MAX_PARTICIPANT_LIMIT(9106,"Max participant limit",HttpStatus.BAD_REQUEST,"Masa dolu."),
 	ALREADY_PARTICIPANT(9107,"Already participant",HttpStatus.BAD_REQUEST,"Zaten masadasin veya basvuru yapmissin"),
 	PARTICIPANT_NOT_FOUND(9108,"Participant not found",HttpStatus.NOT_FOUND,"Basvuru bulunamadi"),
+	OWNER_CANNOT_LEAVE(9109,"Owner cannot leave",HttpStatus.BAD_REQUEST,"Masa sahibi masadan ayrilamaz"),
 	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

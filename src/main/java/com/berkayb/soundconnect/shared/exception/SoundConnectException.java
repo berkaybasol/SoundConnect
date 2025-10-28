@@ -20,4 +20,9 @@ public class SoundConnectException extends RuntimeException {
     this.errorType = errorType;
     this.details = details;
   }
+	
+	public SoundConnectException(ErrorType errorType, String detail) {
+		this(errorType, List.of(detail));
+	}
+	
 }

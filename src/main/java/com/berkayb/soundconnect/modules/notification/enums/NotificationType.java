@@ -32,7 +32,14 @@ public enum NotificationType {
 	// ARTISTVENUELINKAPPLICATION
 	ARTIST_VENUE_LINK_APPLICATION_REQUEST("ARTIST_VENUE", "Bağlanma isteği gönderildi", false),
 	ARTIST_VENUE_LINK_APPLICATION_ACCEPT("ARTIST_VENUE", "Bağlanma isteğin onaylandı", false),
-	ARTIST_VENUE_LINK_APPLICATION_REJECT("ARTIST_VENUE", "Bağlanma isteğin reddedildi", false);
+	ARTIST_VENUE_LINK_APPLICATION_REJECT("ARTIST_VENUE", "Bağlanma isteğin reddedildi", false),
+	
+	// TABLE GROUP (Muzik birlestirir)
+	TABLE_JOIN_REQUEST_RECEVIED("TABLE","Yeni basvuru istegi", false),
+	TABLE_JOIN_REQUEST_APPROVED("TABLE","Basvurun onaylandi",false),
+	TABLE_JOIN_REQUEST_REJECTED("TABLE","Basvurun reddedildi",false),
+	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false);
+	
 	
 	//TODO diger moduller gelecek simdilik bu sekilde kalsin once moduleyi bitirelim.
 	

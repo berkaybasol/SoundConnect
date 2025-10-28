@@ -17,6 +17,7 @@ import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupReposito
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ import java.util.UUID;
 @Slf4j
 public class TableGroupServiceImpl implements TableGroupService{
 	
+	private final NotificationProducer notificationProducer;
 	private final TableGroupRepository tableGroupRepository;
 	private final TableGroupMapper tableGroupMapper;
 	private final CityRepository cityRepository;
@@ -127,12 +129,64 @@ public class TableGroupServiceImpl implements TableGroupService{
 	
 	@Override
 	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
-	
+		// masa ve owner kontrolu
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		
+		if (!tableGroup.getOwnerId().equals(ownerId)) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED,"Sadece owner onaylayabilir.");
+		}
+		if (tableGroup.getStatus() != TableGroupStatus.ACTIVE || tableGroup.getExpiresAt().isBefore(LocalDateTime.now())) {
+			throw new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND, "Masa aktif degil");
+		}
+		
+		// participant pending mi?
+		TableGroupParticipant participant = tableGroup.getParticipants().stream()
+				.filter(p -> p.getUserId().equals(participantId) && p.getStatus() == ParticipantStatus.PENDING)
+				.findFirst()
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+		
+		
+		// status rejectle
+		participant.setStatus(ParticipantStatus.REJECTED);
+		
+		tableGroupRepository.save(tableGroup);
+		log.info("Join request REJECTED: tableGroup={}, participant={}", tableGroupId, participantId);
+		
+		// 5. Notification & Badge & WS
+		// notificationEventPublisher.publishJoinRejected(participantId, tableGroupId, ...);
+		// badgeCacheHelper.incrementUnread(participantId);
+		// notificationWebSocketService.sendUnreadBadgeToUser(participantId, ...);
 	}
 	
 	@Override
 	public void leaveTableGroup(UUID userId, UUID tableGroupId) {
-	
+		// masa var mi?
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		
+		// kullanici owner mi ownersa masadan ayrilamaz
+		if (!tableGroup.getOwnerId().equals(userId)) {
+			throw new SoundConnectException(ErrorType.OWNER_CANNOT_LEAVE);
+		}
+		
+		// kullanici participant mi? oyleyse accepted olanlar ayrilabilir
+		TableGroupParticipant participant = tableGroup.getParticipants().stream()
+				.filter(p -> p.getUserId().equals(userId) && p.getStatus() == ParticipantStatus.ACCEPTED)
+				.findFirst()
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND, "Kullanici aktif bir " +
+						"katilimci degil"));
+		// statuyu left yap
+		participant.setStatus(ParticipantStatus.LEFT);
+		
+		tableGroupRepository.save(tableGroup);
+		log.info("User {} left table group {}", userId, tableGroupId);
+		
+		// 6. Notification & WS (owner'a veya diğer katılımcılara bilgi opsiyonel)
+		// notificationEventPublisher.publishParticipantLeft(tableGroup.getOwnerId(), tableGroupId, userId);
+		// notificationWebSocketService.sendTableGroupUpdateToAll(tableGroupId, ...);
+		
+		// Badge/WS entegrasyonu notification ile birlikte ilerleyecek.
 	}
 	
 	@Override
