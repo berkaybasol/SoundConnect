@@ -19,6 +19,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Embeddable // baska entity icine gomulebilir oldugunu belirtiyoruz. (TableGroup)
+@EqualsAndHashCode(of = "userId")
 public class TableGroupParticipant {
 	
 	private UUID userId;

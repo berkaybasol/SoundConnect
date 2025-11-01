@@ -32,5 +32,11 @@ public interface TableGroupService {
 	// katilimci masadan kendisi ayrilir
 	void leaveTableGroup(UUID userId, UUID tableGroupId);
 	
+	// masa sahibi birini masadan atar
+	void removeParticipantFromTableGroup(UUID ownerId, UUID tableGroupId, UUID participantId);
+	
+	// masa sahibi masayi iptal etsin
+	void cancelTableGroup(UUID ownerId, UUID tableGroupId);
+	
 	//TODO masaya katilim/istek notification, update/delete vs methodlar eklencek
 }

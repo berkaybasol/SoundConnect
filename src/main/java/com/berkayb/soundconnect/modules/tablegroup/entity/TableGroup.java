@@ -24,7 +24,10 @@ import java.util.UUID;
 		@Index(name = "idx_tablegroup_venueid", columnList = "venue_id"),
 		@Index(name = "idx_tablegroup_venue_name", columnList = "venue_name"),
 		@Index(name = "idx_tablegroup_expires_at", columnList = "expires_at"),
-		@Index(name = "idx_tablegroup_status", columnList = "status")
+		@Index(name = "idx_tablegroup_status", columnList = "status"),
+		@Index(name = "idx_group_city_status_exp", columnList = "city_id,status,expires_at"),
+		@Index(name = "idx_group_city_district_status_exp", columnList = "city_id,district_id,status,expires_at"),
+		@Index(name = "idx_group_city_district_neighborhood_status_exp", columnList = "city_id,district_id,neighborhood_id,status,expires_at"),
 })
 public class TableGroup extends BaseEntity {
 	

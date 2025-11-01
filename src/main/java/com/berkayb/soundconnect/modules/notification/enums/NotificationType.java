@@ -38,7 +38,9 @@ public enum NotificationType {
 	TABLE_JOIN_REQUEST_RECEVIED("TABLE","Yeni basvuru istegi", false),
 	TABLE_JOIN_REQUEST_APPROVED("TABLE","Basvurun onaylandi",false),
 	TABLE_JOIN_REQUEST_REJECTED("TABLE","Basvurun reddedildi",false),
-	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false);
+	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false),
+	TABLE_REMOVED ("TABLE","Masadan cikarildin",false),
+	TABLE_CANCELLED ("TABLE","Masa etkinligi iptal edildi.",false);
 	
 	
 	//TODO diger moduller gelecek simdilik bu sekilde kalsin once moduleyi bitirelim.

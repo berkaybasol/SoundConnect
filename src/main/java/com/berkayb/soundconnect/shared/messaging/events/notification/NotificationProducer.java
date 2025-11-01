@@ -33,6 +33,14 @@ public class NotificationProducer {
 	// NotificationInboundEvent mesajini RabbitMQ'ya publish eder.
 	
 	public void publish(NotificationInboundEvent event) {
-		BURDASIN
+		try{
+			rabbitTemplate.convertAndSend(exchange, routingKey, event);
+			log.info("Notification published to RabbitMQ. exchange={}, routingKey={}, recipient={}, type={}",
+			        exchange, routingKey, event.recipientId(), event.type());
+		} catch (Exception e) {
+			log.error("Notification publish failed! recipient={}, type={}, err={}",
+			          event.recipientId(), event.type(), e.toString());
+			// fallback-dlq-monitoring logic
+		}
 	}
 }

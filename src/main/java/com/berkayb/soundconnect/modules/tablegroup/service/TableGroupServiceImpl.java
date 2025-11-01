@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroup;
@@ -14,9 +15,11 @@ import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
 import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.mapper.TableGroupMapper;
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
+import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 @Service
 @RequiredArgsConstructor
@@ -40,6 +44,64 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final CityRepository cityRepository;
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
+	private final TableGroupEntityFinder entityFinder;
+	
+	@Override
+	public void removeParticipantFromTableGroup(UUID ownerId, UUID tableGroupId, UUID participantId) {
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		if (!tableGroup.getOwnerId().equals(ownerId)) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		}
+		
+		TableGroupParticipant participant = tableGroup.getParticipants().stream()
+				.filter(p -> p.getUserId().equals(participantId) && p.getStatus() == ParticipantStatus.ACCEPTED)
+				.findFirst()
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+		
+		participant.setStatus(ParticipantStatus.KICKED);
+		tableGroupRepository.save(tableGroup);
+		
+		notificationProducer.publish(
+				NotificationInboundEvent.builder()
+						.recipientId(participantId)
+						.type(NotificationType.TABLE_REMOVED)
+						.title("masadan cikarildin")
+						.message("bir masa etkinliginden cikarildin")
+						.payload(Map.of(
+								"tableGroupId",tableGroupId,
+								"ownerId", ownerId
+						))
+						.build()
+		);
+	}
+	
+	@Override
+	public void cancelTableGroup(UUID ownerId, UUID tableGroupId) {
+		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		if (!tableGroup.getOwnerId().equals(ownerId)) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		}
+		tableGroup.setStatus(TableGroupStatus.CANCELLED);
+		tableGroupRepository.save(tableGroup);
+		
+		tableGroup.getParticipants().stream()
+		          .filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED && !p.getUserId().equals(ownerId))
+		          .forEach(participant -> {
+			          notificationProducer.publish(
+					          NotificationInboundEvent.builder()
+					                                  .recipientId(participant.getUserId())
+					                                  .type(NotificationType.TABLE_CANCELLED)
+					                                  .title("Masa iptal edildi")
+					                                  .message("Katıldığın masa etkinliği iptal edildi.")
+					                                  .payload(Map.of(
+							                                  "tableGroupId", tableGroupId
+					                                  ))
+					                                  .build()
+			          );
+		          });
+	}
 	
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId) {
@@ -80,13 +142,21 @@ public class TableGroupServiceImpl implements TableGroupService{
 		tableGroupRepository.save(tableGroup);
 		log.info("Join request: user={} tableGroup={} status={}", userId, tableGroupId, joinRequest.getStatus());
 		
-		// 6. Notification Event (owner'a başvuru bildirimi fire et)
-		// notificationEventPublisher.publishJoinRequest(tableGroup.getOwnerId(), tableGroup.getId(), userId);
-		// (Notification tipi: JOIN_REQUEST_RECEIVED)
-		
-		// 7. Badge ve WebSocket noktası (owner'a WS unread badge push yapılabilir)
-		// badgeCacheHelper.incrementUnread(tableGroup.getOwnerId());
-		// notificationWebSocketService.sendUnreadBadgeToUser(tableGroup.getOwnerId(), ...);
+		// Notification Event (owner'a basvuru bildirimi fire et)
+		if (!tableGroup.getOwnerId().equals(userId)) {
+			notificationProducer.publish(
+					NotificationInboundEvent.builder()
+					                        .recipientId(tableGroup.getOwnerId())
+					                        .type(NotificationType.TABLE_JOIN_REQUEST_RECEVIED)
+					                        .title("Yeni masa başvurusu!")
+					                        .message("Masana yeni bir başvuru geldi. Katılımcı onayı bekliyor.")
+					                        .payload(Map.of(
+							                        "tableGroupId", tableGroup.getId(),
+							                        "applicantId", userId
+					                        ))
+					                        .build()
+			);
+		}
 	}
 	
 	@Override
@@ -120,10 +190,19 @@ public class TableGroupServiceImpl implements TableGroupService{
 		
 		tableGroupRepository.save(tableGroup);
 		log.info("Join request APPROVED: tableGroup={}, participant={}", tableGroupId, participantId);
-		// 6. Notification & Badge & WS
-		// notificationEventPublisher.publishJoinApproved(participantId, tableGroupId, ...);
-		// badgeCacheHelper.incrementUnread(participantId);
-		// notificationWebSocketService.sendUnreadBadgeToUser(participantId, ...);
+		
+		notificationProducer.publish(
+				NotificationInboundEvent.builder()
+						.recipientId(participantId)
+						.type(NotificationType.TABLE_JOIN_REQUEST_APPROVED)
+						.title("Basvurun onaylandi")
+						.message("Katildigin masa basvurun onaylandi")
+						.payload(Map.of(
+								"tableGroupId",tableGroup.getId(),
+								"ownerId", ownerId
+						))
+						.build()
+		);
 		
 	}
 	
@@ -153,10 +232,18 @@ public class TableGroupServiceImpl implements TableGroupService{
 		tableGroupRepository.save(tableGroup);
 		log.info("Join request REJECTED: tableGroup={}, participant={}", tableGroupId, participantId);
 		
-		// 5. Notification & Badge & WS
-		// notificationEventPublisher.publishJoinRejected(participantId, tableGroupId, ...);
-		// badgeCacheHelper.incrementUnread(participantId);
-		// notificationWebSocketService.sendUnreadBadgeToUser(participantId, ...);
+		notificationProducer.publish(
+				NotificationInboundEvent.builder()
+						.recipientId(participantId)
+						.type(NotificationType.TABLE_JOIN_REQUEST_REJECTED)
+						.title("Basvurun reddedildi")
+						.message("Katildigin masa basvurun reddedildi")
+						.payload(Map.of(
+								"tableGroupId",tableGroup.getId(),
+								"ownerId", ownerId
+						))
+						.build()
+		);
 	}
 	
 	@Override
@@ -166,7 +253,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
 		
 		// kullanici owner mi ownersa masadan ayrilamaz
-		if (!tableGroup.getOwnerId().equals(userId)) {
+		if (tableGroup.getOwnerId().equals(userId)) {
 			throw new SoundConnectException(ErrorType.OWNER_CANNOT_LEAVE);
 		}
 		
@@ -182,11 +269,20 @@ public class TableGroupServiceImpl implements TableGroupService{
 		tableGroupRepository.save(tableGroup);
 		log.info("User {} left table group {}", userId, tableGroupId);
 		
-		// 6. Notification & WS (owner'a veya diğer katılımcılara bilgi opsiyonel)
-		// notificationEventPublisher.publishParticipantLeft(tableGroup.getOwnerId(), tableGroupId, userId);
-		// notificationWebSocketService.sendTableGroupUpdateToAll(tableGroupId, ...);
+		notificationProducer.publish(
+				NotificationInboundEvent.builder()
+						.recipientId(tableGroup.getOwnerId())
+						.type(NotificationType.TABLE_PARTICIPANT_LEFT)
+						.title("Katilimci ayrildi")
+						.message("Masandaki bir katilimci ayrildi")
+						.payload(Map.of(
+								"tableGroupId",tableGroupId,
+								"leaverId",userId
+						))
+						.build()
+		);
 		
-		// Badge/WS entegrasyonu notification ile birlikte ilerleyecek.
+		
 	}
 	
 	@Override
