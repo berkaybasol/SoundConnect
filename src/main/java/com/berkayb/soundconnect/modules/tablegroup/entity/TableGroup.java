@@ -69,6 +69,7 @@ public class TableGroup extends BaseEntity {
 			name = "tbl_table_group_participants",
 			joinColumns = @JoinColumn(name = "table_group_id")
 	)
+	@Builder.Default
 	private Set<TableGroupParticipant> participants = new HashSet<>();
 	
 	@ManyToOne(fetch = FetchType.LAZY)

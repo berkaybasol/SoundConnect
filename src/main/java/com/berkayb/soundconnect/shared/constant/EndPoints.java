@@ -117,6 +117,31 @@ public class EndPoints {
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
 	}
 	
+	public static class TableGroup {
+		public static final String BASE = API + VERSION + "/table-groups";
+		
+		// create / join / approve vs ileride buraya gelecek
+		public static final String CREATE = "/create";
+		public static final String LIST_ACTIVE = "/active";
+		public static final String DETAIL = "/{tableGroupId}";
+		public static final String JOIN = "/{tableGroupId}/join";
+		public static final String APPROVE = "/{tableGroupId}/approve/{participantId}";
+		public static final String REJECT = "/{tableGroupId}/reject/{participantId}";
+		public static final String LEAVE = "/{tableGroupId}/leave";
+		public static final String KICK = "/{tableGroupId}/kick/{participantId}";
+		public static final String CANCEL = "/{tableGroupId}/cancel";
+		
+		public static class Chat {
+			// /api/v1/table-groups/{tableGroupId}/chat
+			public static final String BASE = API + VERSION + "/{tableGroupId}/chat";
+			public static final String MESSAGES = "/messages";
+			public static final String GET_UNREAD_BADGE = "/unread-badge";
+		}
+	}
+	
+	
+	
+	
 	public static class DM {
 		
 		// === USER BASE ===

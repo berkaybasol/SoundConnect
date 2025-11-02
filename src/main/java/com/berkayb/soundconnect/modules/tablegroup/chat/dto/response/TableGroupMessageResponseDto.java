@@ -12,6 +12,8 @@ public record TableGroupMessageResponseDto(
 		
 		UUID senderId,
 		
+		String content,
+		
 		MessageType messageType,
 		
 		LocalDateTime sentAt,

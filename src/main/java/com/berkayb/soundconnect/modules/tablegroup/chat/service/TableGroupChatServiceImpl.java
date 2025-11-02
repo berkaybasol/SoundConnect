@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.service;
 
+import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.entity.TableGroupMessage;
@@ -31,33 +32,48 @@ import java.util.UUID;
 public class TableGroupChatServiceImpl implements TableGroupChatService {
 	
 	private final TableGroupMessageRepository messageRepository;
-	private final TableGroupRepository tableGroupRepository;
 	private final TableGroupMessageMapper messageMapper;
 	private final SimpMessagingTemplate messagingTemplate;
 	private final TableGroupEntityFinder tableGroupEntityFinder;
+	private final TableGroupChatUnreadHelper unreadHelper;
 	
+	/**
+	 * Kurallar:
+	 * - Masa durumu ACTIVE olmali
+	 * - masa suresi (expiresAt) gecmemis olmali
+	 * - kullanici mesaj gondermek icin accepted durumda olmali
+	 * Mesaj kaydedilir unread counter herkes icin update edilir ve broadcast yapilir.
+	 */
 	@Override
 	@Transactional
 	public TableGroupMessageResponseDto sendMessage(UUID senderId, UUID tableGroupId, TableGroupMessageRequestDto requestDto) {
+		
 		// masa var mi?
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
+		
 		// masa aktif mi?
 		if (tableGroup.getStatus() != TableGroupStatus.ACTIVE) {
 			throw new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND, "Masa aktif degil veya iptal edildi");
 		}
+		
 		// suresi gecti mi?
 		if (tableGroup.getExpiresAt() != null && tableGroup.getExpiresAt().isBefore(LocalDateTime.now())) {
 			throw new SoundConnectException(ErrorType.TABLE_END_DATE_PASSED, "Masa suresi doldu, artik mesaj gonderilemez");
 		}
+		
 		// kullanici masada accepted mi?
 		boolean isAcceptedParticipant = tableGroup.getParticipants().stream()
-				.anyMatch(p -> p.getUserId().equals(senderId)
-				          && (p.getStatus() == ParticipantStatus.ACCEPTED
-						  || (p.getStatus() == ParticipantStatus.PENDING
-						  && p.getUserId().equals(tableGroup.getOwnerId())))
-				);
+		                                          .anyMatch(p ->
+				                                                    p.getUserId().equals(senderId)
+						                                                    && p.getStatus() == ParticipantStatus.ACCEPTED
+		                                          );
 		// gpt ekletti :D
 		if (!isAcceptedParticipant) {
+			// bu noktada birisi WS'den brute-force denerse blocklanir.
+			log.warn(
+					"UNAUTHORIZED CHAT SEND attempt: userId={} tableGroupId={} status=DENIED",
+					senderId, tableGroupId
+			);
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED,
 			                                "Bu masada konusma yetkin yok");
 		}
@@ -66,6 +82,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		MessageType messageType = requestDto.messageType() != null
 				? requestDto.messageType()
 				: MessageType.TEXT;
+		
 		// Entity olustur
 		TableGroupMessage message = TableGroupMessage.builder()
 				.tableGroupId(tableGroupId)
@@ -77,6 +94,14 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		// kaydet
 		messageRepository.save(message);
 		
+		// Unread badge i guncelle:
+		// masadaki herkes icin unread++ ama gonderen haric
+		tableGroup.getParticipants().stream()
+				.filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED)
+				.map(p-> p.getUserId())
+				.filter(userId -> !userId.equals(senderId))
+				.forEach(userId -> unreadHelper.incrementUnread(userId, tableGroupId));
+		
 		// DTO'ya cevir
 		TableGroupMessageResponseDto dto = messageMapper.toResponseDto(message);
 		
@@ -85,18 +110,29 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		String destination = WebSocketChannels.tableGroup(tableGroupId);
 		try {
 			messagingTemplate.convertAndSend(destination, dto);
+			
 			log.debug("TABLE-GROUP CHAT WS push -> dest={}, sender={}, msgId={}",
 			          destination,senderId,message.getId());
+			
 		} catch (Exception e) {
 			log.warn("TABLE-GROUP CHAT WS push FAILED -> dest={}, err={}", destination, e.toString());
 		}
 		return dto;
 	}
 	
-	// masa sohbet gecmisini getirir
+	/*
+	- Masa sohbet gecmisini getirir (pageable)
+		Kurallar:
+		- Kullanici accepted olmali
+		- once unread badge sifirlanir cunku kullanici sohbeti okudu sayiyoz iste :D
+		- soft-delete edilmis mesajlar (deleletedAt != null) gosterilmez
+	 */
 	@Override
 	@Transactional (readOnly = true)
 	public Page<TableGroupMessageResponseDto> getMessages(UUID requesterId, UUID tableGroupId, Pageable pageable) {
+		// unread badge'i sifirla
+		unreadHelper.resetUnread(requesterId, tableGroupId);
+		
 		// masa var mi?
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
@@ -107,6 +143,10 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 				&& p.getStatus() == ParticipantStatus.ACCEPTED
 				);
 				if (!isAllowed) {
+					log.warn(
+							"UNAUTHORIZED CHAT HISTORY READ attempt: userId={} tableGroupId={}",
+							requesterId, tableGroupId
+					);
 					throw new SoundConnectException(ErrorType.UNAUTHORIZED,"Bu masanin sohbetine erisimin yok");
 				}
 		// mesajlari db'den cek
