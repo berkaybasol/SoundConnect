@@ -31,8 +31,6 @@
 
 ⏳ 4. Setlist Creator
 
-⏳ 5. Müzik Birleştirir (Masa Aç – Yalnız Değilsin)
-
 ⏳ 6. Event Modülü (Konuma göre nerde kim çalıyor?)
 
 ⏳ 7. Overthinking Modülü
@@ -42,6 +40,8 @@
 ⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ Müzik Birleştirir (Table Group)
 
 ✅ Notification modülü (RabbitMQ + Redis + WebSocket + MailerSend)
 
