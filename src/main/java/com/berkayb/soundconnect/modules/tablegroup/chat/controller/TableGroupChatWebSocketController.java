@@ -80,13 +80,10 @@ public class TableGroupChatWebSocketController {
 		// Authenticated user
 		UUID senderId = getCurrentUserId(principal);
 		
-		// Mesajı servis ile oluştur (DB'ye kaydet, business rule uygula)
+		// Sadece business + DB + unread + WS publish -> hepsi service'in içinde
 		TableGroupMessageResponseDto sentDto =
 				chatService.sendMessage(senderId, tableGroupId, requestDto);
 		
-		// Yayın: o masaya abone olan HERKESE gider
-		String destination = WebSocketChannels.tableGroup(tableGroupId);
-		messagingTemplate.convertAndSend(destination, sentDto);
 		
 		log.info(
 				"WebSocket MSG sent -> tableGroupId={}, senderId={}, messageType={}, messageId={}",

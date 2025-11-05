@@ -106,7 +106,7 @@ class NotificationRepositoryIT {
 	void saveAndFind_basicCrud_jsonbAndIndexes() {
 		Map<String, Object> payload = Map.of("recipientEmail", "user@example.com", "x", 1);
 		Notification saved = make(
-				userA, NotificationType.MEDIA_UPLOAD_RECEIVED, false,
+				userA, NotificationType.MEDIA_UPLOAD_RECEVIED, false,
 				"Yükleme alındı", "Mesaj", payload,
 				LocalDateTime.of(2025, 9, 4, 12, 0, 0)
 		);
@@ -135,7 +135,7 @@ class NotificationRepositoryIT {
 	@Test
 	@DisplayName("countByRecipientIdAndReadIsFalse – Sadece okunmamışlar")
 	void countUnread_onlyFalseOnes() {
-		make(userA, NotificationType.MEDIA_UPLOAD_RECEIVED, false, "u1", "", Map.of(), LocalDateTime.of(2025, 9, 4, 12, 1));
+		make(userA, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "u1", "", Map.of(), LocalDateTime.of(2025, 9, 4, 12, 1));
 		make(userA, NotificationType.AUTH_EMAIL_VERIFIED, false, "u2", "", Map.of(), LocalDateTime.of(2025, 9, 4, 12, 2));
 		
 		long unread = repo.countByRecipientIdAndReadIsFalse(userA);
@@ -147,7 +147,7 @@ class NotificationRepositoryIT {
 	void findTop10ByRecipient_descOrder_limitApplies() {
 		LocalDateTime base = LocalDateTime.of(2025, 9, 4, 13, 0, 0);
 		for (int i = 0; i < 12; i++) {
-			make(userB, NotificationType.MEDIA_UPLOAD_RECEIVED, false, "b" + i, "m" + i,
+			make(userB, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "b" + i, "m" + i,
 			     Map.of("i", i), base.minusSeconds(60 - i));
 		}
 		List<Notification> top10 = repo.findTop10ByRecipientIdOrderByCreatedAtDesc(userB);

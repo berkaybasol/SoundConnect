@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.notification.listener;
 
 import com.berkayb.soundconnect.modules.notification.config.NotificationRabbitConfig;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
@@ -118,7 +119,7 @@ class RabbitToDbE2E {
 		
 		var event = com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent.builder()
 		                                                                                                  .recipientId(user)
-		                                                                                                  .type(com.berkayb.soundconnect.modules.notification.enums.NotificationType.MEDIA_UPLOAD_RECEIVED)
+		                                                                                                  .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                                                                                                  .title("Yükleme alındı")
 		                                                                                                  .message("Parça ulaştı")
 		                                                                                                  .payload(Map.of("recipientEmail", "user@example.com"))

@@ -81,7 +81,7 @@ class NotificationMapperTest {
 	void toDto_createdAtNull_mapsToNullInstant() {
 		Notification entity = Notification.builder()
 		                                  .recipientId(UUID.randomUUID())
-		                                  .type(NotificationType.MEDIA_UPLOAD_RECEIVED)
+		                                  .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                                  .title(null) // fallback devrede
 		                                  .message(null)
 		                                  .payload(null)
@@ -92,6 +92,6 @@ class NotificationMapperTest {
 		NotificationResponseDto dto = mapper.toDto(entity);
 		
 		assertThat(dto.createdAt()).isNull();
-		assertThat(dto.title()).isEqualTo(NotificationType.MEDIA_UPLOAD_RECEIVED.getDefaultTitle());
+		assertThat(dto.title()).isEqualTo(NotificationType.MEDIA_UPLOAD_RECEVIED.getDefaultTitle());
 	}
 }

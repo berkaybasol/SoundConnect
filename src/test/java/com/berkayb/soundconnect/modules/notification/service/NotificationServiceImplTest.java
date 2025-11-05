@@ -50,7 +50,7 @@ class NotificationServiceImplTest {
 	void getUserNotifications_ok() {
 		Notification n = Notification.builder()
 		                             .recipientId(userId)
-		                             .type(NotificationType.MEDIA_UPLOAD_RECEIVED)
+		                             .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                             .read(false)
 		                             .build();
 		Page<Notification> page = new PageImpl<>(List.of(n));
@@ -58,7 +58,7 @@ class NotificationServiceImplTest {
 				.thenReturn(page);
 		
 		NotificationResponseDto dto = new NotificationResponseDto(
-				UUID.randomUUID(), userId, NotificationType.MEDIA_UPLOAD_RECEIVED,
+				UUID.randomUUID(), userId, NotificationType.MEDIA_UPLOAD_RECEVIED,
 				"t", "m", false, null, Map.of()
 		);
 		when(notificationMapper.toDto(n)).thenReturn(dto);

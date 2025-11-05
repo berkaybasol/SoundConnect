@@ -133,7 +133,7 @@ class NotificationServiceImplIT {
 	@Test
 	@DisplayName("getUnreadCount: cache miss → DB; ikinci çağrı cache hit")
 	void getUnreadCount_caches_then_uses_cache() {
-		make(user, NotificationType.MEDIA_UPLOAD_RECEIVED, false, "u1", "m1");
+		make(user, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "u1", "m1");
 		make(user, NotificationType.AUTH_EMAIL_VERIFIED, false, "u2", "m2");
 		make(user, NotificationType.SOCIAL_NEW_FOLLOWER, true,  "r1", "read");
 		
@@ -152,7 +152,7 @@ class NotificationServiceImplIT {
 	@Test
 	@DisplayName("markAsRead: DB update + cache güvenli 1 azalt")
 	void markAsRead_updates_db_and_cache() {
-		Notification n1 = make(user, NotificationType.MEDIA_UPLOAD_RECEIVED, false, "u1", "m1");
+		Notification n1 = make(user, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "u1", "m1");
 		make(user, NotificationType.AUTH_EMAIL_VERIFIED, false, "u2", "m2");
 		assertThat(notificationService.getUnreadCount(user)).isEqualTo(2L); // cache seed
 		
@@ -168,7 +168,7 @@ class NotificationServiceImplIT {
 	@Test
 	@DisplayName("markAllAsRead: tüm unread okunur; cache 0’a setlenir")
 	void markAllAsRead_sets_cache_zero() {
-		make(user, NotificationType.MEDIA_UPLOAD_RECEIVED, false, "u1", "m1");
+		make(user, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "u1", "m1");
 		make(user, NotificationType.AUTH_EMAIL_VERIFIED, false, "u2", "m2");
 		make(user, NotificationType.SOCIAL_NEW_FOLLOWER, true, "r1", "read");
 		assertThat(notificationService.getUnreadCount(user)).isEqualTo(2L);

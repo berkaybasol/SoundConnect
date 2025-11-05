@@ -45,7 +45,7 @@ public class TableGroup extends BaseEntity {
 	@Column(name = "max_person_count", nullable = false)
 	private int maxPersonCount;
 	
-	@Column(name = "gender_prefs", columnDefinition = "jsonb")
+	@Column(name = "gender_prefs")
 	private List<String> genderPrefs;
 	
 	@Column (name = "age_min", nullable = false)

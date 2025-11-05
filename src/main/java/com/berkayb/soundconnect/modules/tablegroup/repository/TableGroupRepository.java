@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public interface TableGroupRepository extends JpaRepository<TableGroup, UUID> {
@@ -23,4 +24,9 @@ public interface TableGroupRepository extends JpaRepository<TableGroup, UUID> {
 	
 	Page<TableGroup> findByCityIdAndStatusAndExpiresAtAfter(UUID cityId, TableGroupStatus status,
 	                                                        LocalDateTime expiresAt, Pageable pageable);
+	
+	// suresi gecmis ama hala active durumda olan masalari getirir (bunlari otomatik olarak inactive cekcez)
+	List<TableGroup> findByStatusAndExpiresAtBefore(TableGroupStatus status, LocalDateTime cutOffTime);
+	
+	
 }

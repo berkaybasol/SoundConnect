@@ -66,7 +66,7 @@ class NotificationControllerTest {
 	@Test
 	@DisplayName("GET /notifications → types olmadan sayfalı liste")
 	void list_all_ok() throws Exception {
-		NotificationResponseDto d1 = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.MEDIA_UPLOAD_RECEIVED, "t1","m1", false, null, Map.of());
+		NotificationResponseDto d1 = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.MEDIA_UPLOAD_RECEVIED, "t1","m1", false, null, Map.of());
 		NotificationResponseDto d2 = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER, "t2","m2", true, null, Map.of());
 		Page<NotificationResponseDto> page = new PageImpl<>(List.of(d1, d2));
 		

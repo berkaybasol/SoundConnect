@@ -44,12 +44,15 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final CityRepository cityRepository;
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
-	private final TableGroupEntityFinder entityFinder;
+	private final TableGroupEntityFinder tableGroupEntityFinder;
 	
+	// Owner bir katilimciyi masadan kickler
 	@Override
 	public void removeParticipantFromTableGroup(UUID ownerId, UUID tableGroupId, UUID participantId) {
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		
+		// masa var mi?
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
+		
 		if (!tableGroup.getOwnerId().equals(ownerId)) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
 		}
@@ -74,12 +77,14 @@ public class TableGroupServiceImpl implements TableGroupService{
 						))
 						.build()
 		);
+		log.info("Participant {} kicked from tableGroup {}", participantId, tableGroupId);
 	}
 	
+	// Owner masayi iptal eder ve kabul edilmis kullanicilara bildirim gider
 	@Override
 	public void cancelTableGroup(UUID ownerId, UUID tableGroupId) {
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
+		
 		if (!tableGroup.getOwnerId().equals(ownerId)) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
 		}
@@ -101,13 +106,15 @@ public class TableGroupServiceImpl implements TableGroupService{
 					                                  .build()
 			          );
 		          });
+		log.info("TableGroup {} cancelled by owner {}", tableGroupId, ownerId);
 	}
 	
+	// kullanicinin masaya katilma basvurusu
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId) {
 		// masa var mi aktif mi ve suresi gecmis mi?
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
+		
 		if (tableGroup.getStatus() != TableGroupStatus.ACTIVE) {
 			throw new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND);
 		}
@@ -127,6 +134,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		boolean alreadyParticipant = tableGroup.getParticipants().stream()
 				.anyMatch(p-> p.getUserId().equals(userId) &&
 						(p.getStatus() == ParticipantStatus.ACCEPTED || p.getStatus() == ParticipantStatus.PENDING));
+		
 		if (alreadyParticipant) {
 			throw new SoundConnectException(ErrorType.ALREADY_PARTICIPANT);
 		}
@@ -137,9 +145,10 @@ public class TableGroupServiceImpl implements TableGroupService{
 				.joinedAt(LocalDateTime.now())
 				.status(ParticipantStatus.PENDING)
 				.build();
-		tableGroup.getParticipants().add(joinRequest);
 		
+		tableGroup.getParticipants().add(joinRequest);
 		tableGroupRepository.save(tableGroup);
+		
 		log.info("Join request: user={} tableGroup={} status={}", userId, tableGroupId, joinRequest.getStatus());
 		
 		// Notification Event (owner'a basvuru bildirimi fire et)
@@ -159,11 +168,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 	}
 	
+	// owner basvurani kabul eder
 	@Override
 	public void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
 		// masa var mi?
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
 		if (!tableGroup.getOwnerId().equals(ownerId)) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
@@ -187,8 +196,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 		
 		participant.setStatus(ParticipantStatus.ACCEPTED);
-		
 		tableGroupRepository.save(tableGroup);
+		
 		log.info("Join request APPROVED: tableGroup={}, participant={}", tableGroupId, participantId);
 		
 		notificationProducer.publish(
@@ -206,11 +215,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		
 	}
 	
+	// owner basvuruyu reddeder
 	@Override
 	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
 		// masa ve owner kontrolu
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
 		if (!tableGroup.getOwnerId().equals(ownerId)) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED,"Sadece owner onaylayabilir.");
@@ -246,11 +255,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		);
 	}
 	
+	// kullanici masadan ayrilir (owner ayrilamaz)
 	@Override
 	public void leaveTableGroup(UUID userId, UUID tableGroupId) {
 		// masa var mi?
-		TableGroup tableGroup = tableGroupRepository.findById(tableGroupId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
 		// kullanici owner mi ownersa masadan ayrilamaz
 		if (tableGroup.getOwnerId().equals(userId)) {
@@ -285,46 +294,62 @@ public class TableGroupServiceImpl implements TableGroupService{
 		
 	}
 	
+	// yeni masa olusturma owner otomatik accepted.
 	@Override
 	public TableGroupResponseDto createTableGroup(UUID ownerId, TableGroupCreateRequestDto requestDto) {
 		// Validasyonlar
-		if (requestDto.venueId() != null && requestDto.venueName() != null && !requestDto.venueName().isBlank()) {
+		if (requestDto.venueId() != null &&
+				requestDto.venueName() != null &&
+				!requestDto.venueName().isBlank()) {
 			throw new SoundConnectException(ErrorType.VENUE_ID_AND_NAME_CONFLICT);
 		}
-		if ((requestDto.venueId() == null) && (requestDto.venueName() == null || requestDto.venueName().isBlank())) {
+		
+		if (requestDto.venueId() == null &&
+				(requestDto.venueName() == null || requestDto.venueName().isBlank())) {
 			throw new SoundConnectException(ErrorType.VENUE_INFORMATION_REQUIRED);
 		}
+		
+		// Yaş aralığı
 		if (requestDto.ageMin() > requestDto.ageMax()) {
 			throw new SoundConnectException(ErrorType.INVALID_AGE_RANGE);
 		}
+		
+		// Cinsiyet dağılımı kişi sayısıyla uyuşmalı
 		if (requestDto.genderPrefs().size() != requestDto.maxPersonCount()) {
 			throw new SoundConnectException(ErrorType.GENDER_AND_COUNT_MISMATCH);
 		}
-		if (requestDto.expiresAt().isBefore(LocalDateTime.now())){
+		
+		// Bitiş zamanı geçmiş tarih olamaz
+		if (requestDto.expiresAt().isBefore(LocalDateTime.now())) {
 			throw new SoundConnectException(ErrorType.TABLE_END_DATE_PASSED);
 		}
-		// Location lookup
+		
+		// Lokasyon doğrulama
 		City city = cityRepository.findById(requestDto.cityId())
-				.orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
 		
 		District district = null;
 		if (requestDto.districtId() != null) {
 			district = districtRepository.findById(requestDto.districtId())
-					.orElseThrow(() -> new SoundConnectException(ErrorType.DISTRICT_NOT_FOUND));
+			                             .orElseThrow(() -> new SoundConnectException(ErrorType.DISTRICT_NOT_FOUND));
+			
 			if (!district.getCity().getId().equals(city.getId())) {
 				throw new SoundConnectException(ErrorType.DISTRICT_CITY_MISMATCH);
 			}
 		}
+		
 		Neighborhood neighborhood = null;
 		if (requestDto.neighborhoodId() != null) {
 			neighborhood = neighborhoodRepository.findById(requestDto.neighborhoodId())
-					.orElseThrow(() -> new SoundConnectException(ErrorType.NEIGHBORHOOD_NOT_FOUND));
-			if (district != null && !neighborhood.getDistrict().getId().equals(district.getId()) ) {
+			                                     .orElseThrow(() -> new SoundConnectException(ErrorType.NEIGHBORHOOD_NOT_FOUND));
+			
+			if (district != null &&
+					!neighborhood.getDistrict().getId().equals(district.getId())) {
 				throw new SoundConnectException(ErrorType.NEIGHBORHOOD_DISTRICT_MISMATCH);
 			}
 		}
 		
-		// Entity mapping
+		// Entity build
 		TableGroup entity = tableGroupMapper.toEntity(requestDto);
 		entity.setOwnerId(ownerId);
 		entity.setStatus(TableGroupStatus.ACTIVE);
@@ -332,50 +357,119 @@ public class TableGroupServiceImpl implements TableGroupService{
 		entity.setDistrict(district);
 		entity.setNeighborhood(neighborhood);
 		
-		// owner katilimci olarak eklencek yani her zaman accepted
+		// Owner'ı otomatik ACCEPTED participant olarak ekle
 		TableGroupParticipant ownerParticipant = TableGroupParticipant.builder()
-				.userId(ownerId)
-				.joinedAt(LocalDateTime.now())
-				.status(ParticipantStatus.ACCEPTED)
-				.build();
+		                                                              .userId(ownerId)
+		                                                              .joinedAt(LocalDateTime.now())
+		                                                              .status(ParticipantStatus.ACCEPTED)
+		                                                              .build();
+		
 		entity.getParticipants().add(ownerParticipant);
 		
 		entity = tableGroupRepository.save(entity);
-		log.info("TableGroup oluşturuldu: id={}, owner={}, venueId={}, venueName={}, city={}",
-		         entity.getId(), ownerId, entity.getVenueId(), entity.getVenueName(), city.getName());
 		
-		// TODO NOTIFICATION HOOK
-		// notificationEventPublisher.publish(...);
+		log.info("TableGroup created: id={}, owner={}, venueId={}, venueName={}, city={}",
+		         entity.getId(), ownerId, entity.getVenueId(), entity.getVenueName(),
+		         city.getName()
+		);
 		
 		return tableGroupMapper.toDto(entity);
 	}
 	
+	// aktif masalari lokasyona gore listele.
 	@Override
-	public Page<TableGroupResponseDto> listActiveTableGroups(UUID cityId, UUID districtId, UUID neighborhoodId, Pageable pageable) {
+	public Page<TableGroupResponseDto> listActiveTableGroups(
+			UUID cityId,
+			UUID districtId,
+			UUID neighborhoodId,
+			Pageable pageable
+	) {
 		LocalDateTime now = LocalDateTime.now();
 		Page<TableGroup> page;
 		
 		if (neighborhoodId != null) {
 			page = tableGroupRepository.findByCityIdAndDistrictIdAndNeighborhoodIdAndStatusAndExpiresAtAfter(
-					cityId, districtId, neighborhoodId, TableGroupStatus.ACTIVE, now, pageable
+					cityId,
+					districtId,
+					neighborhoodId,
+					TableGroupStatus.ACTIVE,
+					now,
+					pageable
 			);
-		}
-		else if (districtId != null) {
+		} else if (districtId != null) {
 			page = tableGroupRepository.findByCityIdAndDistrictIdAndStatusAndExpiresAtAfter(
-					cityId, districtId, TableGroupStatus.ACTIVE, now, pageable
+					cityId,
+					districtId,
+					TableGroupStatus.ACTIVE,
+					now,
+					pageable
 			);
-		} else  {
+		} else {
 			page = tableGroupRepository.findByCityIdAndStatusAndExpiresAtAfter(
-					cityId, TableGroupStatus.ACTIVE, now, pageable
+					cityId,
+					TableGroupStatus.ACTIVE,
+					now,
+					pageable
 			);
 		}
+		
 		return page.map(tableGroupMapper::toDto);
 	}
 	
+	// tek masa detayi
 	@Override
 	public TableGroupResponseDto getTableGroupDetail(UUID tableGroupId) {
 		TableGroup entity = tableGroupRepository.findById(tableGroupId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
 				return tableGroupMapper.toDto(entity);
+	}
+	
+	public void expireExpiredTableGroups() {
+		LocalDateTime now = LocalDateTime.now();
+		
+		var expiredActives = tableGroupRepository.findByStatusAndExpiresAtBefore(
+				TableGroupStatus.ACTIVE,
+				now
+		);
+		
+		if (expiredActives.isEmpty()) {
+			return;
+		}
+		
+		expiredActives.forEach(group -> {
+			expireTableGroup(group);
+		});
+		
+		log.info("Expired {} table groups at {}", expiredActives.size(), now);
+	}
+	
+	private void expireTableGroup(TableGroup group) {
+		// status ACTIVE -> INACTIVE
+		group.setStatus(TableGroupStatus.INACTIVE);
+		tableGroupRepository.save(group);
+		
+		// Accepted katilimcilara (owner haric) masa suresi doldu bildirimi gonder
+		group.getParticipants().stream()
+		     .filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED)
+		     .filter(p -> !p.getUserId().equals(group.getOwnerId()))
+		     .forEach(participant -> notificationProducer.publish(
+				     NotificationInboundEvent.builder()
+				                             .recipientId(participant.getUserId())
+				                             .type(NotificationType.TABLE_EXPIRED)
+				                             .title("Masa süresi doldu")
+				                             .message("Katıldığın masa etkinliğinin süresi doldu.")
+				                             .payload(Map.of(
+						                             "tableGroupId", group.getId(),
+						                             "ownerId", group.getOwnerId()
+				                             ))
+				                             .build()
+		     ));
+		
+		log.debug(
+				"TableGroup {} marked INACTIVE (expiredAt={}), notifications sent to accepted participants",
+				group.getId(),
+				group.getExpiresAt()
+		);
+		
 	}
 }

@@ -54,7 +54,7 @@ class NotificationEventListenerTest {
 		// recipient yok
 		NotificationInboundEvent e1 = NotificationInboundEvent.builder()
 		                                                      .recipientId(null)
-		                                                      .type(NotificationType.MEDIA_UPLOAD_RECEIVED)
+		                                                      .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                                                      .title("x")
 		                                                      .message("y")
 		                                                      .build();
