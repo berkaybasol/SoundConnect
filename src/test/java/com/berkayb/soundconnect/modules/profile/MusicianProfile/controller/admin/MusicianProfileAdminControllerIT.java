@@ -32,38 +32,64 @@ class MusicianProfileAdminControllerIT {
 	@Autowired MockMvc mockMvc;
 	@Autowired ObjectMapper om;
 	
-	@org.springframework.test.context.bean.override.mockito.MockitoBean
+	@MockitoBean
 	private MusicianProfileService service;
 	
-	// security zinciri bean’leri:
-	@org.springframework.test.context.bean.override.mockito.MockitoBean
+	@MockitoBean
 	private com.berkayb.soundconnect.auth.security.JwtTokenProvider jwtTokenProvider;
-	@org.springframework.test.context.bean.override.mockito.MockitoBean
+	
+	@MockitoBean
 	private com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter jwtAuthenticationFilter;
 	
 	@Test
 	void getMusicianProfileByUserId_ok() throws Exception {
 		var uid = UUID.randomUUID();
-		var resp = new MusicianProfileResponseDto(UUID.randomUUID(),"Stage","Bio",null,null,null,null,null, Set.of(), Set.of());
+		
+		var resp = new MusicianProfileResponseDto(
+				UUID.randomUUID(),
+				"Stage",
+				"Bio",
+				null,null,null,null,null,
+				Set.of(),         // instruments
+				Set.of(),         // activeVenues
+				Set.of()          // bands <-- EKLENDİ
+		);
+		
 		Mockito.when(service.getProfileByUserId(uid)).thenReturn(resp);
 		
 		mockMvc.perform(get(ADMIN_BASE + BY_USER_ID, uid))
 		       .andExpect(status().isOk())
-		       .andExpect(jsonPath("$.data.stageName").value("Stage"));
+		       .andExpect(jsonPath("$.data.stageName").value("Stage"))
+		       .andExpect(jsonPath("$.data.bands").isArray()); // <-- yeni assertion
 	}
 	
 	@Test
 	void updateMusicianProfileByUserId_ok() throws Exception {
 		var uid = UUID.randomUUID();
-		var req = new MusicianProfileSaveRequestDto("New","NewBio",null,null,null,null,null, null);
-		var resp = new MusicianProfileResponseDto(UUID.randomUUID(),"New","NewBio",null,null,null,null,null, Set.of(), Set.of());
+		var req = new MusicianProfileSaveRequestDto(
+				"New","NewBio",null,null,null,null,null,null
+		);
+		
+		var resp = new MusicianProfileResponseDto(
+				UUID.randomUUID(),
+				"New",
+				"NewBio",
+				null,null,null,null,null,
+				Set.of(),
+				Set.of(),
+				Set.of() // <-- EKLENDİ
+		);
+		
 		Mockito.when(service.updateProfile(eq(uid), any())).thenReturn(resp);
 		
-		mockMvc.perform(put(ADMIN_BASE + ADMIN_UPDATE, uid)
-				                .contentType(MediaType.APPLICATION_JSON)
-				                .content(om.writeValueAsString(req)))
+		mockMvc.perform(
+				       put(ADMIN_BASE + ADMIN_UPDATE, uid)
+						       .contentType(MediaType.APPLICATION_JSON)
+						       .content(om.writeValueAsString(req))
+		       )
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.data.stageName").value("New"))
-		       .andExpect(jsonPath("$.data.bio").value("NewBio"));
+		       .andExpect(jsonPath("$.data.bio").value("NewBio"))
+		       .andExpect(jsonPath("$.data.bands").isArray()); // <-- yeni assertion
 	}
 }

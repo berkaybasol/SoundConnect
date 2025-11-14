@@ -20,7 +20,7 @@
 
 🛠 Change Password (useniyorum :D)
 
-🛠 2 yeni profile olusturulacak (Music House Profile, Band Profile(bu registerda degil yalnizca musician profile'a sahip kullanicilarin acabilecegi bir profil olcak.))
+🛠 2 yeni profile olusturulacak (Music House Profile, Manager Profile
 
 
 ---
@@ -35,11 +35,15 @@
 
 ⏳ 7. Overthinking Modülü
 
+⏳ 8. AllChat Modülü
+
 ⏳ 9. Stabilizasyon & MVP Final
 
 ⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ MusicianProfile'a sahip kullanicilar icin Band sistemi
 
 ✅ Müzik Birleştirir (Table Group)
 

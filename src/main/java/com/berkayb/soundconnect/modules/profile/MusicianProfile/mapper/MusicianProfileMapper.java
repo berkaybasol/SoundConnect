@@ -13,18 +13,22 @@ import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface MusicianProfileMapper {
+	
 	@Mapping(source = "description", target = "bio")
 	@Mapping(target = "instruments", source = "instruments", qualifiedByName = "instrumentNames")
 	@Mapping(target = "activeVenues", source = "activeVenues", qualifiedByName = "venueNames")
+		// bands alanı service tarafında setlenecek → mapper buraya dokunmuyor
 	MusicianProfileResponseDto toDto(MusicianProfile profile);
 	
 	@Named("instrumentNames")
-	default Set<String> instrumentNames(Set<Instrument> instruments){
-		return instruments == null ? null : instruments.stream().map(Instrument::getName).collect(Collectors.toSet());
+	default Set<String> instrumentNames(Set<Instrument> instruments) {
+		return instruments == null ? null :
+				instruments.stream().map(Instrument::getName).collect(Collectors.toSet());
 	}
 	
 	@Named("venueNames")
-	default Set<String> venueNames(Set<Venue> venues){
-		return venues == null ? null : venues.stream().map(Venue::getName).collect(Collectors.toSet());
+	default Set<String> venueNames(Set<Venue> venues) {
+		return venues == null ? null :
+				venues.stream().map(Venue::getName).collect(Collectors.toSet());
 	}
 }

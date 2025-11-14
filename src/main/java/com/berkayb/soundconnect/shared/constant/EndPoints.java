@@ -15,6 +15,31 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Band {
+		public static final String USER_BASE = API + VERSION + "/user/bands"; // Tüm band işlemleri için ana base
+		
+		// Kullanıcının kendi bandleri
+		public static final String MY_BANDS = "/my";              // GET - /api/v1/user/bands/my
+		public static final String CREATE = "/create";            // POST - /api/v1/user/bands/create
+		
+		// Band detay
+		public static final String BY_ID = "/{bandId}";           // GET - /api/v1/user/bands/{bandId}
+		
+		// Band davet işlemleri (davet et, kabul et, reddet vs.)
+		public static final String INVITE = "/{bandId}/invite";                // POST - davet gönder
+		public static final String ACCEPT_INVITE = "/{bandId}/accept";         // POST - daveti kabul et
+		public static final String REJECT_INVITE = "/{bandId}/reject";         // POST - daveti reddet
+		public static final String REMOVE_MEMBER = "/{bandId}/remove/{userId}";// DELETE - üyeyi çıkar
+		public static final String LEAVE = "/{bandId}/leave";                  // PATCH veya POST - bandden ayrıl
+		
+		// Band üye listesi
+		public static final String MEMBERS = "/{bandId}/members";  // GET - band üyelerini getir
+		
+		// İleride: band güncelleme/silme
+		public static final String UPDATE = "/{bandId}/update";
+		public static final String DELETE = "/{bandId}/delete";
+	}
+	
 	public static class Notification {
 		public static final String USER_BASE = API + VERSION + "/user/notifications";
 		public static final String LIST = "";

@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
@@ -27,30 +28,23 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final UserEntityFinder userEntityFinder;
 	private final InstrumentRepository instrumentRepository;
 	private final MusicianProfileMapper musicianProfileMapper;
-	
+	private final BandService bandService;
 	
 	@Override
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		// kullaniciyi getir
+		
 		User user = userEntityFinder.getUser(userId);
 		
-		// daha once profil acilmis mi kontrol et
 		if (musicianProfileRepository.findByUserId(userId).isPresent()) {
-			log.warn("Kullanici zaten bir profile sahip: {}",userId);
+			log.warn("Kullanici zaten bir profile sahip: {}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
 		}
 		
-		// enstrumanlari cek
-		/*
-		ternary operatore alismaya calisiyorum :D
-		kosul dogruysa ? koyup yapmak istedigimiz islemi yaziyoruz
-		yanlis ise : koyup yapmak istedigimiz islemi yaziyoruz :D
-		 */
-		Set<Instrument> instruments = dto.instrumentIds() != null && !dto.instrumentIds().isEmpty()
-				? new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()))
-				: new HashSet<>(); // kosul yanlissa bos bir hashset olustur
+		Set<Instrument> instruments =
+				dto.instrumentIds() != null && !dto.instrumentIds().isEmpty()
+						? new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()))
+						: new HashSet<>();
 		
-		// profil olustur
 		MusicianProfile profile = MusicianProfile.builder()
 		                                         .user(user)
 		                                         .stageName(dto.stageName())
@@ -63,58 +57,104 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .instruments(instruments)
 		                                         .build();
 		
-		// kaydet ve response dto'ya cevir ve don
 		MusicianProfile saved = musicianProfileRepository.save(profile);
 		
-		log.info("Yeni muzisyen profili olusturuldu. UserId: {}",userId);
-		return musicianProfileMapper.toDto(saved);
+		log.info("Yeni muzisyen profili olusturuldu. UserId: {}", userId);
+		
+		// ---- PROFILE + BANDS ----
+		var base = musicianProfileMapper.toDto(saved);
+		var bands = new HashSet<>(bandService.getBandsByUser(userId));
+		
+		return new MusicianProfileResponseDto(
+				base.id(),
+				base.stageName(),
+				base.bio(),
+				base.profilePicture(),
+				base.instagramUrl(),
+				base.youtubeUrl(),
+				base.soundcloudUrl(),
+				base.spotifyEmbedUrl(),
+				base.instruments(),
+				base.activeVenues(),
+				bands
+		);
 	}
+	
 	
 	@Override
 	public MusicianProfileResponseDto getProfileByUserId(UUID userId) {
-		User user = userEntityFinder.getUser(userId);
 		
-		MusicianProfile profile = musicianProfileRepository.findByUserId(userId).
-				orElseThrow(() ->{
-					log.warn("Profil bulunamadi. UserId: {}",userId);
-					return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-		});
-		log.info("Musician profile getirildi. UserId: {}",userId);
-		return musicianProfileMapper.toDto(profile);
+		userEntityFinder.getUser(userId);
+		
+		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
+		                                                   .orElseThrow(() -> {
+			                                                   log.warn("Profil bulunamadi. UserId: {}", userId);
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		                                                   });
+		
+		log.info("Musician profile getirildi. UserId: {}", userId);
+		
+		var base = musicianProfileMapper.toDto(profile);
+		var bands = new HashSet<>(bandService.getBandsByUser(userId));
+		
+		return new MusicianProfileResponseDto(
+				base.id(),
+				base.stageName(),
+				base.bio(),
+				base.profilePicture(),
+				base.instagramUrl(),
+				base.youtubeUrl(),
+				base.soundcloudUrl(),
+				base.spotifyEmbedUrl(),
+				base.instruments(),
+				base.activeVenues(),
+				bands
+		);
 	}
 	
 	@Override
 	public MusicianProfileResponseDto updateProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		// kullaniciyi getir
-		User user = userEntityFinder.getUser(userId);
 		
-		// profil var mi kontrol et
+		userEntityFinder.getUser(userId);
+		
 		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
-				.orElseThrow(() -> {
-					log.warn("Profil bulunamadi. UserId: {}",userId);
-					return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-				});
-		// null degilse alanlari guncelle
+		                                                   .orElseThrow(() -> {
+			                                                   log.warn("Profil bulunamadi. UserId: {}", userId);
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		                                                   });
+		
 		if (dto.stageName() != null) profile.setStageName(dto.stageName());
 		if (dto.description() != null) profile.setDescription(dto.description());
 		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
+		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
-	    if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
+		if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
 		
-		// instruments guncellemesi (null degilse)
 		if (dto.instrumentIds() != null) {
 			Set<Instrument> instruments = new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()));
 			profile.setInstruments(instruments);
 		}
 		
-		// kaydet
 		MusicianProfile updated = musicianProfileRepository.save(profile);
 		
 		log.info("Musician profile güncellendi. UserId: {}", userId);
 		
-		// response dto'ya sarip don
-		return musicianProfileMapper.toDto(updated);
+		var base = musicianProfileMapper.toDto(updated);
+		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
+		return new MusicianProfileResponseDto(
+				base.id(),
+				base.stageName(),
+				base.bio(),
+				base.profilePicture(),
+				base.instagramUrl(),
+				base.youtubeUrl(),
+				base.soundcloudUrl(),
+				base.spotifyEmbedUrl(),
+				base.instruments(),
+				base.activeVenues(),
+				bands
+		);
 	}
 }

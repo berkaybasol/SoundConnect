@@ -115,6 +115,19 @@ public enum ErrorType {
 	PARTICIPANT_NOT_FOUND(9108,"Participant not found",HttpStatus.NOT_FOUND,"Basvuru bulunamadi"),
 	OWNER_CANNOT_LEAVE(9109,"Owner cannot leave",HttpStatus.BAD_REQUEST,"Masa sahibi masadan ayrilamaz"),
 	
+	// BAND (9200 - 9250)
+	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.BAD_REQUEST, "Bu band zaten mevcut."),
+	BAND_MEMBER_NOT_FOUND(9201,"Band member not found", HttpStatus.NOT_FOUND, "Band member bulunamadi."),
+	BAND_MEMBER_NOT_ACTIVE(9202,"Band member not active", HttpStatus.BAD_REQUEST, "Band member aktif degil."),
+	BAND_NOT_FOUND(9203,"Band not found", HttpStatus.NOT_FOUND, "Band bulunamadi."),
+	BAND_INVITE_UNAUTHORIZED(9204, "You are not authorized", HttpStatus.UNAUTHORIZED, "Founder degilsin"),
+	BAND_MEMBER_ALREADY_EXISTS(9205, "Band member already exists", HttpStatus.CONFLICT, "Bu kullanıcı zaten bandde."),
+	BAND_INVITE_STATUS_INVALID(9206, "Band invite status is invalid", HttpStatus.BAD_REQUEST, "Davet durumu geçersiz."),
+	BAND_REMOVE_UNAUTHORIZED(9207, "You are not authorized to remove members", HttpStatus.UNAUTHORIZED, "Üyeleri çıkarmaya yetkin yok."),
+	BAND_CANNOT_REMOVE_FOUNDER(9208, "Cannot remove another founder", HttpStatus.FORBIDDEN, "Başka bir founder'ı çıkaramazsın."),
+	BAND_FOUNDER_CANNOT_LEAVE(9209, "Founder cannot leave the band", HttpStatus.FORBIDDEN, "Founder gruptan ayrılamaz."),
+	
+	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	
