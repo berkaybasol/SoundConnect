@@ -31,8 +31,6 @@
 
 ⏳ 4. Setlist Creator
 
-⏳ 6. Event Modülü (Konuma göre nerde kim çalıyor?)
-
 ⏳ 7. Overthinking Modülü
 
 ⏳ 8. AllChat Modülü
@@ -42,6 +40,8 @@
 ⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ Event Modülü (Konuma göre nerde kim çalıyor?)
 
 ✅ MusicianProfile'a sahip kullanicilar icin Band sistemi
 

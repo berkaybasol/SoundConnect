@@ -24,11 +24,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class MusicianProfileServiceImpl implements MusicianProfileService {
+	
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final InstrumentRepository instrumentRepository;
 	private final MusicianProfileMapper musicianProfileMapper;
 	private final BandService bandService;
+	
+	@Override
+	public MusicianProfile getProfileEntity(UUID profileId) {
+		return musicianProfileRepository.findById(profileId)
+		                                .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+	}
+	
 	
 	@Override
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {

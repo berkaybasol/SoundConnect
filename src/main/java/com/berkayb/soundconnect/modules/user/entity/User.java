@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.user.entity;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
@@ -37,8 +38,6 @@ public class User extends BaseEntity {
 	
 	@Column(unique = true, nullable = false)
 	private String email;
-	
-	// Telefon numarası benzersiz ve zorunlu.
 	
 	private String phone;
 	
@@ -93,6 +92,11 @@ public class User extends BaseEntity {
 	@OneToMany(mappedBy = "follower", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
 	@JsonIgnore
 	private Set<Follow> following = new HashSet<>();
+	
+	@OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+	@JsonIgnore
+	private MusicianProfile musicianProfile;
+	
 	
 	private String profilePicture;
 	

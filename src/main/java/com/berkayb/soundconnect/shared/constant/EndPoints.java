@@ -15,6 +15,40 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Event {
+		
+		// ===== BASE PATHS =====
+		public static final String ADMIN_BASE = API + VERSION + "/admin/events";
+		public static final String USER_BASE  = API + VERSION + "/events";  // public discovery
+		
+		// =====→ ADMIN ENDPOINTS ←=====
+		
+		public static final String CREATE = "/create";         // POST /admin/events/create
+		public static final String BY_ID = "/{eventId}";       // GET /admin/events/{eventId}
+		// DELETE /admin/events/{eventId}
+		
+		public static final String BY_VENUE = "/venue/{venueId}";
+		public static final String BY_DATE  = "/date/{date}";
+		public static final String BY_CITY  = "/city/{cityId}";
+		public static final String BY_DISTRICT = "/district/{districtId}";
+		public static final String BY_NEIGHBORHOOD = "/neighborhood/{neighborhoodId}";
+		
+		// =====→ USER / PUBLIC ENDPOINTS ←=====
+		
+		public static final String USER_BY_ID = "/{eventId}";  // GET /events/{eventId}
+		
+		public static final String USER_TODAY = "/today";       // GET /events/today
+		public static final String USER_BY_DATE = "/date/{date}";
+		public static final String USER_BY_CITY = "/city/{cityId}";
+		public static final String USER_BY_DISTRICT = "/district/{districtId}";
+		public static final String USER_BY_NEIGHBORHOOD = "/neighborhood/{neighborhoodId}";
+		public static final String USER_BY_VENUE = "/venue/{venueId}";
+		
+		// Multi-filter search (future)
+		public static final String USER_SEARCH = "/search";   // GET /events/search?date=..&cityId=..
+	}
+	
+	
 	public static class Band {
 		public static final String USER_BASE = API + VERSION + "/user/bands"; // Tüm band işlemleri için ana base
 		

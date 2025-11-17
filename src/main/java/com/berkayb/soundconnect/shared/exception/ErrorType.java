@@ -126,6 +126,14 @@ public enum ErrorType {
 	BAND_REMOVE_UNAUTHORIZED(9207, "You are not authorized to remove members", HttpStatus.UNAUTHORIZED, "Üyeleri çıkarmaya yetkin yok."),
 	BAND_CANNOT_REMOVE_FOUNDER(9208, "Cannot remove another founder", HttpStatus.FORBIDDEN, "Başka bir founder'ı çıkaramazsın."),
 	BAND_FOUNDER_CANNOT_LEAVE(9209, "Founder cannot leave the band", HttpStatus.FORBIDDEN, "Founder gruptan ayrılamaz."),
+	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
+	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
+	
+	// EVENT (9250 - 9300)
+	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
+	
+	
+	
 	
 	
 	// GENEL (9999)

@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 
 import java.util.List;
 import java.util.UUID;
@@ -31,5 +33,5 @@ public interface BandService {
 	// bandden ayril
 	void leaveBand(UUID bandId, UUID userId);
 	
-	
+	Band getBandEntity(UUID bandId);
 }

@@ -36,6 +36,13 @@ public class BandServiceImpl implements BandService{
 	
 	
 	@Override
+	public Band getBandEntity(UUID bandId) {
+		return bandRepository.findById(bandId)
+		                     .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+	}
+	
+	
+	@Override
 	@Transactional
 	public void inviteMember(UUID bandId, UUID inviterId, UUID invitedUserId, String message) {
 		// bandi getir
@@ -205,4 +212,6 @@ public class BandServiceImpl implements BandService{
 		Band band = member.getBand();
 		return bandMapper.toDto(band);
 	}
+	
+	
 }
