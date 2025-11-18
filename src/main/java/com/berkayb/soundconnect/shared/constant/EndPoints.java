@@ -15,6 +15,39 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Collab {
+		
+		// ===== BASE ===== //
+		public static final String USER_BASE  = API + VERSION + "/collabs";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/collabs";
+		
+		// ===== COMMON PATHS ===== //
+		public static final String BY_ID = "/{collabId}";
+		
+		// ===== USER ACTIONS ===== //
+		public static final String CREATE = "/create";       // POST   /collabs/create
+		public static final String UPDATE = "/update/{collabId}"; // PUT    /collabs/update/{collabId}
+		public static final String DELETE = "/delete/{collabId}"; // DELETE /collabs/delete/{collabId}
+		public static final String GET_BY_ID = "/{collabId}";     // GET    /collabs/{collabId}
+		
+		// Search / Filter
+		public static final String SEARCH = "/search"; // GET /collabs/search?... filters
+		
+		// ===== SLOT OPERATIONS (User) ===== //
+		public static final String APPLY_SLOT = "/{collabId}/apply";    // POST /collabs/{collabId}/apply
+		public static final String CANCEL_SLOT = "/{collabId}/cancel";  // POST /collabs/{collabId}/cancel
+		
+		// ===== ADMIN OPERATIONS ===== //
+		public static final String ADMIN_SEARCH = "/search"; // GET /admin/collabs/search
+		public static final String ADMIN_DELETE = "/delete/{collabId}"; // DELETE /admin/collabs/delete/{collabId}
+		public static final String ADMIN_GET_BY_ID = "/{collabId}";     // GET /admin/collabs/{collabId}
+		
+		// Future moderation
+		public static final String ADMIN_CLOSE = "/{collabId}/close";   // POST /admin/collabs/{id}/close
+		public static final String ADMIN_REOPEN = "/{collabId}/reopen"; // POST /admin/collabs/{id}/reopen
+	}
+	
+	
 	public static class Event {
 		
 		// ===== BASE PATHS =====
