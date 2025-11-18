@@ -1,10 +1,10 @@
 ## *ASLA UNUTMAMAN GEREKENLER*
 - venueapplicationrequestte phone yok onu hallet bir ara
 - flutter tarafinda google ile giris yap buton var ama backendi entegre etmedin o da halledilcek
-- Pagination'u medya da yapiyorsun suan ama diger modullere buyuk refact gerekiyo olabilir. diger modullerde hangisinde gerekli ogren ve entegre et medya modulunu bitirince.
+- Pagination'u medya da yapiyorsun suan ama diger modullere buyuk refact gerekiyo olabilir. diger modullerde hangisinde gerekli ogren ve entegre et
 - PROD oncesi CloudFront Distribution’a custom domain ekle.
 - Dockerfile'a ffmpeg ve ffprobe kurulumu yapmayi unutma. 
-- ElasticSearch butun moduller bittikten sonra kurulacak.
+- ElasticSearch butun moduller bittikten sonra gereklki yerlere kurulacak.
 
 # SoundConnect SPRINT
 
@@ -27,13 +27,13 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 3. İlan Modülü
+⏳ 3. Collab Modülü (backstage) 
 
-⏳ 4. Setlist Creator
+⏳ 4. Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek)
 
-⏳ 7. Overthinking Modülü
+⏳ 7. Overthinking Modülü (mainstage)
 
-⏳ 8. AllChat Modülü
+⏳ 8. Konu bazli allchat Modülü (mainstage)
 
 ⏳ 9. Stabilizasyon & MVP Final
 

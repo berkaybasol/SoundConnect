@@ -132,8 +132,11 @@ public enum ErrorType {
 	// EVENT (9250 - 9300)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
 	
-	
-	
+	// COLLAB (9300 - 9350)
+	COLLAB_NOT_FOUND_OR_NOT_OWNER(9301,"Collab not found or not owner", HttpStatus.NOT_FOUND, "Collab bulunamadi veya sahibi degil."),
+	COLLAB_EXPIRATION_REQUIRED(9302,"Collab expiration required.", HttpStatus.BAD_REQUEST, "Eskik veya hatali veri " +
+			"yolladiniz"),
+	COLLAB_NOT_FOUND(9304,"Collab not found", HttpStatus.NOT_FOUND, "Collab bulunamadi"),
 	
 	
 	// GENEL (9999)
