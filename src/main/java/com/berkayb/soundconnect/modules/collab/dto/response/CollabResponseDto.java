@@ -41,6 +41,7 @@ public record CollabResponseDto(
 		// UI FRIENDLY FIELDS
 		boolean isOwner,
 		boolean isTarget,
+		boolean isExpired,
 		int slotCount
 ) {
 }
