@@ -27,8 +27,6 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 3. Collab Modülü (backstage) 
-
 ⏳ 4. Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek)
 
 ⏳ 7. Overthinking Modülü (mainstage)
@@ -40,6 +38,8 @@
 ⏳ 10. Activity Feed & Admin Monitoring
 
 ## *Bitenler*
+
+✅ 3. Collab Modülü (backstage)
 
 ✅ Event Modülü (Konuma göre nerde kim çalıyor?)
 

@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.collab.entity.Collab;
 import com.berkayb.soundconnect.modules.collab.enums.CollabRole;
 import com.berkayb.soundconnect.modules.collab.mapper.CollabMapper;
 import com.berkayb.soundconnect.modules.collab.repository.CollabRepository;
+import com.berkayb.soundconnect.modules.collab.ttl.service.CollabTTLService;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.collab.spec.CollabSpecifications;
 import com.berkayb.soundconnect.modules.instrument.support.InstrumentEntityFinder;
@@ -37,10 +38,7 @@ public class CollabServiceImpl implements CollabService{
 	private final UserEntityFinder userFinder;
 	private final LocationEntityFinder locationEntityFinder;
 	private final InstrumentEntityFinder instrumentEntityFinder;
-	
-	//TODO Redis TTL burda enejte edilcek
-	// private final CollabTTLService ttlService;
-	
+	private final CollabTTLService collabTTLService;
 	
 	@Override
 	public CollabResponseDto create(UUID authenticatedUserId, CollabCreateRequestDto dto) {
@@ -75,46 +73,67 @@ public class CollabServiceImpl implements CollabService{
 		collabRepository.save(collab);
 		
 		// 9) redis TTL
-		// if(collab.isDaily()) ttlService.setTTL(collab.getId(), collab.getExpirationTime());
+		 if (collab.isDaily()) {
+			 collabTTLService.setTTL(collab.getId(), collab.getExpirationTime());
+		 }
 		
-		return collabMapper.toResponseDto(collab);
+		return collabMapper.toResponseDto(collab, authenticatedUserId);
 	}
 	
 	@Override
 	public CollabResponseDto update(UUID collabId, UUID authenticatedUserId, CollabUpdateRequestDto dto) {
 		log.info("[CollabService] Updating collab {} by user {}", collabId, authenticatedUserId);
 		
-		// Collab + owner kontrolu
 		Collab collab = collabRepository.findByIdAndOwner_Id(collabId, authenticatedUserId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND_OR_NOT_OWNER));
+		                                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND_OR_NOT_OWNER));
 		
-		// Maple
+		boolean oldDaily = collab.isDaily();
+		LocalDateTime oldExpiration = collab.getExpirationTime();
+		
 		collabMapper.updateEntity(collab, dto);
 		
-		// City resolve
 		City city = locationEntityFinder.getCity(dto.cityId());
 		collab.setCity(city);
 		
-		// Required instruments resolve
 		Set<Instrument> required = instrumentEntityFinder.getInstrumentsByIds(dto.requiredInstrumentIds());
 		collab.setRequiredInstruments(required);
 		
-		// filled slotlar kornur -> user slot doldurma akisi farkli bir endpoint'te olcak
-		
-		// daily logic check
 		validateDailyFields(dto.daily(), dto.expirationTime());
 		
 		collabRepository.save(collab);
 		
-		return collabMapper.toResponseDto(collab);
+		// -------------------------
+		// TTL RESET LOGIC
+		// -------------------------
+		if (collab.isDaily()) {
+			
+			boolean expirationChanged =
+					oldExpiration == null ||
+							!oldExpiration.equals(collab.getExpirationTime());
+			
+			boolean dailyFlagChanged = oldDaily != collab.isDaily();
+			
+			if (expirationChanged || dailyFlagChanged) {
+				collabTTLService.resetTTL(collab.getId(), collab.getExpirationTime());
+			}
+			
+		} else {
+			// Eğer daily devre dışı bırakıldıysa TTL key de silinsin
+			collabTTLService.deleteTTL(collab.getId());
+		}
+		
+		return collabMapper.toResponseDto(collab, authenticatedUserId);
 	}
 	
 	@Override
 	public void delete(UUID collabId, UUID authenticatedUserId) {
-		log.info("[CollabService] Deleting collab {} by user {}",collabId, authenticatedUserId);
+		log.info("[CollabService] Deleting collab {} by user {}", collabId, authenticatedUserId);
 		
 		Collab collab = collabRepository.findByIdAndOwner_Id(collabId, authenticatedUserId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND_OR_NOT_OWNER));
+		                                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND_OR_NOT_OWNER));
+		
+		// TTL key'i temizle
+		collabTTLService.deleteTTL(collab.getId());
 		
 		collabRepository.delete(collab);
 	}
@@ -124,7 +143,7 @@ public class CollabServiceImpl implements CollabService{
 		log.info("[CollabService] Fetching collab {}", collabId);
 		
 		Collab collab = collabRepository.findById(collabId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND));
+		                                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND));
 		
 		return collabMapper.toResponseDto(collab);
 	}

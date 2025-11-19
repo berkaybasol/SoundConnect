@@ -137,6 +137,11 @@ public enum ErrorType {
 	COLLAB_EXPIRATION_REQUIRED(9302,"Collab expiration required.", HttpStatus.BAD_REQUEST, "Eskik veya hatali veri " +
 			"yolladiniz"),
 	COLLAB_NOT_FOUND(9304,"Collab not found", HttpStatus.NOT_FOUND, "Collab bulunamadi"),
+	COLLAB_NOT_OWNER(9305, "User is not the owner of the collab", HttpStatus.UNAUTHORIZED,"Bu collab'in sahibi degilsin"),
+	COLLAB_EXPIRED(9306,"Collab has expired",HttpStatus.GONE,"Collab suresi dolmus"),
+	COLLAB_SLOT_NOT_REQUIRED(9307,"Instrument not required in this collab",HttpStatus.BAD_REQUEST, "Bu enstruman bu collab icin istenmiyor"),
+	COLLAB_SLOT_ALREADY_FILLED(9308,"Instrument slot already filled",HttpStatus.CONFLICT, "Bu enstruman zaten doldurulmus"),
+	COLLAB_SLOT_NOT_FILLED(9309,"Instrument slot not filled",HttpStatus.BAD_REQUEST,"Bu enstruman henuz doldurulmamis"),
 	
 	
 	// GENEL (9999)

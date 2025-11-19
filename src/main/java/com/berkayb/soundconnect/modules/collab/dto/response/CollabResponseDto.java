@@ -33,7 +33,14 @@ public record CollabResponseDto(
 		String cityName,
 		
 		Set<UUID> filledInstrumentIds,
+		Set<UUID> requiredInstrumentIds,
 		
-		boolean hasOpenSlots // open slot bilgisi required - filled > 0 mi? FE filtreleme ve badgelerde kullanisli
+		
+		boolean hasOpenSlots, // open slot bilgisi required - filled > 0 mi? FE filtreleme ve badgelerde kullanisli
+		
+		// UI FRIENDLY FIELDS
+		boolean isOwner,
+		boolean isTarget,
+		int slotCount
 ) {
 }
