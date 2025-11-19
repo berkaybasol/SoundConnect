@@ -42,7 +42,7 @@ public class RedisKeyspaceConfig {
 		// tum dblerdeki expiration eventlerini dinle
 		container.addMessageListener(
 				collabExpirationListenerAdapter,
-				new PatternTopic("__keyevent@*__:expired*")
+				new PatternTopic("__keyevent@*__:expired")
 		);
 		
 		log.info("[RedisKeySpaceConfig] Key expiration listener active for Collab TTL.");

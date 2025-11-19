@@ -28,7 +28,8 @@ public class CollabExpirationListener {
 	/**
 	 * Redisden expiration eventi geldiginde tetiklenen metod.
 	 */
-	public void onMessage(Message message, byte[] pattern) {
+	public void onMessage(Message message)
+	{
 		String expiredKey = new String(message.getBody(), StandardCharsets.UTF_8);
 		
 		log.warn("[CollabExpirationListener] Expired Redis key detecte: {}", expiredKey);
