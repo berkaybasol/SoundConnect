@@ -33,6 +33,8 @@
 
 ⏳ 8. Konu bazli allchat Modülü (mainstage)
 
+⏳ 11. Ikinci el alim satim
+
 ⏳ 9. Stabilizasyon & MVP Final
 
 ⏳ 10. Activity Feed & Admin Monitoring

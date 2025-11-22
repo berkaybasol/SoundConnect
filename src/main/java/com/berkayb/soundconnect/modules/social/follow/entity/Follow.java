@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.follow.entity;
+package com.berkayb.soundconnect.modules.social.follow.entity;
 
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.entity.User;

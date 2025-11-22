@@ -1,6 +1,6 @@
-package com.berkayb.soundconnect.modules.follow.repository;
+package com.berkayb.soundconnect.modules.social.follow.repository;
 
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 

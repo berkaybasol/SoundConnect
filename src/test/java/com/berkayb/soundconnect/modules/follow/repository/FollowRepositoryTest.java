@@ -1,12 +1,13 @@
 package com.berkayb.soundconnect.modules.follow.repository;
 
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
+import com.berkayb.soundconnect.modules.social.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;

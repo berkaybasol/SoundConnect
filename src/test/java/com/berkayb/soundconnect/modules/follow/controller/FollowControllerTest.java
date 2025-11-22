@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.follow.controller;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
-import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.social.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;

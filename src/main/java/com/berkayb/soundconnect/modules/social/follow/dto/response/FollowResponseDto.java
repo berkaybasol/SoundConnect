@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.follow.dto.response;
+package com.berkayb.soundconnect.modules.social.follow.dto.response;
 
 import java.time.LocalDateTime;
 import java.util.UUID;

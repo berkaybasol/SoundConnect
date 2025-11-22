@@ -1,7 +1,8 @@
 package com.berkayb.soundconnect.modules.follow.mapper;
 
-import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.dto.response.FollowResponseDto;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.mapper.FollowMapper;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

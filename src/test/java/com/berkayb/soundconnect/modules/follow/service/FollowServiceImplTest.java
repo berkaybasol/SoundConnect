@@ -1,7 +1,8 @@
 package com.berkayb.soundconnect.modules.follow.service;
 
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
-import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.social.follow.service.FollowServiceImpl;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;

@@ -1,7 +1,7 @@
-package com.berkayb.soundconnect.modules.follow.mapper;
+package com.berkayb.soundconnect.modules.social.follow.mapper;
 
-import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.dto.response.FollowResponseDto;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 

@@ -1,4 +1,4 @@
-package com.berkayb.soundconnect.modules.follow.dto.request;
+package com.berkayb.soundconnect.modules.social.follow.dto.request;
 
 import jakarta.validation.constraints.NotNull;
 

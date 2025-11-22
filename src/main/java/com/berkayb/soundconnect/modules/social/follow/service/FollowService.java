@@ -1,7 +1,7 @@
-package com.berkayb.soundconnect.modules.follow.service;
+package com.berkayb.soundconnect.modules.social.follow.service;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
 
 import java.util.List;
 

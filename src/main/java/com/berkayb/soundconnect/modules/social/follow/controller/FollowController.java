@@ -1,10 +1,10 @@
-package com.berkayb.soundconnect.modules.follow.controller;
+package com.berkayb.soundconnect.modules.social.follow.controller;
 
 
-import com.berkayb.soundconnect.modules.follow.dto.request.FollowRequestDto;
-import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
-import com.berkayb.soundconnect.modules.follow.mapper.FollowMapper;
-import com.berkayb.soundconnect.modules.follow.service.FollowService;
+import com.berkayb.soundconnect.modules.social.follow.dto.request.FollowRequestDto;
+import com.berkayb.soundconnect.modules.social.follow.dto.response.FollowResponseDto;
+import com.berkayb.soundconnect.modules.social.follow.mapper.FollowMapper;
+import com.berkayb.soundconnect.modules.social.follow.service.FollowService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
