@@ -15,11 +15,11 @@ public interface CollabService {
 	
 	CollabResponseDto update(UUID collabId, UUID authenticatedUserId, CollabUpdateRequestDto dto);
 	
-	void delete (UUID collabId, UUID authenticatedUserId);
+	void delete(UUID collabId, UUID authenticatedUserId);
 	
-	CollabResponseDto getById(UUID collabId);
+	CollabResponseDto getById(UUID collabId, UUID authenticatedUserId);
 	
-	Page<CollabResponseDto> search(CollabFilterRequestDto filter, Pageable pageable);
-	
-	
+	Page<CollabResponseDto> search(UUID authenticatedUserId,
+	                               CollabFilterRequestDto filter,
+	                               Pageable pageable);
 }

@@ -142,7 +142,9 @@ public enum ErrorType {
 	COLLAB_SLOT_NOT_REQUIRED(9307,"Instrument not required in this collab",HttpStatus.BAD_REQUEST, "Bu enstruman bu collab icin istenmiyor"),
 	COLLAB_SLOT_ALREADY_FILLED(9308,"Instrument slot already filled",HttpStatus.CONFLICT, "Bu enstruman zaten doldurulmus"),
 	COLLAB_SLOT_NOT_FILLED(9309,"Instrument slot not filled",HttpStatus.BAD_REQUEST,"Bu enstruman henuz doldurulmamis"),
-	
+	COLLAB_SLOT_ALREADY_FULL(9310,"Slot already full",HttpStatus.CONFLICT, "Zaten dolu"),
+	COLLAB_SLOT_ALREADY_EMPTY(9311,"Slot already empty",HttpStatus.CONFLICT, "Zaten bos"),
+	COLLAB_SLOT_REQUIRED(9306, "Required slot list is missing or empty", HttpStatus.BAD_REQUEST, "Gerekli enstrüman listesi boş veya eksik"),
 	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

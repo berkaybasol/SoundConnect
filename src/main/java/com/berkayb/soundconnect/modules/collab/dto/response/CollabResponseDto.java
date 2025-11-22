@@ -35,12 +35,12 @@ public record CollabResponseDto(
 		Set<UUID> filledInstrumentIds,
 		Set<UUID> requiredInstrumentIds,
 		
+		boolean hasOpenSlots, // required - filled > 0 ?
 		
-		boolean hasOpenSlots, // open slot bilgisi required - filled > 0 mi? FE filtreleme ve badgelerde kullanisli
+		Set<SlotResponseDto> slots,
 		
 		// UI FRIENDLY FIELDS
 		boolean isOwner,
-		boolean isTarget,
 		boolean isExpired,
 		int slotCount
 ) {

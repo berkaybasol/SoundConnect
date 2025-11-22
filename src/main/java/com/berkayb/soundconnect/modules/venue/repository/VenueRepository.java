@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.venue.repository;
 
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -12,4 +13,5 @@ public interface VenueRepository extends JpaRepository<Venue, UUID> {
 
 List<Venue> findAllByOwnerId(UUID ownerId);
 Optional<Venue> findByIdAndOwnerId(UUID venueId, UUID ownerId);
+boolean existsByOwner_Id(UUID ownerId);
 }

@@ -17,12 +17,11 @@ public record CollabCreateRequestDto(
 		@Size(max = 2048)
 		String description,
 		
-		@NotNull CollabCategory category,
+		@NotNull
+		CollabCategory category,
 		
 		@NotEmpty
 		Set<CollabRole> targetRoles,
-		
-		Set<UUID> requiredInstrumentIds,
 		
 		@NotNull
 		UUID cityId,
@@ -33,6 +32,10 @@ public record CollabCreateRequestDto(
 		@NotNull
 		boolean daily,
 		
-		LocalDateTime expirationTime
+		LocalDateTime expirationTime,
+		
+		@NotEmpty(message = "En az 1 slot tanimlanmalidir.")
+		Set<RequiredSlotRequestDto> requiredSlots
+
 ) {
 }

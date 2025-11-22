@@ -78,29 +78,39 @@ public class Collab extends BaseEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	private City city;
 	
+	
 	/**
-	 * Aranan yetenekler. slot mantiginin temelini olusturcak
-	 * ornegin 4 kisilik bir grup 3 slot doldu biri hala bos
+	 * Yeni slot sistemi — 1 collab N adet slot’a sahip olabilir.
+	 * (ör: 2 gitar + 1 bas + 1 davul)
 	 */
-	@ManyToMany(fetch = FetchType.LAZY)
-	@JoinTable(
-			name = "collab_required_instruments",
-			joinColumns = @JoinColumn(name = "collab_id"),
-			inverseJoinColumns = @JoinColumn(name = "instrument_id")
+	@OneToMany(
+			mappedBy = "collab",
+			cascade = CascadeType.ALL,
+			orphanRemoval = true,
+			fetch = FetchType.LAZY
 	)
 	@Builder.Default
-	private Set<Instrument> requiredInstruments = new HashSet<>();
-	
-	// bulunan yetkinlikler
-	@ManyToMany(fetch = FetchType.LAZY)
-	@JoinTable(
-			name = "collab_filled_instruments",
-			joinColumns = @JoinColumn(name = "collab_id"),
-			inverseJoinColumns = @JoinColumn(name = "instrument_id")
-	)
-	@Builder.Default
-	private Set<Instrument> filledInstruments = new HashSet<>();
+	private Set<CollabRequiredSlot> requiredSlots = new HashSet<>();
 	
 	
+	// methodlar
+	public int getTotalRequired() {
+		return requiredSlots.stream()
+		                    .mapToInt(CollabRequiredSlot::getRequiredCount)
+		                    .sum();
+	}
 	
+	public int getTotalFilled() {
+		return requiredSlots.stream()
+		                    .mapToInt(CollabRequiredSlot::getFilledCount)
+		                    .sum();
+	}
+	
+	public boolean hasOpenSlots() {
+		return requiredSlots.stream().anyMatch(CollabRequiredSlot::hasOpenSlot);
+	}
+	
+	public int getRemainingSlotCount() {
+		return getTotalRequired() - getTotalFilled();
+	}
 }

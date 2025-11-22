@@ -21,4 +21,8 @@ public class UserEntityFinder {
 	}
 	
 	
+	public User getUserByUsername(String username) {
+		return userRepository.findByUsername(username)
+		                     .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+	}
 }

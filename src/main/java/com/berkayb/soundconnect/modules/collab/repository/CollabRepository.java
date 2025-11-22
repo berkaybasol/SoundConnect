@@ -19,7 +19,4 @@ public interface CollabRepository extends JpaRepository<Collab, UUID>,
 	 * expirationTime hesaplamasi, Redis TTL setup ve frontend tarafinda daily mi normal mi kontrolunu hedefliyoruz
  	 */
 	Optional<Collab> findByIdAndDailyTrue(UUID collabId);
-	
-	
-	
 }

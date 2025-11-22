@@ -3,6 +3,10 @@ package com.berkayb.soundconnect.modules.user.entity;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
+import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
@@ -97,6 +101,17 @@ public class User extends BaseEntity {
 	@JsonIgnore
 	private MusicianProfile musicianProfile;
 	
+	@OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+	@JsonIgnore
+	private OrganizerProfile organizerProfile;
+	
+	@OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+	@JsonIgnore
+	private ProducerProfile producerProfile;
+	
+	@OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+	@JsonIgnore
+	private StudioProfile studioProfile;
 	
 	private String profilePicture;
 	

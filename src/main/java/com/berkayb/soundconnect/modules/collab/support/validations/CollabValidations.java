@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.collab.support.validations;
 
 import com.berkayb.soundconnect.modules.collab.entity.Collab;
+import com.berkayb.soundconnect.modules.collab.entity.CollabRequiredSlot;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -20,28 +21,22 @@ public class CollabValidations {
 		}
 	}
 	
-	public void validateRequired(Collab collab, Instrument instrument) {
-		if (!collab.getRequiredInstruments().contains(instrument)) {
-			throw new SoundConnectException(ErrorType.COLLAB_SLOT_NOT_REQUIRED);
-		}
-	}
-	
-	public void validateNotAlreadyFilled(Collab collab, Instrument instrument) {
-		if (collab.getFilledInstruments().contains(instrument)) {
-			throw new SoundConnectException(ErrorType.COLLAB_SLOT_ALREADY_FILLED);
-		}
-	}
-	
-	public void validateFilled(Collab collab, Instrument instrument) {
-		if (!collab.getFilledInstruments().contains(instrument)) {
-			throw new SoundConnectException(ErrorType.COLLAB_SLOT_NOT_FILLED);
-		}
-	}
-	
 	public void validateNotExpired(Collab collab) {
-		if (collab.isDaily() && collab.getExpirationTime() != null && collab.getExpirationTime()
-		                                                                    .isBefore(LocalDateTime.now())) {
+		if (collab.isDaily()
+				&& collab.getExpirationTime() != null
+				&& collab.getExpirationTime().isBefore(LocalDateTime.now())) {
 			throw new SoundConnectException(ErrorType.COLLAB_EXPIRED);
 		}
+	}
+	
+	/**
+	 * İlgili enstrümana ait slot'u getirir.
+	 * Yoksa COLLAB_SLOT_NOT_REQUIRED fırlatır.
+	 */
+	public CollabRequiredSlot getRequiredSlot(Collab collab, Instrument instrument) {
+		return collab.getRequiredSlots().stream()
+		             .filter(slot -> slot.getInstrument().getId().equals(instrument.getId()))
+		             .findFirst()
+		             .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_SLOT_NOT_REQUIRED));
 	}
 }

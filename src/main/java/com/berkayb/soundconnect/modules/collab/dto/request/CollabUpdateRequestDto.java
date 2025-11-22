@@ -23,8 +23,6 @@ public record CollabUpdateRequestDto(
 		@NotEmpty
 		Set<CollabRole> targetRoles,
 		
-		Set<UUID> requiredInstrumentIds,
-		
 		@NotNull
 		UUID cityId,
 		
@@ -34,7 +32,10 @@ public record CollabUpdateRequestDto(
 		@NotNull
 		boolean daily,
 		
-		LocalDateTime expirationTime
+		LocalDateTime expirationTime,
+		
+		@NotEmpty(message = "En az 1 slot tanimlanmalidir.")
+		Set<RequiredSlotRequestDto> requiredSlots
 		
 ) {
 }

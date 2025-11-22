@@ -2,8 +2,8 @@ package com.berkayb.soundconnect.modules.collab.spec;
 
 import com.berkayb.soundconnect.modules.collab.dto.request.CollabFilterRequestDto;
 import com.berkayb.soundconnect.modules.collab.entity.Collab;
-import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
-import jakarta.persistence.criteria.Join;
+import com.berkayb.soundconnect.modules.collab.entity.CollabRequiredSlot;
+import com.berkayb.soundconnect.modules.collab.enums.CollabRole;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -15,17 +15,15 @@ public class CollabSpecifications {
 	
 	public static Specification<Collab> filter(CollabFilterRequestDto f) {
 		return Specification.where(byCity(f.cityId()))
-				.and(byCategory(f.category()))
-				.and(byOwnerRole(f.ownerRole()))
-				.and(byTargetRoles(f.targetRoles()))
-				.and(byRequiredInstrument(f.requiredInstrumentId()))
-				.and(byDaily(f.daily()))
-				.and(byCreatedDateRange(f.createdAfter(), f.createdBefore()))
-				.and(byOpenSlots(f.hasOpenSlots()));
+		                    .and(byCategory(f.category()))
+		                    .and(byOwnerRole(f.ownerRole()))
+		                    .and(byTargetRoles(f.targetRoles()))
+		                    .and(byRequiredInstrument(f.requiredInstrumentId()))
+		                    .and(byDaily(f.daily()))
+		                    .and(byCreatedDateRange(f.createdAfter(), f.createdBefore()))
+		                    .and(byOpenSlots(f.hasOpenSlots()));
 	}
 	
-	
-	// filter methods
 	private static Specification<Collab> byCity(UUID cityId) {
 		return (root, query, cb) -> {
 			if (cityId == null) return null;
@@ -40,26 +38,35 @@ public class CollabSpecifications {
 		};
 	}
 	
-	private static Specification<Collab> byOwnerRole(Enum<?> ownerRole){
+	private static Specification<Collab> byOwnerRole(Enum<?> ownerRole) {
 		return (root, query, cb) -> {
 			if (ownerRole == null) return null;
 			return cb.equal(root.get("ownerRole"), ownerRole);
 		};
 	}
 	
-	private static Specification<Collab> byTargetRoles(Set<?> targetRoles) {
+	private static Specification<Collab> byTargetRoles(Set<CollabRole> targetRoles) {
 		return (root, query, cb) -> {
 			if (targetRoles == null || targetRoles.isEmpty()) return null;
-			Join<Object, Object> join = root.join("targetRoles", JoinType.INNER);
+			
+			query.distinct(true);
+			var join = root.joinSet("targetRoles", JoinType.INNER);
 			return join.in(targetRoles);
 		};
 	}
 	
+	/**
+	 * İlgili enstrümanı arayan ilanlar.
+	 * Artık requiredSlots üzerinden join yapıyoruz.
+	 */
 	private static Specification<Collab> byRequiredInstrument(UUID instrumentId) {
 		return (root, query, cb) -> {
 			if (instrumentId == null) return null;
-			Join<Collab, Instrument> join = root.join("requiredInstruments", JoinType.INNER);
-			return cb.equal(join.get("id"), instrumentId);
+			
+			query.distinct(true);
+			
+			var slotJoin = root.joinSet("requiredSlots", JoinType.INNER);
+			return cb.equal(slotJoin.get("instrument").get("id"), instrumentId);
 		};
 	}
 	
@@ -85,26 +92,29 @@ public class CollabSpecifications {
 	}
 	
 	/**
-	 * hasOpenSlots = true -> required > filled
-	 * hasOpenSlots = false -> required == filled
+	 * hasOpenSlots = true  -> toplam filledCount < toplam requiredCount
+	 * hasOpenSlots = false -> toplam filledCount == toplam requiredCount
 	 */
-	
 	private static Specification<Collab> byOpenSlots(Boolean hasOpenSlots) {
 		return (root, query, cb) -> {
 			if (hasOpenSlots == null) return null;
 			
-			// SQL aggregate kullanabilmek icin group by gerekiyor
-			// Bu yuzden JPA'nin count distinct + groupBy yapisina geciyoruz.
+			// required toplamı
+			var subRequired = query.subquery(Long.class);
+			var reqRoot = subRequired.from(CollabRequiredSlot.class);
+			subRequired.select(cb.sumAsLong(reqRoot.get("requiredCount")));
+			subRequired.where(cb.equal(reqRoot.get("collab").get("id"), root.get("id")));
 			
-			query.groupBy(root.get("id"));
-			
-			var requiredCount = cb.countDistinct(root.join("requiredInstruments", JoinType.LEFT));
-			var filledCount = cb.countDistinct(root.join("filledInstruments", JoinType.LEFT));
+			// filled toplamı
+			var subFilled = query.subquery(Long.class);
+			var fillRoot = subFilled.from(CollabRequiredSlot.class);
+			subFilled.select(cb.sumAsLong(fillRoot.get("filledCount")));
+			subFilled.where(cb.equal(fillRoot.get("collab").get("id"), root.get("id")));
 			
 			if (hasOpenSlots) {
-				return cb.lessThan(filledCount, requiredCount);
+				return cb.lessThan(subFilled, subRequired);
 			} else {
-				return cb.equal(requiredCount, filledCount);
+				return cb.equal(subFilled, subRequired);
 			}
 		};
 	}

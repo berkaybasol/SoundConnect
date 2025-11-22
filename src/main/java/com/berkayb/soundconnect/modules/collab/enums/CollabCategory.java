@@ -8,7 +8,4 @@ public enum CollabCategory {
 	RENTAL, // ekipman kiralama studyoya girme vb ilanlar
 	PRODUCING, // produktor icin ilanlar
 	MIX_MASTER // mix masterin hizmetleri iceren ilanlar
-	
-	
-	
 }

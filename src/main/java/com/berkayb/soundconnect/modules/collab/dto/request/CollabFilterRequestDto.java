@@ -22,13 +22,12 @@ public record CollabFilterRequestDto(
 		
 		UUID requiredInstrumentId,
 		
-		boolean daily,
+		Boolean daily,
 		
-		boolean hasOpenSlots,
+		
+		Boolean hasOpenSlots,
 		
 		LocalDateTime createdAfter,
 		LocalDateTime createdBefore
-		
-		
 ) {
 }
