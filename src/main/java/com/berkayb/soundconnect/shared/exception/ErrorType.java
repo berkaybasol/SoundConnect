@@ -146,6 +146,13 @@ public enum ErrorType {
 	COLLAB_SLOT_ALREADY_EMPTY(9311,"Slot already empty",HttpStatus.CONFLICT, "Zaten bos"),
 	COLLAB_SLOT_REQUIRED(9306, "Required slot list is missing or empty", HttpStatus.BAD_REQUEST, "Gerekli enstrüman listesi boş veya eksik"),
 	
+	// COMMENT(9350 - 9400)
+	COMMENT_NOT_FOUND(9350,"Comment not found", HttpStatus.NOT_FOUND, "Yorum bulunamadi."),
+	COMMENT_TEXT_INVALID(9351,"Comment text must not be empty or longer than MAX_COMMENT_LENGTH.",HttpStatus.BAD_REQUEST,"Yorum metni bos veya maksimum uzunlugu asamaz."),
+	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
+	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
+	
+	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	

@@ -5,14 +5,13 @@ import com.berkayb.soundconnect.modules.social.comment.dto.support.UserSummaryDt
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-// tek bir yttorumun UI'ya gonen tam modeli. ReplyCount dahil ama repy'lerin kendisi bu dto'da yer almaz.
-public record CommentResponseDto(
+// Reply yorumlari icin dto
+public record CommentReplyResponseDto(
 		UUID id,
 		UserSummaryDto user,
 		String text,
 		boolean deleted,
 		UUID parentCommentId,
-		int replyCount,
 		LocalDateTime createdAt
 ) {
 }

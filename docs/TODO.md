@@ -41,7 +41,11 @@
 
 ## *Bitenler*
 
-✅ 3. Collab Modülü (backstage)
+✅ Like Modülü 
+
+✅ Comment Modülü 
+
+✅ Collab Modülü (backstage)
 
 ✅ Event Modülü (Konuma göre nerde kim çalıyor?)
 

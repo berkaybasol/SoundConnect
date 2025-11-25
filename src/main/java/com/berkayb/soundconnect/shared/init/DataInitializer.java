@@ -121,7 +121,8 @@ public class DataInitializer {
 				                         Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name())),
 				                         Objects.requireNonNull(permissionMap.get(READ_LOCATION.name())),
 				                         Objects.requireNonNull(permissionMap.get(WRITE_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name()))
+				                         Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name())),
+				                         Objects.requireNonNull(permissionMap.get(DELETE_COMMENT.name()))
 				                         
 		                         ))
 		                         .build();

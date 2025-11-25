@@ -24,5 +24,8 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
 	
 	// kullanici bir yorum yazmis mi? (silme kontrolu icin gerekli)
-	boolean existByIdAndUserId(UUID commentId, UUID userId);
+	boolean existsByIdAndUserId(UUID id, UUID userId);
+	
+	// reply sayisini hesaplamak icin gerekli
+	long countByParentComment(Comment parentComment);
 }

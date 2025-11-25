@@ -32,6 +32,47 @@ public class EndPoints {
 		public static final String SEARCH = "/search";
 	}
 	
+	public static class Comment {
+		
+		// ===== BASE ===== //
+		public static final String BASE = API + VERSION + "/comments";
+		
+		// ===== CREATE ===== //
+		// POST /comments/{targetType}/{targetId}
+		public static final String CREATE = "/{targetType}/{targetId}";
+		
+		// ===== DELETE ===== //
+		// DELETE /comments/{commentId}
+		public static final String DELETE = "/{commentId}";
+		
+		// ===== LIST ROOT COMMENTS ===== //
+		// GET /comments/{targetType}/{targetId}
+		public static final String LIST_BY_TARGET = "/{targetType}/{targetId}";
+		
+		// ===== LIST REPLIES ===== //
+		// GET /comments/replies/{commentId}
+		public static final String LIST_REPLIES = "/replies/{commentId}";
+	}
+	
+	public static class Like {
+		
+		// ===== BASE ===== //
+		public static final String BASE = API + VERSION + "/likes";
+		
+		// POST /likes/{targetType}/{targetId}
+		public static final String LIKE = "/{targetType}/{targetId}";
+		
+		// DELETE /likes/{targetType}/{targetId}
+		public static final String UNLIKE = "/{targetType}/{targetId}";
+		
+		// GET /likes/{targetType}/{targetId}/count
+		public static final String COUNT = "/{targetType}/{targetId}/count";
+		
+		// GET /likes/{targetType}/{targetId}/is-liked
+		public static final String IS_LIKED = "/{targetType}/{targetId}/is-liked";
+	}
+	
+	
 	
 	public static class Event {
 		
