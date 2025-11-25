@@ -14,6 +14,7 @@ public record MusicianProfileResponseDto(
 		String youtubeUrl,
 		String soundcloudUrl,
 		String spotifyEmbedUrl,
+		String spotifyArtistId,
 		Set<String> instruments,
 		Set<String> activeVenues,
 		Set<BandResponseDto> bands

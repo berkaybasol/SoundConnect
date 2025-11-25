@@ -63,6 +63,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .soundcloudUrl(dto.soundcloudUrl())
 		                                         .spotifyEmbedUrl(dto.spotifyEmbedUrl())
 		                                         .instruments(instruments)
+												 .spotifyArtistId(dto.spotifyArtistId())
 		                                         .build();
 		
 		MusicianProfile saved = musicianProfileRepository.save(profile);
@@ -82,6 +83,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
 				base.spotifyEmbedUrl(),
+				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
 				bands
@@ -114,6 +116,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
 				base.spotifyEmbedUrl(),
+				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
 				bands
@@ -138,6 +141,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
 		if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
+		if (dto.spotifyArtistId() != null) profile.setSpotifyArtistId(dto.spotifyArtistId());
 		
 		if (dto.instrumentIds() != null) {
 			Set<Instrument> instruments = new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()));
@@ -160,6 +164,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
 				base.spotifyEmbedUrl(),
+				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
 				bands

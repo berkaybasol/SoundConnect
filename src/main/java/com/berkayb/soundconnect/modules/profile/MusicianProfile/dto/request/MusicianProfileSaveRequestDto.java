@@ -13,6 +13,7 @@ public record MusicianProfileSaveRequestDto(
 		String youtubeUrl,
 		String soundcloudUrl,
 		String spotifyEmbedUrl,
+		String spotifyArtistId,
 		Set<UUID> instrumentIds
 		
 ) {

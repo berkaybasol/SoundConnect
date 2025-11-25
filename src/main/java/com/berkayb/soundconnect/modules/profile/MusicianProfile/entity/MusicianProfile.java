@@ -49,6 +49,10 @@ public class MusicianProfile extends BaseProfile {
 	
 	private String spotifyEmbedUrl; // gomulu spotify oynatici sistemi icin.
 	
+	// overthinking modulu icin gerekli belki baska seylerde de kullaniriz.
+	@Column(name = "spotify_artist_id", nullable = true, unique = true)
+	private String spotifyArtistId;
+	
 	// TODO Media entity ile ManyToMany seklinde Sesler / Videolar alani yapilcak
 	
 }

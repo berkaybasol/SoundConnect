@@ -165,6 +165,7 @@ public class BandServiceImpl implements BandService{
 				.instagramUrl(dto.instagramUrl())
 				.youtubeUrl(dto.youtubeUrl())
 				.soundCloudUrl(dto.soundCloudUrl())
+				.spotifyArtistId(dto.spotifyArtistId())
 				.build();
 		
 		// band founder'ii olarak ilk uyeyi ekle
@@ -212,6 +213,4 @@ public class BandServiceImpl implements BandService{
 		Band band = member.getBand();
 		return bandMapper.toDto(band);
 	}
-	
-	
 }

@@ -35,6 +35,7 @@ public class Band extends BaseEntity {
 	private String instagramUrl;
 	private String youtubeUrl;
 	private String soundCloudUrl;
+	private String spotifyArtistId;
 	
 	// yonetim tamamen BandMember tarafindan yapilir
 	@OneToMany(mappedBy = "band", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -36,7 +36,7 @@ public class MusicianProfileCreator implements ProfileCreator {
 	@Override
 	public void createProfile(User user) {
 		MusicianProfileSaveRequestDto dto = new MusicianProfileSaveRequestDto(
-				null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null) ;
 		musicianProfileService.createProfile(user.getId(), dto);
 	}
 	

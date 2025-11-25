@@ -11,6 +11,7 @@ public record BandResponseDto(
 		String instagramUrl,
 		String youtubeUrl,
 		String soundCloudUrl,
+		String spotifyArtistId,
 		Set<BandMemberResponseDto> members
 ) {
 }

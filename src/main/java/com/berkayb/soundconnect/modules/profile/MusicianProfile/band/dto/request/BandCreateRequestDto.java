@@ -6,6 +6,7 @@ public record BandCreateRequestDto(
 		String profilePicture,
 		String instagramUrl,
 		String youtubeUrl,
-		String soundCloudUrl
+		String soundCloudUrl,
+		String spotifyArtistId
 ) {
 }
