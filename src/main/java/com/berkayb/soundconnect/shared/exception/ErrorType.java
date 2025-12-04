@@ -65,6 +65,8 @@ public enum ErrorType {
 	ASSET_ID_REQUIRED(1809,"Asset ID is required", HttpStatus.BAD_REQUEST, "assetId bos olamaz"),
 	HLS_PROCESS_SKIPPED_TERMINAL(1810,"HLS proces skipped due to terminal asset state",HttpStatus.CONFLICT,"Asset terminal durumda oldugu icin islem atlandi." ),
 	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
+	MEDIA_NOT_IMPLEMENTED(1812,"Media not implemented", HttpStatus.BAD_REQUEST, "medya henuz implement edilmemis"),
+	
 	
 	// NOTIFICATION (1900 - 2000)
 	NOTIFICATION_NOT_FOUND(1900,"Notification not found", HttpStatus.NOT_FOUND, "Bildirim bulunamadi." ),
@@ -129,10 +131,10 @@ public enum ErrorType {
 	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
 	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
 	
-	// EVENT (9250 - 9300)
+	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
 	
-	// COLLAB (9300 - 9350)
+	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND_OR_NOT_OWNER(9301,"Collab not found or not owner", HttpStatus.NOT_FOUND, "Collab bulunamadi veya sahibi degil."),
 	COLLAB_EXPIRATION_REQUIRED(9302,"Collab expiration required.", HttpStatus.BAD_REQUEST, "Eskik veya hatali veri " +
 			"yolladiniz"),
@@ -146,12 +148,15 @@ public enum ErrorType {
 	COLLAB_SLOT_ALREADY_EMPTY(9311,"Slot already empty",HttpStatus.CONFLICT, "Zaten bos"),
 	COLLAB_SLOT_REQUIRED(9306, "Required slot list is missing or empty", HttpStatus.BAD_REQUEST, "Gerekli enstrüman listesi boş veya eksik"),
 	
-	// COMMENT(9350 - 9400)
+	// COMMENT(9350 - 9399)
 	COMMENT_NOT_FOUND(9350,"Comment not found", HttpStatus.NOT_FOUND, "Yorum bulunamadi."),
 	COMMENT_TEXT_INVALID(9351,"Comment text must not be empty or longer than MAX_COMMENT_LENGTH.",HttpStatus.BAD_REQUEST,"Yorum metni bos veya maksimum uzunlugu asamaz."),
 	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
 	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
 	
+	// OVERTHINKING(9400 - 9449)
+	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
+	OVERTHINKING_POST_NOT_FOUND(9401,"Overthinking post not found",HttpStatus.NOT_FOUND,"Overthinking postu bulunamadi."),
 	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

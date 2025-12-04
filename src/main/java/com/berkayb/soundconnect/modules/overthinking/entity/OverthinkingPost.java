@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.overthinking.entity;
 
-import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingMusicType;
+import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingArtistType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
@@ -35,31 +35,41 @@ public class OverthinkingPost extends BaseEntity {
 	@Column(name = "title", length = 64, nullable = false)
 	private String title;
 	
-	@Column(name = "content", length = 4000, nullable = false)
+	@Column(name = "content", length = 10240, nullable = false)
 	private String content;
 	
+	@Column(name = "spotify_track_url", length = 1024)
+	private String spotifyTrackUrl; // spotify'dan eslestirilecek muzigin track urlsi
+	
+	@Column(name = "spotify_artist_id", length = 255)
+	private String spotifyArtistId; // MusicianProfile veya Band entitylerindeki spotifyArtistId ile eslestirme icin kullanilcak
+	
+	@Column(name = "musician_track_id")
+	private UUID musicianTrackId; // spotiden degil de uygulama icinden secerse
+	
+	@Column(name = "band_track_id")
+	private UUID bandTrackId; // sarki bande aitse
+	
+	@Column(name = "artist_id")
+	private UUID artistId; // post ile eslestirilen sanatci is si band veya musicianprofile
+	
 	@Enumerated(EnumType.STRING)
-	@Column(name = "music_type", nullable = false, length = 32)
-	private OverthinkingMusicType musicType; // postta eslestirilecek muzik uygulamadan mi spotiden mi
+	@Column(name = "artist_type", length = 32)
+	private OverthinkingArtistType artistType;
 	
-	@Column(name = "spotify_track_id", length = 128)
-	private String spotifyTrackId; // spotify'dan eslestirilecek muzigin track idsi
+	// helpers
+	// posta herhangi bir muzik baglanmis mi?
+	public boolean hasMusic() {
+		return spotifyTrackUrl != null
+				|| musicianTrackId != null
+				|| bandTrackId != null;
+	}
 	
-	@Column(name = "internal_audio_id")
-	private UUID internalAudioId; // soundconnect'dan eslestirilecek muzigin idsi
+	// post sanatciyla eslesmis mi?
+	public boolean hasAttachedArtist() {
+		return artistId != null && artistType != null;
+	}
 	
-	/**
-	 * Secilen muzigin sahibi SoundConnect'te MusicianProfile ise otomatik eslestirilip buraya setlenir.
-	 * ORN: - Spotify track -> artistIds -> MusicianProfile.spotifyArtistId
-	 *      - Internal auidio -> audio.owner (MusicianProfile)
-	 *      - eslesme yoksa null.
-	 */
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "attached_musician_profile_id")
-	private MusicianProfile attachedArtist;
-	BURDASIN
-	@Column(name = "deleted", nullable = false)
-	private boolean deleted; // soft delete flag
 	
 	
 }

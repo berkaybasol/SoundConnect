@@ -15,6 +15,32 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Overthinking {
+		
+		public static final String BASE = API + VERSION + "/overthinking";
+		
+		// CREATE
+		public static final String CREATE = "/create";
+		
+		// UPDATE
+		public static final String UPDATE = "/{postId}";
+		
+		// DELETE
+		public static final String DELETE = "/{postId}";
+		
+		// GET BY ID
+		public static final String BY_ID = "/{postId}";
+		
+		// GET POSTS OF LOGGED USER
+		public static final String MY_POSTS = "/me";
+		
+		// GET POSTS BY ARTIST (musician or band)
+		public static final String BY_ARTIST = "/artist/{artistId}";
+		
+		// GLOBAL FEED (all posts)
+		public static final String FEED = "/feed";
+	}
+	
 	public static class Collab {
 		
 		// ===== BASE ===== //
@@ -72,8 +98,6 @@ public class EndPoints {
 		public static final String IS_LIKED = "/{targetType}/{targetId}/is-liked";
 	}
 	
-	
-	
 	public static class Event {
 		
 		// ===== BASE PATHS =====
@@ -106,7 +130,6 @@ public class EndPoints {
 		// Multi-filter search (future)
 		public static final String USER_SEARCH = "/search";   // GET /events/search?date=..&cityId=..
 	}
-	
 	
 	public static class Band {
 		public static final String USER_BASE = API + VERSION + "/user/bands"; // Tüm band işlemleri için ana base
@@ -207,7 +230,6 @@ public class EndPoints {
 		public static final String ADMIN_CREATE = "/create/{venueId}";
 	}
 	
-	
 	public class ListenerProfile {
 		public static final String USER_BASE = API + VERSION + "/user/listener-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/listener-profiles";
@@ -257,9 +279,6 @@ public class EndPoints {
 		}
 	}
 	
-	
-	
-	
 	public static class DM {
 		
 		// === USER BASE ===
@@ -302,7 +321,6 @@ public class EndPoints {
 		public static final String ADMIN_DELETE_MESSAGE = "/{conversationId}/messages/{messageId}";
 	}
 	
-	
 	public static class OrganizerProfile {
 		public static final String USER_BASE = API + VERSION + "/user/organizer-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/organizer-profiles";
@@ -329,7 +347,6 @@ public class EndPoints {
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
 	}
 	
-	
 	public static class ArtistVenueConnections {
 		public static final String BASE = API + VERSION + "/artist-venue-connections";
 		public static final String REQUEST = "/request";
@@ -352,7 +369,6 @@ public class EndPoints {
 		public static final String DELETE = "/{id}";
 	}
 	
-	
 	public static class Follow {
 		public static final String BASE = API + VERSION + "/follow";  // tekil “follow” kullanımı daha yaygın ve anlamlıdır.
 		
@@ -364,7 +380,6 @@ public class EndPoints {
 		
 		public static final String IS_FOLLOWING = "/is-following"; // GET /api/v1/follow/is-following?followerId=...&followingId=...
 	}
-	
 	
 	public static class Permission{
 		public static final String BASE = API + VERSION + "/permissions";
