@@ -59,6 +59,16 @@ public class EndPoints {
 		public static final String DELETE = "/{trackId}"; // DELETE
 	}
 	
+	public static class BandTrack {
+		public static final String BASE =
+				API + VERSION + "/bands/{bandId}/tracks";
+		
+		public static final String CREATE = "";           // POST
+		public static final String LIST = "";             // GET
+		public static final String BY_ID = "/{trackId}";  // GET
+		public static final String DELETE = "/{trackId}"; // DELETE
+	}
+	
 	
 	public static class Collab {
 		
