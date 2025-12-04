@@ -49,7 +49,7 @@ class MusicianProfileAdminControllerIT {
 				UUID.randomUUID(),
 				"Stage",
 				"Bio",
-				null,null,null,null,null,
+				null,null,null,null,null, null,
 				Set.of(),         // instruments
 				Set.of(),         // activeVenues
 				Set.of()          // bands <-- EKLENDİ
@@ -67,17 +67,17 @@ class MusicianProfileAdminControllerIT {
 	void updateMusicianProfileByUserId_ok() throws Exception {
 		var uid = UUID.randomUUID();
 		var req = new MusicianProfileSaveRequestDto(
-				"New","NewBio",null,null,null,null,null,null
+				"New","NewBio",null,null,null,null,null,null, null
 		);
 		
 		var resp = new MusicianProfileResponseDto(
 				UUID.randomUUID(),
 				"New",
 				"NewBio",
-				null,null,null,null,null,
+				null,null,null,null,null, Set.of().toString(),
 				Set.of(),
 				Set.of(),
-				Set.of() // <-- EKLENDİ
+				Set.of()// <-- EKLENDİ
 		);
 		
 		Mockito.when(service.updateProfile(eq(uid), any())).thenReturn(resp);

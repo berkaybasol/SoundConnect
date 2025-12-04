@@ -35,5 +35,4 @@ public record UploadInitRequestDto(
 		@Size(max = 255)
 		String originalFileName
 ){
-
 }
