@@ -170,4 +170,9 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				bands
 		);
 	}
+	
+	@Override
+	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) {
+		return null;
+	}
 }

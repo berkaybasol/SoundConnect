@@ -185,4 +185,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	mediaAssetRepository.deleteById(assetId);
 		log.info("[media] deleted assetId={} by actingAsType={} actingAsId={}", assetId, actingAsType, actingAsId);
 	}
+	
+	@Override
+	public boolean exists(UUID mediaAssetId) {
+		return mediaAssetRepository.existsById(mediaAssetId);
+	}
 }

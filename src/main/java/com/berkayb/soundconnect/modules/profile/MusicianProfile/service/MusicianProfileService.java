@@ -14,4 +14,7 @@ public interface MusicianProfileService {
 	MusicianProfileResponseDto updateProfile(UUID userId, MusicianProfileSaveRequestDto dto);
 	
 	MusicianProfile getProfileEntity(UUID profileId);
+	
+	// id ye gore getir
+	MusicianProfileResponseDto getProfileByProfileId(UUID profileId);
 }

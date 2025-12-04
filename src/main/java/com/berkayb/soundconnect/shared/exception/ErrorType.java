@@ -158,6 +158,10 @@ public enum ErrorType {
 	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
 	OVERTHINKING_POST_NOT_FOUND(9401,"Overthinking post not found",HttpStatus.NOT_FOUND,"Overthinking postu bulunamadi."),
 	
+	// TRACK(9450 - 9499)
+	TRACK_NOT_FOUND(9450,"Track not found", HttpStatus.NOT_FOUND, "Parca bulunamadi"),
+	TRACK_OWNER_INVALID(9450,"Track owner invalid", HttpStatus.BAD_REQUEST, "Parca sahibi dogrulanamadi"),
+	
 	// GENEL (9999)
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	

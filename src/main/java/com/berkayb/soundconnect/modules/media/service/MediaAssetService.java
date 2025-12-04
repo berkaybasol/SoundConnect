@@ -47,4 +47,7 @@ public interface MediaAssetService {
 	// silme
 	void delete(UUID assetId, UUID actingUserId, MediaOwnerType actingAsType, UUID actingAsId);
 	
+	// var mi check
+	boolean exists(UUID mediaAssetId);
+	
 }

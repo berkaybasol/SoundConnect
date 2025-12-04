@@ -41,6 +41,25 @@ public class EndPoints {
 		public static final String FEED = "/feed";
 	}
 	
+	public static class Track {
+		
+		public static final String BASE =
+				API + VERSION + "/musician-profiles/{profileId}/tracks";
+		
+		// CREATE
+		public static final String CREATE = ""; // POST → BASE
+		
+		// GET ALL
+		public static final String LIST = "";  // GET → BASE
+		
+		// GET BY ID
+		public static final String BY_ID = "/{trackId}"; // GET
+		
+		// DELETE
+		public static final String DELETE = "/{trackId}"; // DELETE
+	}
+	
+	
 	public static class Collab {
 		
 		// ===== BASE ===== //
