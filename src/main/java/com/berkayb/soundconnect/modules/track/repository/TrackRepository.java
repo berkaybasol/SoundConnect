@@ -12,6 +12,5 @@ public interface TrackRepository extends JpaRepository<Track, UUID> {
 	// bir ownerin tum tracklerini getir
 	List<Track> findByOwnerIdAndOwnerType(UUID ownerId, TrackOwnerType ownerType);
 	
-	List<Track> findByMusicianProfileId(UUID musicianProfileId);
 	
 }

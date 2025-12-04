@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.Musician
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
 import com.berkayb.soundconnect.modules.track.entity.Track;
+import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.mapper.TrackMapper;
 import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -21,8 +22,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class TrackServiceImpl implements TrackService{
-	
+public class TrackServiceImpl implements TrackService {
 	
 	private final TrackRepository trackRepository;
 	private final TrackMapper trackMapper;
@@ -33,29 +33,32 @@ public class TrackServiceImpl implements TrackService{
 	@Override
 	@Transactional
 	public TrackResponseDto createTrack(UUID ownerId, UUID userId, TrackCreateRequestDto dto) {
-		// media asset dogrula
+		
+		// 1) MediaAsset var mı?
 		if (!mediaAssetService.exists(dto.mediaAssetId())) {
-			log.warn("MediaAsset bulunamadı: {}", dto.mediaAssetId());
+			log.warn("[Track] MediaAsset bulunamadı: {}", dto.mediaAssetId());
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
-		// owner validasyonu profile veya band olabilir
-		validateOwner(ownerId, userId);
 		
-		// track olustur
+		// 2) Owner kim? (Musician mı, Band mi?) + user gerçekten o owner'a bağlı mı?
+		TrackOwnerType ownerType = resolveOwnerType(ownerId, userId);
+		
+		// 3) Track oluştur
 		Track track = Track.builder()
-				.title(dto.title())
-				.ownerId(ownerId)
-				.mediaAssetId(dto.mediaAssetId())
-				.durationSeconds(dto.durationSeconds())
-				.build();
+		                   .title(dto.title())
+		                   .mediaAssetId(dto.mediaAssetId())
+		                   .ownerId(ownerId)
+		                   .ownerType(ownerType)
+		                   .durationSeconds(dto.durationSeconds())
+		                   .bpm(dto.bpm())
+		                   .build();
 		
 		trackRepository.save(track);
 		
-		log.info("Yeni track olusturuldu. ownerId={}, trackId={}", ownerId, track.getId());
+		log.info("[Track] Yeni track oluşturuldu. ownerId={}, ownerType={}, trackId={}",
+		         ownerId, ownerType, track.getId());
 		
-		// dto don
 		return trackMapper.toDto(track, mediaAssetService);
-		
 	}
 	
 	@Override
@@ -66,31 +69,81 @@ public class TrackServiceImpl implements TrackService{
 	}
 	
 	@Override
+	@Transactional(readOnly = true)
 	public Track getTrackEntity(UUID trackId) {
 		return trackRepository.findById(trackId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.TRACK_NOT_FOUND));
+		                      .orElseThrow(() -> {
+			                      log.warn("[Track] Track bulunamadı: {}", trackId);
+			                      return new SoundConnectException(ErrorType.TRACK_NOT_FOUND);
+		                      });
 	}
 	
+	@Override
+	@Transactional(readOnly = true)
+	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
+		List<Track> tracks = trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType);
+		
+		log.info("[Track] Owner için track listelendi. ownerId={}, ownerType={}, count={}",
+		         ownerId, ownerType, tracks.size());
+		
+		return tracks.stream()
+		             .map(track -> trackMapper.toDto(track, mediaAssetService))
+		             .toList();
+	}
 	
-	private void validateOwner(UUID ownerId, UUID userId) {
+	/**
+	 * Owner gerçekten geçerli mi?
+	 * - MUSICIAN_PROFILE ise: ilgili MusicianProfile var mı?
+	 * - BAND ise: Band var mı ve user bu band'in üyesi mi?
+	 *
+	 * Geçerli değilse exception fırlatır.
+	 */
+	private TrackOwnerType resolveOwnerType(UUID ownerId, UUID userId) {
 		boolean musicianOwner = false;
 		boolean bandOwner = false;
 		
+		// MusicianProfile var mı?
 		try {
 			musicianProfileService.getProfileEntity(ownerId);
 			musicianOwner = true;
-		} catch (Exception ignored) {}
+		} catch (Exception ignored) {
+			// log yazmıyoruz; band tarafını da deneyeceğiz
+		}
 		
+		// Band var mı ve user bu band'in üyesi mi?
 		try {
 			var band = bandService.getBandEntity(ownerId);
-			var bm = band.getMembers().stream().anyMatch(m -> m.getUser().getId().equals(userId));
-			if (!bm) throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND);
+			var isMember = band.getMembers().stream()
+			                   .anyMatch(m -> m.getUser().getId().equals(userId));
+			
+			if (!isMember) {
+				throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND);
+			}
 			bandOwner = true;
-		} catch (Exception ignored) {}
+		} catch (SoundConnectException e) {
+			// Bizim attığımız anlamlı hata ise olduğu gibi bırak
+			if (e.getErrorType() == ErrorType.BAND_MEMBER_NOT_FOUND) {
+				log.warn("[Track] Band member bulunamadı. ownerId={}, userId={}", ownerId, userId);
+			}
+		} catch (Exception ignored) {
+			// band yoksa sorun değil, musicianOwner'a bakacağız
+		}
 		
-		if (!musicianOwner && !bandOwner) {
-			log.warn("Owner doğrulaması başarısız. ownerId={}, userId={}", ownerId, userId);
+		if (musicianOwner && bandOwner) {
+			// Teorik olarak olmaması lazım ama veri bozulursa buraya düşebilir
+			log.error("[Track] Owner hem MusicianProfile hem Band olarak bulundu. ownerId={}", ownerId);
 			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 		}
+		
+		if (musicianOwner) {
+			return TrackOwnerType.MUSICIAN_PROFILE;
+		}
+		
+		if (bandOwner) {
+			return TrackOwnerType.BAND;
+		}
+		
+		log.warn("[Track] Owner doğrulaması başarısız. ownerId={}, userId={}", ownerId, userId);
+		throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 	}
 }

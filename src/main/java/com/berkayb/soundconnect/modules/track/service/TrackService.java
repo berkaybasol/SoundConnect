@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.track.service;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
 import com.berkayb.soundconnect.modules.track.entity.Track;
+import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,4 +19,6 @@ public interface TrackService {
 	// baska moduller kullanmak isterse diye entity erisimi
 	Track getTrackEntity(UUID trackId);
 	
+	// ownerin tum tracklerini getir
+	List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType);
 }

@@ -27,66 +27,69 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 4. Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek)
-
-⏳ 7. Overthinking Modülü (mainstage)
+⏳ 4. Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
 
 ⏳ 8. Konu bazli allchat Modülü (mainstage)
 
-⏳ 11. Ikinci el alim satim
+⏳ 11. Ikinci el alim satim (backstage)
 
-⏳ 9. Stabilizasyon & MVP Final
+⏳ 9. Stabilizasyon & MVP Final (core)
 
-⏳ 10. Activity Feed & Admin Monitoring
+⏳ 10. Activity Feed & Admin Monitoring (core)
+
 
 ## *Bitenler*
 
-✅ Like Modülü 
+✅ Track Modülü (core)
 
-✅ Comment Modülü 
+✅ Overthinking Modülü (mainstage)
+
+✅ Like Modülü (core)
+
+✅ Comment Modülü (core)
 
 ✅ Collab Modülü (backstage)
 
-✅ Event Modülü (Konuma göre nerde kim çalıyor?)
+✅ Event Modülü (Konuma göre nerde kim çalıyor?) (mainstage)
 
-✅ MusicianProfile'a sahip kullanicilar icin Band sistemi
+✅ MusicianProfile'a sahip kullanicilar icin Band sistemi (backstage)
 
-✅ Müzik Birleştirir (Table Group)
+✅ Müzik Birleştirir (Table Group) (mainstage)
 
-✅ Notification modülü (RabbitMQ + Redis + WebSocket + MailerSend)
+✅ Notification modülü (RabbitMQ + Redis + WebSocket + MailerSend) (core)
 
-✅ Media modülü (RabbitMQ & AWS S3)
+✅ Media modülü (RabbitMQ & AWS S3) (core)
 
-✅ DM modülü
+✅ DM modülü (core)
 
-✅ Follow modülü
+✅ Follow modülü (core)
 
-✅ Profile modülü
+✅ Profile modülü (core)
 
-✅ Instrument modülü
+✅ Instrument modülü (core)
 
-✅ Mail mimarisi (RabbitMQ, Redis)
+✅ Mail mimarisi (RabbitMQ, Redis) (core)
 
-✅ ArtistVenueConnection modülü
+✅ ArtistVenueConnection modülü (backstage)
 
-✅ VenueApplication modülü
+✅ VenueApplication modülü (backstage)
 
-✅ Google ile OAuth2 register/login
+✅ Google ile OAuth2 register/login (core)
 
-✅ Location modülü (City, District, Neighborhood)
+✅ Location modülü (City, District, Neighborhood) (core)
 
-✅ Venue modülü
+✅ Venue modülü (core)
 
-✅ Auth yapısı (JWT + OTP)
+✅ Auth yapısı (JWT + OTP) (core)
 
-✅ RabbitMQ & MailerSend
+✅ RabbitMQ & MailerSend (core)
 
-✅ CORS & environment config
+✅ CORS & environment config (core)
 
-✅ Logging & SLF4J yapısı
+✅ Logging & SLF4J yapısı (core)
 
-✅ Exception mimarisi
+✅ Exception mimarisi (core)
 
-✅ Role & Permission modülü
+✅ Role & Permission modülü (core)
 
-✅ User modülü
+✅ User modülü (core)

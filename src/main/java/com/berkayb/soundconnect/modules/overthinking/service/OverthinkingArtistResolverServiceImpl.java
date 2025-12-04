@@ -8,6 +8,9 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.track.entity.Track;
+import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
+import com.berkayb.soundconnect.modules.track.service.TrackService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +26,7 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 	
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final BandRepository bandRepository;
-	// bandtrack repo ve musiciantrackrepo gelcek
-	
+	private final TrackService trackService;
 	
 	@Override
 	public void resolveAndSetArtist(OverthinkingPost post, OverthinkingPostSaveRequestDto dto) {
@@ -40,13 +42,12 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		
 		// MusicianProfile track secilmisse
 		if (dto.musicianTrackId() != null) {
-			handleMusicianTrack(post, dto.musicianTrackId());
+			handleTrack(post, dto.musicianTrackId(), TrackOwnerType.MUSICIAN_PROFILE);
 			return;
 		}
 		
 		if (dto.bandTrackId() != null) {
-			handleBandTrack(post, dto.bandTrackId());
-			return;
+			handleTrack(post, dto.bandTrackId(), TrackOwnerType.BAND);
 		}
 	}
 	
@@ -90,17 +91,23 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		log.info("Sanatci SoundConnect'te bulanamadi: {}", spotifyArtistId);
 	}
 	
-	private void handleMusicianTrack(OverthinkingPost post, UUID musicianTrackId) {
-		//FIXME media modulu gelecek track -> musicianProfile iliskisi burda cozulcek
-		// gecici hata firlatiyoruz
-		log.error("MusicianTrack destegi henuz implement edilmedi");
-		throw new SoundConnectException(ErrorType.MEDIA_NOT_IMPLEMENTED);
-	}
-	
-	private void handleBandTrack(OverthinkingPost post, UUID bandTrackId) {
-		//FIXME media modulu gelecek track -> musicianProfile iliskisi burda cozulcek
-		log.error("BandTrack desteği henüz implement edilmedi");
-		throw new SoundConnectException(ErrorType.MEDIA_NOT_IMPLEMENTED);
+	private void handleTrack(OverthinkingPost post, UUID trackId, TrackOwnerType expectedOwnerType) {
+		Track track = trackService.getTrackEntity(trackId);
+		
+		if (!track.getOwnerType().equals(expectedOwnerType)) {
+			log.warn("[Overthinking] Track {} ownertype uyusmuyor. trackId={}, expected={}", trackId, expectedOwnerType);
+			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
+		}
+		
+		// trackten gelen ownerId = artistId
+		post.setArtistId(track.getOwnerId());
+		
+		if (track.getOwnerType() == TrackOwnerType.MUSICIAN_PROFILE) {
+			post.setArtistType(OverthinkingArtistType.MUSICIAN_PROFILE);
+ 		} else if (track.getOwnerType() == TrackOwnerType.BAND) {
+			post.setArtistType(OverthinkingArtistType.BAND);
+		}
+		log.warn("[Overthinking] Track match = artistId={}, type = {}",post.getArtistId(), post.getArtistType());
 	}
 	
 }

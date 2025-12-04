@@ -50,4 +50,5 @@ public interface MediaAssetService {
 	// var mi check
 	boolean exists(UUID mediaAssetId);
 	
+	String getPlaybackUrl(UUID mediaAssetId);
 }
