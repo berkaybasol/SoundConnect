@@ -33,7 +33,7 @@ class MusicianProfileServiceImplTest {
 	@Mock UserEntityFinder userFinder;
 	@Mock InstrumentRepository instrumentRepo;
 	@Mock MusicianProfileMapper mapper;
-	@Mock BandService bandService;   // <-- EKLENDİ
+	@Mock BandService bandService;
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;
@@ -43,7 +43,7 @@ class MusicianProfileServiceImplTest {
 		UUID userId = UUID.randomUUID();
 		
 		var dto = new MusicianProfileSaveRequestDto(
-				"Stage", "Bio", "pic", "ig", "yt", "sc", "sp",
+				"Stage", "Bio", "pic", "ig", "yt", "sc", "embed123", "artist123",
 				Set.of(UUID.randomUUID())
 		);
 		
@@ -58,7 +58,7 @@ class MusicianProfileServiceImplTest {
 		when(repo.save(any(MusicianProfile.class))).thenReturn(saved);
 		
 		var baseDto = new MusicianProfileResponseDto(
-				saved.getId(), "Stage", "Bio", "pic","ig","yt","sc","sp",
+				saved.getId(), "Stage", "Bio", "pic","ig","yt","sc","embed123","artist123",
 				Set.of("Guitar"), Collections.emptySet(), Collections.emptySet()
 		);
 		
@@ -68,7 +68,7 @@ class MusicianProfileServiceImplTest {
 		var result = service.createProfile(userId, dto);
 		
 		assertThat(result.stageName()).isEqualTo("Stage");
-		assertThat(result.bands()).isEmpty(); // <-- EKLENDİ
+		assertThat(result.bands()).isEmpty();
 		
 		verify(repo).save(any(MusicianProfile.class));
 	}
@@ -80,7 +80,8 @@ class MusicianProfileServiceImplTest {
 		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(new MusicianProfile()));
 		
-		assertThatThrownBy(() -> service.createProfile(userId, mock(MusicianProfileSaveRequestDto.class)))
+		assertThatThrownBy(() -> service.createProfile(userId,
+		                                               mock(MusicianProfileSaveRequestDto.class)))
 				.isInstanceOf(SoundConnectException.class)
 				.satisfies(ex -> assertThat(((SoundConnectException) ex).getErrorType())
 						.isEqualTo(ErrorType.PROFILE_ALREADY_EXISTS));
@@ -98,16 +99,17 @@ class MusicianProfileServiceImplTest {
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(profile));
 		
 		var baseDto = new MusicianProfileResponseDto(
-				profile.getId(), "S", "B", null,null,null,null,null,
-				Collections.emptySet(), Collections.emptySet(), Set.of()
+				profile.getId(), "S", "B", "p","i","y","s","embed","artist",
+				Collections.emptySet(), Collections.emptySet(), Collections.emptySet()
 		);
 		
 		when(mapper.toDto(profile)).thenReturn(baseDto);
 		when(bandService.getBandsByUser(userId)).thenReturn(Collections.emptyList());
 		
 		var result = service.getProfileByUserId(userId);
+		
 		assertThat(result.id()).isEqualTo(profile.getId());
-		assertThat(result.bands()).isEmpty(); // <-- EKLENDİ
+		assertThat(result.bands()).isEmpty();
 	}
 	
 	@Test
@@ -126,21 +128,21 @@ class MusicianProfileServiceImplTest {
 	@Test
 	void updateProfile_shouldPatchAndReturn() {
 		UUID userId = UUID.randomUUID();
-		
 		var profile = MusicianProfile.builder().id(UUID.randomUUID()).build();
 		
 		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(profile));
 		
 		var dto = new MusicianProfileSaveRequestDto(
-				"NewStage", "NewBio", "pp", "ig","yt","sc","sp", Set.of()
+				"NewStage", "NewBio", "pp", "ig","yt","sc","embedX","artistX",
+				Set.of()
 		);
 		
 		when(instrumentRepo.findAllById(any())).thenReturn(List.of());
 		when(repo.save(profile)).thenReturn(profile);
 		
 		var baseDto = new MusicianProfileResponseDto(
-				profile.getId(), "NewStage", "NewBio", "pp","ig","yt","sc","sp",
+				profile.getId(), "NewStage", "NewBio", "pp","ig","yt","sc","embedX","artistX",
 				Collections.emptySet(), Collections.emptySet(), Collections.emptySet()
 		);
 		
@@ -150,7 +152,7 @@ class MusicianProfileServiceImplTest {
 		var result = service.updateProfile(userId, dto);
 		
 		assertThat(result.stageName()).isEqualTo("NewStage");
-		assertThat(result.bands()).isEmpty();  // <-- EKLENDİ
+		assertThat(result.bands()).isEmpty();
 		
 		verify(repo).save(profile);
 	}

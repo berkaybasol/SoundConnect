@@ -42,7 +42,7 @@ class VideoHlsWorkflowTest {
 	
 	@BeforeEach
 	void setup() {
-		workflow = new VideoHlsWorkflow(storage, ffmpeg, uploader, statusUpdater);
+		workflow = new VideoHlsWorkflow(storage, ffmpeg, uploader, statusUpdater, ffprobe);
 		// VideoHlsWorkflow içinde ffprobe constructor'a eklenmemiş; reflection ile enjekte ediyoruz.
 		ReflectionTestUtils.setField(workflow, "ffprobe", ffprobe);
 	}
