@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.user.entity;
 
-import com.berkayb.soundconnect.modules.social.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;

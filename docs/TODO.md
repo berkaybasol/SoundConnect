@@ -22,6 +22,9 @@
 
 🛠 2 yeni profile olusturulacak (Music House Profile, Manager Profile
 
+🛠 Profillerde videolar / sesler alani olcak dedik sesleri hallettik ama videolar icin de bir sey gerekiyor mu? onu gpt askimla arastir profilleri komple bitir
+
+🛠 Comment, Like, Media modullerinin gerekli modullere entegresi (core)
 
 ---
 
