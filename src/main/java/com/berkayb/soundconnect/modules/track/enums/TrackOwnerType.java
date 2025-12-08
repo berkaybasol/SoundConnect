@@ -1,6 +1,15 @@
 package com.berkayb.soundconnect.modules.track.enums;
 
 public enum TrackOwnerType {
+	USER,
+	BAND,
+	VENUE,
 	MUSICIAN_PROFILE,
-	BAND
+	PRODUCER_PROFILE,
+	ORGANIZER_PROFILE,
+	MUSIC_HOUSE_PROFILE,
+	STUDIO_PROFILE,
+	LISTENER_PROFILE,
+	VENUE_PROFILE,
+	MANAGER_PROFILE
 }

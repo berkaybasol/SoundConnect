@@ -58,7 +58,7 @@ public class MediaAsset extends BaseEntity {
 	private MediaOwnerType ownerType; // medya kime ait? user(butun profiller), band, venue
 	
 	
-	@Column(columnDefinition = "uuid")
+	@Column(columnDefinition = "uuid", nullable = false)
 	private UUID ownerId;
 	
 	/**

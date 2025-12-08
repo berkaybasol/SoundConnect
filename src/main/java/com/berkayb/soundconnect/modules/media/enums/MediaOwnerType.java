@@ -2,7 +2,15 @@ package com.berkayb.soundconnect.modules.media.enums;
 
 // sahiplik tipini belirten enum
 public enum MediaOwnerType {
-	USER, // butun profile tiplerini kapsayacak
+	USER,
 	BAND,
-	VENUE
+	VENUE,
+	MUSICIAN_PROFILE,
+	PRODUCER_PROFILE,
+	ORGANIZER_PROFILE,
+	MUSIC_HOUSE_PROFILE,
+	STUDIO_PROFILE,
+	LISTENER_PROFILE,
+	VENUE_PROFILE,
+	MANAGER_PROFILE
 }

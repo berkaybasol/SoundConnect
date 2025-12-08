@@ -41,7 +41,7 @@ public class VideoHlsWorkflow {
 	private final FfmpegService ffmpeg;
 	private final HlsUploader uploader;
 	private final MediaAssetStatusUpdater statusUpdater;
-	private FfprobeService ffprobe;
+	private final FfprobeService ffprobe;
 	
 	/*
 	Tek giris noktasi: videHlsRequest DTO'su ile akisi yurut
