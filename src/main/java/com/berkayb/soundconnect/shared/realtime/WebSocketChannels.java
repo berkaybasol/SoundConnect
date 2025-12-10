@@ -46,4 +46,11 @@ public class WebSocketChannels {
 		return TOPIC_TABLE_GROUP + "/" + tableGroupId;
 	}
 	
+	// Pulse kanali
+	
+	public static final String TOPIC_PULSE = "/topic/pulse";
+	
+	public static String pulseRoom(UUID roomId) {
+		return TOPIC_PULSE + "/" + roomId;
+	} BURDASINNN
 }
