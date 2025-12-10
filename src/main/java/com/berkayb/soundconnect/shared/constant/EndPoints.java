@@ -32,7 +32,7 @@ public class EndPoints {
 		public static final String ADD_SET = "/{setlistId}/sets";
 		
 		// PDF EXPORT
-		public static final String PDF_EXPORT = "/{setlistId}/pdf";
+		public static final String PDF_EXPORT = "/{setlistId}/pdf-html";
 		
 		// ADD ITEM TO SET
 		public static final String ADD_ITEM = "/sets/{setId}/items";
