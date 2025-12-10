@@ -4,12 +4,14 @@ import com.berkayb.soundconnect.modules.setlistcreator.dto.request.SetlistCreate
 import com.berkayb.soundconnect.modules.setlistcreator.dto.request.SetlistItemRequestDto;
 import com.berkayb.soundconnect.modules.setlistcreator.dto.request.SetlistSetRequestDto;
 import com.berkayb.soundconnect.modules.setlistcreator.dto.response.SetlistResponseDto;
+import com.berkayb.soundconnect.modules.setlistcreator.pdf.SetlistPdfService;
 import com.berkayb.soundconnect.modules.setlistcreator.service.SetlistService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +26,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Setlist.*;
 public class SetlistController {
 	
 	private final SetlistService setlistService;
+	private final SetlistPdfService setlistPdfService;
 	
 	@PostMapping(CREATE)
 	@Operation(summary = "Setlist olustur")
@@ -121,5 +124,21 @@ public class SetlistController {
 						.code(200)
 						.build()
 		);
+	}
+	
+	@GetMapping(value = PDF_EXPORT,
+	produces = "application/pdf")
+	@Operation(summary = "Setlist PDF indir")
+	public ResponseEntity<byte[]> exportSetlistPdf(
+			@PathVariable UUID setlistId
+	) {
+		byte[] pdfBytes = setlistPdfService
+				.exportSetlistPdf(setlistId)
+				.readAllBytes();
+		
+		return ResponseEntity.ok()
+		                     .header("Content-Disposition", "inline; filename=setlist.pdf")
+		                     .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+		                     .body(pdfBytes);
 	}
 }

@@ -31,6 +31,9 @@ public class EndPoints {
 		// ADD SET TO SETLIST
 		public static final String ADD_SET = "/{setlistId}/sets";
 		
+		// PDF EXPORT
+		public static final String PDF_EXPORT = "/{setlistId}/pdf";
+		
 		// ADD ITEM TO SET
 		public static final String ADD_ITEM = "/sets/{setId}/items";
 	}
