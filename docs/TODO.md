@@ -30,8 +30,6 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 4. Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
-
 ⏳ 8. Konu bazli allchat Modülü (mainstage)
 
 ⏳ 11. Ikinci el alim satim (backstage)
@@ -42,6 +40,8 @@
 
 
 ## *Bitenler*
+
+✅ Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
 
 ✅ Track Modülü (core)
 
