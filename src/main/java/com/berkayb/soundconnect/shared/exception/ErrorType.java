@@ -130,7 +130,7 @@ public enum ErrorType {
 	BAND_FOUNDER_CANNOT_LEAVE(9209, "Founder cannot leave the band", HttpStatus.FORBIDDEN, "Founder gruptan ayrılamaz."),
 	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
 	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
-	
+	MUSICIAN_NOT_FOUND(9212,"Musician not found", HttpStatus.NOT_FOUND, "Musician bulunamadi."),
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
 	
@@ -162,7 +162,13 @@ public enum ErrorType {
 	TRACK_NOT_FOUND(9450,"Track not found", HttpStatus.NOT_FOUND, "Parca bulunamadi"),
 	TRACK_OWNER_INVALID(9450,"Track owner invalid", HttpStatus.BAD_REQUEST, "Parca sahibi dogrulanamadi"),
 	
+	// SETLIST( 9500 - 9599)
+	SETLIST_NOT_FOUND(9500,"Setlist not found", HttpStatus.NOT_FOUND, "Setlist bulunamadi"),
+	SETLIST_SET_NOT_FOUND(9501,"Setlistset not found", HttpStatus.NOT_FOUND, "Setlistset bulunamadi"),
+	
+	
 	// GENEL (9999)
+	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	
 	private final int code;

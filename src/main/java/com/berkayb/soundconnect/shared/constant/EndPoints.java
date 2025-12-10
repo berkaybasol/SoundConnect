@@ -15,6 +15,26 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Setlist {
+		
+		public static final String BASE = API + VERSION + "/setlists";
+		
+		// CREATE SETLIST
+		public static final String CREATE = "/create";
+		
+		// DELETE SETLIST
+		public static final String DELETE = "/{setlistId}";
+		
+		// GET SETLIST DETAIL
+		public static final String BY_ID = "/{setlistId}";
+		
+		// ADD SET TO SETLIST
+		public static final String ADD_SET = "/{setlistId}/sets";
+		
+		// ADD ITEM TO SET
+		public static final String ADD_ITEM = "/sets/{setId}/items";
+	}
+	
 	public static class Overthinking {
 		
 		public static final String BASE = API + VERSION + "/overthinking";
