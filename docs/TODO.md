@@ -31,16 +31,12 @@
 
 ## *Sprint Planı (Yapılacaklar)*
 
-⏳ 8. Konu bazli allchat Modülü (mainstage)
-
-⏳ 11. Ikinci el alim satim (backstage)
-
-⏳ 9. Stabilizasyon & MVP Final (core)
-
 ⏳ 10. Activity Feed & Admin Monitoring (core)
 
 
 ## *Bitenler*
+
+✅ Konu bazli allchat Modülü(Pulse) (mainstage)
 
 ✅ Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
 
