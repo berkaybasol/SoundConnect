@@ -52,4 +52,8 @@ public interface PulseRedisService {
 	void clearVotes(UUID roomId);
 	
 	void initVoteTopic(UUID roomId, String topic);
+	
+	boolean acquireLifecycleLock(String nodeId, long ttlMs);
+	
+	void releaseLifecycleLock(String nodeId);
 }

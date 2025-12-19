@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class PulseRedisServiceImpl implements PulseRedisService{
-	
+	private static final String LIFECYCLE_LOCK_KEY = "pulse:lifecycle:lock";
 	private final RedisTemplate<String, String> redisTemplate;
 	private final ObjectMapper objectMapper;
 	
@@ -70,21 +70,48 @@ public class PulseRedisServiceImpl implements PulseRedisService{
 	
 	@Override
 	public void addUserToRoom(UUID roomId, UUID userId) {
-		redisTemplate.opsForSet().add(presenceKey(roomId), userId.toString());
-		log.debug("[PulseRedis] User added to room. roomId={}, userId={}", roomId, userId);
+		Long added = redisTemplate.opsForSet().add(presenceKey(roomId), userId.toString());
+		
+		// added = 1 ise gerçekten eklendi, 0 ise zaten içerideydi
+		if (added != null && added > 0) {
+			redisTemplate.opsForValue().increment(activeCountKey(roomId), 1);
+		}
+		
+		log.debug("[PulseRedis] User added to room. roomId={}, userId={}, added={}", roomId, userId, added);
 	}
+	
 	
 	@Override
 	public void removeUserFromRoom(UUID roomId, UUID userId) {
-		redisTemplate.opsForSet().remove(presenceKey(roomId), userId.toString());
-		log.debug("[PulseRedis] User removed from room. roomId={}, userId={}", roomId, userId);
+		Long removed = redisTemplate.opsForSet().remove(presenceKey(roomId), userId.toString());
+		
+		// removed = 1 ise gerçekten çıkarıldı
+		if (removed != null && removed > 0) {
+			redisTemplate.opsForValue().increment(activeCountKey(roomId), -1);
+		}
+		
+		log.debug("[PulseRedis] User removed from room. roomId={}, userId={}, removed={}", roomId, userId, removed);
 	}
+	
 	
 	@Override
 	public int getActiveUserCount(UUID roomId) {
+		String raw = redisTemplate.opsForValue().get(activeCountKey(roomId));
+		if (raw != null) {
+			try {
+				return Integer.parseInt(raw);
+			} catch (Exception ignored) {}
+		}
+		
+		// fallback: SCARD ile hesapla, counter’ı da düzelt
 		Long count = redisTemplate.opsForSet().size(presenceKey(roomId));
-		return count == null ? 0 : count.intValue();
+		int safe = (count == null) ? 0 : count.intValue();
+		
+		redisTemplate.opsForValue().set(activeCountKey(roomId), String.valueOf(safe));
+		
+		return safe;
 	}
+	
 	
 	@Override
 	public boolean isUserInRoom(UUID roomId, UUID userId) {
@@ -163,7 +190,24 @@ public class PulseRedisServiceImpl implements PulseRedisService{
 		log.info("[PulseRedis] Votes cleared. roomId={}", roomId);
 	}
 	
-	// KEY HELPERS
+	@Override
+	public boolean acquireLifecycleLock(String nodeId, long ttlMs) {
+		Boolean success = redisTemplate.opsForValue()
+		                               .setIfAbsent(LIFECYCLE_LOCK_KEY, nodeId, Duration.ofMillis(ttlMs));
+		
+		return success != null && success;
+	}
+	
+	@Override
+	public void releaseLifecycleLock(String nodeId) {
+		// Güvenli release: sadece sahibiysen sil
+		String current = redisTemplate.opsForValue().get(LIFECYCLE_LOCK_KEY);
+		if (nodeId.equals(current)) {
+			redisTemplate.delete(LIFECYCLE_LOCK_KEY);
+		}
+	}
+	
+	// HELPERS
 	private String voteKey(UUID roomId) {
 		return "pulse:vote:" + roomId;
 	}
@@ -175,4 +219,9 @@ public class PulseRedisServiceImpl implements PulseRedisService{
 	private String voteUserKey(UUID roomId) {
 		return "pulse:vote:users:" + roomId;
 	}
+	
+	private String activeCountKey(UUID roomId) {
+		return "pulse:room:" + roomId + ":active-count";
+	}
+	
 }

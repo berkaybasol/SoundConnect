@@ -33,6 +33,7 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	private final PulseRoomRegistry pulseRoomRegistry;
 	private final SimpMessagingTemplate messagingTemplate;
 	private final PulseProperties pulseProperties;
+	private final String nodeId = UUID.randomUUID().toString();
 	
 	// oda bitimine kac dk kala voting durumuna gecsin
 	private static final Duration VOTING_WINDOW = Duration.ofMinutes(5);
@@ -46,21 +47,38 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	@Override
 	@Scheduled(fixedDelayString = "${pulse.lifecycle-tick-interval-ms:5000}")
 	public void tickRoomLifecycle() {
-		if (pulseRoomRegistry.isEmpty()) {
-			log.debug("[PulseRoom] Registry empty. No rooms to tick.");
+		
+		long lockTtl = pulseProperties.getLifecycleTickIntervalMs() * 2;
+		
+		boolean leader = pulseRedisService.acquireLifecycleLock(nodeId, lockTtl);
+		
+		if (!leader) {
+			log.trace("[PulseRoom] Lifecycle skipped. Node is not leader. nodeId={}", nodeId);
 			return;
 		}
-		Instant now = Instant.now();
 		
-		for (UUID roomId : pulseRoomRegistry.getAllRoomIds()) {
-			pulseRedisService.getRoomState(roomId).ifPresentOrElse(room -> {
-				handleLifecycle(room,now);
-			}, () -> {
-				// Resgistry'de var ama rediste yoksa logla.
-				log.warn("[PulseRoom] Room exists in registry but not in Redis. roomId={}", roomId);
-			});
+		try {
+			if (pulseRoomRegistry.isEmpty()) {
+				log.debug("[PulseRoom] Registry empty. No rooms to tick.");
+				return;
+			}
+			
+			Instant now = Instant.now();
+			
+			for (UUID roomId : pulseRoomRegistry.getAllRoomIds()) {
+				pulseRedisService.getRoomState(roomId)
+				                 .ifPresentOrElse(
+						                 room -> handleLifecycle(room, now),
+						                 () -> log.warn("[PulseRoom] Room in registry but missing in Redis. roomId={}", roomId)
+				                 );
+			}
+			
+		} finally {
+			// TTL var ama yine de iyi pratik
+			pulseRedisService.releaseLifecycleLock(nodeId);
 		}
 	}
+	
 	
 	@PostConstruct
 	public void initRoomsOnStartup() {
@@ -140,36 +158,31 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	
 	@Override
 	public void userJoin(UUID roomId, UUID userId) {
-		// oda var mi
-		PulseRoomState room = getRoom(roomId);
+		// oda var mı?
+		getRoom(roomId);
 		
-		pulseRedisService.addUserToRoom(roomId,userId);
+		pulseRedisService.addUserToRoom(roomId, userId);
 		
 		int active = pulseRedisService.getActiveUserCount(roomId);
-		room.setActiveUserCount(active);
-		pulseRedisService.saveRoomState(room);
-		
 		publishPresence(roomId, active);
-		publishRoomState(room);
 		
 		log.debug("[PulseRoom] User joined. roomId={}, userId={}, active={}", roomId, userId, active);
 	}
 	
+	
 	@Override
 	public void userLeave(UUID roomId, UUID userId) {
-		PulseRoomState room = getRoom(roomId);
+		getRoom(roomId);
 		
-		pulseRedisService.removeUserFromRoom(roomId,userId);
+		pulseRedisService.removeUserFromRoom(roomId, userId);
 		
 		int active = pulseRedisService.getActiveUserCount(roomId);
-		room.setActiveUserCount(active);
-		pulseRedisService.saveRoomState(room);
-		
 		publishPresence(roomId, active);
-		publishRoomState(room);
 		
 		log.debug("[PulseRoom] User left. roomId={}, userId={}, active={}", roomId, userId, active);
 	}
+	
+	
 	
 	@Override
 	public int getActiveUserCount(UUID roomId) {
@@ -269,11 +282,11 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	}
 	
 	private void persistAndBroadcastRoom(PulseRoomState room) {
-		// activeUserCount'u guncel tutuyoz
 		int active = pulseRedisService.getActiveUserCount(room.getRoomId());
 		room.setActiveUserCount(active);
 		
 		pulseRedisService.saveRoomState(room);
+		
 		publishRoomState(room);
 		publishPresence(room.getRoomId(), active);
 	}
