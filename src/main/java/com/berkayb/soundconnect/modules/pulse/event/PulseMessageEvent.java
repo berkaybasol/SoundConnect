@@ -23,4 +23,6 @@ public class PulseMessageEvent {
 	private String content; // kullanicinin yazdigi mesaj
 	
 	private Instant sentAt; // mesajin gonderildigi an
+	
+	private String profileImageUrl;
 }

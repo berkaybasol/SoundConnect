@@ -22,7 +22,7 @@ public class PulseUserPresence {
 	
 	private Instant joinedAt; // odaya giris zamani (istatistik ve abuse analizi icin)
 	
-	private Instant lastActivityAT; // kullanicinin soin aktif oldu an (heartbeat / idle check icin)
+	private Instant lastActivityAt; // kullanicinin soin aktif oldu an (heartbeat / idle check icin)
 	
 	
 	

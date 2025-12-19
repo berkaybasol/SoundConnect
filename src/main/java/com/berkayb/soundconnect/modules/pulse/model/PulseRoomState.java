@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.pulse.model;
 
+import com.berkayb.soundconnect.modules.pulse.enums.PulseRoomStatus;
 import lombok.Builder;
 import lombok.Data;
 

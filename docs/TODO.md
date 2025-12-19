@@ -5,6 +5,7 @@
 - PROD oncesi CloudFront Distribution’a custom domain ekle.
 - Dockerfile'a ffmpeg ve ffprobe kurulumu yapmayi unutma. 
 - ElasticSearch butun moduller bittikten sonra gereklki yerlere kurulacak.
+- Pulse modulundekı default konular yml'den degıscek.
 
 # SoundConnect SPRINT
 

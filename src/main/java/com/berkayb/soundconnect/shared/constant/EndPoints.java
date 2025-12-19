@@ -15,6 +15,11 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Pulse {
+		
+		public static final String BASE = API + VERSION + "/pulse/rooms";
+		
+	}
 	public static class Setlist {
 		
 		public static final String BASE = API + VERSION + "/setlists";

@@ -47,10 +47,14 @@ public class WebSocketChannels {
 	}
 	
 	// Pulse kanali
-	
 	public static final String TOPIC_PULSE = "/topic/pulse";
 	
 	public static String pulseRoom(UUID roomId) {
 		return TOPIC_PULSE + "/" + roomId;
-	} BURDASINNN
+	}
+	
+	// Pulse Voting kanali
+	public static String pulseVote(UUID roomId) {
+		return TOPIC_PULSE + "/" + roomId + "/vote";
+	}
 }

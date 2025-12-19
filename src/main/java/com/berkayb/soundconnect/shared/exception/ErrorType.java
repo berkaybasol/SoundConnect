@@ -166,6 +166,8 @@ public enum ErrorType {
 	SETLIST_NOT_FOUND(9500,"Setlist not found", HttpStatus.NOT_FOUND, "Setlist bulunamadi"),
 	SETLIST_SET_NOT_FOUND(9501,"Setlistset not found", HttpStatus.NOT_FOUND, "Setlistset bulunamadi"),
 	
+	// PULSE (9600 - 9699)
+	ROOM_NOT_FOUND(9500,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
 	
 	// GENEL (9999)
 	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),

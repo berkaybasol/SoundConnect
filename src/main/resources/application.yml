@@ -181,3 +181,25 @@ transcode:
   segmentDurationSec: 4
   ffprobeBinary: ffprobe
   ffprobeTimeoutSec: 30
+
+# --- PULSE MODULE ---
+pulse:
+  lifecycle-tick-interval-ms: 5000
+
+  room-duration-minutes: 30
+
+  rooms:
+    count: 8
+
+  cooldown:
+    seconds: 1
+
+  default-topics:
+    - "Şu Zamana Geri Dönebilsem..."
+    - "Yaşadığın En Büyük Aydınlanma?"
+    - "Hayattaki Küçük Mutluluklar"
+    - "Son Dinlediğin Şarkı"
+    - "Yaşadığın En Saçma Olay?"
+    - "Düşünmeden Söyle: Şu Anki Ruh Hâlin?"
+    - "Underrated Şarkılar"
+    - "Seni Çok Etkileyen Herhangi Birşey?"
