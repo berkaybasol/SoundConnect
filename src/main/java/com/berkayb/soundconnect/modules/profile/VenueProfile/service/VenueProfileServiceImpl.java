@@ -68,7 +68,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		VenueProfile profile = VenueProfile.builder()
 				.venue(venue)
 				.bio(dto.bio())
-				.profilePicture(dto.profilePicture())
+				.profilePictureMediaId(dto.profilePicture())
 				.instagramUrl(dto.instagramUrl())
 				.youtubeUrl(dto.youtubeUrl())
 				.websiteUrl(dto.websiteUrl())
@@ -94,7 +94,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		
 		
 		if (dto.bio() != null) profile.setBio(dto.bio());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl());

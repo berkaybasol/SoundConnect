@@ -39,7 +39,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 		ListenerProfile profile = ListenerProfile.builder()
 				.user(user)
 				.description(dto.description())
-				.profilePicture(dto.profilePicture())
+				.profilePictureMediaId(dto.profilePictureMediaId())
 				.build();
 		
 		// kaydet ve response dto'ya cevir ve don
@@ -74,7 +74,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 		
 		// null degilse alanlari guncelle
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePictureMediaId() != null) profile.setProfilePictureMediaId(dto.profilePictureMediaId());
 		
 		// kaydet
 		ListenerProfile updated = listenerProfileRepository.save(profile);

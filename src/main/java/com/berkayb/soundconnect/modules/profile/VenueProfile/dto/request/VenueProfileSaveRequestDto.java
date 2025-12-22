@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public record VenueProfileSaveRequestDto(
 		String bio,
-		String profilePicture,
+		UUID profilePicture,
 		String instagramUrl,
 		String youtubeUrl,
 		String websiteUrl

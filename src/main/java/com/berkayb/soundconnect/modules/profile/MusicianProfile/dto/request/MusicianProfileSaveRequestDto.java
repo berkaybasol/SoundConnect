@@ -8,7 +8,7 @@ import java.util.UUID;
 public record MusicianProfileSaveRequestDto(
 		String stageName,
 		String description,
-		String profilePicture,
+		UUID profilePicture,
 		String instagramUrl,
 		String youtubeUrl,
 		String soundcloudUrl,

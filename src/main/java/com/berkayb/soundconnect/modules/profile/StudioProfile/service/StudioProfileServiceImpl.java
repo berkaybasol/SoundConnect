@@ -48,7 +48,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				.user(user)
 				.name(dto.name())
 				.description(dto.descpriction())
-				.profilePicture(dto.profilePicture())
+				.profilePictureMediaId(dto.profilePicture())
 				.address(dto.adress())
 				.phone(dto.phone())
 				.website(dto.website())
@@ -95,7 +95,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		// guncelle
 		if (dto.name() != null) profile.setName(dto.name());
 		if (dto.descpriction() != null) profile.setDescription(dto.descpriction());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.adress() != null) profile.setAddress(dto.adress());
 		if (dto.phone() != null) profile.setPhone(dto.phone());
 		if (dto.website() != null) profile.setWebsite(dto.website());

@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.util.UUID;
+
 @Data
 @SuperBuilder
 @NoArgsConstructor
@@ -24,8 +26,7 @@ public abstract class BaseProfile extends BaseEntity {
 	@Column(length = 1024)
 	private String description;
 	
-	//TODO MediaAsset yapcaz bunu
-	private String profilePicture;
+	private UUID profilePictureMediaId;
 	
 	private String address;
 	

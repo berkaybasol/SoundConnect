@@ -57,7 +57,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .user(user)
 		                                         .stageName(dto.stageName())
 		                                         .description(dto.description())
-		                                         .profilePicture(dto.profilePicture())
+		                                         .profilePictureMediaId(dto.profilePicture())
 		                                         .instagramUrl(dto.instagramUrl())
 		                                         .youtubeUrl(dto.youtubeUrl())
 		                                         .soundcloudUrl(dto.soundcloudUrl())
@@ -136,7 +136,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		
 		if (dto.stageName() != null) profile.setStageName(dto.stageName());
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());

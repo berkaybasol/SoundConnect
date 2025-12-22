@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -26,7 +28,7 @@ public class VenueProfile extends BaseEntity {
 	private String bio;
 	
 	
-	private String profilePicture; // dosya yolu verdicez
+	private UUID profilePictureMediaId; // dosya yolu verdicez
 	
 	private String instagramUrl;
 	

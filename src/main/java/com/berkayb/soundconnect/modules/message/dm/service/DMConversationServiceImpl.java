@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.message.dm.service;
 
 
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPreviewResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
@@ -18,6 +19,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DMConversationServiceImpl implements DMConversationService {
 	
 	private final DMConversationRepository conversationRepository;
@@ -39,6 +42,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 	private final ProducerProfileRepository producerProfileRepository;
 	private final StudioProfileRepository studioProfileRepository;
 	private final VenueRepository venueRepository;
+	private final MediaAssetService mediaAssetService;
 	
 	
 	// kullanicinin dahil oldugu tum konusmalari ozet halinde getirir.
@@ -134,24 +138,39 @@ public class DMConversationServiceImpl implements DMConversationService {
 	/**
 	 * User'in hangi profile a sahip oldugunu bilmiyorsan tum profile repolarinda sirayla aratan yardimci metod
 	 * bulunca profilePicture doner bulamazsa User'in profilePicture'i doner.
+	 * FIXME ve ayrica diger profiller geldikce eklemeyi unutma
 	 */
 	private String getProfilePictureForUser(UUID userId) {
 		return musicianProfileRepository.findByUserId(userId)
-				.map(profile -> safe(profile.getProfilePicture()))
-				.or(() -> listenerProfileRepository.findByUserId(userId).map(profile -> safe(profile.getProfilePicture())))
-				.or(() -> organizerProfileRepository.findByUserId(userId).map(profile -> safe(profile.getProfilePicture())))
-				.or(() -> producerProfileRepository.findByUserId(userId).map(profile -> safe(profile.getProfilePicture())))
-				.or(() -> studioProfileRepository.findByUserId(userId).map(profile -> safe(profile.getProfilePicture())))
-				.or(() -> venueRepository.findAllByOwnerId(userId).stream().findFirst()
-					.flatMap(venue -> venueProfileRepository.findByVenueId(venue.getId()))
-					.map(profile -> safe(profile.getProfilePicture())))
-				.orElseGet(() -> userRepository.findById(userId)
-						.map(User :: getProfilePicture)
-						.orElse(null));
-		
-		
-		
+		                                .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId()))
+		                                .or(() -> listenerProfileRepository.findByUserId(userId)
+		                                                                   .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId())))
+		                                .or(() -> organizerProfileRepository.findByUserId(userId)
+		                                                                    .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId())))
+		                                .or(() -> producerProfileRepository.findByUserId(userId)
+		                                                                   .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId())))
+		                                .or(() -> studioProfileRepository.findByUserId(userId)
+		                                                                 .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId())))
+		                                .or(() -> venueRepository.findAllByOwnerId(userId).stream().findFirst()
+		                                                         .flatMap(venue -> venueProfileRepository.findByVenueId(venue.getId()))
+		                                                         .map(profile -> resolveProfilePicture(profile.getProfilePictureMediaId())))
+		                                .orElseGet(() -> userRepository.findById(userId)
+		                                                               .map(User::getProfilePicture) // user fallback (ileride bunu da kaldıracağız)
+		                                                               .orElse(null));
+	}
+	// helpers
+	
+	private String resolveProfilePicture(UUID mediaAssetId) {
+		if (mediaAssetId == null) {
+			return null;
 		}
+		try {
+			return mediaAssetService.getPlaybackUrl(mediaAssetId);
+		} catch (Exception e) {
+			log.warn("[DM] profile picture media not found mediaAssetId={}", mediaAssetId);
+			return null;
+		}
+	}
 	// null degerleri bos tringe cevirir. frontend icin hatasiz gonderim saglar
 	private String safe(String value) {
 		return value != null ? value : "";
