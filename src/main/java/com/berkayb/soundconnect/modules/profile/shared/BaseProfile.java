@@ -25,7 +25,7 @@ public abstract class BaseProfile extends BaseEntity {
 	private String description;
 	
 	//TODO MediaAsset yapcaz bunu
-	private String profilePicture; // url veya dosya yolu
+	private String profilePicture;
 	
 	private String address;
 	
