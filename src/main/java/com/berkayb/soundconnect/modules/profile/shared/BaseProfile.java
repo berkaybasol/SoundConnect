@@ -24,6 +24,7 @@ public abstract class BaseProfile extends BaseEntity {
 	@Column(length = 1024)
 	private String description;
 	
+	//TODO MediaAsset yapcaz bunu
 	private String profilePicture; // url veya dosya yolu
 	
 	private String address;
@@ -35,6 +36,4 @@ public abstract class BaseProfile extends BaseEntity {
 	private String youtubeUrl;
 	
 	private String instagramUrl;
-	
-	// TODO ileride, fotograf, ses ve video icin mediya entity ile manytomany iliski kurulcak
 }

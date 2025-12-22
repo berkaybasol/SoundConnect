@@ -53,6 +53,4 @@ public class MusicianProfile extends BaseProfile {
 	@Column(name = "spotify_artist_id", nullable = true, unique = true)
 	private String spotifyArtistId;
 	
-	// TODO Media entity ile ManyToMany seklinde Sesler / Videolar alani yapilcak
-	
 }

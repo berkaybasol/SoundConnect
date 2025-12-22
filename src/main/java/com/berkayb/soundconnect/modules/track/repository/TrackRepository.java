@@ -13,9 +13,4 @@ public interface TrackRepository extends JpaRepository<Track, UUID> {
 	
 	// bir ownerin tum tracklerini getir
 	Page<Track> findByOwnerIdAndOwnerType(UUID ownerId, TrackOwnerType ownerType, Pageable pageable);
-	
-	
-	
-	
-	
 }
