@@ -25,6 +25,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class MediaAssetServiceImpl implements MediaAssetService {
+	
+	@Override
+	public MediaAsset getById(UUID mediaAssetId) {
+		return mediaAssetRepository.findById(mediaAssetId)
+		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+	}
+	
 	@Override
 	public String getPlaybackUrl(UUID mediaAssetId) {
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)

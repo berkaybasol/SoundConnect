@@ -26,6 +26,7 @@ public enum ErrorType {
 	// PROFILE (1300-1399)
 	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.BAD_REQUEST, "Bu profil zaten var."),
 	PROFILE_NOT_FOUND(1301, "Profile not found", HttpStatus.NOT_FOUND, "Profil bulunamadi."),
+	PROFILE_MEDIA_NOT_FOUND(1302, "Profile media not found", HttpStatus.NOT_FOUND, "Profil medyasi bulunamadi."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),

@@ -51,4 +51,6 @@ public interface MediaAssetService {
 	boolean exists(UUID mediaAssetId);
 	
 	String getPlaybackUrl(UUID mediaAssetId);
+	
+	MediaAsset getById(UUID mediaAssetId);
 }
