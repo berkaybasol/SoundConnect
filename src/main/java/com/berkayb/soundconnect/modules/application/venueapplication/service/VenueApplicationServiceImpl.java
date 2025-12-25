@@ -32,7 +32,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -66,9 +68,17 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		                               .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		// rol zaten varsa tekrar atama
-		if (applicant.getRoles().stream().noneMatch(role -> role.getName().equals(RoleEnum.ROLE_VENUE.name()))) {
-			applicant.getRoles().add(venueRole);
+		Set<Role> roles = new HashSet<>(applicant.getRoles());
+		
+		boolean hasVenueRole = roles.stream()
+				.anyMatch(role -> role.getName().equals(RoleEnum.ROLE_VENUE.name()));
+		
+		if(!hasVenueRole)
+		{
+			roles.add(venueRole);
 		}
+		
+		applicant.setRoles(roles);
 		applicant.setStatus(UserStatus.ACTIVE);
 		userRepository.save(applicant);
 		
@@ -135,6 +145,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		// dto -> entity mapping
 		VenueApplication application = venueApplicationMapper.toEntity(dto);
 		application.setApplicant(applicant);
+		application.setPhone(dto.phone());
 		application.setCity(city);
 		application.setDistrict(district);
 		application.setNeighborhood(neighborhood);

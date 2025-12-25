@@ -82,6 +82,9 @@ public class SecurityConfig {
 								"/api/v1/cities/get-all-cities",
 								"/api/v1/districts/get-all-districts",
 								"/api/v1/neighborhoods/get-all",
+								"/api/v1/cities/**",
+								"/api/v1/districts/**",
+								"/api/v1/neighborhoods/**",
 								"/192.168.1.101:8080/actuator/health",
 								"/ws",             // EKLENDİ
 								"/ws/**",          // EKLENDİ
