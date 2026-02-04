@@ -67,6 +67,8 @@ public enum ErrorType {
 	HLS_PROCESS_SKIPPED_TERMINAL(1810,"HLS proces skipped due to terminal asset state",HttpStatus.CONFLICT,"Asset terminal durumda oldugu icin islem atlandi." ),
 	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
 	MEDIA_NOT_IMPLEMENTED(1812,"Media not implemented", HttpStatus.BAD_REQUEST, "medya henuz implement edilmemis"),
+	MEDIA_KIND_INVALID(1813,"Media kind invalid.", HttpStatus.BAD_REQUEST,"Yanlis medya turu"),
+	MEDIA_ASSET_NOT_READY(1814,"Media asset not ready.", HttpStatus.BAD_REQUEST,"medya varligi hazir degil"),
 	
 	
 	// NOTIFICATION (1900 - 2000)

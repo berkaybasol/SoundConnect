@@ -7,9 +7,10 @@ import java.util.UUID;
 
 public record MusicianProfileResponseDto(
 		UUID id,
+		UUID userId,
 		String stageName,
 		String bio,
-		String profilePicture,
+		String profilePictureUrl,
 		String instagramUrl,
 		String youtubeUrl,
 		String soundcloudUrl,

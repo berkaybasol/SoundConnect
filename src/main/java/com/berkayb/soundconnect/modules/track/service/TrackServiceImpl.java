@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.track.service;
 
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -28,7 +30,14 @@ public class TrackServiceImpl implements TrackService {
 	
 	@Override
 	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
-		return List.of();
+		List<Track> tracks = trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
+		List<UUID> mediaIds = tracks.stream().map(Track::getMediaAssetId).toList();
+		Map<UUID, String> playbackMap = mediaAssetService.getPlaybackUrlMap(mediaIds);
+		
+		
+		return tracks.stream()
+		             .map(track -> toDto(track, playbackMap))
+		             .toList();
 	}
 	
 	@Override
@@ -38,6 +47,8 @@ public class TrackServiceImpl implements TrackService {
 		log.info("[Track] Listing tracks for ownerId={} ownerType={}", ownerId, ownerType);
 		
 		Page<Track> page = trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
+		List<UUID> mediaIds = page.getContent().stream().map(Track::getMediaAssetId).toList();
+		Map<UUID, String> playbackMap = mediaAssetService.getPlaybackUrlMap(mediaIds);
 		
 		return page.map(track -> trackMapper.toDto(track, mediaAssetService));
 	}
@@ -73,8 +84,16 @@ public class TrackServiceImpl implements TrackService {
 	@Transactional
 	public TrackResponseDto createTrack(UUID ownerId, UUID userId, TrackCreateRequestDto dto) {
 		
+		if (userId == null) {
+			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		}
+		
 		// 1) MediaAsset var mı?
 		if (!mediaAssetService.exists(dto.mediaAssetId())) {
+			var asset = mediaAssetService.getById(dto.mediaAssetId());
+			if (asset.getKind() != MediaKind.AUDIO) {
+				throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
+			}
 			log.warn("[Track] MediaAsset bulunamadı: {}", dto.mediaAssetId());
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
@@ -200,5 +219,17 @@ public class TrackServiceImpl implements TrackService {
 		
 		log.warn("[Track] Owner doğrulaması başarısız. userId={} ownerId={}", userId, ownerId);
 		throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
+	}
+	
+	
+	//helper
+	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls) {
+		return new TrackResponseDto(
+				track.getId(),
+				track.getTitle(),
+				playbackUrls.get(track.getMediaAssetId()),
+				track.getDurationSeconds(),
+				track.getBpm()
+		);
 	}
 }

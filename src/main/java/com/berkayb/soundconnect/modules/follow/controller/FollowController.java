@@ -29,6 +29,31 @@ public class FollowController {
 	private final UserEntityFinder userEntityFinder;
 	private final FollowMapper followMapper;
 	
+	@GetMapping(FOLLOWERS_COUNT)
+	public BaseResponse<Long> countFollowers(@PathVariable UUID userId) {
+		User following = userEntityFinder.getUser(userId);
+		long count = followService.countFollowers(following);
+		
+		return BaseResponse.<Long>builder()
+		                   .success(true)
+		                   .data(count)
+		                   .code(200)
+		                   .message("Followers count fetched successfully.")
+		                   .build();
+	}
+	
+	@GetMapping(FOLLOWING_COUNT)
+	public BaseResponse<Long> countFollowing(@PathVariable UUID userId) {
+		User follower = userEntityFinder.getUser(userId);
+		long count = followService.countFollowing(follower);
+		return BaseResponse.<Long>builder()
+		                   .success(true)
+		                   .data(count)
+		                   .code(200)
+		                   .message("Following count fetched successfully.")
+		                   .build();
+	}
+	
 	@PostMapping(FOLLOW)
 	public BaseResponse<Void> follow(@RequestBody @Valid FollowRequestDto requestDto) {
 		log.info("Follow request: followerId={} followingId={}", requestDto.followerId(), requestDto.followingId());

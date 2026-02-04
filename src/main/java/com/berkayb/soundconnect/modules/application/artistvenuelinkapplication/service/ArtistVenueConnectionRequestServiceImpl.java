@@ -88,11 +88,14 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			                                                 return new SoundConnectException(ErrorType.REQUEST_NOT_FOUND);
 		                                                 });
 		
-		// 2. Zaten onaylanmış mı kontrol et (isteğe bağlı!)
-		if (request.getStatus() == RequestStatus.ACCEPTED) {
-			log.warn("Başvuru zaten onaylanmış. requestId={}", requestId);
+		// zaten pending mi kontrol et
+		if (request.getStatus() != RequestStatus.PENDING) {
+			if (request.getStatus() == RequestStatus.REJECTED) {
+				throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
+			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
 		}
+		
 		
 		// 3. Statüyü güncelle
 		request.setStatus(RequestStatus.ACCEPTED);
@@ -131,9 +134,12 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			                                                 return new SoundConnectException(ErrorType.REQUEST_NOT_FOUND);
 		                                                 });
 		
-		// Zaten reddedilmiş mi kontrol et
-		if (request.getStatus() == RequestStatus.REJECTED) {
-			log.warn("Başvuru zaten reddedilmiş. requestId={}", requestId);
+		
+		// zaten pending mi
+		if (request.getStatus() != RequestStatus.PENDING) {
+			if (request.getStatus() == RequestStatus.ACCEPTED) {
+				throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
+			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 		}
 		
@@ -148,18 +154,25 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 	
 	@Override
-	public List<ArtistVenueConnectionRequestResponseDto> getRequestByMusicianProfile(UUID musicianProfileId) {
+	public List<ArtistVenueConnectionRequestResponseDto> getRequestByMusicianProfile(UUID musicianProfileId, RequestStatus status) {
 		log.info("Müzisyen profilinin başvuruları çekiliyor. musicianProfileId={}", musicianProfileId);
-		List<ArtistVenueConnectionRequest> requests = repository.findAllByMusicianProfileId(musicianProfileId);
+		List<ArtistVenueConnectionRequest> requests =
+				status == null
+						? repository.findAllByMusicianProfileId(musicianProfileId)
+						: repository.findAllByMusicianProfileIdAndStatus(musicianProfileId, status);
 		return requests.stream()
 		               .map(artistVenueConnectionRequestMapper::toResponseDto)
 		               .toList();
 	}
 	
 	@Override
-	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByVenue(UUID venueId) {
+	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByVenue(UUID venueId, RequestStatus status) {
+		
 		log.info("Venue başvuruları çekiliyor. venueId={}", venueId);
-		List<ArtistVenueConnectionRequest> requests = repository.findAllByVenueId(venueId);
+		List<ArtistVenueConnectionRequest> requests =
+				status == null
+						? repository.findAllByVenueId(venueId)
+						: repository.findAllByVenueIdAndStatus(venueId, status);
 		return requests.stream()
 		               .map(artistVenueConnectionRequestMapper::toResponseDto)
 		               .toList();

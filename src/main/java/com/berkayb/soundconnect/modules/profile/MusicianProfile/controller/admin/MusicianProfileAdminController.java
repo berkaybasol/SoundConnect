@@ -23,7 +23,7 @@ public class MusicianProfileAdminController {
 	/**
 	 * Admin istediği kullanıcının profilini görüntüler
 	 */
-	//FIXME BURASI ADMIN DEGIL!!!! PUBLIC YAPMAMIZ GEREK
+	//FIXME BURASI ADMIN DEGIL!!!! PUBLIC KULLANCAZ
 	@GetMapping(BY_USER_ID)
 	public ResponseEntity<BaseResponse<MusicianProfileResponseDto>> getMusicianProfileByUserId(
 			@PathVariable UUID userId) {

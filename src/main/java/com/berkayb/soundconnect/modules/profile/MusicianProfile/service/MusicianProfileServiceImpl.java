@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
@@ -30,6 +31,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final InstrumentRepository instrumentRepository;
 	private final MusicianProfileMapper musicianProfileMapper;
 	private final BandService bandService;
+	private final MediaAssetService mediaAssetService;
 	
 	@Override
 	public MusicianProfile getProfileEntity(UUID profileId) {
@@ -76,9 +78,10 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				profile.getUser().getId(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				base.profilePictureUrl(),
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -105,13 +108,15 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		log.info("Musician profile getirildi. UserId: {}", userId);
 		
 		var base = musicianProfileMapper.toDto(profile);
+		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				profile.getUser().getId(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -153,13 +158,15 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		log.info("Musician profile güncellendi. UserId: {}", userId);
 		
 		var base = musicianProfileMapper.toDto(updated);
+		String profilePictureUrl = resolveProfilePictureUrl(updated.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				profile.getUser().getId(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -175,4 +182,16 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) {
 		return null;
 	}
+	
+	// helper
+	private String resolveProfilePictureUrl(UUID mediaAssetId) {
+		if (mediaAssetId == null) return null;
+		try {
+			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+		} catch (Exception e) {
+			log.warn("Profile picture resolve failed. mediaAssetId={}", mediaAssetId);
+			return null;
+		}
+	}
+	
 }

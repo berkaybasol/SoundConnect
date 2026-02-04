@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -66,8 +67,10 @@ public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueCo
 	}
 	@GetMapping(GET_REQUESTS_BY_MUSICIAN)
 	@Override
-	public ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByMusicianProfile(@PathVariable UUID musicianProfileId) {
-		var responseList = service.getRequestByMusicianProfile(musicianProfileId);
+	public ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByMusicianProfile(
+			@PathVariable UUID musicianProfileId,
+			@RequestParam(required = false) RequestStatus status) {
+		var responseList = service.getRequestByMusicianProfile(musicianProfileId, status);
 		return ResponseEntity.ok(
 				BaseResponse.<List<ArtistVenueConnectionRequestResponseDto>>builder()
 				            .success(true)
@@ -79,8 +82,10 @@ public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueCo
 	
 	@GetMapping(GET_REQUESTS_BY_VENUE)
 	@Override
-	public ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByVenue(@PathVariable UUID venueId) {
-		var responseList = service.getRequestsByVenue(venueId);
+	public ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByVenue(
+			@PathVariable UUID venueId,
+			@RequestParam(required = false) RequestStatus status) {
+		var responseList = service.getRequestsByVenue(venueId, status);
 		return ResponseEntity.ok(
 				BaseResponse.<List<ArtistVenueConnectionRequestResponseDto>>builder()
 				            .success(true)

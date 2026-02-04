@@ -7,6 +7,8 @@ import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
 import com.berkayb.soundconnect.modules.media.transcode.TranscodePublisher;
+import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
+import com.berkayb.soundconnect.modules.track.entity.Track;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -20,11 +22,24 @@ import org.springframework.transaction.annotation.Transactional;
 //------------------------------TAKILDIGIN NOKTADA MediaModule.md DOSYASINA BAK!----------------------------------------
 
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class MediaAssetServiceImpl implements MediaAssetService {
+	
+	
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds) {
+		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		return mediaAssetRepository.findAllById(mediaAssetIds).stream()
+		                           .collect(Collectors.toMap(MediaAsset::getId, MediaAsset::getPlaybackUrl));
+	}
 	
 	@Override
 	public MediaAsset getById(UUID mediaAssetId) {
@@ -204,4 +219,6 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	public boolean exists(UUID mediaAssetId) {
 		return mediaAssetRepository.existsById(mediaAssetId);
 	}
+	
+	
 }

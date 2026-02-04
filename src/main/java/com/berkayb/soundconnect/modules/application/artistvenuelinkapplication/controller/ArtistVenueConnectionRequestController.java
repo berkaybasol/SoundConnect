@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import org.springframework.http.ResponseEntity;
 
@@ -13,6 +14,6 @@ public interface ArtistVenueConnectionRequestController {
 	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> createRequest(ArtistVenueConnectionRequestCreateDto dto, RequestByType requestByType);
 	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> acceptRequest(UUID requestId);
 	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> rejectRequest(UUID requestId);
-	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByMusicianProfile(UUID musicianProfileId);
-	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByVenue(UUID venueId);
+	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByMusicianProfile(UUID musicianProfileId, RequestStatus status);
+	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByVenue(UUID venueId, RequestStatus status);
 }

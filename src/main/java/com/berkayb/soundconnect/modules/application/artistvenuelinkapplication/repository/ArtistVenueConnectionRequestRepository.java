@@ -20,5 +20,10 @@ public interface ArtistVenueConnectionRequestRepository extends JpaRepository <A
 	List<ArtistVenueConnectionRequest> findAllByMusicianProfileId(UUID musicianProfileId);
 	
 	List<ArtistVenueConnectionRequest> findAllByVenueId(UUID venueId);
-
+	
+	List<ArtistVenueConnectionRequest> findAllByMusicianProfileIdAndStatus(UUID musicianProfileId, RequestStatus status);
+	
+	List<ArtistVenueConnectionRequest> findAllByVenueIdAndStatus(UUID venueId, RequestStatus status);
+	
+	
 }

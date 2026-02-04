@@ -435,6 +435,9 @@ public class EndPoints {
 		public static final String GET_FOLLOWING = "/following/{userId}"; // GET /api/v1/follow/following/{userId}
 		public static final String GET_FOLLOWERS = "/followers/{userId}"; // GET /api/v1/follow/followers/{userId}
 		
+		public static final String FOLLOWERS_COUNT = "/count-followers/{userId}";
+		public static final String FOLLOWING_COUNT = "/count-following/{userId}";
+		
 		public static final String IS_FOLLOWING = "/is-following"; // GET /api/v1/follow/is-following?followerId=...&followingId=...
 	}
 	
