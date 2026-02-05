@@ -6,7 +6,7 @@ public record ProducerProfileResponseDto(
 		UUID id,
 		String name,
 		String description,
-		String profilePicture,
+		UUID profilePictureMediaId,
 		String address,
 		String phone,
 		String website,

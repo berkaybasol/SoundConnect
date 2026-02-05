@@ -114,7 +114,7 @@ class VenueProfileRepositoryTest {
 		                                                               .instagramUrl("insta")
 		                                                               .youtubeUrl("yt")
 		                                                               .websiteUrl("web")
-		                                                               .profilePicture("pic")
+		                                                               .profilePictureMediaId(UUID.randomUUID())
 		                                                               .build());
 		
 		// when

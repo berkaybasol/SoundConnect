@@ -49,7 +49,7 @@ class StudioProfileServiceImplTest {
 		return new StudioProfileSaveRequestDto(
 				"My Studio",
 				"Great rooms",     // descpriction (DTO'da yazım böyle)
-				"pp.png",
+				UUID.randomUUID(),
 				"Main Ave 42",     // adress (DTO'da yazım böyle)
 				"555-123",
 				"studio.com",
@@ -111,7 +111,7 @@ class StudioProfileServiceImplTest {
 		when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
 		
 		var resp = new StudioProfileResponseDto(
-				profile.getId(), "Name", "Desc", "pp.png",
+				profile.getId(), "Name", "Desc", UUID.randomUUID(),
 				"Addr", "555", "site", Set.of("A"), "ig", "yt"
 		);
 		when(mapper.toDto(profile)).thenReturn(resp);

@@ -49,7 +49,7 @@ class StudioProfileAdminControllerTest {
 				UUID.randomUUID(),
 				"S1",
 				"bio",
-				"pp.png",
+				UUID.randomUUID(),
 				"addr",
 				"555",
 				"site",
@@ -73,12 +73,12 @@ class StudioProfileAdminControllerTest {
 		UUID userId = UUID.randomUUID();
 		
 		var req = new StudioProfileSaveRequestDto(
-				"New", "d", "new.png", "new addr", "555",
+				"New", "d", UUID.randomUUID(), "new addr", "555",
 				"site.com", Set.of("parking"), "ig", "yt"
 		);
 		
 		var resp = new StudioProfileResponseDto(
-				UUID.randomUUID(), "New", "d", "new.png",
+				UUID.randomUUID(), "New", "d", UUID.randomUUID(),
 				"new addr", "555", "site.com", Set.of("parking"), "ig", "yt"
 		);
 		

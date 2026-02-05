@@ -42,7 +42,7 @@ class OrganizerProfileAdminControllerTest {
 	void getOrganizerProfileByUserId_ok() throws Exception {
 		UUID userId = UUID.randomUUID();
 		var dto = new OrganizerProfileResponseDto(
-				UUID.randomUUID(), "OrgX", "desc", "pp.png", "addr", "555",
+				UUID.randomUUID(), "OrgX", "desc", UUID.randomUUID(), "addr", "555",
 				"ig", "yt"
 		);
 		
@@ -59,10 +59,10 @@ class OrganizerProfileAdminControllerTest {
 	void updateOrganizerProfileByUserId_ok() throws Exception {
 		UUID userId = UUID.randomUUID();
 		var body = new OrganizerProfileSaveRequestDto(
-				"NewName","newdesc","pic.png","newaddr","111","ig2","yt2"
+				"NewName","newdesc",UUID.randomUUID(),"newaddr","111","ig2","yt2"
 		);
 		var dto = new OrganizerProfileResponseDto(
-				UUID.randomUUID(), "NewName","newdesc","pic.png","newaddr","111","ig2","yt2"
+				UUID.randomUUID(), "NewName","newdesc",UUID.randomUUID(),"newaddr","111","ig2","yt2"
 		);
 		
 		when(organizerProfileService.updateProfile(userId, body)).thenReturn(dto);

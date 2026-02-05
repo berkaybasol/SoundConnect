@@ -17,6 +17,8 @@ public interface MusicianProfileMapper {
 	@Mapping(source = "description", target = "bio")
 	@Mapping(target = "instruments", source = "instruments", qualifiedByName = "instrumentNames")
 	@Mapping(target = "activeVenues", source = "activeVenues", qualifiedByName = "venueNames")
+	@Mapping(source = "user.id", target = "userId")
+	@Mapping(target = "bands", ignore = true)
 		// bands alanı service tarafında setlenecek → mapper buraya dokunmuyor
 	MusicianProfileResponseDto toDto(MusicianProfile profile);
 	

@@ -12,6 +12,7 @@ import java.lang.reflect.Field;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 @Tag("mapper")
 class VenueProfileMapperTest {
 	
@@ -20,9 +21,11 @@ class VenueProfileMapperTest {
 	@Test
 	void toEntity_maps_fields_and_ignores_venue() {
 		// given
+		UUID ppId = UUID.randomUUID();
+		
 		var dto = new VenueProfileSaveRequestDto(
 				"bio text",
-				"avatar.png",
+				ppId,
 				"https://instagram.com/x",
 				"https://youtube.com/y",
 				"https://mysite.example"
@@ -34,7 +37,7 @@ class VenueProfileMapperTest {
 		// then
 		assertThat(entity.getVenue()).isNull(); // venue ignore
 		assertThat(entity.getBio()).isEqualTo("bio text");
-		assertThat(entity.getProfilePicture()).isEqualTo("avatar.png");
+		assertThat(entity.getProfilePictureMediaId()).isEqualTo(ppId); // ✅ aynı UUID
 		assertThat(entity.getInstagramUrl()).isEqualTo("https://instagram.com/x");
 		assertThat(entity.getYoutubeUrl()).isEqualTo("https://youtube.com/y");
 		assertThat(entity.getWebsiteUrl()).isEqualTo("https://mysite.example");
@@ -43,30 +46,35 @@ class VenueProfileMapperTest {
 	@Test
 	void toResponse_maps_all_fields_including_venue_info() throws Exception {
 		// given
-		UUID vid = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		UUID ppId = UUID.randomUUID();
+		
 		Venue venue = Venue.builder()
 		                   .name("My Venue")
 		                   .address("Addr")
 		                   .build();
-		setId(venue, vid); // test için ID’yi setliyoruz
+		setId(venue, venueId);
 		
 		VenueProfile profile = VenueProfile.builder()
 		                                   .venue(venue)
 		                                   .bio("hello")
-		                                   .profilePicture("pic.png")
+		                                   .profilePictureMediaId(ppId)
 		                                   .instagramUrl("insta")
 		                                   .youtubeUrl("yt")
 		                                   .websiteUrl("web")
 		                                   .build();
+		setId(profile, profileId);
 		
 		// when
 		VenueProfileResponseDto dto = mapper.toResponse(profile);
 		
 		// then
-		assertThat(dto.venueId()).isEqualTo(vid);
+		assertThat(dto.id()).isEqualTo(profileId);
+		assertThat(dto.venueId()).isEqualTo(venueId);
 		assertThat(dto.venueName()).isEqualTo("My Venue");
 		assertThat(dto.bio()).isEqualTo("hello");
-		assertThat(dto.profilePicture()).isEqualTo("pic.png");
+		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId); // ✅ UUID
 		assertThat(dto.instagramUrl()).isEqualTo("insta");
 		assertThat(dto.youtubeUrl()).isEqualTo("yt");
 		assertThat(dto.websiteUrl()).isEqualTo("web");

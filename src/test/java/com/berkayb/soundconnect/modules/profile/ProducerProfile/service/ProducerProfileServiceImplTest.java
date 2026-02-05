@@ -48,7 +48,7 @@ class ProducerProfileServiceImplTest {
 	@Test
 	void createProfile_ok() {
 		ProducerProfileSaveRequestDto dto = new ProducerProfileSaveRequestDto(
-				"Prod","desc","pp.png","addr","555","site.com","ig","yt"
+				"Prod","desc",UUID.randomUUID(),"addr","555","site.com","ig","yt"
 		);
 		
 		when(userFinder.getUser(userId)).thenReturn(user);
@@ -59,7 +59,7 @@ class ProducerProfileServiceImplTest {
 		                                       .user(user)
 		                                       .name("Prod")
 		                                       .description("desc")
-		                                       .profilePicture("pp.png")
+		                                       .profilePictureMediaId(UUID.randomUUID())
 		                                       .address("addr")
 		                                       .phone("555")
 		                                       .website("site.com")
@@ -69,7 +69,7 @@ class ProducerProfileServiceImplTest {
 		
 		when(repo.save(any(ProducerProfile.class))).thenReturn(saved);
 		ProducerProfileResponseDto resp = new ProducerProfileResponseDto(
-				saved.getId(),"Prod","desc","pp.png","addr","555","site.com","ig","yt"
+				saved.getId(),"Prod","desc",UUID.randomUUID(),"addr","555","site.com","ig","yt"
 		);
 		when(mapper.toDto(saved)).thenReturn(resp);
 		
@@ -90,7 +90,7 @@ class ProducerProfileServiceImplTest {
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(ProducerProfile.builder().build()));
 		
 		assertThatThrownBy(() -> service.createProfile(userId,
-		                                               new ProducerProfileSaveRequestDto("n","d","p","a","5","s","ig","yt")))
+		                                               new ProducerProfileSaveRequestDto("n","d",UUID.randomUUID(),"a","5","s","ig","yt")))
 				.isInstanceOfSatisfying(SoundConnectException.class,
 				                        ex -> assertThat(ex.getErrorType()).isEqualTo(ErrorType.PROFILE_ALREADY_EXISTS));
 	}
@@ -112,7 +112,7 @@ class ProducerProfileServiceImplTest {
 		                                          .user(user)
 		                                          .name("Old")
 		                                          .description("old")
-		                                          .profilePicture("old.png")
+		                                          .profilePictureMediaId(UUID.randomUUID())
 		                                          .address("oldaddr")
 		                                          .phone("000")
 		                                          .website("oldsite.com")
@@ -124,7 +124,7 @@ class ProducerProfileServiceImplTest {
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(existing));
 		
 		ProducerProfileSaveRequestDto dto = new ProducerProfileSaveRequestDto(
-				"New","new","new.png","addr2","111","site2.com","ig2","yt2"
+				"New","new",UUID.randomUUID(),"addr2","111","site2.com","ig2","yt2"
 		);
 		
 		ProducerProfile updated = ProducerProfile.builder()
@@ -132,7 +132,7 @@ class ProducerProfileServiceImplTest {
 		                                         .user(user)
 		                                         .name("New")
 		                                         .description("new")
-		                                         .profilePicture("new.png")
+		                                         .profilePictureMediaId(UUID.randomUUID())
 		                                         .address("addr2")
 		                                         .phone("111")
 		                                         .website("site2.com")
@@ -142,7 +142,7 @@ class ProducerProfileServiceImplTest {
 		
 		when(repo.save(any(ProducerProfile.class))).thenReturn(updated);
 		ProducerProfileResponseDto resp = new ProducerProfileResponseDto(
-				updated.getId(),"New","new","new.png","addr2","111","site2.com","ig2","yt2"
+				updated.getId(),"New","new",UUID.randomUUID(),"addr2","111","site2.com","ig2","yt2"
 		);
 		when(mapper.toDto(updated)).thenReturn(resp);
 		

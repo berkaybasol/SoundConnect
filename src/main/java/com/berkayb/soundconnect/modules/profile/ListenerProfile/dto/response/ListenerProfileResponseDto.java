@@ -5,6 +5,6 @@ import java.util.UUID;
 public record ListenerProfileResponseDto(
 		UUID id,
 		String bio,
-		String profilePicture,
+		UUID profilePictureMediaId,
 		UUID userId
 ) {}

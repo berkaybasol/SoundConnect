@@ -34,6 +34,7 @@ class VenueApplicationMapperTest {
 		                                          .applicant(applicant)
 		                                          .venueName("Cool Venue")
 		                                          .venueAddress("Some Address 123")
+		                                          .phone("5550001111")
 		                                          .status(ApplicationStatus.PENDING)
 		                                          .applicationDate(now)
 		                                          .decisionDate(null)
@@ -54,7 +55,7 @@ class VenueApplicationMapperTest {
 	}
 	
 	@Test
-	void toEntity_should_copy_simple_fields_and_leave_ignored_null() {
+	void toEntity_should_copy_simple_fields_and_leave_relations_null() {
 		// given
 		String cityId = UUID.randomUUID().toString();
 		String districtId = UUID.randomUUID().toString();
@@ -63,6 +64,7 @@ class VenueApplicationMapperTest {
 		VenueApplicationCreateRequestDto req = new VenueApplicationCreateRequestDto(
 				"New Venue",
 				"Addr 1",
+				"05551234567",
 				cityId,
 				districtId,
 				neighborhoodId
@@ -74,8 +76,9 @@ class VenueApplicationMapperTest {
 		// then (maplenen basit alanlar)
 		assertThat(entity.getVenueName()).isEqualTo("New Venue");
 		assertThat(entity.getVenueAddress()).isEqualTo("Addr 1");
+		assertThat(entity.getPhone()).isEqualTo("05551234567");
 		
-		// then (ignore edilenler null kalmalı - service setleyecek)
+		// then (service setleyecek / ignore edilenler null kalmalı)
 		assertThat(entity.getId()).isNull();
 		assertThat(entity.getApplicant()).isNull();
 		assertThat(entity.getCity()).isNull();
@@ -84,6 +87,5 @@ class VenueApplicationMapperTest {
 		assertThat(entity.getStatus()).isNull();
 		assertThat(entity.getApplicationDate()).isNull();
 		assertThat(entity.getDecisionDate()).isNull();
-		assertThat(entity.getPhone()).isNull();
 	}
 }

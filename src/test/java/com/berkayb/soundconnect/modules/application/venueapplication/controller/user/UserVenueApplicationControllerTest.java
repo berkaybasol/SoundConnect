@@ -139,14 +139,16 @@ class UserVenueApplicationControllerTest {
 	@Test
 	void createVenueApplication_ok() throws Exception {
 		String body = """
-                {
-                  "venueName": "Cool Venue",
-                  "venueAddress": "Some Address 123",
-                  "cityId": "%s",
-                  "districtId": "%s",
-                  "neighborhoodId": "%s"
-                }
-                """.formatted(city.getId(), district.getId(), neighborhood.getId());
+{
+  "venueName": "Cool Venue",
+  "venueAddress": "Some Address 123",
+  "phone": "+905551112233",
+  "cityId": "%s",
+  "districtId": "%s",
+  "neighborhoodId": "%s"
+}
+""".formatted(city.getId(), district.getId(), neighborhood.getId());
+		
 		
 		mockMvc.perform(post("/api/v1/user/venue-applications/create")
 				                .contentType(MediaType.APPLICATION_JSON)
@@ -166,14 +168,16 @@ class UserVenueApplicationControllerTest {
 	@Test
 	void createVenueApplication_duplicate_should_return_4xx() throws Exception {
 		String body = """
-                {
-                  "venueName": "Cool Venue",
-                  "venueAddress": "Some Address 123",
-                  "cityId": "%s",
-                  "districtId": "%s",
-                  "neighborhoodId": "%s"
-                }
-                """.formatted(city.getId(), district.getId(), neighborhood.getId());
+{
+  "venueName": "Cool Venue",
+  "venueAddress": "Some Address 123",
+  "phone": "+905551112233",
+  "cityId": "%s",
+  "districtId": "%s",
+  "neighborhoodId": "%s"
+}
+""".formatted(city.getId(), district.getId(), neighborhood.getId());
+		
 		
 		// 1) İlk istek başarılı
 		mockMvc.perform(post("/api/v1/user/venue-applications/create")

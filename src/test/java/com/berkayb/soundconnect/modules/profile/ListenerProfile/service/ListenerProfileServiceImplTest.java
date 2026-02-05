@@ -21,8 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -47,7 +46,8 @@ class ListenerProfileServiceImplTest {
 	
 	@Test
 	void createProfile_ok() {
-		ListenerSaveRequestDto dto = new ListenerSaveRequestDto("hello", "pp.png");
+		UUID ppId = UUID.randomUUID();
+		ListenerSaveRequestDto dto = new ListenerSaveRequestDto("hello", ppId);
 		
 		when(userFinder.getUser(userId)).thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.empty());
@@ -56,11 +56,14 @@ class ListenerProfileServiceImplTest {
 		                                       .id(UUID.randomUUID())
 		                                       .user(user)
 		                                       .description("hello")
-		                                       .profilePicture("pp.png")
+		                                       .profilePictureMediaId(ppId)
 		                                       .build();
 		
 		when(repo.save(any(ListenerProfile.class))).thenReturn(saved);
-		ListenerProfileResponseDto resp = new ListenerProfileResponseDto(saved.getId(), "hello", "pp.png", userId);
+		
+		ListenerProfileResponseDto resp =
+				new ListenerProfileResponseDto(saved.getId(), "hello", ppId, userId);
+		
 		when(mapper.toDto(saved)).thenReturn(resp);
 		
 		ListenerProfileResponseDto out = service.createProfile(userId, dto);
@@ -70,19 +73,15 @@ class ListenerProfileServiceImplTest {
 		ArgumentCaptor<ListenerProfile> cap = ArgumentCaptor.forClass(ListenerProfile.class);
 		verify(repo).save(cap.capture());
 		assertThat(cap.getValue().getDescription()).isEqualTo("hello");
-		assertThat(cap.getValue().getProfilePicture()).isEqualTo("pp.png");
+		assertThat(cap.getValue().getProfilePictureMediaId()).isEqualTo(ppId);
 	}
 	
 	@Test
 	void createProfile_should_throw_when_duplicate() {
-		// given
-		UUID userId = UUID.randomUUID();
-		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
-		when(repo.findByUserId(userId))
-				.thenReturn(Optional.of(ListenerProfile.builder().build()));
+		when(userFinder.getUser(userId)).thenReturn(user);
+		when(repo.findByUserId(userId)).thenReturn(Optional.of(ListenerProfile.builder().build()));
 		
-		// when + then
-		assertThatThrownBy(() -> service.createProfile(userId, new ListenerSaveRequestDto("desc","pic")))
+		assertThatThrownBy(() -> service.createProfile(userId, new ListenerSaveRequestDto("desc", UUID.randomUUID())))
 				.isInstanceOfSatisfying(SoundConnectException.class, ex ->
 						assertThat(ex.getErrorType()).isEqualTo(ErrorType.PROFILE_ALREADY_EXISTS)
 				);
@@ -90,12 +89,9 @@ class ListenerProfileServiceImplTest {
 	
 	@Test
 	void getProfileByUserId_should_throw_when_not_found() {
-		// given
-		UUID userId = UUID.randomUUID();
-		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
+		when(userFinder.getUser(userId)).thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.empty());
 		
-		// when + then
 		assertThatThrownBy(() -> service.getProfileByUserId(userId))
 				.isInstanceOfSatisfying(SoundConnectException.class, ex ->
 						assertThat(ex.getErrorType()).isEqualTo(ErrorType.PROFILE_NOT_FOUND)
@@ -104,21 +100,33 @@ class ListenerProfileServiceImplTest {
 	
 	@Test
 	void updateProfile_ok() {
+		UUID oldPp = UUID.randomUUID();
+		UUID newPp = UUID.randomUUID();
+		
 		ListenerProfile existing = ListenerProfile.builder()
-		                                          .id(UUID.randomUUID()).user(user)
-		                                          .description("old").profilePicture("old.png").build();
+		                                          .id(UUID.randomUUID())
+		                                          .user(user)
+		                                          .description("old")
+		                                          .profilePictureMediaId(oldPp)
+		                                          .build();
 		
 		when(userFinder.getUser(userId)).thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(existing));
 		
-		ListenerSaveRequestDto dto = new ListenerSaveRequestDto("new-bio", "new.png");
+		ListenerSaveRequestDto dto = new ListenerSaveRequestDto("new-bio", newPp);
 		
 		ListenerProfile updated = ListenerProfile.builder()
-		                                         .id(existing.getId()).user(user)
-		                                         .description("new-bio").profilePicture("new.png").build();
+		                                         .id(existing.getId())
+		                                         .user(user)
+		                                         .description("new-bio")
+		                                         .profilePictureMediaId(newPp)
+		                                         .build();
 		
 		when(repo.save(any(ListenerProfile.class))).thenReturn(updated);
-		ListenerProfileResponseDto resp = new ListenerProfileResponseDto(updated.getId(), "new-bio", "new.png", userId);
+		
+		ListenerProfileResponseDto resp =
+				new ListenerProfileResponseDto(updated.getId(), "new-bio", newPp, userId);
+		
 		when(mapper.toDto(updated)).thenReturn(resp);
 		
 		ListenerProfileResponseDto out = service.updateProfile(userId, dto);

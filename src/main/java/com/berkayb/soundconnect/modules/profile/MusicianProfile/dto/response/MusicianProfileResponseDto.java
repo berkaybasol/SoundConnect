@@ -10,7 +10,7 @@ public record MusicianProfileResponseDto(
 		UUID userId,
 		String stageName,
 		String bio,
-		String profilePictureUrl,
+		UUID profilePictureMediaId,
 		String instagramUrl,
 		String youtubeUrl,
 		String soundcloudUrl,

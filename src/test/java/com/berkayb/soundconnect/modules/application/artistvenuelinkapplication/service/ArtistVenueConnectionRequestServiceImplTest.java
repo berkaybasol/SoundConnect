@@ -254,7 +254,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, venueId, "Stage X", "Venue X", null, r1.getStatus().name(), null, null));
 		when(mapper.toResponseDto(r2)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r2.getId(), mpId, venueId, "Stage X", "Venue X", null, r2.getStatus().name(), null, null));
 		
-		var list = service.getRequestByMusicianProfile(mpId);
+		var list = service.getRequestByMusicianProfile(mpId, null);
 		
 		assertThat(list).hasSize(2);
 		verify(requestRepo).findAllByMusicianProfileId(mpId);
@@ -273,7 +273,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(requestRepo.findAllByVenueId(venueId)).thenReturn(List.of(r1));
 		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, venueId, "Stage X", "Venue X", null, r1.getStatus().name(), null, null));
 		
-		var list = service.getRequestsByVenue(venueId);
+		var list = service.getRequestsByVenue(venueId, null);
 		
 		assertThat(list).hasSize(1);
 		verify(requestRepo).findAllByVenueId(venueId);

@@ -76,7 +76,7 @@ class ListenerProfileRepositoryTest {
 		ListenerProfile profile = listenerRepo.save(ListenerProfile.builder()
 		                                                           .user(user)
 		                                                           .description("desc")
-		                                                           .profilePicture("pp.png")
+		                                                           .profilePictureMediaId(UUID.randomUUID())
 		                                                           .build());
 		
 		Optional<ListenerProfile> found = listenerRepo.findByUserId(user.getId());

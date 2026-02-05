@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -144,16 +145,18 @@ class ArtistVenueConnectionRequestControllerTest {
 				"msg", "PENDING", RequestByType.VENUE, "2025-01-02T10:00:00Z"
 		);
 		
-		when(service.getRequestByMusicianProfile(musicianProfileId)).thenReturn(List.of(sample, other));
+		when(service.getRequestByMusicianProfile(eq(musicianProfileId), eq(RequestStatus.PENDING)))
+				.thenReturn(List.of(sample, other));
 		
-		mockMvc.perform(get(BASE + "/musician/" + musicianProfileId))
+		mockMvc.perform(get(BASE + "/musician/" + musicianProfileId)
+				                .param("status", "PENDING"))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data", hasSize(2)))
 		       .andExpect(jsonPath("$.data[0].musicianProfileId").value(musicianProfileId.toString()))
 		       .andExpect(jsonPath("$.data[1].musicianProfileId").value(musicianProfileId.toString()));
 		
-		verify(service).getRequestByMusicianProfile(musicianProfileId);
+		verify(service).getRequestByMusicianProfile(musicianProfileId, RequestStatus.PENDING);
 	}
 	
 	@Test
@@ -164,15 +167,17 @@ class ArtistVenueConnectionRequestControllerTest {
 				"msg2", "PENDING", RequestByType.ARTIST, "2025-01-03T09:00:00Z"
 		);
 		
-		when(service.getRequestsByVenue(venueId)).thenReturn(List.of(sample, other));
+		when(service.getRequestsByVenue(eq(venueId), eq(RequestStatus.PENDING)))
+				.thenReturn(List.of(sample, other));
 		
-		mockMvc.perform(get(BASE + "/venue/" + venueId))
+		mockMvc.perform(get(BASE + "/venue/" + venueId)
+				                .param("status", "PENDING"))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data", hasSize(2)))
 		       .andExpect(jsonPath("$.data[0].venueId").value(venueId.toString()))
 		       .andExpect(jsonPath("$.data[1].venueId").value(venueId.toString()));
 		
-		verify(service).getRequestsByVenue(venueId);
+		verify(service).getRequestsByVenue(venueId, RequestStatus.PENDING);
 	}
 }
