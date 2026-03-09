@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,10 +17,11 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
+
 public class SpotifyTokenServiceImpl implements SpotifyTokenService {
 	
 	private static final String TOKEN_KEY = "spotify:access_token";
@@ -29,29 +31,43 @@ public class SpotifyTokenServiceImpl implements SpotifyTokenService {
 	private final StringRedisTemplate redisTemplate;
 	private final WebClient spotifyTokenWebClient;
 	
+	public SpotifyTokenServiceImpl(
+			SpotifyProperties props,
+			StringRedisTemplate redisTemplate,
+			@Qualifier("spotifyTokenWebClient") WebClient spotifyTokenWebClient
+	) {
+		this.props = props;
+		this.redisTemplate = redisTemplate;
+		this.spotifyTokenWebClient = spotifyTokenWebClient;
+	}
+	
 	@Override
 	public String getAccessToken() {
-		// 1) Cache
 		String cached = redisTemplate.opsForValue().get(TOKEN_KEY);
-		if (cached != null && !cached.isBlank()) return cached;
+		if (cached != null && !cached.isBlank()) {
+			return cached;
+		}
 		
-		// 2) Single-flight lock: bir instance token yenilerken diğerleri beklesin
-		boolean lockAcquired = tryAcquireLock(Duration.ofSeconds(10));
+		String lockValue = UUID.randomUUID().toString();
+		boolean lockAcquired = tryAcquireLock(lockValue, Duration.ofSeconds(10));
+		
 		if (!lockAcquired) {
-			// Başkası yeniliyor olabilir -> kısa backoff + yeniden cache kontrol
 			for (int i = 0; i < 5; i++) {
 				sleepSilently(150);
 				String retryCache = redisTemplate.opsForValue().get(TOKEN_KEY);
-				if (retryCache != null && !retryCache.isBlank()) return retryCache;
+				if (retryCache != null && !retryCache.isBlank()) {
+					return retryCache;
+				}
 			}
-			// hâlâ yoksa: lock alamadık ve token da gelmedi -> fail fast
+			
 			throw new SoundConnectException(ErrorType.SPOTIFY_UPSTREAM_ERROR);
 		}
 		
 		try {
-			// Lock aldık -> bir daha cache’e bak (race)
 			String retryCache = redisTemplate.opsForValue().get(TOKEN_KEY);
-			if (retryCache != null && !retryCache.isBlank()) return retryCache;
+			if (retryCache != null && !retryCache.isBlank()) {
+				return retryCache;
+			}
 			
 			log.info("[Spotify] Access token not found/expired. Requesting new token...");
 			
@@ -67,23 +83,25 @@ public class SpotifyTokenServiceImpl implements SpotifyTokenService {
 			                                                     .bodyToMono(SpotifyTokenResponse.class)
 			                                                     .block();
 			
-			if (response == null || response.access_token == null || response.access_token.isBlank()) {
+			if (response == null || response.access_token() == null || response.access_token().isBlank()) {
 				log.error("[Spotify] Token response is null or access_token missing");
 				throw new SoundConnectException(ErrorType.SPOTIFY_AUTH_FAILED);
 			}
 			
-			int expires = (response.expires_in == null ? 3600 : response.expires_in);
-			int ttl = Math.max(60, expires - 60); // güvenlik payı
+			int expires = response.expires_in() == null ? 3600 : response.expires_in();
+			int ttl = Math.max(60, expires - 60);
 			
-			redisTemplate.opsForValue().set(TOKEN_KEY, response.access_token, Duration.ofSeconds(ttl));
-			return response.access_token;
+			redisTemplate.opsForValue().set(TOKEN_KEY, response.access_token(), Duration.ofSeconds(ttl));
+			return response.access_token();
 			
 		} catch (WebClientResponseException ex) {
 			int status = ex.getStatusCode().value();
 			String retryAfter = ex.getHeaders().getFirst("Retry-After");
 			
 			log.error("[Spotify] Token endpoint error status={}, retryAfter={}, body={}",
-			          status, (retryAfter == null ? "-" : retryAfter), safeBody(ex));
+			          status,
+			          retryAfter == null ? "-" : retryAfter,
+			          safeBody(ex));
 			
 			if (status == 401 || status == 403) throw new SoundConnectException(ErrorType.SPOTIFY_AUTH_FAILED);
 			if (status == 429) throw new SoundConnectException(ErrorType.SPOTIFY_RATE_LIMITED);
@@ -98,31 +116,40 @@ public class SpotifyTokenServiceImpl implements SpotifyTokenService {
 			log.error("[Spotify] Unexpected error while requesting token", ex);
 			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
 		} finally {
-			releaseLock();
+			if (lockAcquired) {
+				releaseLock(lockValue);
+			}
 		}
 	}
 	
-	private boolean tryAcquireLock(Duration ttl) {
-		Boolean ok = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, "1", ttl);
+	private boolean tryAcquireLock(String lockValue, Duration ttl) {
+		Boolean ok = redisTemplate.opsForValue().setIfAbsent(LOCK_KEY, lockValue, ttl);
 		return Boolean.TRUE.equals(ok);
 	}
 	
-	private void releaseLock() {
+	private void releaseLock(String lockValue) {
 		try {
-			redisTemplate.delete(LOCK_KEY);
-		} catch (Exception ignored) {
-			// lock cleanup best-effort
+			String currentValue = redisTemplate.opsForValue().get(LOCK_KEY);
+			if (lockValue != null && lockValue.equals(currentValue)) {
+				redisTemplate.delete(LOCK_KEY);
+			}
+		} catch (Exception ex) {
+			log.warn("[Spotify] Failed to release token lock safely", ex);
 		}
 	}
 	
 	private void sleepSilently(long ms) {
-		try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 	
 	private String safeBody(WebClientResponseException ex) {
-		String b = ex.getResponseBodyAsString();
-		return (b == null || b.isBlank()) ? "-" : b;
+		String body = ex.getResponseBodyAsString();
+		return (body == null || body.isBlank()) ? "-" : body;
 	}
 	
-	private record SpotifyTokenResponse(String access_token, Integer expires_in) {}
+	private record SpotifyTokenResponse(String access_token, Integer expires_in) { }
 }

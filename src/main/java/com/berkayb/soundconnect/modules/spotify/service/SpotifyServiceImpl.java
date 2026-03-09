@@ -1,7 +1,6 @@
 package com.berkayb.soundconnect.modules.spotify.service;
 
 import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
-import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyArtistTopTrackResponseDto;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackSearchResponseDto;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -22,10 +21,16 @@ public class SpotifyServiceImpl implements SpotifyService {
 			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
 		}
 		
-		int safeLimit = (limit <= 0) ? 5 : Math.min(limit, 10);
-		var tracks = spotifyApiClient.searchTracks(query.trim(), safeLimit);
+		String normalizedQuery = query.trim();
 		
-		return new SpotifyTrackSearchResponseDto(query.trim(), safeLimit, tracks);
+		if (normalizedQuery.length() > 100) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+		
+		int safeLimit = (limit <= 0) ? 5 : Math.min(limit, 10);
+		var tracks = spotifyApiClient.searchTracks(normalizedQuery, safeLimit);
+		
+		return new SpotifyTrackSearchResponseDto(normalizedQuery, safeLimit, tracks);
 	}
 	
 	@Override
