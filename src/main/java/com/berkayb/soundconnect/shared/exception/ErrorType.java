@@ -169,8 +169,19 @@ public enum ErrorType {
 	SETLIST_NOT_FOUND(9500,"Setlist not found", HttpStatus.NOT_FOUND, "Setlist bulunamadi"),
 	SETLIST_SET_NOT_FOUND(9501,"Setlistset not found", HttpStatus.NOT_FOUND, "Setlistset bulunamadi"),
 	
-	// PULSE (9600 - 9699)
-	ROOM_NOT_FOUND(9500,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
+	// PULSE (9600 - 9649)
+	ROOM_NOT_FOUND(9600,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
+	
+	// SPOTIFY (9650-9700)
+	SPOTIFY_AUTH_FAILED(9650, "Spotify auth failed", HttpStatus.UNAUTHORIZED, "Spotify ile bağlantı kurulamadı. (Kimlik doğrulama hatası)"),
+	SPOTIFY_RATE_LIMITED(9651, "Spotify rate limited", HttpStatus.TOO_MANY_REQUESTS, "Spotify çok fazla istek algıladı. Lütfen kısa süre sonra tekrar dene."),
+	SPOTIFY_NOT_FOUND(9652, "Spotify resource not found", HttpStatus.NOT_FOUND, "Spotify kaynağı bulunamadı."),
+	SPOTIFY_BAD_REQUEST(9653, "Spotify bad request", HttpStatus.BAD_REQUEST, "Spotify isteği geçersiz."),
+	SPOTIFY_UPSTREAM_ERROR(9654, "Spotify upstream error", HttpStatus.BAD_GATEWAY, "Spotify servisinde geçici bir sorun var. Lütfen tekrar dene."),
+	SPOTIFY_TIMEOUT(9655, "Spotify timeout", HttpStatus.GATEWAY_TIMEOUT, "Spotify yanıt vermedi. Lütfen tekrar dene."),
+	SPOTIFY_UNEXPECTED_ERROR(9656, "Spotify unexpected error", HttpStatus.INTERNAL_SERVER_ERROR, "Spotify işlemi sırasında beklenmeyen bir hata oluştu."),
+	SPOTIFY_FORBIDDEN(9657, "Spotify forbidden", HttpStatus.FORBIDDEN, "Spotify bu isteğe izin vermedi."),
+	
 	
 	// GENEL (9999)
 	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),

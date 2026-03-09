@@ -15,6 +15,22 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Spotify {  
+		
+		public static final String BASE = API + VERSION + "/spotify";
+		
+		// ARTIST TOP TRACKS (profilde “şarkılarım” için)
+		public static final String ARTIST_TOP_TRACKS = "/artists/{artistId}/top-tracks";
+		
+		// ui icin track picker
+		public static final String SEARCH_TRACKS = "/search/tracks";
+		
+		// track detail secilmis trackidleri profilde gostermek icin
+		public static final String TRACK_BY_ID = "/tracks/{trackId}";
+		
+		
+	}
+	
 	public static class Pulse {
 		
 		public static final String BASE = API + VERSION + "/pulse/rooms";

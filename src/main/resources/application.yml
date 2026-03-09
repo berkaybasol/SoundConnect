@@ -203,3 +203,18 @@ pulse:
     - "Düşünmeden Söyle: Şu Anki Ruh Hâlin?"
     - "Underrated Şarkılar"
     - "Seni Çok Etkileyen Herhangi Birşey?"
+
+soundconnect:
+  spotify:
+    client-id: ${SPOTIFY_CLIENT_ID}
+    client-secret: ${SPOTIFY_CLIENT_SECRET}
+    token-url: https://accounts.spotify.com/api/token
+    api-base-url: https://api.spotify.com/v1
+    market: TR
+
+    # prod için kritik:
+    http:
+      connect-timeout-ms: 2000
+      response-timeout-ms: 3500
+      read-timeout-ms: 3500
+      write-timeout-ms: 3500

@@ -17,7 +17,7 @@ import java.time.Duration;
 @Configuration
 public class MailerSendHttpClientConfig {
 	
-	@Bean
+	@Bean (name = "mailersendWebClient")
 	public WebClient webClient(
 			@Value("${mailersend.api-key}")
 			String apikey,
