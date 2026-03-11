@@ -19,14 +19,14 @@ public class EndPoints {
 		
 		public static final String BASE = API + VERSION + "/spotify";
 		
-		// ARTIST TOP TRACKS (profilde “şarkılarım” için)
-		public static final String ARTIST_TOP_TRACKS = "/artists/{artistId}/top-tracks";
-		
 		// ui icin track picker
 		public static final String SEARCH_TRACKS = "/search/tracks";
 		
 		// track detail secilmis trackidleri profilde gostermek icin
 		public static final String TRACK_BY_ID = "/tracks/{trackId}";
+		
+		// batch endpoint
+		public static final String TRACKS_BY_IDS = "/tracks/by-ids";
 		
 		
 	}

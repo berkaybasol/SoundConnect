@@ -59,7 +59,9 @@ class MusicianProfileAdminControllerIT {
 				null,                  // spotifyArtistId
 				Set.of(),              // instruments
 				Set.of(),              // activeVenues
-				Set.of()               // bands
+				Set.of(),               // bands
+				null,
+				null
 		);
 		
 		Mockito.when(service.getProfileByUserId(uid)).thenReturn(resp);
@@ -85,7 +87,9 @@ class MusicianProfileAdminControllerIT {
 				null,           // soundcloudUrl
 				null,           // spotifyEmbedUrl
 				null,           // spotifyArtistId
-				null            // instrumentIds
+				null,            // instrumentIds
+				null,
+				null
 		);
 		
 		var resp = new MusicianProfileResponseDto(
@@ -101,7 +105,9 @@ class MusicianProfileAdminControllerIT {
 				null,
 				Set.of(),
 				Set.of(),
-				Set.of()
+				Set.of(),
+				null,
+				null
 		);
 		
 		Mockito.when(service.updateProfile(eq(uid), any())).thenReturn(resp);

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.spotify.controller;
 
+import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
+import com.berkayb.soundconnect.modules.spotify.dto.request.SpotifyTracksByIdsRequest;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackSearchResponseDto;
 import com.berkayb.soundconnect.modules.spotify.service.SpotifyService;
@@ -13,6 +15,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Spotify.*;
 
 @RestController
@@ -23,6 +27,15 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Spotify.*;
 public class SpotifyController {
 	
 	private final SpotifyService spotifyService;
+	private final SpotifyApiClient spotifyApiClient;
+	
+	@PostMapping(TRACKS_BY_IDS)
+	public ResponseEntity<BaseResponse<List<SpotifyTrackItemDto>>> getTracksByIds(
+			@RequestBody SpotifyTracksByIdsRequest request) {
+		var data = spotifyApiClient.getTracksByIds(request.ids());
+		return ResponseEntity.ok(BaseResponse.<List<SpotifyTrackItemDto>>builder()
+		                                     .success(true).message("Spotify tracks fetched").code(200).data(data).build());
+	}
 	
 	// Track picker için: kullanıcı arar, listeden seçer.
 	@GetMapping(SEARCH_TRACKS)

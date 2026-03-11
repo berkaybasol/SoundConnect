@@ -10,4 +10,6 @@ public interface SpotifyApiClient {
 	
 	// Track detayi. profilde secilen trackIdleri gostermek icin
 	SpotifyTrackItemDto getTrackById(String trackId);
+	
+	List<SpotifyTrackItemDto> getTracksByIds(List<String> ids);
 }

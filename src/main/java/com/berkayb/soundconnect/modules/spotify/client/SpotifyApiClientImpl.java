@@ -20,7 +20,6 @@ import java.util.List;
 @Component
 public class SpotifyApiClientImpl implements SpotifyApiClient {
 	
-	
 	private final SpotifyProperties props;
 	private final SpotifyTokenService tokenService;
 	private final WebClient spotifyApiWebClient;
@@ -36,6 +35,51 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	}
 	
 	@Override
+	public List<SpotifyTrackItemDto> getTracksByIds(List<String> trackIds) {
+		if (trackIds == null || trackIds.isEmpty()) return List.of();
+		
+		String ids = trackIds.stream()
+		                     .filter(id -> id != null && !id.isBlank())
+		                     .distinct()
+		                     .limit(50)
+		                     .reduce((a, b) -> a + "," + b)
+		                     .orElse("");
+		
+		if (ids.isBlank()) return List.of();
+		
+		String token = tokenService.getAccessToken();
+		
+		try {
+			SpotifyTracksWrapper raw = spotifyApiWebClient.get()
+			                                              .uri(uriBuilder -> uriBuilder
+					                                              .path("/tracks")
+					                                              .queryParam("ids", ids)
+					                                              .queryParam("market", props.getMarket())
+					                                              .build())
+			                                              .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+			                                              .retrieve()
+			                                              .bodyToMono(SpotifyTracksWrapper.class)
+			                                              .block();
+			
+			if (raw == null || raw.tracks == null) {
+				return List.of();
+			}
+			
+			return raw.tracks.stream()
+			                 .map(this::toTrackItemDto)
+			                 .toList();
+			
+		} catch (WebClientResponseException ex) {
+			handleSpotifyHttpError(ex);
+			throw new IllegalStateException("Unreachable code after Spotify HTTP error handling");
+		} catch (Exception ex) {
+			log.error("[Spotify] Unexpected error while fetching tracks by ids. ids={}", ids, ex);
+			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
+		}
+	}
+	
+	
+	@Override
 	public List<SpotifyTrackItemDto> searchTracks(String query, int limit) {
 		
 		String token = tokenService.getAccessToken();
@@ -47,6 +91,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 					                                                  .queryParam("q", query)
 					                                                  .queryParam("type", "track")
 					                                                  .queryParam("limit", Math.min(limit, 10)) // Spotify limitleri sıkılaştı
+					                                                  .queryParam("market", props.getMarket())
 					                                                  .build())
 			                                                  .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 			                                                  .retrieve()
@@ -78,7 +123,10 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 		
 		try {
 			SpotifyTrackRaw t = spotifyApiWebClient.get()
-			                                       .uri("/tracks/{id}", trackId)
+			                                       .uri(uriBuilder -> uriBuilder
+					                                       .path("/tracks/{id}")
+					                                       .queryParam("market", props.getMarket())
+					                                       .build(trackId))
 			                                       .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 			                                       .retrieve()
 			                                       .bodyToMono(SpotifyTrackRaw.class)
@@ -133,9 +181,9 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	
 	
 	
-	private record SpotifyTracksWrapper(List<SpotifyTrackRaw> items) { }
+	private record SpotifyTracksWrapper(List<SpotifyTrackRaw> tracks) { }
 	
-	private record SpotifySearchRawResponse(SpotifyTracksWrapper tracks) { }
+	private record SpotifySearchRawResponse(SpotifyTracksItemsWrapper tracks) { }
 	
 	private record SpotifyTrackRaw(
 			String id,
@@ -190,5 +238,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 		
 		throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
 	}
+	
+	private record SpotifyTracksItemsWrapper(List<SpotifyTrackRaw> items) { }
 	
 }

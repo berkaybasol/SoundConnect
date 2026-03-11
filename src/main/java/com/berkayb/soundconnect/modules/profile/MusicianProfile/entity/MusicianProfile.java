@@ -3,17 +3,21 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.entity;
 
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.profile.shared.BaseProfile;
-import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
-import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.Type;
+import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -49,8 +53,17 @@ public class MusicianProfile extends BaseProfile {
 	
 	private String spotifyEmbedUrl; // gomulu spotify oynatici sistemi icin.
 	
+	@ElementCollection
+	@CollectionTable(name = "musician_profile_spotify_tracks", joinColumns = @JoinColumn(name = "profile_id"))
+	@Column(name = "track_id")
+	private List<String> spotifyTrackIds = new ArrayList<>();
+	
 	// overthinking modulu icin gerekli belki baska seylerde de kullaniriz.
 	@Column(name = "spotify_artist_id", nullable = true, unique = true)
 	private String spotifyArtistId;
+	
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(columnDefinition = "jsonb")
+	private List<SpotifyTrackItemDto> spotifyTracks = new ArrayList<>();
 	
 }
