@@ -34,7 +34,9 @@
 
 ## *Bitenler*
 
-✅ Konu bazli allchat Modülü(Pulse) (mainstage)
+✅ Spotify Modülü (mainstage & backstage)
+
+✅ Konu bazli allchat Modülü (Pulse) (mainstage)
 
 ✅ Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
 

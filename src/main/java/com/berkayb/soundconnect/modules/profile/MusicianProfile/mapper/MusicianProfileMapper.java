@@ -20,6 +20,7 @@ public interface MusicianProfileMapper {
 	@Mapping(source = "user.id", target = "userId")
 	@Mapping(target = "bands", ignore = true)
 	@Mapping(target = "spotifyTrackIds", source = "spotifyTrackIds")
+	@Mapping(target = "profilePictureUrl", ignore = true)
 		// bands alanı service tarafında setlenecek → mapper buraya dokunmuyor
 	MusicianProfileResponseDto toDto(MusicianProfile profile);
 	

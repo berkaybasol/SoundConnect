@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public record TrackResponseDto(
 		UUID id,
+		UUID mediaAssetId,
 		String title,
 		String playbackUrl,
 		Integer durationSeconds,

@@ -3,10 +3,11 @@ package com.berkayb.soundconnect.modules.comment.controller;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.comment.service.CommentService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
@@ -31,11 +32,11 @@ public class CommentController {
 	@PostMapping(CREATE)
 	@Operation(summary = "Yorum olustur")
 	public ResponseEntity<BaseResponse<CommentResponseDto>> createComment(
-			@AuthenticationPrincipal(expression = "id")UUID userId,
+			@AuthenticationPrincipal(expression = "id") UUID userId,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId,
-			@RequestBody CommentCreateRequestDto request
-			) {
+			@Valid @RequestBody CommentCreateRequestDto request
+	) {
 		CommentResponseDto result = commentService.createComment(userId, targetType, targetId, request);
 		
 		return ResponseEntity.ok(BaseResponse.<CommentResponseDto>builder()

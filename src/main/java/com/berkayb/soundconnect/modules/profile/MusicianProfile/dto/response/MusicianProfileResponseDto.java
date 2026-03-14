@@ -13,6 +13,7 @@ public record MusicianProfileResponseDto(
 		String stageName,
 		String bio,
 		UUID profilePictureMediaId,
+		String profilePictureUrl,
 		String instagramUrl,
 		String youtubeUrl,
 		String soundcloudUrl,

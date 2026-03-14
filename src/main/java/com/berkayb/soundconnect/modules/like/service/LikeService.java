@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.like.service;
 
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 
 import java.util.UUID;
 

@@ -40,10 +40,8 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 	}
 	
-	
 	@Override
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		
 		User user = userEntityFinder.getUser(userId);
 		
 		if (musicianProfileRepository.findByUserId(userId).isPresent()) {
@@ -56,8 +54,6 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 						? new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()))
 						: new HashSet<>();
 		
-		
-		
 		MusicianProfile profile = MusicianProfile.builder()
 		                                         .user(user)
 		                                         .stageName(dto.stageName())
@@ -68,24 +64,25 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .soundcloudUrl(dto.soundcloudUrl())
 		                                         .spotifyEmbedUrl(dto.spotifyEmbedUrl())
 		                                         .instruments(instruments)
-												 .spotifyArtistId(dto.spotifyArtistId())
-												 .spotifyTracks(dto.spotifyTracks() != null ? dto.spotifyTracks() : List.of())
+		                                         .spotifyArtistId(dto.spotifyArtistId())
+		                                         .spotifyTracks(dto.spotifyTracks() != null ? dto.spotifyTracks() : List.of())
 		                                         .build();
 		
 		MusicianProfile saved = musicianProfileRepository.save(profile);
 		
 		log.info("Yeni muzisyen profili olusturuldu. UserId: {}", userId);
 		
-		// ---- PROFILE + BANDS ----
 		var base = musicianProfileMapper.toDto(saved);
+		String profilePictureUrl = resolveProfilePictureUrl(saved.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
-				profile.getUser().getId(),
+				saved.getUser().getId(),
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -99,10 +96,8 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		);
 	}
 	
-	
 	@Override
 	public MusicianProfileResponseDto getProfileByUserId(UUID userId) {
-		
 		userEntityFinder.getUser(userId);
 		
 		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
@@ -123,6 +118,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -138,7 +134,6 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	
 	@Override
 	public MusicianProfileResponseDto updateProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		
 		userEntityFinder.getUser(userId);
 		
 		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
@@ -155,9 +150,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
 		if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
 		if (dto.spotifyArtistId() != null) profile.setSpotifyArtistId(dto.spotifyArtistId());
-		if (dto.spotifyTrackIds() != null) {
-			profile.setSpotifyTrackIds(dto.spotifyTrackIds());
-		}
+		if (dto.spotifyTrackIds() != null) profile.setSpotifyTrackIds(dto.spotifyTrackIds());
 		if (dto.spotifyTracks() != null) profile.setSpotifyTracks(dto.spotifyTracks());
 		
 		if (dto.instrumentIds() != null) {
@@ -175,10 +168,11 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
-				profile.getUser().getId(),
+				updated.getUser().getId(),
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -197,7 +191,6 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		return null;
 	}
 	
-	// helper
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
@@ -207,5 +200,4 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 			return null;
 		}
 	}
-	
 }

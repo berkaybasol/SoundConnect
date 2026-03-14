@@ -156,6 +156,9 @@ public enum ErrorType {
 	COMMENT_TEXT_INVALID(9351,"Comment text must not be empty or longer than MAX_COMMENT_LENGTH.",HttpStatus.BAD_REQUEST,"Yorum metni bos veya maksimum uzunlugu asamaz."),
 	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
 	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
+	COMMENT_PARENT_DELETED(9353,"Comment parent is deleted.", HttpStatus.CONFLICT,"Silinmis yoruma yanit verilemez"),
+	COMMENT_REPLY_DEPTH_NOT_ALLOWED(9354,"Comment reply depth not allowed", HttpStatus.CONFLICT,"yanita yanit " +
+			"verilemez"),
 	
 	// OVERTHINKING(9400 - 9449)
 	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
@@ -172,7 +175,7 @@ public enum ErrorType {
 	// PULSE (9600 - 9649)
 	ROOM_NOT_FOUND(9600,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
 	
-	// SPOTIFY (9650-9700)
+	// SPOTIFY (9650-9699)
 	SPOTIFY_AUTH_FAILED(9650, "Spotify auth failed", HttpStatus.UNAUTHORIZED, "Spotify ile bağlantı kurulamadı. (Kimlik doğrulama hatası)"),
 	SPOTIFY_RATE_LIMITED(9651, "Spotify rate limited", HttpStatus.TOO_MANY_REQUESTS, "Spotify çok fazla istek algıladı. Lütfen kısa süre sonra tekrar dene."),
 	SPOTIFY_NOT_FOUND(9652, "Spotify resource not found", HttpStatus.NOT_FOUND, "Spotify kaynağı bulunamadı."),
@@ -182,6 +185,8 @@ public enum ErrorType {
 	SPOTIFY_UNEXPECTED_ERROR(9656, "Spotify unexpected error", HttpStatus.INTERNAL_SERVER_ERROR, "Spotify işlemi sırasında beklenmeyen bir hata oluştu."),
 	SPOTIFY_FORBIDDEN(9657, "Spotify forbidden", HttpStatus.FORBIDDEN, "Spotify bu isteğe izin vermedi."),
 	
+	// ENGAGEMENT (9700 - 9749)
+	ENGAGEMENT_NOT_FOUND(9700,"target not found", HttpStatus.NOT_FOUND, "target bulunamadi"),
 	
 	// GENEL (9999)
 	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),

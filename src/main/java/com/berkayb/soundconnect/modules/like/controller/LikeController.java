@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.like.controller;
 
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.like.service.LikeService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;

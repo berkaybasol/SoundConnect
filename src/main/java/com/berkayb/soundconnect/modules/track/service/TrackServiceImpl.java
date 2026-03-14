@@ -226,6 +226,7 @@ public class TrackServiceImpl implements TrackService {
 	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls) {
 		return new TrackResponseDto(
 				track.getId(),
+				track.getMediaAssetId(),
 				track.getTitle(),
 				playbackUrls.get(track.getMediaAssetId()),
 				track.getDurationSeconds(),

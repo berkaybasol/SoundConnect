@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.like.repository;
 
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.like.entity.Like;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -12,7 +12,7 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 	boolean existsByUserIdAndTargetTypeAndTargetId(UUID userId, EngagementTargetType targetType, UUID targetId);
 	
 	// begeniyi kaldir(idempotent)
-	void deleteByUserIdAndTargetTypeAndTargetId(UUID userId, EngagementTargetType targetType, UUID targetId);
+	long deleteByUserIdAndTargetTypeAndTargetId(UUID userId, EngagementTargetType targetType, UUID targetId);
 	
 	// icerigin toplam begeni sayisi
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);

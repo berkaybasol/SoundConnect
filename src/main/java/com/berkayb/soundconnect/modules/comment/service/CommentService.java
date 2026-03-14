@@ -3,7 +3,7 @@ package com.berkayb.soundconnect.modules.comment.service;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
