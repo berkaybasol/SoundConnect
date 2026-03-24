@@ -24,6 +24,8 @@ import com.berkayb.soundconnect.modules.venue.mapper.VenueMapper;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +45,18 @@ public class VenueServiceImpl implements VenueService {
 	private final RoleRepository roleRepository;
 	private final UserRepository userRepository;
 	private final VenueProfileService venueProfileService;
+	
+	@Override
+	public Page<VenueResponseDto> searchByName(String q, Pageable pageable) {
+		String query = q == null ? "" : q.trim();
+		if (query.isEmpty()) {
+			throw new SoundConnectException(ErrorType.VENUE_SEARCH_QUERY_REQUIRED);
+		}
+		
+		return venueRepository
+				.findByNameContainingIgnoreCase(query, pageable)
+				.map(venueMapper::toResponse);
+	}
 	
 	@Transactional
 	@Override

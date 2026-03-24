@@ -1,4 +1,4 @@
-server:
+miserver:
   port: 8080
   address: 0.0.0.0  # telefon erişimi için
 
@@ -12,7 +12,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false  # degistirildi
     properties:
       hibernate:
         format_sql: true
@@ -125,7 +125,10 @@ logging:
   level:
     root: INFO
     org.springframework.web: DEBUG
-    org.hibernate.SQL: DEBUG
+    org.hibernate.SQL: OFF  # degistirildi
+    org.hibernate.orm.jdbc.bind: OFF  # eklendi
+    org.hibernate.type.descriptor.sql.BasicBinder: OFF  # eklendi
+    com.berkayb.soundconnect: DEBUG  # eklendi
 
 # --- MEDIA / STORAGE ---
 cloud:

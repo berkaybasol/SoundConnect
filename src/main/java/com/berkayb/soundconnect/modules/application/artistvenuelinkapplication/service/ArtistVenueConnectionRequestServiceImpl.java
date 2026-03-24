@@ -27,16 +27,73 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConnectionRequestService {
+	
 	private final ArtistVenueConnectionRequestRepository repository;
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final VenueRepository venueRepository;
 	private final ArtistVenueConnectionRequestMapper artistVenueConnectionRequestMapper;
 	
+	@Transactional
+	@Override
+	public ArtistVenueConnectionRequestResponseDto cancelRequest(UUID requestId) {
+		log.info("Basvuru iptal ediliyor. requestId={}", requestId);
+		
+		ArtistVenueConnectionRequest request = repository.findById(requestId)
+		                                                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
+		
+		if (request.getStatus() != RequestStatus.PENDING) {
+			if (request.getStatus() == RequestStatus.ACCEPTED) {
+				throw new SoundConnectException(ErrorType.REQUEST_CANCEL_NOT_ALLOWED);
+			}
+			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
+		}
+		
+		request.setStatus(RequestStatus.REJECTED);
+		repository.save(request);
+		
+		log.info("Basvuru iptal edildi. requestId={}", requestId);
+		return artistVenueConnectionRequestMapper.toResponseDto(request);
+	}
+	
+	
+	@Transactional
+	@Override
+	public ArtistVenueConnectionRequestResponseDto disconnect(UUID requestId) {
+		log.info("Mekan baglantisi kaldiriliyor. requestId={}", requestId);
+		
+		ArtistVenueConnectionRequest request = repository.findById(requestId)
+		                                                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
+		
+		if (request.getStatus() != RequestStatus.ACCEPTED) {
+			if (request.getStatus() == RequestStatus.PENDING) {
+				throw new SoundConnectException(ErrorType.REQUEST_DISCONNECT_NOT_ALLOWED);
+			}
+			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
+		}
+		
+		var musician = request.getMusicianProfile();
+		var venue = request.getVenue();
+		
+		musician.getActiveVenues().remove(venue);
+		venue.getActiveMusicians().remove(musician);
+		
+		musicianProfileRepository.save(musician);
+		venueRepository.save(venue);
+		
+		request.setStatus(RequestStatus.REJECTED);
+		repository.save(request);
+		
+		log.info("Baglanti kaldirildi. requestId={}", requestId);
+		return artistVenueConnectionRequestMapper.toResponseDto(request);
+	}
 	
 	@Override
 	public ArtistVenueConnectionRequestResponseDto createRequest(ArtistVenueConnectionRequestCreateDto dto, RequestByType requestType) {
 		log.info("yeni artist-venue baglantisi basvurusu baslatiliyor. musicianProfileId={}, venueId={}, requestBy={}",
 		         dto.musicianProfileId(), dto.venueId(), requestType);
+		if (requestType == null) {
+			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
+		}
 		
 		// dublicate kontrolu
 		if (repository.existsByMusicianProfileIdAndVenueIdAndStatus(
@@ -63,7 +120,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		request.setMusicianProfile(musician);
 		request.setVenue(venue);
 		request.setStatus(RequestStatus.PENDING);
-		request.setRequestByType(requestType); // <<== düzeltildi
+		request.setRequestByType(requestType);
 		request.setMessage(dto.message());
 		
 		// kaydet

@@ -37,6 +37,12 @@ public enum ErrorType {
 	REQUEST_NOT_FOUND(1501,"Request not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi."),
 	REQUEST_ALREADY_ACCEPTED(1502,"Request already accepted.", HttpStatus.BAD_REQUEST,"Basvuru zaten onaylandi."),
 	REQUEST_ALREADY_REJECTED(1503,"Request already rejected.", HttpStatus.BAD_REQUEST,"Basvuru zaten reddedildi."),
+	REQUEST_CANCEL_NOT_ALLOWED(1504,"Only pending requests can be cancelled",HttpStatus.FORBIDDEN,"Yalnızca beklemede olan istekler iptal edilebilir."),
+	CONNECTION_NOT_ACTIVE(1505,"Artist-venue connection is not active",HttpStatus.FORBIDDEN,"Sanatçı-mekan bağlantısı aktif değil."),
+	VENUE_SEARCH_QUERY_REQUIRED(1506,"Search query is required",HttpStatus.FORBIDDEN,"Arama sorgusu gereklidir."),
+	REQUEST_DISCONNECT_NOT_ALLOWED(1507,"Only accepted requests can be disconnected",HttpStatus.FORBIDDEN,"Yalnızca kabul edilen isteklerin bağlantısı kesilebilir."),
+	REQUEST_BY_TYPE_REQUIRED(1508, "Request by type is required", HttpStatus.BAD_REQUEST, "İsteği başlatan taraf belirtilmelidir."
+	),
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.BAD_REQUEST, "Zaten basvuru yapilmis."),

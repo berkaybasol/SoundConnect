@@ -10,6 +10,7 @@ import java.util.UUID;
 public record MusicianProfileResponseDto(
 		UUID id,
 		UUID userId,
+		String username,
 		String stageName,
 		String bio,
 		UUID profilePictureMediaId,

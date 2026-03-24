@@ -23,4 +23,10 @@ public interface ArtistVenueConnectionRequestService {
 	
 	// mekanin aldigi basvurulari getir
 	List<ArtistVenueConnectionRequestResponseDto> getRequestsByVenue(UUID venueId, RequestStatus status);
+	
+	// istegini iptal et
+	ArtistVenueConnectionRequestResponseDto cancelRequest(UUID requestId);
+	
+	ArtistVenueConnectionRequestResponseDto disconnect(UUID requestId);
+	
 }

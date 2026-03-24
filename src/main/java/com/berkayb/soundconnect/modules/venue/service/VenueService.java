@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.venue.service;
 
 import com.berkayb.soundconnect.modules.venue.dto.request.VenueRequestDto;
 import com.berkayb.soundconnect.modules.venue.dto.response.VenueResponseDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
@@ -17,4 +19,6 @@ public interface VenueService {
 	void delete(UUID id);
 	
 	VenueResponseDto update(UUID id, VenueRequestDto dto);
+	
+	Page<VenueResponseDto> searchByName(String q, Pageable pageable);
 }

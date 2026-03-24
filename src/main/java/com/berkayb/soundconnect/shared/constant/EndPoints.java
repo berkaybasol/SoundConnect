@@ -36,6 +36,7 @@ public class EndPoints {
 		public static final String BASE = API + VERSION + "/pulse/rooms";
 		
 	}
+	
 	public static class Setlist {
 		
 		public static final String BASE = API + VERSION + "/setlists";
@@ -112,7 +113,6 @@ public class EndPoints {
 		public static final String BY_ID = "/{trackId}";  // GET
 		public static final String DELETE = "/{trackId}"; // DELETE
 	}
-	
 	
 	public static class Collab {
 		
@@ -425,6 +425,8 @@ public class EndPoints {
 		public static final String REQUEST = "/request";
 		public static final String ACCEPT = "/{requestId}/accept";
 		public static final String REJECT = "/{requestId}/reject";
+		public static final String CANCEL = "/{requestId}/cancel";
+		public static final String DISCONNECT = "/{requestId}/disconnect";
 		public static final String GET_REQUESTS_BY_MUSICIAN = "/musician/{musicianProfileId}";
 		public static final String GET_REQUESTS_BY_VENUE = "/venue/{venueId}";
 	}
@@ -517,5 +519,6 @@ public class EndPoints {
 		public static final String GET_ALL = "/get-all";
 		public static final String GET_BY_ID = "/get-by-id/{id}";
 		public static final String DELETE = "/delete/{id}";
+		public static final String SEARCH = "/search";
 	}
 }

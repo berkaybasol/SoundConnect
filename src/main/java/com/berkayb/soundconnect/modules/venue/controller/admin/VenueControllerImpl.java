@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +28,23 @@ import java.util.UUID;
 public class VenueControllerImpl implements VenueController {
 	
 	private final VenueService venueService;
+	
+	@GetMapping(SEARCH) // EndPoints.Venue.SEARCH = "/search"
+	public ResponseEntity<BaseResponse<Page<VenueResponseDto>>> search(
+			@RequestParam String q,
+			@PageableDefault(size = 20, sort = "name") Pageable pageable
+	) {
+		var page = venueService.searchByName(q, pageable);
+		
+		return ResponseEntity.ok(
+				BaseResponse.<Page<VenueResponseDto>>builder()
+				            .success(true)
+				            .message("Venues fetched")
+				            .data(page)
+				            .build()
+		);
+	}
+	
 	
 	//TODO @PreAuthorize("hasAuthority('WRITE_VENUE')")
 	@PostMapping(SAVE)

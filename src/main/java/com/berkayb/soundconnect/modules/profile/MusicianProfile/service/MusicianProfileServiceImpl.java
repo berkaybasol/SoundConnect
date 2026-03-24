@@ -79,6 +79,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		return new MusicianProfileResponseDto(
 				base.id(),
 				saved.getUser().getId(),
+				saved.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),
@@ -115,6 +116,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		return new MusicianProfileResponseDto(
 				base.id(),
 				profile.getUser().getId(),
+				profile.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),
@@ -169,6 +171,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		return new MusicianProfileResponseDto(
 				base.id(),
 				updated.getUser().getId(),
+				updated.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
 				base.profilePictureMediaId(),

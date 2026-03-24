@@ -16,4 +16,7 @@ public interface ArtistVenueConnectionRequestController {
 	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> rejectRequest(UUID requestId);
 	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByMusicianProfile(UUID musicianProfileId, RequestStatus status);
 	ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByVenue(UUID venueId, RequestStatus status);
+	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> cancelRequest(UUID requestId);
+	ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> disconnect(UUID requestId);
+	
 }

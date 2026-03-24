@@ -24,7 +24,34 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ArtistVenueConn
 @Slf4j
 @Tag(name = "FOR USERS / Artist Venue Connections", description = "Artist - Venue Connections Management")
 public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueConnectionRequestController {
+	
 	private final ArtistVenueConnectionRequestService service;
+	
+	@PostMapping(CANCEL)
+	@Override
+	public ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> cancelRequest(@PathVariable UUID requestId) {
+		var response = service.cancelRequest(requestId);
+		return ResponseEntity.ok(
+				BaseResponse.<ArtistVenueConnectionRequestResponseDto>builder()
+				            .success(true)
+				            .message("Basvuru iptal edildi.")
+				            .data(response)
+				            .build()
+		);
+	}
+	
+	@DeleteMapping(DISCONNECT)
+	@Override
+	public ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> disconnect(@PathVariable UUID requestId) {
+		var response = service.disconnect(requestId);
+		return ResponseEntity.ok(
+				BaseResponse.<ArtistVenueConnectionRequestResponseDto>builder()
+				            .success(true)
+				            .message("Mekan baglantisi kaldirildi.")
+				            .data(response)
+				            .build()
+		);
+	}
 	
 	@PostMapping(REQUEST)
 	@Override
