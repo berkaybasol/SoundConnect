@@ -66,6 +66,7 @@ app:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
+  share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:
       enabled: true     # RUNTIME’DA AÇIK (prod’da kapatacağız)

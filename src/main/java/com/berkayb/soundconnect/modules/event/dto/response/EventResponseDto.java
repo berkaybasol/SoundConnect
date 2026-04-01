@@ -10,7 +10,11 @@ import java.util.UUID;
 public record EventResponseDto(
 		UUID id,
 		
+		String title, // event karti ve detay ekrani icin baslik
+		String posterImage, // event afis gorseli
+		
 		String performerName,      // musician.stageName veya band.name
+		UUID musicianProfileId,
 		PerformerType performerType,  // MUSICIAN / BAND
 		
 		Set<String> bandMembers,   // yalnızca band ise dolu
@@ -24,5 +28,6 @@ public record EventResponseDto(
 		LocalDate eventDate,
 		LocalTime startTime,
 		LocalTime endTime,
-		String description
+		String description,
+		String shareUrl
 ) {}

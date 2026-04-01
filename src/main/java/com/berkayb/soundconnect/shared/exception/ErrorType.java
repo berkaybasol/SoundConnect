@@ -140,8 +140,10 @@ public enum ErrorType {
 	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
 	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
 	MUSICIAN_NOT_FOUND(9212,"Musician not found", HttpStatus.NOT_FOUND, "Musician bulunamadi."),
+	
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
+	INVALID_PARAMETER(9251,"INVALID PARAMETER", HttpStatus.NOT_FOUND, "PARAMETRE YANLIS"),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND_OR_NOT_OWNER(9301,"Collab not found or not owner", HttpStatus.NOT_FOUND, "Collab bulunamadi veya sahibi degil."),

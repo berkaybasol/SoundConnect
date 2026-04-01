@@ -12,7 +12,6 @@ import org.mapstruct.Mapping;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface VenueMapper {
@@ -22,7 +21,6 @@ public interface VenueMapper {
 	@Mapping(target = "createdAt", ignore = true)
 	@Mapping(target = "updatedAt", ignore = true)
 	
-	// DTO alanları
 	@Mapping(target = "name", source = "dto.name")
 	@Mapping(target = "address", source = "dto.address")
 	@Mapping(target = "phone", source = "dto.phone")
@@ -30,16 +28,17 @@ public interface VenueMapper {
 	@Mapping(target = "description", source = "dto.description")
 	@Mapping(target = "musicStartTime", source = "dto.musicStartTime")
 	
-	
-	// Diğer entity’ler
 	@Mapping(target = "city", source = "city")
 	@Mapping(target = "district", source = "district")
 	@Mapping(target = "neighborhood", source = "neighborhood")
 	@Mapping(target = "owner", source = "owner")
 	Venue toEntity(VenueRequestDto dto, City city, District district, Neighborhood neighborhood, User owner);
 	
+	@Mapping(target = "cityId", source = "city.id") //eklendi
 	@Mapping(target = "cityName", source = "city.name")
+	@Mapping(target = "districtId", source = "district.id") //eklendi
 	@Mapping(target = "districtName", source = "district.name")
+	@Mapping(target = "neighborhoodId", source = "neighborhood.id") //eklendi
 	@Mapping(target = "neighborhoodName", source = "neighborhood.name")
 	@Mapping(target = "ownerId", source = "owner.id")
 	@Mapping(target = "ownerFullName", source = "owner.username")

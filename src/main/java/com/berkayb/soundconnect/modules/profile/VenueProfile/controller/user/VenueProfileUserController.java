@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.VenueProfile.controller.user;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueOwnerProfileResponseDto; //eklendi
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -24,16 +25,33 @@ public class VenueProfileUserController {
 	
 	private final VenueProfileService venueProfileService;
 	
-	// Kullanıcının sahip olduğu tüm venue profilleri (list)
 	@GetMapping(ME)
 	public ResponseEntity<BaseResponse<List<VenueProfileResponseDto>>> getMyVenueProfiles(
 			@AuthenticationPrincipal UserDetailsImpl userDetails) {
 		List<VenueProfileResponseDto> response = venueProfileService.getProfilesByUserId(userDetails.getUser().getId());
 		return ResponseEntity.ok(BaseResponse.<List<VenueProfileResponseDto>>builder()
-		                                     .success(true).code(200).message("Kendi Venue profilleri getirildi").data(response).build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Kendi Venue profilleri getirildi")
+		                                     .data(response)
+		                                     .build());
 	}
 	
-	// Kullanıcı kendi venue'sinin profilini günceller
+	@GetMapping(MY_DETAIL) //degisti
+	public ResponseEntity<BaseResponse<VenueOwnerProfileResponseDto>> getMyVenueProfileDetail( //degisti
+	                                                                                           @AuthenticationPrincipal UserDetailsImpl userDetails,
+	                                                                                           @PathVariable UUID venueId) {
+		
+		VenueOwnerProfileResponseDto response = venueProfileService.getOwnerProfileDetail(userDetails.getUser().getId(), venueId); //degisti
+		
+		return ResponseEntity.ok(BaseResponse.<VenueOwnerProfileResponseDto>builder() //degisti
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Venue owner profil detayi getirildi")
+		                                     .data(response)
+		                                     .build());
+	}
+	
 	@PutMapping(UPDATE)
 	public ResponseEntity<BaseResponse<VenueProfileResponseDto>> updateMyVenueProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -41,6 +59,26 @@ public class VenueProfileUserController {
 			@RequestBody VenueProfileSaveRequestDto dto) {
 		VenueProfileResponseDto response = venueProfileService.updateProfileByVenueId(userDetails.getUser().getId(), venueId, dto);
 		return ResponseEntity.ok(BaseResponse.<VenueProfileResponseDto>builder()
-		                                     .success(true).code(200).message("Venue profili güncellendi").data(response).build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Venue profili güncellendi")
+		                                     .data(response)
+		                                     .build());
+	}
+	
+	@PutMapping(MY_DETAIL_UPDATE) //degisti
+	public ResponseEntity<BaseResponse<VenueOwnerProfileResponseDto>> updateMyVenueProfileDetail( //degisti
+	                                                                                              @AuthenticationPrincipal UserDetailsImpl userDetails,
+	                                                                                              @PathVariable UUID venueId,
+	                                                                                              @RequestBody VenueProfileSaveRequestDto dto) {
+		
+		VenueOwnerProfileResponseDto response = venueProfileService.updateOwnerProfileDetail(userDetails.getUser().getId(), venueId, dto); //degisti
+		
+		return ResponseEntity.ok(BaseResponse.<VenueOwnerProfileResponseDto>builder() //degisti
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Venue owner profil detayi guncellendi")
+		                                     .data(response)
+		                                     .build());
 	}
 }

@@ -33,7 +33,7 @@ public class Event extends BaseEntity {
 	
 	private LocalTime endTime;
 	
-	private String posterImage; // S3 / CDN görüntü linki
+	private String posterImage; // MediaAsset UUID
 	
 	/**
 	 * Etkinliğin gerçekleştiği mekan.
@@ -57,4 +57,7 @@ public class Event extends BaseEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "band_id")
 	private Band band;
+	
+	@Column(length = 50)
+	private String manualPerformerName;
 }

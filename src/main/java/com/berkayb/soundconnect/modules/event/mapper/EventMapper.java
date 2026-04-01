@@ -3,73 +3,142 @@ package com.berkayb.soundconnect.modules.event.mapper;
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.enums.PerformerType;
+import com.berkayb.soundconnect.modules.event.support.EventShareUrlBuilder; //eklendi
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.Named;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
-@Mapper(componentModel = "spring")
-public interface EventMapper {
+@Component
+@RequiredArgsConstructor
+public class EventMapper {
 	
-	@Mapping(target = "performerName", source = "event", qualifiedByName = "resolvePerformerName")
-	@Mapping(target = "performerType", source = "event", qualifiedByName = "resolvePerformerType")
-	@Mapping(target = "bandMembers",   source = "event", qualifiedByName = "resolveBandMembers")
+	private final MediaAssetService mediaAssetService;
+	private final EventShareUrlBuilder eventShareUrlBuilder; //eklendi
 	
-	@Mapping(target = "venueId",       source = "venue.id")
-	@Mapping(target = "venueName",     source = "venue.name")
-	@Mapping(target = "venueCity",     source = "venue.city.name")
-	@Mapping(target = "venueDistrict", source = "venue.district.name")
-	@Mapping(target = "venueNeighborhood", source = "venue.neighborhood.name")
+	public EventResponseDto toDto(Event event) {
+		if (event == null) {
+			return null;
+		}
+		
+		return new EventResponseDto(
+				event.getId(),
+				event.getTitle(),
+				resolvePosterImage(event),
+				resolvePerformerName(event),
+				event.getMusicianProfile() != null ? event.getMusicianProfile().getId() : null,
+				resolvePerformerType(event),
+				resolveBandMembers(event),
+				event.getVenue() != null ? event.getVenue().getId() : null,
+				event.getVenue() != null ? event.getVenue().getName() : null,
+				event.getVenue() != null && event.getVenue().getCity() != null
+						? event.getVenue().getCity().getName()
+						: null,
+				event.getVenue() != null && event.getVenue().getDistrict() != null
+						? event.getVenue().getDistrict().getName()
+						: null,
+				event.getVenue() != null && event.getVenue().getNeighborhood() != null
+						? event.getVenue().getNeighborhood().getName()
+						: null,
+				event.getEventDate(),
+				event.getStartTime(),
+				event.getEndTime(),
+				event.getDescription(),
+				eventShareUrlBuilder.buildEventShareUrl(event.getId()) //eklendi
+		);
+	}
 	
-	EventResponseDto toDto(Event event);
+	private String resolvePosterImage(Event event) {
+		final String raw = event.getPosterImage();
+		if (raw == null || raw.isBlank()) {
+			return null;
+		}
+		
+		try {
+			UUID assetId = UUID.fromString(raw);
+			MediaAsset asset = mediaAssetService.getById(assetId);
+			
+			if (asset.getSourceUrl() != null && !asset.getSourceUrl().isBlank()) {
+				return asset.getSourceUrl();
+			}
+			if (asset.getPlaybackUrl() != null && !asset.getPlaybackUrl().isBlank()) {
+				return asset.getPlaybackUrl();
+			}
+			return null;
+		} catch (Exception ignored) {
+			return raw;
+		}
+	}
 	
-	
-	/* -------------------------------------------------------
-	 * Performer Name
-	 * -------------------------------------------------------
-	 */
-	@Named("resolvePerformerName")
-	default String resolvePerformerName(Event event) {
+	private String resolvePerformerName(Event event) {
 		if (event.getBand() != null) {
 			return event.getBand().getName();
 		}
+		
 		if (event.getMusicianProfile() != null) {
-			return event.getMusicianProfile().getStageName();
+			if (event.getMusicianProfile().getUser() != null &&
+					event.getMusicianProfile().getUser().getUsername() != null &&
+					!event.getMusicianProfile().getUser().getUsername().isBlank()) {
+				return event.getMusicianProfile().getUser().getUsername();
+			}
+			
+			if (event.getMusicianProfile().getStageName() != null &&
+					!event.getMusicianProfile().getStageName().isBlank()) {
+				return event.getMusicianProfile().getStageName();
+			}
+		}
+		
+		if (event.getManualPerformerName() != null &&
+				!event.getManualPerformerName().isBlank()) {
+			return event.getManualPerformerName();
+		}
+		
+		return "Yakinda aciklanacak";
+	}
+	
+	private PerformerType resolvePerformerType(Event event) {
+		if (event.getBand() != null) {
+			return PerformerType.BAND;
+		}
+		if (event.getMusicianProfile() != null) {
+			return PerformerType.MUSICIAN;
+		}
+		if (event.getManualPerformerName() != null &&
+				!event.getManualPerformerName().isBlank()) {
+			return PerformerType.MANUAL;
 		}
 		return null;
 	}
 	
-	
-	/* -------------------------------------------------------
-	 * Performer Type
-	 * -------------------------------------------------------
-	 */
-	@Named("resolvePerformerType")
-	default PerformerType resolvePerformerType(Event event) {
-		if (event.getBand() != null) return PerformerType.BAND;
-		return PerformerType.MUSICIAN;
-	}
-	
-	
-	/* -------------------------------------------------------
-	 * Band Members (MusicianProfile isimlerini döner)
-	 * -------------------------------------------------------
-	 *
-	 * Null-safe:
-	 * - band yoksa boş set döner
-	 * - bandMember null profil taşıyorsa filtrelenir
-	 */
-	@Named("resolveBandMembers")
-	default Set<String> resolveBandMembers(Event event) {
-		if (event.getBand() == null) return Set.of();
+	private Set<String> resolveBandMembers(Event event) {
+		if (event.getBand() == null || event.getBand().getMembers() == null) {
+			return Set.of();
+		}
 		
 		return event.getBand().getMembers().stream()
 		            .map(BandMember::getUser)
 		            .filter(user -> user.getMusicianProfile() != null)
-		            .map(user -> user.getMusicianProfile().getStageName())
+		            .map(user -> {
+			            final var profile = user.getMusicianProfile();
+			            
+			            if (profile.getUser() != null &&
+					            profile.getUser().getUsername() != null &&
+					            !profile.getUser().getUsername().isBlank()) {
+				            return profile.getUser().getUsername();
+			            }
+			            
+			            if (profile.getStageName() != null &&
+					            !profile.getStageName().isBlank()) {
+				            return profile.getStageName();
+			            }
+			            
+			            return "Bilinmeyen uye";
+		            })
 		            .collect(Collectors.toSet());
 	}
 }

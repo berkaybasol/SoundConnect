@@ -4,7 +4,8 @@ package com.berkayb.soundconnect.modules.engagement.enums;
 public enum EngagementTargetType {
 	
 	OVERTHINKING,
-	MEDIA
+	MEDIA,
+	EVENT
 	
 	//FIXME BASKA MODULE GEREKTIGI ZAMAN BURAYA EKLE
 }

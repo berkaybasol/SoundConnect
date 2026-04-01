@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.mapper.MusicianProfileMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
@@ -33,6 +34,24 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final MusicianProfileMapper musicianProfileMapper;
 	private final BandService bandService;
 	private final MediaAssetService mediaAssetService;
+	
+	@Override
+	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
+		String q = query == null ? "" : query.trim(); //eklendi
+		if (q.isEmpty()) return List.of(); //eklendi
+		
+		return musicianProfileRepository.searchByStageNameOrUsername(q) //eklendi
+		                                .stream() //eklendi
+		                                .limit(10) //eklendi
+		                                .map(profile -> new MusicianProfileSearchItemDto( //eklendi
+		                                                                                  profile.getId(), //eklendi
+		                                                                                  profile.getUser().getId(), //eklendi
+		                                                                                  profile.getUser().getUsername(), //eklendi
+		                                                                                  profile.getStageName(), //eklendi
+		                                                                                  resolveProfilePictureUrl(profile.getProfilePictureMediaId()) //eklendi
+		                                )) //eklendi
+		                                .toList(); //eklendi
+	}
 	
 	@Override
 	public MusicianProfile getProfileEntity(UUID profileId) {
@@ -190,9 +209,38 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	}
 	
 	@Override
-	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) {
-		return null;
+	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) { //degisti
+		MusicianProfile profile = musicianProfileRepository.findById(profileId) //degisti
+		                                                   .orElseThrow(() -> { //degisti
+			                                                   log.warn("Profil bulunamadi. profileId: {}", profileId); //degisti
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND); //degisti
+		                                                   }); //degisti
+		
+		var base = musicianProfileMapper.toDto(profile); //degisti
+		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId()); //degisti
+		var bands = new HashSet<>(bandService.getBandsByUser(profile.getUser().getId())); //degisti
+		
+		return new MusicianProfileResponseDto( //degisti
+		                                       base.id(), //degisti
+		                                       profile.getUser().getId(), //degisti
+		                                       profile.getUser().getUsername(), //degisti
+		                                       base.stageName(), //degisti
+		                                       base.bio(), //degisti
+		                                       base.profilePictureMediaId(), //degisti
+		                                       profilePictureUrl, //degisti
+		                                       base.instagramUrl(), //degisti
+		                                       base.youtubeUrl(), //degisti
+		                                       base.soundcloudUrl(), //degisti
+		                                       base.spotifyEmbedUrl(), //degisti
+		                                       base.spotifyArtistId(), //degisti
+		                                       base.instruments(), //degisti
+		                                       base.activeVenues(), //degisti
+		                                       bands, //degisti
+		                                       base.spotifyTrackIds(), //degisti
+		                                       base.spotifyTracks() //degisti
+		); //degisti
 	}
+	
 	
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;

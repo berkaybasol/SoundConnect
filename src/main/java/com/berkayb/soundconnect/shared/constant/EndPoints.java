@@ -174,31 +174,24 @@ public class EndPoints {
 	public static class Event {
 		
 		// ===== BASE PATHS =====
-		public static final String ADMIN_BASE = API + VERSION + "/admin/events";
-		public static final String USER_BASE  = API + VERSION + "/events";  // public discovery
+		public static final String USER_BASE  = API + VERSION + "/events"; // public discovery
+		public static final String OWNER_BASE = API + VERSION + "/venue-owner/events"; //  venue owner event yonetim endpointleri
 		
-		// =====→ ADMIN ENDPOINTS ←=====
-		
-		public static final String CREATE = "/create";         // POST /admin/events/create
-		public static final String BY_ID = "/{eventId}";       // GET /admin/events/{eventId}
-		// DELETE /admin/events/{eventId}
-		
-		public static final String BY_VENUE = "/venue/{venueId}";
-		public static final String BY_DATE  = "/date/{date}";
-		public static final String BY_CITY  = "/city/{cityId}";
-		public static final String BY_DISTRICT = "/district/{districtId}";
-		public static final String BY_NEIGHBORHOOD = "/neighborhood/{neighborhoodId}";
+		// =====→ VENUE OWNER ENDPOINTS ←=====
+		public static final String CREATE = "";          //  POST /venue-owner/events
+		public static final String DELETE = "/{eventId}"; //  DELETE /venue-owner/events/{eventId}
 		
 		// =====→ USER / PUBLIC ENDPOINTS ←=====
-		
 		public static final String USER_BY_ID = "/{eventId}";  // GET /events/{eventId}
-		
-		public static final String USER_TODAY = "/today";       // GET /events/today
+		public static final String USER_TODAY = "/today";      // GET /events/today
 		public static final String USER_BY_DATE = "/date/{date}";
 		public static final String USER_BY_CITY = "/city/{cityId}";
 		public static final String USER_BY_DISTRICT = "/district/{districtId}";
 		public static final String USER_BY_NEIGHBORHOOD = "/neighborhood/{neighborhoodId}";
 		public static final String USER_BY_VENUE = "/venue/{venueId}";
+		
+		public static final String OWNER_BY_VENUE = "/venue/{venueId}";
+		public static final String USER_WEEKLY_BY_VENUE = "/venue/{venueId}/weekly";
 		
 		// Multi-filter search (future)
 		public static final String USER_SEARCH = "/search";   // GET /events/search?date=..&cityId=..
@@ -251,6 +244,10 @@ public class EndPoints {
 		// Admin
 		public static final String BY_USER_ID = "/by-user/{userId}";
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+		
+		public static final String PUBLIC_BASE = API + VERSION + "/public/musician-profiles"; //eklendi
+		public static final String SEARCH = "/search"; //eklendi
+		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}"; //eklendi
 	}
 	
 	public static class VenueApplication {
@@ -292,15 +289,21 @@ public class EndPoints {
 		
 		public static final String USER_BASE = API + VERSION + "/user/venue-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/venue-profiles";
+		public static final String PUBLIC_BASE = API + VERSION + "/public/venue-profiles"; //eklendi
 		
 		// User
 		public static final String ME = "/me";
 		public static final String UPDATE = "/update/{venueId}";
+		public static final String MY_DETAIL = "/me/{venueId}/detail"; //eklendi
+		public static final String MY_DETAIL_UPDATE = "/me/{venueId}/detail"; //eklendi
 		
 		// Admin
 		public static final String BY_USER_ID = "/by-user/{userId}";
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/{venueId}/update";
 		public static final String ADMIN_CREATE = "/create/{venueId}";
+		
+		// Public //eklendi
+		public static final String PUBLIC_DETAIL = "/{venueId}"; //eklendi
 	}
 	
 	public class ListenerProfile {

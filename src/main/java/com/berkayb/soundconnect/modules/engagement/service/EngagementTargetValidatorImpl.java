@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.engagement.service;
 
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.event.service.EventService;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -18,6 +20,7 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
 	
 	private final OverthinkingPostRepository overthinkingPostRepository;
 	private final MediaAssetRepository mediaAssetRepository;
+	private final EventRepository eventRepository;
 	
 	//FIXME targetla alakali seyler gelirse buraya eklencek
 	@Override
@@ -25,6 +28,7 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
 		boolean exists = switch (targetType) {
 			case OVERTHINKING -> overthinkingPostRepository.existsById(targedId);
 			case MEDIA -> mediaAssetRepository.existsById(targedId);
+			case EVENT -> eventRepository.existsById(targedId);
 		};
 		
 		if (!exists) {

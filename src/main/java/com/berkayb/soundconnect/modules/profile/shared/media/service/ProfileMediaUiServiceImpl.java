@@ -60,11 +60,12 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 			case MUSICIAN -> TrackOwnerType.MUSICIAN_PROFILE;
 			case BAND -> TrackOwnerType.BAND;
 			case PRODUCER -> TrackOwnerType.PRODUCER_PROFILE;
-			default -> throw new IllegalStateException(
-					"Audio not supported for profileType=" + profileType);
+			default -> null;
 		};
 		
-		List<TrackResponseDto> audios = ownerType == null ? List.of() : trackService.getTracksByOwner(profileId, ownerType);
+		List<TrackResponseDto> audios =
+				ownerType == null ? List.of() : trackService.getTracksByOwner(profileId, ownerType);
+		
 		log.info("[ProfileMediaUI] loaded profileType={} profileId={}", profileType, profileId);
 		
 		return new ProfileMediaUiResponseDto(featuredDto, videos, audios);

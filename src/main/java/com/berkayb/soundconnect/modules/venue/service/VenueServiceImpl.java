@@ -9,12 +9,9 @@ import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfil
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
-import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
-import com.berkayb.soundconnect.shared.exception.ErrorType;
-import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.dto.request.VenueRequestDto;
 import com.berkayb.soundconnect.modules.venue.dto.response.VenueResponseDto;
@@ -22,6 +19,9 @@ import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.mapper.VenueMapper;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -68,14 +68,32 @@ public class VenueServiceImpl implements VenueService {
 		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(dto.neighborhoodId());
 		User owner = userEntityFinder.getUser(dto.ownerId());
 		
+		// degistirildi: owner'in zaten venue'su varsa ikinci venue olusturulmasi engellenir
+		if (venueRepository.existsByOwner_Id(owner.getId())) {
+			log.warn("User already has a venue. ownerId={}", owner.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
+		// degistirildi: district secilen city'ye ait olmali
+		if (!district.getCity().getId().equals(city.getId())) {
+			log.warn("District does not belong to city. cityId={}, districtId={}", city.getId(), district.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
+		// degistirildi: neighborhood secilen district'e ait olmali
+		if (!neighborhood.getDistrict().getId().equals(district.getId())) {
+			log.warn("Neighborhood does not belong to district. districtId={}, neighborhoodId={}",
+			         district.getId(), neighborhood.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
 		Venue venue = venueMapper.toEntity(dto, city, district, neighborhood, owner);
 		venue.setStatus(VenueStatus.APPROVED); // Admin CRUD'da otomatik onaylı
 		
 		// mekan kaydi yap
 		Venue savedVenue = venueRepository.save(venue);
 		
-		
-		Role venueRole = roleRepository .findByName(RoleEnum.ROLE_VENUE.name())
+		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())
 		                               .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		
 		// eger zaten venue rolu yoksa ekle
@@ -103,7 +121,7 @@ public class VenueServiceImpl implements VenueService {
 	}
 	
 	@Override
-	@Transactional // readOnly=false default; update için uygun
+	@Transactional
 	public VenueResponseDto update(UUID id, VenueRequestDto dto) {
 		log.info("Updating venue with id: {}", id);
 		
@@ -113,6 +131,25 @@ public class VenueServiceImpl implements VenueService {
 		District district = locationEntityFinder.getDistrict(dto.districtId());
 		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(dto.neighborhoodId());
 		User owner = userEntityFinder.getUser(dto.ownerId());
+		
+		// degistirildi: district secilen city'ye ait olmali
+		if (!district.getCity().getId().equals(city.getId())) {
+			log.warn("District does not belong to city. cityId={}, districtId={}", city.getId(), district.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
+		// degistirildi: neighborhood secilen district'e ait olmali
+		if (!neighborhood.getDistrict().getId().equals(district.getId())) {
+			log.warn("Neighborhood does not belong to district. districtId={}, neighborhoodId={}",
+			         district.getId(), neighborhood.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
+		// degistirildi: owner degisiyorsa yeni owner'in baska venue'su olmamali
+		if (!venue.getOwner().getId().equals(owner.getId()) && venueRepository.existsByOwner_Id(owner.getId())) {
+			log.warn("New owner already has another venue. ownerId={}", owner.getId());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
 		
 		// manuel mapping
 		venue.setName(dto.name());
