@@ -196,6 +196,13 @@ public enum ErrorType {
 	// ENGAGEMENT (9700 - 9749)
 	ENGAGEMENT_NOT_FOUND(9700,"target not found", HttpStatus.NOT_FOUND, "target bulunamadi"),
 	
+	// PROMOTION (9750 - 9799)
+	PROMOTION_NOT_FOUND(9750, "Promotion not found", HttpStatus.NOT_FOUND, "Promotion kaydı bulunamadı."),
+	PROMOTION_MEDIA_NOT_FOUND(9751, "Promotion media asset not found", HttpStatus.NOT_FOUND, "Promotion için kullanılan medya kaydı bulunamadı."),
+	PROMOTION_INVALID_DATE_RANGE(9752, "Promotion invalid date range", HttpStatus.BAD_REQUEST, "Promotion başlangıç ve bitiş tarih aralığı geçersiz."),
+	PROMOTION_INVALID_PRIORITY(9753, "Promotion invalid priority", HttpStatus.BAD_REQUEST, "Promotion öncelik değeri geçersiz."),
+	
+	
 	// GENEL (9999)
 	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

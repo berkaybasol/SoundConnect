@@ -15,6 +15,22 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class Promotion {
+		public static final String BASE = API + VERSION + "/promotions";
+		
+		// Admin işlemleri
+		public static final String SAVE = "/save";
+		public static final String UPDATE = "/update/{id}";
+		public static final String DELETE = "/delete/{id}";
+		public static final String BY_ID = "/{id}";
+		public static final String GET_ALL_BY_PLACEMENT = "/placement/{placement}";
+		public static final String GET_ALL_BY_STATUS = "/status/{status}";
+		public static final String GET_ALL_BY_TYPE = "/type/{type}";
+		
+		// Client/Public gösterim işlemi
+		public static final String GET_DISPLAYABLE_BY_PLACEMENT = "/displayable/{placement}";
+	}
+	
 	public static class Spotify {  
 		
 		public static final String BASE = API + VERSION + "/spotify";
