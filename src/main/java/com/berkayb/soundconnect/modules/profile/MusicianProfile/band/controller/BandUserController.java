@@ -22,7 +22,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Band.*;
 @RequiredArgsConstructor
 @Tag(name = "FOR USERS / Band", description = "Kullanıcıya ait Band işlemleri")
 public class BandUserController {
-
+	
 	private final BandService bandService;
 	
 	@PostMapping(CREATE)
@@ -39,6 +39,22 @@ public class BandUserController {
 		                                     .data(created)
 		                                     .build());
 	}
+	
+	@PutMapping(BY_ID) //eklendi
+	@Operation(summary = "Band profilini gunceller") //eklendi
+	public ResponseEntity<BaseResponse<BandResponseDto>> updateBand( //eklendi
+	                                                                 @AuthenticationPrincipal UserDetailsImpl userDetails, //eklendi
+	                                                                 @PathVariable UUID bandId, //eklendi
+	                                                                 @RequestBody BandCreateRequestDto dto //eklendi
+	) { //eklendi
+		BandResponseDto updated = bandService.updateBand(bandId, userDetails.getUser().getId(), dto); //eklendi
+		return ResponseEntity.ok(BaseResponse.<BandResponseDto>builder() //eklendi
+		                                     .success(true) //eklendi
+		                                     .code(200) //eklendi
+		                                     .message("Band guncellendi") //eklendi
+		                                     .data(updated) //eklendi
+		                                     .build()); //eklendi
+	} //eklendi
 	
 	
 	@Operation(summary = "kullaniciya ait bandlerin listesini getirir")
@@ -71,78 +87,75 @@ public class BandUserController {
 	
 	@Operation(summary = "Davet yolla")
 	@PostMapping(INVITE)
-	public ResponseEntity<BaseResponse<Void>> inviteMember (
+	public ResponseEntity<BaseResponse<Void>> inviteMember(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId,
 			@RequestParam UUID invitedUserId,
-			@RequestParam (required = false) String message
+			@RequestParam(required = false) String message
 	) {
 		bandService.inviteMember(bandId, userDetails.getUser().getId(), invitedUserId, message);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Davet gonderildi")
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Davet gonderildi")
+		                                     .build());
 	}
 	
 	@Operation(summary = "Daveti kabul et")
 	@PostMapping(ACCEPT_INVITE)
-	public ResponseEntity<BaseResponse<Void>> acceptInvite (
+	public ResponseEntity<BaseResponse<Void>> acceptInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId
 	) {
 		bandService.acceptInvite(bandId, userDetails.getUser().getId());
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("davet kabul edildi")
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("davet kabul edildi")
+		                                     .build());
 	}
 	
 	@Operation(summary = "Daveti reddet")
 	@PostMapping(REJECT_INVITE)
-	public ResponseEntity<BaseResponse<Void>> rejectInvite (
+	public ResponseEntity<BaseResponse<Void>> rejectInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId
 	) {
 		bandService.rejectInvite(bandId, userDetails.getUser().getId());
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("davet reddedildi")
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("davet reddedildi")
+		                                     .build());
 	}
 	
 	@Operation(summary = "uye cikar")
 	@DeleteMapping(REMOVE_MEMBER)
-	public ResponseEntity<BaseResponse<Void>> removeMember (
+	public ResponseEntity<BaseResponse<Void>> removeMember(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId,
 			@PathVariable UUID userId
 	) {
 		bandService.removeMember(bandId, userDetails.getUser().getId(), userId);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("uye cikarildi")
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("uye cikarildi")
+		                                     .build());
 	}
 	
 	@Operation(summary = "bandden ayril")
 	@PatchMapping(LEAVE)
-	public ResponseEntity<BaseResponse<Void>> leaveBand (
+	public ResponseEntity<BaseResponse<Void>> leaveBand(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId
 	) {
 		bandService.leaveBand(bandId, userDetails.getUser().getId());
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Bandden ayrildin")
-				                         .build());
-				
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Bandden ayrildin")
+		                                     .build());
+		
 	}
-	
-	
-	
 }

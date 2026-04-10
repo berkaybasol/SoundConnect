@@ -28,6 +28,7 @@ public record VenuePublicProfileResponseDto(
 		String neighborhoodName,
 		
 		List<VenueActiveMusicianDto> activeMusicians,
+		List<VenueActiveBandDto> activeBands,
 		List<VenueEventSummaryDto> weeklyEvents
 ) {
 }

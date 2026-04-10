@@ -4,13 +4,10 @@ import com.berkayb.soundconnect.modules.event.entity.Event; //eklendi
 import com.berkayb.soundconnect.modules.event.repository.EventRepository; //eklendi
 import com.berkayb.soundconnect.modules.event.enums.PerformerType; //eklendi
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile; //eklendi
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
-import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueActiveMusicianDto; //eklendi
-import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueEventSummaryDto; //eklendi
-import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueOwnerProfileResponseDto; //eklendi
-import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueProfileResponseDto;
-import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenuePublicProfileResponseDto; //eklendi
+import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.*;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.mapper.VenueProfileMapper;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
@@ -185,7 +182,9 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 				venue.getStatus(),
 				
 				mapActiveMusicians(venue),
+				mapActiveBands(venue), //eklendi
 				mapWeeklyEvents(venue)
+		
 		);
 	}
 	
@@ -215,6 +214,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 				venue.getNeighborhood() != null ? venue.getNeighborhood().getName() : null,
 				
 				mapActiveMusicians(venue),
+				mapActiveBands(venue),
 				mapWeeklyEvents(venue)
 		);
 	}
@@ -259,6 +259,45 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 			return null; //degisti
 		} //degisti
 	}
+	
+	private List<VenueActiveBandDto> mapActiveBands(Venue venue) { //eklendi
+		if (venue.getActiveBands() == null || venue.getActiveBands().isEmpty()) { //eklendi
+			return List.of(); //eklendi
+		} //eklendi
+		
+		return venue.getActiveBands() //eklendi
+		            .stream() //eklendi
+		            .sorted(Comparator.comparing(b -> safeText(b.getName()))) //eklendi
+		            .map(this::toActiveBandDto) //eklendi
+		            .toList(); //eklendi
+	} //eklendi
+	
+	private VenueActiveBandDto toActiveBandDto(Band band) { //eklendi
+		return new VenueActiveBandDto( //eklendi
+		                               band.getId(), //eklendi
+		                               resolveBandDisplayName(band), //eklendi
+		                               resolveBandProfileImageUrl(band) //eklendi
+		); //eklendi
+	} //eklendi
+	
+	private String resolveBandDisplayName(Band band) { //eklendi
+		if (band.getName() != null && !band.getName().isBlank()) { //eklendi
+			return band.getName(); //eklendi
+		} //eklendi
+		return "Band"; //eklendi
+	} //eklendi
+	
+	private String resolveBandProfileImageUrl(Band band) { //eklendi
+		if (band == null || band.getProfilePictureMediaId() == null) return null; //eklendi
+		try { //eklendi
+			return mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl(); //eklendi
+		} catch (Exception e) { //eklendi
+			log.warn("Band profile picture resolve failed. bandId={}, mediaAssetId={}", //eklendi
+			         band.getId(), band.getProfilePictureMediaId()); //eklendi
+			return null; //eklendi
+		} //eklendi
+	} //eklendi
+	
 	
 	private List<VenueEventSummaryDto> mapWeeklyEvents(Venue venue) { //degisti
 		LocalDate today = LocalDate.now(); //degisti

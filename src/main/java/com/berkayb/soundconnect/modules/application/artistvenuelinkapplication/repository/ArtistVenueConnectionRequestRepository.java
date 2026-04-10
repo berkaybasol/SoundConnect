@@ -17,6 +17,8 @@ public interface ArtistVenueConnectionRequestRepository extends JpaRepository <A
 	// ayni profil ve mekan arasinda pending var mi?
 	boolean existsByMusicianProfileIdAndVenueIdAndStatus(UUID musicianProfileId, UUID venueId, RequestStatus status);
 	
+	boolean existsByBandIdAndVenueIdAndStatus(UUID bandId, UUID venueId, RequestStatus status);
+	
 	List<ArtistVenueConnectionRequest> findAllByMusicianProfileId(UUID musicianProfileId);
 	
 	List<ArtistVenueConnectionRequest> findAllByVenueId(UUID venueId);
@@ -24,6 +26,11 @@ public interface ArtistVenueConnectionRequestRepository extends JpaRepository <A
 	List<ArtistVenueConnectionRequest> findAllByMusicianProfileIdAndStatus(UUID musicianProfileId, RequestStatus status);
 	
 	List<ArtistVenueConnectionRequest> findAllByVenueIdAndStatus(UUID venueId, RequestStatus status);
+	
+	List<ArtistVenueConnectionRequest> findAllByBandId(UUID bandId);
+	
+	List<ArtistVenueConnectionRequest> findAllByBandIdAndStatus(UUID bandId, RequestStatus status);
+	
 	
 	
 }

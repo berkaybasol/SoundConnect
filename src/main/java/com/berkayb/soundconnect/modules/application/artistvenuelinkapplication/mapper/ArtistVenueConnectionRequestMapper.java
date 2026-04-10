@@ -10,11 +10,14 @@ public interface ArtistVenueConnectionRequestMapper {
 	
 	@Mapping(target = "musicianProfileId", source = "musicianProfile.id")
 	@Mapping(target = "musicianStageName", source = "musicianProfile.stageName")
+	@Mapping(target = "bandId", source = "band.id")
+	@Mapping(target = "bandName", source = "band.name")
 	@Mapping(target = "venueId", source = "venue.id")
 	@Mapping(target = "venueName", source = "venue.name")
-	@Mapping(target = "status", source = "status") // Enum string olarak döner zaten
+	@Mapping(target = "status", source = "status")
 	@Mapping(target = "requestByType", source = "requestByType")
 	@Mapping(target = "message", source = "message")
 	@Mapping(target = "createdAt", source = "createdAt")
+	@Mapping(target = "bandProfilePictureUrl", ignore = true)
 	ArtistVenueConnectionRequestResponseDto toResponseDto(ArtistVenueConnectionRequest entity);
 }

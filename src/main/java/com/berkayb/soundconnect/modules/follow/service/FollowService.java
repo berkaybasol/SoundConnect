@@ -29,6 +29,4 @@ public interface FollowService {
 	
 	// kullanicinin toplam takipci sayisi
 	long countFollowers(User following);
-	
-	// TODO: Notification ve comment modülleri için uygun noktalara entegre edilecek.
 }

@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
@@ -22,6 +23,11 @@ public class ArtistVenueConnectionRequest extends BaseEntity {
 	@ManyToOne (fetch = FetchType.LAZY)
 	@JoinColumn(name = "musician_profile_id")
 	private MusicianProfile musicianProfile;
+	
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "band_id")
+	private Band band;
+	
 	
 	@ManyToOne (fetch = FetchType.LAZY)
 	@JoinColumn(name = "venue_id")

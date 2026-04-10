@@ -36,6 +36,7 @@ public record VenueOwnerProfileResponseDto(
 		VenueStatus status,
 		
 		List<VenueActiveMusicianDto> activeMusicians,
+		List<VenueActiveBandDto> activeBands,
 		List<VenueEventSummaryDto> weeklyEvents
 		
 ) {

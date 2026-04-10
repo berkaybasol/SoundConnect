@@ -1,12 +1,15 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity;
 
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Band Entity.
@@ -30,17 +33,28 @@ public class Band extends BaseEntity {
 	@Column(length = 1024)
 	private String description;
 	
-	private String profilePicture;
+	private UUID profilePictureMediaId;
 	
 	private String instagramUrl;
 	private String youtubeUrl;
 	private String soundCloudUrl;
+	
+	private String spotifyEmbedUrl;
 	private String spotifyArtistId;
+	
+	@ElementCollection
+	@CollectionTable(name = "band_spotify_tracks", joinColumns = @JoinColumn(name = "band_id"))
+	@Column(name = "track_id")
+	private List<String> spotifyTrackIds;
 	
 	// yonetim tamamen BandMember tarafindan yapilir
 	@OneToMany(mappedBy = "band", cascade = CascadeType.ALL, orphanRemoval = true)
 	@Builder.Default
 	private Set<BandMember> members = new HashSet<>();
 	
-	//TODO media entegre
+	@Builder.Default //eklendi
+	@ManyToMany(mappedBy = "activeBands", fetch = FetchType.LAZY) //eklendi
+	private Set<Venue> activeVenues = new HashSet<>(); //eklendi
+	
+	
 }

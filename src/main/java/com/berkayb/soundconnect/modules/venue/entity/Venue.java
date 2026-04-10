@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.venue.entity;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -67,6 +68,18 @@ public class Venue extends BaseEntity {
 	@EqualsAndHashCode.Exclude
 	@ManyToMany(mappedBy = "activeVenues", fetch = FetchType.LAZY)
 	private Set<MusicianProfile> activeMusicians = new HashSet<>();
+	
+	@Builder.Default //eklendi
+	@ToString.Exclude //eklendi
+	@EqualsAndHashCode.Exclude //eklendi
+	@ManyToMany(fetch = FetchType.LAZY) //eklendi
+	@JoinTable( //eklendi
+			name = "venue_active_bands", //eklendi
+			joinColumns = @JoinColumn(name = "venue_id"), //eklendi
+			inverseJoinColumns = @JoinColumn(name = "band_id") //eklendi
+	) //eklendi
+	private Set<Band> activeBands = new HashSet<>(); //eklendi
+	
 	
 	
 	/**

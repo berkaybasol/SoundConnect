@@ -22,7 +22,9 @@ public enum ErrorType {
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
 	ALREADY_FOLLOWING(1201, "You are already following this user", HttpStatus.CONFLICT, "Bu kullanıcıyı zaten takip ediyorsunuz."),
 	CANNOT_FOLLOW_SELF(1202, "You cannot follow yourself", HttpStatus.BAD_REQUEST, "Kendinizi takip edemezsiniz."),
-	
+	BAND_ALREADY_FOLLOWED(1203, "Band already followed", HttpStatus.BAD_REQUEST, "Bu band zaten takip ediliyor."),
+	BAND_FOLLOW_RELATION_NOT_FOUND(1204, "Band follow relation not found", HttpStatus.NOT_FOUND, "Band takip ilişkisi bulunamadı."),
+	BAND_MEMBER_CANNOT_FOLLOW_OWN_BAND(1205, "Band member cannot follow own band", HttpStatus.BAD_REQUEST, "Band üyesi kendi grubunu takip edemez."),
 	// PROFILE (1300-1399)
 	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.BAD_REQUEST, "Bu profil zaten var."),
 	PROFILE_NOT_FOUND(1301, "Profile not found", HttpStatus.NOT_FOUND, "Profil bulunamadi."),

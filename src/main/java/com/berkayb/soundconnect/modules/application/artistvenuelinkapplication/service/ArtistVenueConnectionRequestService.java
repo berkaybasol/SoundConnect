@@ -29,4 +29,7 @@ public interface ArtistVenueConnectionRequestService {
 	
 	ArtistVenueConnectionRequestResponseDto disconnect(UUID requestId);
 	
+	List<ArtistVenueConnectionRequestResponseDto> getRequestsByBand(UUID bandId, RequestStatus status);
+	
+	
 }

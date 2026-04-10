@@ -15,6 +15,17 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class BandFollow {
+		public static final String BASE = API + VERSION + "/band-follows";
+		
+		public static final String FOLLOW = "/bands/{bandId}";
+		public static final String UNFOLLOW = "/bands/{bandId}";
+		public static final String IS_FOLLOWING = "/bands/{bandId}/is-following";
+		public static final String FOLLOWER_COUNT = "/bands/{bandId}/followers/count";
+		public static final String FOLLOWERS = "/bands/{bandId}/followers";
+		public static final String MY_FOLLOWED_BANDS = "/me/bands";
+	}
+	
 	public static class Promotion {
 		public static final String BASE = API + VERSION + "/promotions";
 		
@@ -214,27 +225,34 @@ public class EndPoints {
 	}
 	
 	public static class Band {
-		public static final String USER_BASE = API + VERSION + "/user/bands"; // Tüm band işlemleri için ana base
+		public static final String USER_BASE = API + VERSION + "/user/bands"; //degisti
+		public static final String PUBLIC_BASE = API + VERSION + "/public/bands"; //eklendi
 		
 		// Kullanıcının kendi bandleri
-		public static final String MY_BANDS = "/my";              // GET - /api/v1/user/bands/my
-		public static final String CREATE = "/create";            // POST - /api/v1/user/bands/create
+		public static final String MY_BANDS = "/my"; // GET - /api/v1/user/bands/my
+		public static final String CREATE = "/create"; // POST - /api/v1/user/bands/create
 		
 		// Band detay
-		public static final String BY_ID = "/{bandId}";           // GET - /api/v1/user/bands/{bandId}
+		public static final String BY_ID = "/{bandId}"; // GET - /api/v1/user/bands/{bandId}
+		public static final String PUBLIC_BY_ID = "/{bandId}"; //eklendi
+		
+		// Search
+		public static final String SEARCH = "/search"; //eklendi
 		
 		// Band davet işlemleri (davet et, kabul et, reddet vs.)
-		public static final String INVITE = "/{bandId}/invite";                // POST - davet gönder
-		public static final String ACCEPT_INVITE = "/{bandId}/accept";         // POST - daveti kabul et
-		public static final String REJECT_INVITE = "/{bandId}/reject";         // POST - daveti reddet
-		public static final String REMOVE_MEMBER = "/{bandId}/remove/{userId}";// DELETE - üyeyi çıkar
-		public static final String LEAVE = "/{bandId}/leave";                  // PATCH veya POST - bandden ayrıl
+		public static final String INVITE = "/{bandId}/invite"; // POST - davet gönder
+		public static final String ACCEPT_INVITE = "/{bandId}/accept"; // POST - daveti kabul et
+		public static final String REJECT_INVITE = "/{bandId}/reject"; // POST - daveti reddet
+		public static final String REMOVE_MEMBER = "/{bandId}/remove/{userId}"; // DELETE - üyeyi çıkar
+		public static final String LEAVE = "/{bandId}/leave"; // PATCH - bandden ayrıl
 		
 		// Band üye listesi
-		public static final String MEMBERS = "/{bandId}/members";  // GET - band üyelerini getir
+		public static final String MEMBERS = "/{bandId}/members"; // GET - band üyelerini getir
 		
-		// İleride: band güncelleme/silme
-		public static final String UPDATE = "/{bandId}/update";
+		// Band güncelleme/silme
+		//burayi sil
+		// public static final String UPDATE = "/{bandId}/update";
+		
 		public static final String DELETE = "/{bandId}/delete";
 	}
 	
@@ -448,6 +466,7 @@ public class EndPoints {
 		public static final String DISCONNECT = "/{requestId}/disconnect";
 		public static final String GET_REQUESTS_BY_MUSICIAN = "/musician/{musicianProfileId}";
 		public static final String GET_REQUESTS_BY_VENUE = "/venue/{venueId}";
+		public static final String GET_REQUESTS_BY_BAND = "/band/{bandId}";
 	}
 	
 	public class InstrumentEndpoints {

@@ -57,7 +57,7 @@ public class DMMessage extends BaseEntity {
 	@Column(name = "message_type", nullable = false)
 	private String messageType; // mesaj tipi (text,image,file vs.. suan sadece text ama ilerisi icin)
 	
-	//TODO Media vs..
+	
 	
 	
 }

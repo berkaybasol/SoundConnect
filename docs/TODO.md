@@ -34,6 +34,8 @@
 
 ## *Bitenler*
 
+✅ Promotion Modülü (mainstage & backstage)
+
 ✅ Spotify Modülü (mainstage & backstage)
 
 ✅ Konu bazli allchat Modülü (Pulse) (mainstage)

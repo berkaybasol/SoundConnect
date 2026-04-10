@@ -27,6 +27,22 @@ public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueCo
 	
 	private final ArtistVenueConnectionRequestService service;
 	
+	@GetMapping(GET_REQUESTS_BY_BAND)
+	@Override
+	public ResponseEntity<BaseResponse<List<ArtistVenueConnectionRequestResponseDto>>> getRequestsByBand(
+			@PathVariable UUID bandId,
+			@RequestParam(required = false) RequestStatus status) {
+		
+		var responseList = service.getRequestsByBand(bandId, status);
+		return ResponseEntity.ok(
+				BaseResponse.<List<ArtistVenueConnectionRequestResponseDto>>builder()
+				            .success(true)
+				            .message("Band başvuruları getirildi.")
+				            .data(responseList)
+				            .build()
+		);
+	}
+	
 	@PostMapping(CANCEL)
 	@Override
 	public ResponseEntity<BaseResponse<ArtistVenueConnectionRequestResponseDto>> cancelRequest(@PathVariable UUID requestId) {

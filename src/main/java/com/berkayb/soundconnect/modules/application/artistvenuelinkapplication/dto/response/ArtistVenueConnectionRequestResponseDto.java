@@ -7,8 +7,11 @@ import java.util.UUID;
 public record ArtistVenueConnectionRequestResponseDto(
 		UUID id,
 		UUID musicianProfileId,
+		UUID bandId,
 		UUID venueId,
 		String musicianStageName,
+		String bandName,
+		String bandProfilePictureUrl,
 		String venueName,
 		String message,
 		String status,

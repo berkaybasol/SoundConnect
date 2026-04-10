@@ -17,9 +17,6 @@ public interface VenueProfileMapper {
 	// SaveRequestDto → Entity (VENUE ve BASEENTITY FIELD’LARI IGNORE ETME!)
 	@Mapping(target = "venue", ignore = true)
 	@Mapping(target = "profilePictureMediaId", source = "profilePicture")
-	// AŞAĞIDAKİLERİ SİL!
-	// @Mapping(target = "id", ignore = true)
-	// @Mapping(target = "createdAt", ignore = true)
-	// @Mapping(target = "updatedAt", ignore = true)
+	
 	VenueProfile toEntity(VenueProfileSaveRequestDto dto);
 }
