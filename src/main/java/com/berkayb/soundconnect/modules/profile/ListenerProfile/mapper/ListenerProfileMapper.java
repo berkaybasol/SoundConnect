@@ -10,5 +10,9 @@ public interface ListenerProfileMapper {
 	
 	@Mapping(source = "description", target = "bio")
 	@Mapping(source = "user.id", target = "userId")
+	@Mapping(source = "user.username", target = "username")
+	@Mapping(target = "profilePictureUrl", ignore = true)
+	@Mapping(target = "followerCount", ignore = true)
+	@Mapping(target = "followingCount", ignore = true)
 	ListenerProfileResponseDto toDto(ListenerProfile entity);
 }

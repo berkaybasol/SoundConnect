@@ -28,7 +28,6 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
  *  *   - IDE ile otomatik tamamlama ve Swagger/OpenAPI dokümantasyonuna daha net yansır.
  */
 
-//TODO DENEME KDSGKDSKLGDSKL
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor

@@ -20,7 +20,6 @@ public class EndPoints {
 		public static final String PROFILES_BY_USER = "/{userId}/profiles";
 	}
 	
-	
 	public static class BandFollow {
 		public static final String BASE = API + VERSION + "/band-follows";
 		
@@ -351,18 +350,21 @@ public class EndPoints {
 		public static final String PUBLIC_DETAIL = "/{venueId}"; //eklendi
 	}
 	
-	public class ListenerProfile {
+	public static class ListenerProfile {
 		public static final String USER_BASE = API + VERSION + "/user/listener-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/listener-profiles";
+		public static final String PUBLIC_BASE = API + VERSION + "/public/listener-profiles";
 		
-		// User için
 		public static final String ME = "/me";
 		public static final String CREATE = "/create";
 		public static final String UPDATE = "/update";
 		
-		// Admin için
 		public static final String BY_USER_ID = "/by-user/{userId}";
-		public static final String ADMIN_UPDATE = "/update/{userId}";
+		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+		
+		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}";
+		
+		public static final String SEARCH = "/search";
 	}
 	
 	public static class StudioProfile {
