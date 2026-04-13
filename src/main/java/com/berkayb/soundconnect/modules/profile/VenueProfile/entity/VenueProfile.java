@@ -36,8 +36,5 @@ public class VenueProfile extends BaseEntity {
 	
 	private String websiteUrl;
 	
-	/** TODO bu profile ileride comment sistemi eklenecek.
-	 *  yorumlar RabbitMQ uzerinden notification event'leri ile birlikte entegre edilecek.
-	 *  notification & comment modulleri mvp'den sonra, profil yapisi oturdugunda gelistirilecek.
- 	 */
+	
 }

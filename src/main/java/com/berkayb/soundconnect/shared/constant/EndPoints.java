@@ -15,6 +15,12 @@ public class EndPoints {
 		public static final String DELETE = "/delete/{id}";
 	}
 	
+	public static class USER_PROFILE {
+		public static final String PUBLIC_BASE = API + VERSION + "/public/users";
+		public static final String PROFILES_BY_USER = "/{userId}/profiles";
+	}
+	
+	
 	public static class BandFollow {
 		public static final String BASE = API + VERSION + "/band-follows";
 		
@@ -24,6 +30,11 @@ public class EndPoints {
 		public static final String FOLLOWER_COUNT = "/bands/{bandId}/followers/count";
 		public static final String FOLLOWERS = "/bands/{bandId}/followers";
 		public static final String MY_FOLLOWED_BANDS = "/me/bands";
+	}
+	
+	public static class PROFILE_RESOLVER {
+		public static final String PUBLIC_BASE = API + VERSION + "/public/profiles";
+		public static final String BY_USER = "/by-user/{userId}";
 	}
 	
 	public static class Promotion {
