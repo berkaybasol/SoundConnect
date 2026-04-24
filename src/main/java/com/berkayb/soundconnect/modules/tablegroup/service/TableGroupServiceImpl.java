@@ -7,7 +7,12 @@ import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
+import com.berkayb.soundconnect.modules.tablegroup.chat.repository.TableGroupMessageRepository;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
+import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupParticipantDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroup;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroupParticipant;
@@ -16,6 +21,8 @@ import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.mapper.TableGroupMapper;
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
 import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -30,8 +37,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -45,6 +52,10 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
 	private final TableGroupEntityFinder tableGroupEntityFinder;
+	private final TableGroupMessageRepository tableGroupMessageRepository;
+	private final TableGroupChatUnreadHelper unreadHelper;
+	private final UserRepository userRepository;
+	private final PublicProfileResolverService publicProfileResolverService;
 	
 	// Owner bir katilimciyi masadan kickler
 	@Override
@@ -91,6 +102,9 @@ public class TableGroupServiceImpl implements TableGroupService{
 		tableGroup.setStatus(TableGroupStatus.CANCELLED);
 		tableGroupRepository.save(tableGroup);
 		
+		tableGroupMessageRepository.deleteAllByTableGroupId(tableGroupId); //eklendi
+		unreadHelper.clearAllUnreadForTableGroup(tableGroupId); //eklendi
+		
 		tableGroup.getParticipants().stream()
 		          .filter(p -> p.getStatus() == ParticipantStatus.ACCEPTED && !p.getUserId().equals(ownerId))
 		          .forEach(participant -> {
@@ -111,7 +125,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 	
 	// kullanicinin masaya katilma basvurusu
 	@Override
-	public void joinTableGroup(UUID userId, UUID tableGroupId) {
+	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote) {
 		// masa var mi aktif mi ve suresi gecmis mi?
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
@@ -144,6 +158,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				.userId(userId)
 				.joinedAt(LocalDateTime.now())
 				.status(ParticipantStatus.PENDING)
+				.joinNote(joinNote)
 				.build();
 		
 		tableGroup.getParticipants().add(joinRequest);
@@ -373,12 +388,13 @@ public class TableGroupServiceImpl implements TableGroupService{
 		         city.getName()
 		);
 		
-		return tableGroupMapper.toDto(entity);
+		return enrichOwnerMeta(tableGroupMapper.toDto(entity));
 	}
 	
 	// aktif masalari lokasyona gore listele.
 	@Override
 	public Page<TableGroupResponseDto> listActiveTableGroups(
+			
 			UUID cityId,
 			UUID districtId,
 			UUID neighborhoodId,
@@ -386,6 +402,13 @@ public class TableGroupServiceImpl implements TableGroupService{
 	) {
 		LocalDateTime now = LocalDateTime.now();
 		Page<TableGroup> page;
+		
+		if (neighborhoodId != null && districtId == null) { //eklendi
+			throw new SoundConnectException( //eklendi
+			                                 ErrorType.DISTRICT_NOT_FOUND, //eklendi
+			                                 "Neighborhood filtresi icin district zorunlu" //eklendi
+			); //eklendi
+		} //eklendi
 		
 		if (neighborhoodId != null) {
 			page = tableGroupRepository.findByCityIdAndDistrictIdAndNeighborhoodIdAndStatusAndExpiresAtAfter(
@@ -413,15 +436,17 @@ public class TableGroupServiceImpl implements TableGroupService{
 			);
 		}
 		
-		return page.map(tableGroupMapper::toDto);
+		return page.map(tableGroupMapper::toDto)
+				.map(this::enrichOwnerMeta);
 	}
+	
 	
 	// tek masa detayi
 	@Override
 	public TableGroupResponseDto getTableGroupDetail(UUID tableGroupId) {
 		TableGroup entity = tableGroupRepository.findById(tableGroupId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
-				return tableGroupMapper.toDto(entity);
+		return enrichOwnerMeta(tableGroupMapper.toDto(entity));
 	}
 	
 	public void expireExpiredTableGroups() {
@@ -472,4 +497,95 @@ public class TableGroupServiceImpl implements TableGroupService{
 		);
 		
 	}
+	
+	private TableGroupResponseDto enrichOwnerMeta(TableGroupResponseDto dto) { //degisti
+		String ownerUsername = userRepository.findById(dto.ownerId()) //eklendi
+		                                     .map(User::getUsername) //eklendi
+		                                     .orElse(null); //eklendi
+		
+		UserProfilesResolveResponseDto resolved = //eklendi
+				publicProfileResolverService.resolveByUserId(dto.ownerId()); //eklendi
+		
+		String ownerProfileImageUrl = null; //eklendi
+		if (resolved != null && resolved.profiles() != null) { //eklendi
+			ownerProfileImageUrl = resolved.profiles().stream() //eklendi
+			                               .map(p -> p.profilePictureUrl()) //eklendi
+			                               .filter(url -> url != null && !url.trim().isEmpty()) //eklendi
+			                               .findFirst() //eklendi
+			                               .orElse(null); //eklendi
+		}
+		
+		Set<TableGroupParticipantDto> enrichedParticipants = enrichParticipantsMeta(dto.participants()); //eklendi
+		
+		
+		return new TableGroupResponseDto( //degisti
+		                                  dto.id(),
+		                                  dto.ownerId(),
+		                                  ownerUsername, //degisti
+		                                  ownerProfileImageUrl, //degisti
+		                                  dto.venueId(),
+		                                  dto.venueName(),
+		                                  dto.maxPersonCount(),
+		                                  dto.genderPrefs(),
+		                                  dto.ageMin(),
+		                                  dto.ageMax(),
+		                                  dto.expiresAt(),
+		                                  dto.status(),
+		                                  enrichedParticipants,
+		                                  dto.city(),
+		                                  dto.district(),
+		                                  dto.neighborhood()
+		);
+	}
+	
+	
+	private Set<TableGroupParticipantDto> enrichParticipantsMeta(Set<TableGroupParticipantDto> participants) { //eklendi
+		if (participants == null || participants.isEmpty()) { //eklendi
+			return participants; //eklendi
+		} //eklendi
+		
+		Map<UUID, String> usernameCache = new HashMap<>(); //eklendi
+		Map<UUID, String> profileImageCache = new HashMap<>(); //eklendi
+		Set<TableGroupParticipantDto> enriched = new LinkedHashSet<>(); //eklendi
+		
+		for (TableGroupParticipantDto participant : participants) { //eklendi
+			UUID userId = participant.userId(); //eklendi
+			String username = usernameCache.computeIfAbsent(userId, this::resolveUsernameByUserId); //eklendi
+			String profileImageUrl = profileImageCache.computeIfAbsent(userId, this::resolveProfileImageByUserId); //eklendi
+			
+			enriched.add( //eklendi
+			              TableGroupParticipantDto.builder() //eklendi
+			                                      .userId(participant.userId()) //eklendi
+			                                      .joinedAt(participant.joinedAt()) //eklendi
+			                                      .status(participant.status()) //eklendi
+			                                      .joinNote(participant.joinNote()) //eklendi
+			                                      .username(username) //eklendi
+			                                      .profilePictureUrl(profileImageUrl) //eklendi
+			                                      .build() //eklendi
+			); //eklendi
+		} //eklendi
+		
+		return enriched; //eklendi
+	} //eklendi
+	
+	private String resolveUsernameByUserId(UUID userId) { //eklendi
+		return userRepository.findById(userId) //eklendi
+		                     .map(User::getUsername) //eklendi
+		                     .orElse(null); //eklendi
+	} //eklendi
+	
+	private String resolveProfileImageByUserId(UUID userId) { //eklendi
+		UserProfilesResolveResponseDto resolved = publicProfileResolverService.resolveByUserId(userId); //eklendi
+		if (resolved == null || resolved.profiles() == null) { //eklendi
+			return null; //eklendi
+		} //eklendi
+		
+		return resolved.profiles().stream() //eklendi
+		               .map(p -> p.profilePictureUrl()) //eklendi
+		               .filter(url -> url != null && !url.trim().isEmpty()) //eklendi
+		               .findFirst() //eklendi
+		               .orElse(null); //eklendi
+	} //eklendi
+	
+	
 }

@@ -20,7 +20,10 @@ public interface TableGroupMapper {
 	@Mapping(target = "neighborhood", expression = "java(toLocationDto(entity.getNeighborhood()))")
 	TableGroupResponseDto toDto(TableGroup entity);
 	
-	TableGroupParticipantDto toDto(TableGroupParticipant entity);
+	@Mapping(target = "username", expression = "java((String) null)") //eklendi
+	@Mapping(target = "profilePictureUrl", expression = "java((String) null)") //eklendi
+	TableGroupParticipantDto toDto(TableGroupParticipant entity); //degisti
+	
 	
 	Set<TableGroupParticipantDto> toParticipantDtoSet(Set<TableGroupParticipant> entities);
 	

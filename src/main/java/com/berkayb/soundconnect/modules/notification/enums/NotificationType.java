@@ -44,7 +44,7 @@ public enum NotificationType {
 	TABLE_EXPIRED("TABLE","Masa suresi doldu",false);
 	
 	
-	//TODO diger moduller gelecek simdilik bu sekilde kalsin once moduleyi bitirelim.
+	//FIXME diger modulleri de gelistirdikce eklemeyi unutma
 	
 	
 	

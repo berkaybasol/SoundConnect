@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.tablegroup.controller;
 
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
+import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupJoinRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -105,11 +106,12 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.JOIN)
 	public ResponseEntity<BaseResponse<Void>> joinTableGroup(
 			Principal principal,
-			@PathVariable UUID tableGroupId
+			@PathVariable UUID tableGroupId,
+			@Valid @RequestBody(required = false) TableGroupJoinRequestDto dto
 	) {
 		UUID userId = getCurrentUserId(principal);
-		
-		tableGroupService.joinTableGroup(userId, tableGroupId);
+		String joinNote = dto == null ? null : dto.note();
+		tableGroupService.joinTableGroup(userId, tableGroupId, joinNote);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Void>builder()

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.tablegroup.entity;
 
 import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
+import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,5 +30,8 @@ public class TableGroupParticipant {
 	// katilimcinin durumu
 	@Enumerated(EnumType.STRING)
 	private ParticipantStatus status;
+	
+	@Column(name = "join_note", length = 256)
+	private String joinNote;
 	
 }

@@ -130,8 +130,6 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 	@Override
 	@Transactional (readOnly = true)
 	public Page<TableGroupMessageResponseDto> getMessages(UUID requesterId, UUID tableGroupId, Pageable pageable) {
-		// unread badge'i sifirla
-		unreadHelper.resetUnread(requesterId, tableGroupId);
 		
 		// masa var mi?
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
@@ -149,6 +147,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 					);
 					throw new SoundConnectException(ErrorType.UNAUTHORIZED,"Bu masanin sohbetine erisimin yok");
 				}
+				unreadHelper.resetUnread(requesterId, tableGroupId);
 		// mesajlari db'den cek
 		return messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(tableGroupId,pageable)
 				.map(messageMapper::toResponseDto);
