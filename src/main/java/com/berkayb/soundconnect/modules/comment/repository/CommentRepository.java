@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,4 +41,21 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
        group by c.parentComment.id
        """)
 	List<CommentReplyCountProjection> countRepliesByParentIds(@Param("parentIds") List<UUID> parentIds);
+	
+	@Query("""
+	select c.targetId as targetId, count(c) as count
+	from Comment c
+	where c.targetType = :targetType
+	  and c.targetId in :targetIds
+	group by c.targetId
+	""")
+	List<TargetCountProjection> countByTargetTypeAndTargetIdIn(
+			@Param("targetType") EngagementTargetType targetType,
+			@Param("targetIds") Collection<UUID> targetIds
+	);
+	
+	interface TargetCountProjection {
+		UUID getTargetId();
+		long getCount();
+	}
 }

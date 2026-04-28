@@ -12,7 +12,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +24,32 @@ public class LikeServiceImpl implements LikeService{
 	private final LikeRepository likeRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final EngagementTargetValidator engagementTargetValidator;
+	
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, Long> countLikesByTargets(EngagementTargetType targetType, Collection<UUID> targetIds) {
+		if (targetIds == null || targetIds.isEmpty()) {
+			return Collections.emptyMap();
+		}
+		
+		return likeRepository.countByTargetTypeAndTargetIdIn(targetType, targetIds)
+		                     .stream()
+		                     .collect(Collectors.toMap(
+				                     LikeRepository.TargetCountProjection::getTargetId,
+				                     LikeRepository.TargetCountProjection::getCount
+		                     ));
+	}
+	
+	@Override
+	@Transactional(readOnly = true)
+	public Set<UUID> findLikedTargetIds(UUID userId, EngagementTargetType targetType, Collection<UUID> targetIds) {
+		if (userId == null || targetIds == null || targetIds.isEmpty()) {
+			return Collections.emptySet();
+		}
+		
+		return likeRepository.findLikedTargetIds(userId, targetType, targetIds);
+	}
+	
 	
 	@Override
 	public void like(UUID userId, EngagementTargetType targetType, UUID targetId) {

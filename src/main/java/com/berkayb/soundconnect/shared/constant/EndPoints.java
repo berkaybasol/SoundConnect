@@ -121,27 +121,23 @@ public class EndPoints {
 		
 		public static final String BASE = API + VERSION + "/overthinking";
 		
-		// CREATE
 		public static final String CREATE = "/create";
-		
-		// UPDATE
 		public static final String UPDATE = "/{postId}";
-		
-		// DELETE
 		public static final String DELETE = "/{postId}";
-		
-		// GET BY ID
 		public static final String BY_ID = "/{postId}";
 		
-		// GET POSTS OF LOGGED USER
 		public static final String MY_POSTS = "/me";
-		
-		// GET POSTS BY ARTIST (musician or band)
 		public static final String BY_ARTIST = "/artist/{artistId}";
-		
-		// GLOBAL FEED (all posts)
 		public static final String FEED = "/feed";
+		
+		// REVEAL REQUEST
+		public static final String CREATE_REVEAL_REQUEST = "/{postId}/reveal-requests";
+		public static final String APPROVE_REVEAL_REQUEST = "/reveal-requests/{requestId}/approve";
+		public static final String REJECT_REVEAL_REQUEST = "/reveal-requests/{requestId}/reject";
+		public static final String INCOMING_REVEAL_REQUESTS = "/reveal-requests/incoming";
+		public static final String SENT_REVEAL_REQUESTS = "/reveal-requests/sent";
 	}
+	
 	
 	public static class Track {
 		

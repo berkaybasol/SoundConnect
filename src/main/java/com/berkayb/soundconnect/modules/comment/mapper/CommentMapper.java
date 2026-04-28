@@ -4,114 +4,132 @@ import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyRespons
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
-import com.berkayb.soundconnect.modules.media.entity.MediaAsset; //eklendi
-import com.berkayb.soundconnect.modules.media.service.MediaAssetService; //eklendi
-import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile; //eklendi
-import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository; //eklendi
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.venue.entity.Venue; //eklendi
-import com.berkayb.soundconnect.modules.venue.repository.VenueRepository; //eklendi
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.springframework.beans.factory.annotation.Autowired; //eklendi
+import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.List; //eklendi
-import java.util.UUID; //eklendi
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Comment entity <-> DTO dönüşümleri için MapStruct mapper.
  */
 @Mapper(componentModel = "spring")
-public abstract class CommentMapper { //eklendi
+public abstract class CommentMapper {
 	
-	@Autowired //eklendi
-	protected MediaAssetService mediaAssetService; //eklendi
+	@Autowired
+	protected MediaAssetService mediaAssetService;
 	
-	@Autowired //eklendi
-	protected VenueRepository venueRepository; //eklendi
+	@Autowired
+	protected VenueRepository venueRepository;
 	
-	@Autowired //eklendi
-	protected VenueProfileRepository venueProfileRepository; //eklendi
+	@Autowired
+	protected VenueProfileRepository venueProfileRepository;
 	
-	/**
-	 * User entity'den UI'da kullanılacak minimal user özet DTO'su.
-	 */
-	@Mapping(target = "id", source = "id")
-	@Mapping(target = "username", source = "username")
-	@Mapping(target = "avatarUrl", expression = "java(resolveAvatarUrl(user))") //eklendi
-	public abstract UserSummaryDto toUserSummaryDto(User user); //eklendi
+	protected UserSummaryDto toUserSummaryDto(User user) {
+		if (user == null) {
+			return null;
+		}
+		
+		return new UserSummaryDto(
+				user.getId(),
+				user.getUsername(),
+				resolveAvatarUrl(user)
+		);
+	}
 	
 	/**
 	 * Root comment için Response DTO.
-	 * replyCount servisten parametre olarak gelir.
+	 * maskAuthor true ise gerçek user bilgisi yerine anonim özet döner.
 	 */
-	@Mapping(target = "user", expression = "java(toUserSummaryDto(comment.getUser()))")
+	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser()))")
+	@Mapping(target = "anonymousAuthor", source = "maskAuthor")
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
 	@Mapping(target = "replyCount", source = "replyCount")
-	public abstract CommentResponseDto toCommentResponseDto(Comment comment, int replyCount); //eklendi
+	public abstract CommentResponseDto toCommentResponseDto(Comment comment, int replyCount, boolean maskAuthor);
 	
 	/**
-	 * Reply (cevap) yorumlar için Response DTO.
-	 * replyCount içermiyor; sadece temel bilgiler.
+	 * Reply yorumlar için Response DTO.
+	 * maskAuthor true ise gerçek user bilgisi yerine anonim özet döner.
 	 */
-	@Mapping(target = "user", expression = "java(toUserSummaryDto(comment.getUser()))")
+	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser()))")
+	@Mapping(target = "anonymousAuthor", source = "maskAuthor")
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
-	public abstract CommentReplyResponseDto toCommentReplyResponseDto(Comment comment); //eklendi
+	public abstract CommentReplyResponseDto toCommentReplyResponseDto(Comment comment, boolean maskAuthor);
 	
-	protected String resolveAvatarUrl(User user) { //eklendi
-		if (user == null) return null; //eklendi
+	protected UserSummaryDto anonymousUserSummaryDto() {
+		return new UserSummaryDto(
+				null,
+				"Anonymous Author",
+				null
+		);
+	}
+	
+	protected String resolveAvatarUrl(User user) {
+		if (user == null) return null;
 		
 		if (user.getMusicianProfile() != null &&
-				user.getMusicianProfile().getProfilePictureMediaId() != null) { //eklendi
-			String musicianAvatar = resolveMediaUrl(user.getMusicianProfile().getProfilePictureMediaId()); //eklendi
-			if (musicianAvatar != null && !musicianAvatar.isBlank()) { //eklendi
-				return musicianAvatar; //eklendi
-			} //eklendi
-		} //eklendi
+				user.getMusicianProfile().getProfilePictureMediaId() != null) {
+			String musicianAvatar = resolveMediaUrl(user.getMusicianProfile().getProfilePictureMediaId());
+			if (musicianAvatar != null && !musicianAvatar.isBlank()) {
+				return musicianAvatar;
+			}
+		}
 		
-		List<Venue> ownedVenues = venueRepository.findAllByOwnerId(user.getId()); //eklendi
-		if (ownedVenues != null && !ownedVenues.isEmpty()) { //eklendi
-			for (Venue venue : ownedVenues) { //eklendi
-				VenueProfile venueProfile = venueProfileRepository.findByVenueId(venue.getId()).orElse(null); //eklendi
-				if (venueProfile != null && venueProfile.getProfilePictureMediaId() != null) { //eklendi
-					String venueAvatar = resolveMediaUrl(venueProfile.getProfilePictureMediaId()); //eklendi
-					if (venueAvatar != null && !venueAvatar.isBlank()) { //eklendi
-						return venueAvatar; //eklendi
-					} //eklendi
-				} //eklendi
-			} //eklendi
-		} //eklendi
+		List<Venue> ownedVenues = venueRepository.findAllByOwnerId(user.getId());
+		if (ownedVenues != null && !ownedVenues.isEmpty()) {
+			for (Venue venue : ownedVenues) {
+				VenueProfile venueProfile = venueProfileRepository.findByVenueId(venue.getId()).orElse(null);
+				if (venueProfile != null && venueProfile.getProfilePictureMediaId() != null) {
+					String venueAvatar = resolveMediaUrl(venueProfile.getProfilePictureMediaId());
+					if (venueAvatar != null && !venueAvatar.isBlank()) {
+						return venueAvatar;
+					}
+				}
+			}
+		}
 		
-		final String raw = user.getProfilePicture(); //eklendi
-		if (raw == null || raw.isBlank()) return null; //eklendi
+		final String raw = user.getProfilePicture();
+		if (raw == null || raw.isBlank()) return null;
 		
-		if (raw.startsWith("http://") || raw.startsWith("https://")) { //eklendi
-			return raw; //eklendi
-		} //eklendi
+		if (raw.startsWith("http://") || raw.startsWith("https://")) {
+			return raw;
+		}
 		
-		try { //eklendi
-			UUID assetId = UUID.fromString(raw); //eklendi
-			return resolveMediaUrl(assetId); //eklendi
-		} catch (Exception ignored) { //eklendi
-		} //eklendi
+		try {
+			UUID assetId = UUID.fromString(raw);
+			return resolveMediaUrl(assetId);
+		} catch (Exception ignored) {
+		}
 		
-		return raw; //eklendi
-	} //eklendi
+		return raw;
+	}
 	
-	protected String resolveMediaUrl(UUID mediaId) { //eklendi
-		if (mediaId == null) return null; //eklendi
-		try { //eklendi
-			MediaAsset asset = mediaAssetService.getById(mediaId); //eklendi
-			if (asset.getSourceUrl() != null && !asset.getSourceUrl().isBlank()) { //eklendi
-				return asset.getSourceUrl(); //eklendi
-			} //eklendi
-			if (asset.getPlaybackUrl() != null && !asset.getPlaybackUrl().isBlank()) { //eklendi
-				return asset.getPlaybackUrl(); //eklendi
-			} //eklendi
-		} catch (Exception ignored) { //eklendi
-		} //eklendi
-		return null; //eklendi
-	} //eklendi
+	protected String resolveMediaUrl(UUID mediaId) {
+		if (mediaId == null) return null;
+		
+		try {
+			MediaAsset asset = mediaAssetService.getById(mediaId);
+			
+			if (asset.getSourceUrl() != null && !asset.getSourceUrl().isBlank()) {
+				return asset.getSourceUrl();
+			}
+			
+			if (asset.getPlaybackUrl() != null && !asset.getPlaybackUrl().isBlank()) {
+				return asset.getPlaybackUrl();
+			}
+		} catch (Exception ignored) {
+		}
+		
+		return null;
+	}
 }

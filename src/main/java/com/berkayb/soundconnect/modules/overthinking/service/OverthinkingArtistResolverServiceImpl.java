@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.overthinking.service;
 
-
 import com.berkayb.soundconnect.modules.overthinking.dto.request.OverthinkingPostSaveRequestDto;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingArtistType;
@@ -30,17 +29,13 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 	
 	@Override
 	public void resolveAndSetArtist(OverthinkingPost post, OverthinkingPostSaveRequestDto dto) {
+		validateMusicSource(dto);
 		
-		// birden fazla muzik kaynayi gondermeyi engelle
-		validateSingleSource(dto);
-		
-		// spotify secilmisse
-		if (dto.spotifyArtistId() != null) {
+		if (hasSpotifySource(dto)) {
 			handleSpotify(post, dto.spotifyArtistId());
 			return;
 		}
 		
-		// MusicianProfile track secilmisse
 		if (dto.musicianTrackId() != null) {
 			handleTrack(post, dto.musicianTrackId(), TrackOwnerType.MUSICIAN_PROFILE);
 			return;
@@ -51,21 +46,39 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		}
 	}
 	
-	private void validateSingleSource(OverthinkingPostSaveRequestDto dto) {
-		int count = 0;
-		if (dto.spotifyArtistId() != null) count++;
-		if (dto.musicianTrackId() != null) count++;
-		if (dto.bandTrackId() != null) count++;
+	private void validateMusicSource(OverthinkingPostSaveRequestDto dto) {
+		boolean spotifyTrackProvided = hasText(dto.spotifyTrackUrl());
+		boolean spotifyArtistProvided = hasText(dto.spotifyArtistId());
+		boolean spotifyProvided = spotifyTrackProvided || spotifyArtistProvided;
+		boolean musicianTrackProvided = dto.musicianTrackId() != null;
+		boolean bandTrackProvided = dto.bandTrackId() != null;
 		
-		if (count > 1) {
-			log.warn("birden fazla muzik kaynagi gonderildi");
+		int sourceCount = 0;
+		if (spotifyProvided) sourceCount++;
+		if (musicianTrackProvided) sourceCount++;
+		if (bandTrackProvided) sourceCount++;
+		
+		if (sourceCount > 1) {
+			log.warn("[Overthinking] Birden fazla muzik kaynagi gonderildi");
 			throw new SoundConnectException(ErrorType.OVERTHINKING_MULTIPLE_MUSIC_SOURCE);
+		}
+		
+		if (spotifyProvided && (!spotifyTrackProvided || !spotifyArtistProvided)) {
+			log.warn("[Overthinking] Spotify source eksik. spotifyTrackUrl={}, spotifyArtistId={}",
+			         dto.spotifyTrackUrl(), dto.spotifyArtistId());
+			throw new SoundConnectException(ErrorType.OVERTHINKING_SPOTIFY_SOURCE_INVALID);
 		}
 	}
 	
-	// Spotify -> once MusicianProfile, sonra Band match edilen sanatci setlenir
+	private boolean hasSpotifySource(OverthinkingPostSaveRequestDto dto) {
+		return hasText(dto.spotifyTrackUrl()) && hasText(dto.spotifyArtistId());
+	}
+	
+	private boolean hasText(String value) {
+		return value != null && !value.isBlank();
+	}
+	
 	private void handleSpotify(OverthinkingPost post, String spotifyArtistId) {
-		
 		MusicianProfile mp = musicianProfileRepository
 				.findBySpotifyArtistId(spotifyArtistId)
 				.orElse(null);
@@ -73,7 +86,7 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		if (mp != null) {
 			post.setArtistId(mp.getId());
 			post.setArtistType(OverthinkingArtistType.MUSICIAN_PROFILE);
-			log.info("Spotify artist match -> MusicianProfile: {}", mp.getId());
+			log.info("[Overthinking] Spotify artist match -> MusicianProfile: {}", mp.getId());
 			return;
 		}
 		
@@ -83,31 +96,30 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		if (band != null) {
 			post.setArtistId(band.getId());
 			post.setArtistType(OverthinkingArtistType.BAND);
-			log.info("Spotify artist match -> Band: {}", band.getId());
+			log.info("[Overthinking] Spotify artist match -> Band: {}", band.getId());
 			return;
 		}
 		
-		// spotify sanatcisi soundconnect'te yok artist null kalabilir
-		log.info("Sanatci SoundConnect'te bulanamadi: {}", spotifyArtistId);
+		log.info("[Overthinking] Spotify sanatcisi SoundConnect'te bulunamadi: {}", spotifyArtistId);
 	}
 	
 	private void handleTrack(OverthinkingPost post, UUID trackId, TrackOwnerType expectedOwnerType) {
 		Track track = trackService.getTrackEntity(trackId);
 		
 		if (!track.getOwnerType().equals(expectedOwnerType)) {
-			log.warn("[Overthinking] Track {} ownertype uyusmuyor. trackId={}, expected={}", trackId, expectedOwnerType);
+			log.warn("[Overthinking] Track ownerType uyusmuyor. trackId={}, actual={}, expected={}",
+			         trackId, track.getOwnerType(), expectedOwnerType);
 			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 		}
 		
-		// trackten gelen ownerId = artistId
 		post.setArtistId(track.getOwnerId());
 		
 		if (track.getOwnerType() == TrackOwnerType.MUSICIAN_PROFILE) {
 			post.setArtistType(OverthinkingArtistType.MUSICIAN_PROFILE);
- 		} else if (track.getOwnerType() == TrackOwnerType.BAND) {
+		} else if (track.getOwnerType() == TrackOwnerType.BAND) {
 			post.setArtistType(OverthinkingArtistType.BAND);
 		}
-		log.warn("[Overthinking] Track match = artistId={}, type = {}",post.getArtistId(), post.getArtistType());
+		
+		log.info("[Overthinking] Track match -> artistId={}, type={}", post.getArtistId(), post.getArtistType());
 	}
-	
 }

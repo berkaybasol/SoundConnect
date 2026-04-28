@@ -28,7 +28,6 @@ public enum NotificationType {
 	// VENUE
 	VENUE_APPLICATION_REJECTED("VENUE", "Mekan başvurun reddedildi", true),
 	
-	
 	// ARTISTVENUELINKAPPLICATION
 	ARTIST_VENUE_LINK_APPLICATION_REQUEST("ARTIST_VENUE", "Bağlanma isteği gönderildi", false),
 	ARTIST_VENUE_LINK_APPLICATION_ACCEPT("ARTIST_VENUE", "Bağlanma isteğin onaylandı", false),
@@ -41,7 +40,13 @@ public enum NotificationType {
 	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false),
 	TABLE_REMOVED ("TABLE","Masadan cikarildin",false),
 	TABLE_CANCELLED ("TABLE","Masa etkinligi iptal edildi.",false),
-	TABLE_EXPIRED("TABLE","Masa suresi doldu",false);
+	TABLE_EXPIRED("TABLE","Masa suresi doldu",false),
+	
+	// OVERTHINKING
+	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil goruntuleme istegi alindi",false),
+	OVERTHINKING_REVEAL_REQUEST_APPROVED("OVERTHINKING","Profil goruntuleme istegi kabul edildi",false),
+	OVERTHINKING_REVEAL_REQUEST_REJECTED("OVERTHINKING","Profil goruntuleme istegi reddedildi",false);
+	
 	
 	
 	//FIXME diger modulleri de gelistirdikce eklemeyi unutma

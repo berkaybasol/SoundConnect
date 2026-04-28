@@ -173,6 +173,17 @@ public enum ErrorType {
 	// OVERTHINKING(9400 - 9449)
 	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
 	OVERTHINKING_POST_NOT_FOUND(9401,"Overthinking post not found",HttpStatus.NOT_FOUND,"Overthinking postu bulunamadi."),
+	OVERTHINKING_REVEAL_REQUEST_RECEIVED(9402,"Overthinking reveal request received",HttpStatus.OK,"kimlik goruntuleme istegi alindi"),
+	OVERTHINKING_REVEAL_REQUEST_APPROVED(9403,"Overthinking reveal request approved",HttpStatus.ACCEPTED,"kimlik goruntuleme istegi onaylandi"),
+	OVERTHINKING_REVEAL_REQUEST_REJECTED(9404,"Overthinking reveal request rejected",HttpStatus.OK,"kimlik goruntuleme istegi reddedildi"),
+	OVERTHINKING_POST_NOT_ANONYMOUS(9405,"Overthinking post is not anonymous",HttpStatus.BAD_REQUEST,"Bu post anonim olmadığı için profil görüntüleme isteği gönderilemez."),
+	OVERTHINKING_REVEAL_REQUEST_ALREADY_EXISTS(9406, "Reveal request already exists", HttpStatus.CONFLICT, "Bu post için daha önce profil görüntüleme isteği gönderdiniz."),
+	OVERTHINKING_REVEAL_REQUEST_SELF_NOT_ALLOWED(9407, "Author cannot request own profile reveal", HttpStatus.BAD_REQUEST, "Kendi postunuz için profil görüntüleme isteği gönderemezsiniz."),
+	OVERTHINKING_REVEAL_REQUEST_NOT_FOUND(9408, "Reveal request not found", HttpStatus.NOT_FOUND, "Profil görüntüleme isteği bulunamadı."),
+	OVERTHINKING_REVEAL_REQUEST_ALREADY_DECIDED(9409, "Reveal request already decided", HttpStatus.CONFLICT, "Bu profil görüntüleme isteği daha önce sonuçlandırılmış."),
+	OVERTHINKING_REVEAL_REQUEST_INVALID_STATUS (9410, "Reveal request invalid status", HttpStatus.BAD_REQUEST, "status gecersiz"),
+	OVERTHINKING_SPOTIFY_SOURCE_INVALID(9411,"Spotify source invalid", HttpStatus.BAD_REQUEST,"spotify kaynagi yanlis"),
+	
 	
 	// TRACK(9450 - 9499)
 	TRACK_NOT_FOUND(9450,"Track not found", HttpStatus.NOT_FOUND, "Parca bulunamadi"),

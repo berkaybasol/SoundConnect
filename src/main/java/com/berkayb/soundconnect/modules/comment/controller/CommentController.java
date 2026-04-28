@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.comment.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
@@ -65,33 +66,39 @@ public class CommentController {
 	@GetMapping(LIST_BY_TARGET)
 	@Operation(summary = "Yorumlari getir")
 	public ResponseEntity<BaseResponse<Page<CommentResponseDto>>> getComments(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId,
 			@ParameterObject Pageable pageable
 	) {
-		Page<CommentResponseDto> result = commentService.getComments(targetType, targetId, pageable);
+		UUID viewerId = principal != null ? principal.getId() : null;
+		
+		Page<CommentResponseDto> result = commentService.getComments(viewerId, targetType, targetId, pageable);
 		
 		return ResponseEntity.ok(BaseResponse.<Page<CommentResponseDto>>builder()
-				                         .success(true)
-				                         .message("Yorumlar listelendi")
-				                         .code(200)
-				                         .data(result)
-				                         .build());
+		                                     .success(true)
+		                                     .message("Yorumlar listelendi")
+		                                     .code(200)
+		                                     .data(result)
+		                                     .build());
 	}
 	
 	@GetMapping(LIST_REPLIES)
 	@Operation(summary = "Yanitlari getir")
 	public ResponseEntity<BaseResponse<Page<CommentReplyResponseDto>>> getReplies(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID commentId,
 			@ParameterObject Pageable pageable
 	) {
-		Page<CommentReplyResponseDto> result = commentService.getReplies(commentId, pageable);
+		UUID viewerId = principal != null ? principal.getId() : null;
+		
+		Page<CommentReplyResponseDto> result = commentService.getReplies(viewerId, commentId, pageable);
 		
 		return ResponseEntity.ok(BaseResponse.<Page<CommentReplyResponseDto>>builder()
-				                         .success(true)
-				                         .message("Yanitlar listelendi")
-				                         .code(200)
-				                         .data(result)
-				                         .build());
+		                                     .success(true)
+		                                     .message("Yanitlar listelendi")
+		                                     .code(200)
+		                                     .data(result)
+		                                     .build());
 	}
 }
