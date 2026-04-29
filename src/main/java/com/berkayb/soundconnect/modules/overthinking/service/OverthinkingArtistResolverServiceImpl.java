@@ -31,8 +31,12 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 	public void resolveAndSetArtist(OverthinkingPost post, OverthinkingPostSaveRequestDto dto) {
 		validateMusicSource(dto);
 		
-		if (hasSpotifySource(dto)) {
-			handleSpotify(post, dto.spotifyArtistId());
+		// Spotify track URL varsa post Spotify baglantili kabul edilir.
+		// spotifyArtistId opsiyoneldir; varsa SoundConnect artist eslestirmesi denenir.
+		if (hasText(dto.spotifyTrackUrl())) {
+			if (hasText(dto.spotifyArtistId())) {
+				handleSpotify(post, dto.spotifyArtistId());
+			}
 			return;
 		}
 		
@@ -49,12 +53,11 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 	private void validateMusicSource(OverthinkingPostSaveRequestDto dto) {
 		boolean spotifyTrackProvided = hasText(dto.spotifyTrackUrl());
 		boolean spotifyArtistProvided = hasText(dto.spotifyArtistId());
-		boolean spotifyProvided = spotifyTrackProvided || spotifyArtistProvided;
 		boolean musicianTrackProvided = dto.musicianTrackId() != null;
 		boolean bandTrackProvided = dto.bandTrackId() != null;
 		
 		int sourceCount = 0;
-		if (spotifyProvided) sourceCount++;
+		if (spotifyTrackProvided) sourceCount++;
 		if (musicianTrackProvided) sourceCount++;
 		if (bandTrackProvided) sourceCount++;
 		
@@ -63,15 +66,13 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 			throw new SoundConnectException(ErrorType.OVERTHINKING_MULTIPLE_MUSIC_SOURCE);
 		}
 		
-		if (spotifyProvided && (!spotifyTrackProvided || !spotifyArtistProvided)) {
-			log.warn("[Overthinking] Spotify source eksik. spotifyTrackUrl={}, spotifyArtistId={}",
-			         dto.spotifyTrackUrl(), dto.spotifyArtistId());
+		if (spotifyArtistProvided && !spotifyTrackProvided) {
+			log.warn(
+					"[Overthinking] Spotify artist id var ama track url yok. spotifyArtistId={}",
+					dto.spotifyArtistId()
+			);
 			throw new SoundConnectException(ErrorType.OVERTHINKING_SPOTIFY_SOURCE_INVALID);
 		}
-	}
-	
-	private boolean hasSpotifySource(OverthinkingPostSaveRequestDto dto) {
-		return hasText(dto.spotifyTrackUrl()) && hasText(dto.spotifyArtistId());
 	}
 	
 	private boolean hasText(String value) {
@@ -107,8 +108,12 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 		Track track = trackService.getTrackEntity(trackId);
 		
 		if (!track.getOwnerType().equals(expectedOwnerType)) {
-			log.warn("[Overthinking] Track ownerType uyusmuyor. trackId={}, actual={}, expected={}",
-			         trackId, track.getOwnerType(), expectedOwnerType);
+			log.warn(
+					"[Overthinking] Track ownerType uyusmuyor. trackId={}, actual={}, expected={}",
+					trackId,
+					track.getOwnerType(),
+					expectedOwnerType
+			);
 			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 		}
 		
