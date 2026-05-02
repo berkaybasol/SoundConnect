@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingRevealReq
 import com.berkayb.soundconnect.modules.overthinking.mapper.OverthinkingPostMapper;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingRevealRequestRepository;
+import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -22,10 +24,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +46,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	private final OverthinkingPostMapper postMapper;
 	private final LikeService likeService;
 	private final CommentService commentService;
+	private final SpotifyApiClient spotifyApiClient;
+	private static final Pattern SPOTIFY_TRACK_PATH = Pattern.compile("track/([A-Za-z0-9]+)");
 	
 	@Override
 	@Transactional
@@ -99,6 +107,9 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		                                        .visibilityType(dto.visibilityType())
 		                                        .spotifyTrackUrl(dto.spotifyTrackUrl())
 		                                        .spotifyArtistId(dto.spotifyArtistId())
+		                                        .spotifyTrackName(dto.spotifyTrackName())
+		                                        .spotifyArtistName(dto.spotifyArtistName())
+		                                        .spotifyAlbumImageUrl(dto.spotifyAlbumImageUrl())
 		                                        .musicianTrackId(dto.musicianTrackId())
 		                                        .bandTrackId(dto.bandTrackId())
 		                                        .build();
@@ -131,6 +142,9 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		
 		post.setSpotifyTrackUrl(dto.spotifyTrackUrl());
 		post.setSpotifyArtistId(dto.spotifyArtistId());
+		post.setSpotifyTrackName(dto.spotifyTrackName());
+		post.setSpotifyArtistName(dto.spotifyArtistName());
+		post.setSpotifyAlbumImageUrl(dto.spotifyAlbumImageUrl());
 		post.setMusicianTrackId(dto.musicianTrackId());
 		post.setBandTrackId(dto.bandTrackId());
 		
@@ -153,6 +167,7 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		Map<UUID, Long> commentCounts = getCommentCounts(posts);
 		Set<UUID> likedPostIds = getLikedPostIds(posts, viewerId);
 		Set<UUID> approvedRevealPostIds = getApprovedRevealPostIds(posts, viewerId);
+		Map<String, SpotifyTrackItemDto> spotifyTracks = getSpotifyTracks(posts);
 		
 		return page.map(post -> toViewerAwareDto(
 				post,
@@ -160,7 +175,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				likeCounts,
 				commentCounts,
 				likedPostIds,
-				approvedRevealPostIds
+				approvedRevealPostIds,
+				spotifyTracks
 		));
 	}
 	
@@ -169,6 +185,7 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		Map<UUID, Long> commentCounts = getCommentCounts(List.of(post));
 		Set<UUID> likedPostIds = getLikedPostIds(List.of(post), viewerId);
 		Set<UUID> approvedRevealPostIds = getApprovedRevealPostIds(List.of(post), viewerId);
+		Map<String, SpotifyTrackItemDto> spotifyTracks = getSpotifyTracks(List.of(post));
 		
 		return toViewerAwareDto(
 				post,
@@ -176,7 +193,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				likeCounts,
 				commentCounts,
 				likedPostIds,
-				approvedRevealPostIds
+				approvedRevealPostIds,
+				spotifyTracks
 		);
 	}
 	
@@ -186,16 +204,19 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 			Map<UUID, Long> likeCounts,
 			Map<UUID, Long> commentCounts,
 			Set<UUID> likedPostIds,
-			Set<UUID> approvedRevealPostIds
+			Set<UUID> approvedRevealPostIds,
+			Map<String, SpotifyTrackItemDto> spotifyTracks
 	) {
 		boolean canViewAuthor = canViewAuthor(post, viewerId, approvedRevealPostIds);
+		String spotifyTrackId = extractSpotifyTrackId(post.getSpotifyTrackUrl());
 		
 		return postMapper.toDto(
 				post,
 				canViewAuthor,
 				likeCounts.getOrDefault(post.getId(), 0L),
 				commentCounts.getOrDefault(post.getId(), 0L),
-				likedPostIds.contains(post.getId())
+				likedPostIds.contains(post.getId()),
+				spotifyTrackId == null ? null : spotifyTracks.get(spotifyTrackId)
 		);
 	}
 	
@@ -281,5 +302,45 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				OverthinkingRevealRequestStatus.APPROVED,
 				postIds
 		);
+	}
+	
+	private Map<String, SpotifyTrackItemDto> getSpotifyTracks(List<OverthinkingPost> posts) {
+		List<String> trackIds = posts.stream()
+		                             .map(post -> extractSpotifyTrackId(post.getSpotifyTrackUrl()))
+		                             .filter(Objects::nonNull)
+		                             .distinct()
+		                             .toList();
+		if (trackIds.isEmpty()) {
+			return Collections.emptyMap();
+		}
+		
+		try {
+			return spotifyApiClient.getTracksByIds(trackIds)
+			                       .stream()
+			                       .filter(track -> track.spotifyTrackId() != null && !track.spotifyTrackId().isBlank())
+			                       .collect(Collectors.toMap(
+					                       SpotifyTrackItemDto::spotifyTrackId,
+					                       track -> track,
+					                       (first, ignored) -> first,
+					                       HashMap::new
+			                       ));
+		} catch (Exception ex) {
+			log.warn("[Overthinking] Spotify metadata could not be resolved for tracks={}", trackIds, ex);
+			return Collections.emptyMap();
+		}
+	}
+	
+	private String extractSpotifyTrackId(String spotifyTrackUrl) {
+		if (spotifyTrackUrl == null || spotifyTrackUrl.isBlank()) {
+			return null;
+		}
+		
+		String value = spotifyTrackUrl.trim();
+		var matcher = SPOTIFY_TRACK_PATH.matcher(value);
+		if (matcher.find()) {
+			return matcher.group(1);
+		}
+		
+		return value.matches("[A-Za-z0-9]+") ? value : null;
 	}
 }

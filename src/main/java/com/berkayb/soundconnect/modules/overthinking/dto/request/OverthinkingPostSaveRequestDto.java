@@ -26,6 +26,9 @@ public record OverthinkingPostSaveRequestDto(
 		// Spotify seçilirse
 		String spotifyTrackUrl,
 		String spotifyArtistId,
+		String spotifyTrackName,
+		String spotifyArtistName,
+		String spotifyAlbumImageUrl,
 		
 		// MusicianProfile’dan track
 		UUID musicianTrackId,

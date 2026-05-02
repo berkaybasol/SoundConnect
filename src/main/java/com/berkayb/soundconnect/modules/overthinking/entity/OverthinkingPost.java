@@ -54,6 +54,15 @@ public class OverthinkingPost extends BaseEntity {
 	@Column(name = "spotify_artist_id", length = 255)
 	private String spotifyArtistId; // MusicianProfile veya Band entitylerindeki spotifyArtistId ile eslestirme icin kullanilcak
 	
+	@Column(name = "spotify_track_name", length = 512)
+	private String spotifyTrackName;
+	
+	@Column(name = "spotify_artist_name", length = 512)
+	private String spotifyArtistName;
+	
+	@Column(name = "spotify_album_image_url", length = 1024)
+	private String spotifyAlbumImageUrl;
+	
 	@Column(name = "musician_track_id")
 	private UUID musicianTrackId; // spotiden degil de uygulama icinden secerse
 	

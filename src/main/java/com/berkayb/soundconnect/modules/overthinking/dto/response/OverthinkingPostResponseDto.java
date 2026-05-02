@@ -27,6 +27,9 @@ public record OverthinkingPostResponseDto(
 		// muzik bilgisi
 		String spotifyTrackUrl,
 		String spotifyArtistId,
+		String spotifyTrackName,
+		String spotifyArtistName,
+		String spotifyAlbumImageUrl,
 		UUID musicianTrackId,
 		UUID bandTrackId,
 		
