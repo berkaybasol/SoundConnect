@@ -8,7 +8,11 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.e
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.mapper.ArtistVenueConnectionRequestMapper;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
@@ -16,12 +20,18 @@ import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 // muzisyen ve mekan arasindaki iliski basvurularinin yonetildigi servis sinifidir.
@@ -37,7 +47,9 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private final VenueRepository venueRepository;
 	private final ArtistVenueConnectionRequestMapper artistVenueConnectionRequestMapper;
 	private final BandRepository bandRepository;
+	private final BandMemberRepository bandMemberRepository;
 	private final MediaAssetService mediaAssetService;
+	private final NotificationProducer notificationProducer;
 	
 	@Override
 	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByBand(UUID bandId, RequestStatus status) {
@@ -191,6 +203,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		ArtistVenueConnectionRequest saved = repository.save(request);
 		
 		log.info("Bağlantı başvurusu oluşturuldu. requestId={}", saved.getId());
+		publishRequestCreatedNotification(saved);
 		
 		// response'a çevir
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(saved));
@@ -245,6 +258,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		repository.save(request);
 		
 		log.info("Başvuru onaylandı. requestId={}", requestId);
+		publishRequestDecisionNotification(request, true);
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
 	}
 	
@@ -277,6 +291,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		repository.save(request);
 		
 		log.info("Başvuru reddedildi. requestId={}", requestId);
+		publishRequestDecisionNotification(request, false);
 		
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
 		
@@ -334,6 +349,151 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 				dto.requestByType(),
 				dto.createdAt()
 		);
+	}
+
+	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request) {
+		try {
+			UUID recipientId = requestCreatedRecipientId(request);
+			if (recipientId == null) return;
+
+			notificationProducer.publish(
+					NotificationInboundEvent.builder()
+					                        .recipientId(recipientId)
+					                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
+					                        .title(requestCreatedTitle(request))
+					                        .message(safe(request.getMessage()))
+					                        .payload(notificationPayload(request, "REQUEST_CREATED"))
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
+		} catch (Exception e) {
+			log.warn("ArtistVenue notification request publish failed. requestId={}, err={}",
+			         request.getId(), e.toString());
+		}
+	}
+
+	private void publishRequestDecisionNotification(ArtistVenueConnectionRequest request, boolean accepted) {
+		try {
+			NotificationType type = accepted
+					? NotificationType.ARTIST_VENUE_LINK_APPLICATION_ACCEPT
+					: NotificationType.ARTIST_VENUE_LINK_APPLICATION_REJECT;
+			String action = accepted ? "REQUEST_ACCEPTED" : "REQUEST_REJECTED";
+			String title = accepted ? requestAcceptedTitle(request) : requestRejectedTitle(request);
+
+			for (UUID recipientId : requestDecisionRecipientIds(request)) {
+				notificationProducer.publish(
+						NotificationInboundEvent.builder()
+						                        .recipientId(recipientId)
+						                        .type(type)
+						                        .title(title)
+						                        .message(safe(request.getMessage()))
+						                        .payload(notificationPayload(request, action))
+						                        .emailForce(false)
+						                        .occurredAt(Instant.now())
+						                        .build()
+				);
+			}
+		} catch (Exception e) {
+			log.warn("ArtistVenue notification decision publish failed. requestId={}, accepted={}, err={}",
+			         request.getId(), accepted, e.toString());
+		}
+	}
+
+	private UUID requestCreatedRecipientId(ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			return request.getMusicianProfile() == null || request.getMusicianProfile().getUser() == null
+					? null
+					: request.getMusicianProfile().getUser().getId();
+		}
+		return request.getVenue() == null || request.getVenue().getOwner() == null
+				? null
+				: request.getVenue().getOwner().getId();
+	}
+
+	private List<UUID> requestDecisionRecipientIds(ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			UUID ownerId = request.getVenue() == null || request.getVenue().getOwner() == null
+					? null
+					: request.getVenue().getOwner().getId();
+			return ownerId == null ? List.of() : List.of(ownerId);
+		}
+		if (request.getRequestByType() == RequestByType.BAND && request.getBand() != null) {
+			return bandMemberRepository.findByBandId(request.getBand().getId()).stream()
+			                           .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+			                           .map(BandMember::getUser)
+			                           .filter(Objects::nonNull)
+			                           .map(user -> user.getId())
+			                           .filter(Objects::nonNull)
+			                           .distinct()
+			                           .toList();
+		}
+		UUID musicianUserId = request.getMusicianProfile() == null || request.getMusicianProfile().getUser() == null
+				? null
+				: request.getMusicianProfile().getUser().getId();
+		return musicianUserId == null ? List.of() : List.of(musicianUserId);
+	}
+
+	private String requestCreatedTitle(ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			return displayVenueName(request) + " sana baglanti istegi gonderdi";
+		}
+		return displayApplicantName(request) + " mekanina baglanti istegi gonderdi";
+	}
+
+	private String requestAcceptedTitle(ArtistVenueConnectionRequest request) {
+		return displayVenueName(request) + " baglanti istegini onayladi";
+	}
+
+	private String requestRejectedTitle(ArtistVenueConnectionRequest request) {
+		return displayVenueName(request) + " baglanti istegini reddetti";
+	}
+
+	private Map<String, Object> notificationPayload(ArtistVenueConnectionRequest request, String action) {
+		Map<String, Object> payload = new HashMap<>();
+		put(payload, "module", "ARTIST_VENUE");
+		put(payload, "action", action);
+		put(payload, "requestId", request.getId());
+		put(payload, "requestByType", request.getRequestByType());
+		put(payload, "status", request.getStatus());
+		put(payload, "musicianProfileId", request.getMusicianProfile() == null ? null : request.getMusicianProfile().getId());
+		put(payload, "bandId", request.getBand() == null ? null : request.getBand().getId());
+		put(payload, "venueId", request.getVenue() == null ? null : request.getVenue().getId());
+		put(payload, "applicantName", displayApplicantName(request));
+		put(payload, "venueName", displayVenueName(request));
+		return payload;
+	}
+
+	private void put(Map<String, Object> payload, String key, Object value) {
+		if (value != null) payload.put(key, value.toString());
+	}
+
+	private String displayApplicantName(ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.BAND && request.getBand() != null) {
+			return safe(request.getBand().getName(), "Band");
+		}
+		if (request.getMusicianProfile() != null) {
+			String stageName = request.getMusicianProfile().getStageName();
+			if (hasText(stageName)) return stageName.trim();
+			return safe(request.getMusicianProfile().getName(), "Sanatci");
+		}
+		return "Sanatci";
+	}
+
+	private String displayVenueName(ArtistVenueConnectionRequest request) {
+		return request.getVenue() == null ? "Mekan" : safe(request.getVenue().getName(), "Mekan");
+	}
+
+	private String safe(String value) {
+		return value == null ? "" : value.trim();
+	}
+
+	private String safe(String value, String fallback) {
+		return hasText(value) ? value.trim() : fallback;
+	}
+
+	private boolean hasText(String value) {
+		return value != null && !value.trim().isEmpty();
 	}
 	
 }

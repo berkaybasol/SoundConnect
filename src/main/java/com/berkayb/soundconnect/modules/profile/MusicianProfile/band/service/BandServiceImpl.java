@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandSearchItemDto; //eklendi
@@ -17,13 +18,18 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -38,6 +44,7 @@ public class BandServiceImpl implements BandService {
 	private final BandMapper bandMapper;
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final MediaAssetService mediaAssetService;
+	private final NotificationProducer notificationProducer;
 	
 	
 	@Override
@@ -83,6 +90,14 @@ public class BandServiceImpl implements BandService {
 			bandMemberRepository.save(existingMember);
 			
 			log.info("Band daveti yeniden gonderildi. inviter={}, invited={}, band={}", inviterId, invitedUserId, bandId);
+			publishBandNotification(
+					invited.getId(),
+					NotificationType.BAND_INVITE_RECEIVED,
+					safe(band.getName(), "Band") + " seni banda davet etti",
+					safe(inviter.getUsername(), "Bir kullanici") + " tarafindan band daveti aldin.",
+					band,
+					Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
+			);
 			return;
 		}
 		
@@ -98,7 +113,14 @@ public class BandServiceImpl implements BandService {
 		
 		log.info("Band daveti gönderildi. inviter={}, invited={}, band={}", inviterId, invitedUserId, bandId);
 		
-		//TODO bildirim tetikleme burda yapilcak
+		publishBandNotification(
+				invited.getId(),
+				NotificationType.BAND_INVITE_RECEIVED,
+				safe(band.getName(), "Band") + " seni banda davet etti",
+				safe(inviter.getUsername(), "Bir kullanici") + " tarafindan band daveti aldin.",
+				band,
+				Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
+		);
 	}
 	
 	@Override
@@ -112,6 +134,14 @@ public class BandServiceImpl implements BandService {
 		bandMemberRepository.save(member);
 		
 		log.info("Band daveti kabul edildi. userId={}, bandId={}", userId, bandId);
+		notifyActiveFounders(
+				member.getBand(),
+				userId,
+				NotificationType.BAND_INVITE_ACCEPTED,
+				safe(member.getUser().getUsername(), "Bir kullanici") + " band davetini kabul etti",
+				safe(member.getBand().getName(), "Band") + " icin gonderilen davet kabul edildi.",
+				Map.of("action", "INVITE_ACCEPTED", "memberId", userId.toString())
+		);
 	}
 	
 	@Override
@@ -125,6 +155,14 @@ public class BandServiceImpl implements BandService {
 		bandMemberRepository.save(member);
 		
 		log.info("Band daveti reddedildi. userId={}, bandId={}", userId, bandId);
+		notifyActiveFounders(
+				member.getBand(),
+				userId,
+				NotificationType.BAND_INVITE_REJECTED,
+				safe(member.getUser().getUsername(), "Bir kullanici") + " band davetini reddetti",
+				safe(member.getBand().getName(), "Band") + " icin gonderilen davet reddedildi.",
+				Map.of("action", "INVITE_REJECTED", "memberId", userId.toString())
+		);
 	}
 	
 	@Override
@@ -155,6 +193,14 @@ public class BandServiceImpl implements BandService {
 		bandMemberRepository.save(member);
 		
 		log.info("Band üyesi çıkarıldı. memberId={}, bandId={}", targetUserId, bandId);
+		publishBandNotification(
+				targetUserId,
+				NotificationType.BAND_MEMBER_REMOVED,
+				safe(member.getBand().getName(), "Band") + " bandinden cikarildin",
+				"Band uyeligin sonlandirildi.",
+				member.getBand(),
+				Map.of("action", "MEMBER_REMOVED", "requesterId", requesterId.toString())
+		);
 	}
 	
 	@Override
@@ -173,6 +219,15 @@ public class BandServiceImpl implements BandService {
 		
 		member.setStatus(BandMemberShipStatus.LEFT);
 		bandMemberRepository.save(member);
+		
+		notifyActiveFounders(
+				member.getBand(),
+				userId,
+				NotificationType.BAND_MEMBER_LEFT,
+				safe(member.getUser().getUsername(), "Bir kullanici") + " bandden ayrildi",
+				safe(member.getBand().getName(), "Band") + " uyelerinden biri ayrildi.",
+				Map.of("action", "MEMBER_LEFT", "memberId", userId.toString())
+		);
 	}
 	
 	// band olusturur. olusturan kullanici otomatik olarak founder ve active statusunde uye olur
@@ -317,6 +372,58 @@ public class BandServiceImpl implements BandService {
 		                     )) //eklendi
 		                     .toList(); //eklendi
 	} //eklendi
+	
+	private void notifyActiveFounders(
+			Band band,
+			UUID actorId,
+			NotificationType type,
+			String title,
+			String message,
+			Map<String, Object> extraPayload
+	) {
+		band.getMembers().stream()
+		    .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+		    .filter(member -> member.getBandRole() == BandRole.FOUNDER)
+		    .map(BandMember::getUser)
+		    .filter(user -> user != null && user.getId() != null && !user.getId().equals(actorId))
+		    .forEach(user -> publishBandNotification(user.getId(), type, title, message, band, extraPayload));
+	}
+	
+	private void publishBandNotification(
+			UUID recipientId,
+			NotificationType type,
+			String title,
+			String message,
+			Band band,
+			Map<String, Object> extraPayload
+	) {
+		try {
+			Map<String, Object> payload = new HashMap<>();
+			payload.put("module", "BAND");
+			payload.put("bandId", band.getId().toString());
+			payload.put("bandName", safe(band.getName(), "Band"));
+			if (extraPayload != null) payload.putAll(extraPayload);
+			
+			notificationProducer.publish(
+					NotificationInboundEvent.builder()
+					                        .recipientId(recipientId)
+					                        .type(type)
+					                        .title(title)
+					                        .message(message)
+					                        .payload(payload)
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
+		} catch (Exception e) {
+			log.warn("Band notification publish failed. recipient={}, band={}, type={}, err={}",
+			         recipientId, band.getId(), type, e.toString());
+		}
+	}
+	
+	private String safe(String value, String fallback) {
+		return value == null || value.isBlank() ? fallback : value.trim();
+	}
 	
 	private BandResponseDto toResponseDto(Band band) {
 		var base = bandMapper.toDto(band);

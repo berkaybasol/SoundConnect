@@ -50,6 +50,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 	private final UserRepository userRepository;
 	private final VenueRepository venueRepository;
 	private final VenueProfileService venueProfileService;
+	private final VenueApplicationAdminMailService venueApplicationAdminMailService;
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemler geri alinir.
 	@Override
@@ -155,6 +156,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		
 		VenueApplication saved = venueApplicationRepository.save(application);
 		log.info("Venue application created for user {}. Application id: {}", applicant.getUsername(), saved.getId());
+		venueApplicationAdminMailService.sendNewApplicationMail(saved);
 		
 		return venueApplicationMapper.toResponseDto(saved);
 		

@@ -6,6 +6,7 @@ public enum MailKind {
 	OTP,
 	NOTIFICATION,
 	PASSWORD_RESET,
+	VENUE_APPLICATION_ADMIN,
 	CAMPAIGN, // ilerde pazarlama/ kampanya promosyon icin
 	GENERIC // baska turler destek vs.
 }

@@ -209,6 +209,8 @@ pulse:
     - "Seni Çok Etkileyen Herhangi Birşey?"
 
 soundconnect:
+  admin-notifications:
+    venue-application-emails: ${SOUNDCONNECT_VENUE_APPLICATION_NOTIFY_TO:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}
   spotify:
     client-id: ${SPOTIFY_CLIENT_ID}
     client-secret: ${SPOTIFY_CLIENT_SECRET}

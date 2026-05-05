@@ -5,6 +5,14 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -36,9 +44,13 @@ class DmMessageEventListenerTest {
 		DMMessageMapper messageMapper = mock(DMMessageMapper.class);
 		DMMessageRepository messageRepository = mock(DMMessageRepository.class);
 		DmBadgeCacheHelper badgeCacheHelper = mock(DmBadgeCacheHelper.class);
+		NotificationProducer notificationProducer = mock(NotificationProducer.class);
+		UserRepository userRepository = mock(UserRepository.class);
+		PublicProfileResolverService publicProfileResolverService = mock(PublicProfileResolverService.class);
 		
 		DmMessageEventListener listener = new DmMessageEventListener(
-				messagingTemplate, messageMapper, messageRepository, badgeCacheHelper
+				messagingTemplate, messageMapper, messageRepository, badgeCacheHelper, notificationProducer, userRepository,
+				publicProfileResolverService
 		);
 		
 		// Given
@@ -63,6 +75,21 @@ class DmMessageEventListenerTest {
 				"hi", "text", LocalDateTime.now(), null, null
 		);
 		when(messageMapper.toResponseDto(entity)).thenReturn(dto);
+		when(userRepository.findById(senderId))
+				.thenReturn(Optional.of(User.builder()
+				                            .username("basol")
+				                            .profilePicture("https://cdn.soundconnect.test/user-fallback.jpg")
+				                            .build()));
+		when(publicProfileResolverService.resolveByUserId(senderId))
+				.thenReturn(new UserProfilesResolveResponseDto(
+						senderId,
+						List.of(new UserProfileTargetDto(
+								"MUSICIAN",
+								UUID.randomUUID(),
+								"Basol",
+								"https://cdn.soundconnect.test/basol.jpg"
+						))
+				));
 		
 		// unread hesap (recipient tarafında aynı konuşmada okunmamışlar)
 		when(messageRepository.findByConversationIdAndRecipientIdAndReadAtIsNull(conversationId, recipientId))
@@ -95,6 +122,24 @@ class DmMessageEventListenerTest {
 		
 		String badgeDest = WebSocketChannels.dmBadge(recipientId);
 		verify(messagingTemplate).convertAndSend(eq(badgeDest), eq(2L));
+
+		ArgumentCaptor<NotificationInboundEvent> notificationCaptor =
+				ArgumentCaptor.forClass(NotificationInboundEvent.class);
+		verify(notificationProducer).publish(notificationCaptor.capture());
+		NotificationInboundEvent notification = notificationCaptor.getValue();
+		assertThat(notification.recipientId()).isEqualTo(recipientId);
+		assertThat(notification.type()).isEqualTo(NotificationType.DM_NEW_MESSAGE);
+		assertThat(notification.title()).isEqualTo("basol size bir mesaj gönderdi");
+		assertThat(notification.message()).isEqualTo("hi");
+		assertThat(notification.payload())
+				.containsEntry("module", "DM")
+				.containsEntry("conversationId", conversationId.toString())
+				.containsEntry("messageId", messageId.toString())
+				.containsEntry("senderId", senderId.toString())
+				.containsEntry("senderUsername", "basol")
+				.containsEntry("senderAvatarUrl", "https://cdn.soundconnect.test/basol.jpg")
+				.containsEntry("recipientId", recipientId.toString())
+				.containsEntry("messageType", "text");
 	}
 	
 	@Test
@@ -104,9 +149,13 @@ class DmMessageEventListenerTest {
 		DMMessageMapper messageMapper = mock(DMMessageMapper.class);
 		DMMessageRepository messageRepository = mock(DMMessageRepository.class);
 		DmBadgeCacheHelper badgeCacheHelper = mock(DmBadgeCacheHelper.class);
+		NotificationProducer notificationProducer = mock(NotificationProducer.class);
+		UserRepository userRepository = mock(UserRepository.class);
+		PublicProfileResolverService publicProfileResolverService = mock(PublicProfileResolverService.class);
 		
 		DmMessageEventListener listener = new DmMessageEventListener(
-				messagingTemplate, messageMapper, messageRepository, badgeCacheHelper
+				messagingTemplate, messageMapper, messageRepository, badgeCacheHelper, notificationProducer, userRepository,
+				publicProfileResolverService
 		);
 		
 		UUID messageId = UUID.randomUUID();
@@ -127,5 +176,8 @@ class DmMessageEventListenerTest {
 		verifyNoInteractions(messageMapper);
 		verify(badgeCacheHelper, never()).setUnread(any(), anyLong());
 		verifyNoInteractions(messagingTemplate);
+		verifyNoInteractions(notificationProducer);
+		verifyNoInteractions(userRepository);
+		verifyNoInteractions(publicProfileResolverService);
 	}
 }
