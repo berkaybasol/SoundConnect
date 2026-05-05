@@ -50,7 +50,7 @@ public class VenueApplicationAdminMailService {
 	
 	private MailSendRequest buildRequest(String recipient, VenueApplication application) {
 		String venueName = safe(application.getVenueName(), "Mekan");
-		String subject = "[SoundConnect] Yeni mekan basvurusu: " + venueName;
+		String subject = "Yeni Mekan Başvurusu: " + venueName;
 		String textBody = buildTextBody(application);
 		Map<String, Object> params = buildParams(application);
 		
@@ -76,7 +76,7 @@ public class VenueApplicationAdminMailService {
 				
 				Kullanıcı Bilgileri
 				- Kullanıcı ID: %s
-				- Kullanıcı Adi: %s
+				- Kullanıcı Adı: %s
 				- E-posta: %s
 				
 				Mekan Bilgileri
