@@ -135,12 +135,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		
 		// bu kullanici masanin icinde mi ve erisim izni var mi?
-		boolean isAllowed = tableGroup.getParticipants().stream()
-				.anyMatch(p->
-						p.getUserId().equals(requesterId)
-				&& p.getStatus() == ParticipantStatus.ACCEPTED
-				);
-				if (!isAllowed) {
+				if (!isAcceptedParticipant(tableGroup, requesterId)) {
 					log.warn(
 							"UNAUTHORIZED CHAT HISTORY READ attempt: userId={} tableGroupId={}",
 							requesterId, tableGroupId
@@ -151,5 +146,22 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		// mesajlari db'den cek
 		return messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(tableGroupId,pageable)
 				.map(messageMapper::toResponseDto);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public int getUnreadBadge(UUID requesterId, UUID tableGroupId) {
+		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
+		if (!isAcceptedParticipant(tableGroup, requesterId)) {
+			log.warn("UNAUTHORIZED CHAT UNREAD READ attempt: userId={} tableGroupId={}", requesterId, tableGroupId);
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED, "Bu masanin sohbet badge'ine erisimin yok");
+		}
+		return unreadHelper.getUnread(requesterId, tableGroupId);
+	}
+
+	private boolean isAcceptedParticipant(TableGroup tableGroup, UUID userId) {
+		return tableGroup.getParticipants().stream()
+				.anyMatch(p -> p.getUserId().equals(userId)
+						&& p.getStatus() == ParticipantStatus.ACCEPTED);
 	}
 }

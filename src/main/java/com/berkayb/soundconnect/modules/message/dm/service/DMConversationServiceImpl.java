@@ -101,6 +101,9 @@ public class DMConversationServiceImpl implements DMConversationService {
 		if(userAId.equals(userBId)) {
 			throw new SoundConnectException(ErrorType.CANNOT_DM_SELF);
 		}
+		if (!userRepository.existsById(userBId)) {
+			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		}
 		return conversationRepository.findConversationBetweenUsers(userAId, userBId)
 				.map(DMConversation :: getId)
 				.orElseGet(() -> {

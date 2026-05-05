@@ -15,6 +15,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +32,7 @@ public class CommentController {
 	
 	
 	@PostMapping(CREATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Yorum olustur")
 	public ResponseEntity<BaseResponse<CommentResponseDto>> createComment(
 			@AuthenticationPrincipal(expression = "id") UUID userId,
@@ -49,6 +51,7 @@ public class CommentController {
 	}
 	
 	@DeleteMapping(DELETE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Yorum sil")
 	public ResponseEntity<BaseResponse<Void>> deleteComment(
 			@AuthenticationPrincipal(expression = "id") UUID userId,

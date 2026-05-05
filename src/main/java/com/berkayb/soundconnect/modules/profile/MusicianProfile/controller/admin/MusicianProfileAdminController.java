@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -16,6 +17,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.MusicianProfile
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('MANAGE_PROFILES')")
 @Tag(name = "FOR ADMIN / Musician Profile", description = "Admin tüm kullanıcıların müzisyen profillerini yönetir")
 public class MusicianProfileAdminController {
 	private final MusicianProfileService musicianProfileService;

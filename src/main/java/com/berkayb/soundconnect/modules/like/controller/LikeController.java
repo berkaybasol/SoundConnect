@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,7 @@ public class LikeController {
 	
 	
 	@PostMapping(LIKE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary ="bir icerigi begen (idempotent)")
 	public ResponseEntity<BaseResponse<Void>> like(
 			@AuthenticationPrincipal(expression = "id")UUID userId,
@@ -44,6 +46,7 @@ public class LikeController {
 	}
 	
 	@DeleteMapping(UNLIKE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Begenemekten vazgec (idepotent)")
 	public ResponseEntity<BaseResponse<Void>> unlike(
 			@AuthenticationPrincipal(expression = "id")UUID userId,
@@ -80,6 +83,7 @@ public class LikeController {
 	
 	// flutterda toggle buton olarak kullanilcak
 	@GetMapping(IS_LIKED)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Kullanici bu icerigi begenmis mi?")
 	public ResponseEntity<BaseResponse<Boolean>> isLiked(
 			@AuthenticationPrincipal(expression = "id")UUID userId,

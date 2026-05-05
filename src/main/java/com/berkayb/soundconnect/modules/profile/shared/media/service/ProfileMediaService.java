@@ -14,8 +14,8 @@ public interface ProfileMediaService {
 	
 	List<ProfileMedia> getMediaList(ProfileType profileType, UUID profileId, ProfileMediaRole role);
 	
-	ProfileMedia addMedia(ProfileType profileType, UUID profileId, UUID mediaAssetId, ProfileMediaRole role, Integer orderIndex);
+	ProfileMedia addMedia(UUID actingUserId, ProfileType profileType, UUID profileId, UUID mediaAssetId, ProfileMediaRole role, Integer orderIndex);
 	
 	// Media silme
-	void removeMedia(UUID profileMediaId);
+	void removeMedia(UUID actingUserId, UUID profileMediaId);
 }

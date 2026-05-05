@@ -17,6 +17,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,6 +66,7 @@ public class CollabController {
 	}
 	
 	@PostMapping(CREATE)
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE', 'PRODUCER', 'ORGANIZER', 'STUDIO')")
 	@Operation(summary = "İlan oluştur")
 	public ResponseEntity<BaseResponse<CollabResponseDto>> createCollab(
 			Principal principal,
@@ -87,6 +89,7 @@ public class CollabController {
 	}
 	
 	@PutMapping(UPDATE)
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE', 'PRODUCER', 'ORGANIZER', 'STUDIO')")
 	@Operation(summary = "İlan güncelle")
 	public ResponseEntity<BaseResponse<CollabResponseDto>> updateCollab(
 			Principal principal,
@@ -110,6 +113,7 @@ public class CollabController {
 	}
 	
 	@DeleteMapping(DELETE)
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE', 'PRODUCER', 'ORGANIZER', 'STUDIO')")
 	@Operation(summary = "İlan sil")
 	public ResponseEntity<BaseResponse<Void>> deleteCollab(
 			Principal principal,

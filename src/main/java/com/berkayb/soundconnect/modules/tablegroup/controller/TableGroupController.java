@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -42,6 +43,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Yeni masa olustur")
 	@PostMapping
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<TableGroupResponseDto>> createTableGroup(
 			Principal principal,
 			@Valid @RequestBody TableGroupCreateRequestDto requestDto
@@ -104,6 +106,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Masaya katilma istegi gonder")
 	@PostMapping(EndPoints.TableGroup.JOIN)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> joinTableGroup(
 			Principal principal,
 			@PathVariable UUID tableGroupId,
@@ -124,6 +127,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Owner katilimci istegini ONAYLAR")
 	@PostMapping(EndPoints.TableGroup.APPROVE)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> approveJoinRequest(
 			Principal principal,
 			@PathVariable UUID tableGroupId,
@@ -144,6 +148,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Owner katilimci istegini REDDEDER")
 	@PostMapping(EndPoints.TableGroup.REJECT)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> rejectJoinRequest(
 			Principal principal,
 			@PathVariable UUID tableGroupId,
@@ -164,6 +169,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Kullanici masadan kendi ayrilir")
 	@PostMapping(EndPoints.TableGroup.LEAVE)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> leaveTableGroup(
 			Principal principal,
 			@PathVariable UUID tableGroupId
@@ -183,6 +189,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Owner bir kullaniciyi masadan atar")
 	@PostMapping(EndPoints.TableGroup.KICK)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> removeParticipantFromTableGroup(
 			Principal principal,
 			@PathVariable UUID tableGroupId,
@@ -203,6 +210,7 @@ public class TableGroupController {
 	
 	@Operation(summary = "Masa sahibi masayi iptal eder")
 	@PostMapping(EndPoints.TableGroup.CANCEL)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> cancelTableGroup(
 			Principal principal,
 			@PathVariable UUID tableGroupId

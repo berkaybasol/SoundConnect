@@ -10,6 +10,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class OverthinkingRevealRequestController {
 	private final OverthinkingRevealRequestService revealRequestService;
 	
 	@PostMapping(CREATE_REVEAL_REQUEST)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Anonim post sahibini görmek için istek gönder")
 	public ResponseEntity<BaseResponse<OverthinkingRevealRequestResponseDto>> createRevealRequest(
 			@AuthenticationPrincipal(expression = "id") UUID requesterId,
@@ -42,6 +44,7 @@ public class OverthinkingRevealRequestController {
 	}
 	
 	@PostMapping(APPROVE_REVEAL_REQUEST)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Görüntüleme isteğini kabul et")
 	public ResponseEntity<BaseResponse<OverthinkingRevealRequestResponseDto>> approveRevealRequest(
 			@AuthenticationPrincipal(expression = "id") UUID authorId,
@@ -58,6 +61,7 @@ public class OverthinkingRevealRequestController {
 	}
 	
 	@PostMapping(REJECT_REVEAL_REQUEST)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Görüntüleme isteğini reddet")
 	public ResponseEntity<BaseResponse<OverthinkingRevealRequestResponseDto>> rejectRevealRequest(
 			@AuthenticationPrincipal(expression = "id") UUID authorId,
@@ -74,6 +78,7 @@ public class OverthinkingRevealRequestController {
 	}
 	
 	@GetMapping(INCOMING_REVEAL_REQUESTS)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Anonim postlarıma gelen görüntüleme istekleri")
 	public ResponseEntity<BaseResponse<Page<OverthinkingRevealRequestResponseDto>>> getIncomingRequests(
 			@AuthenticationPrincipal(expression = "id") UUID authorId,
@@ -90,6 +95,7 @@ public class OverthinkingRevealRequestController {
 	}
 	
 	@GetMapping(SENT_REVEAL_REQUESTS)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Gönderdiğim görüntüleme istekleri")
 	public ResponseEntity<BaseResponse<Page<OverthinkingRevealRequestResponseDto>>> getMySentRequests(
 			@AuthenticationPrincipal(expression = "id") UUID requesterId,

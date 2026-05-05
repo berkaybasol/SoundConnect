@@ -90,16 +90,17 @@ public class TrackServiceImpl implements TrackService {
 		
 		// 1) MediaAsset var mı?
 		if (!mediaAssetService.exists(dto.mediaAssetId())) {
-			var asset = mediaAssetService.getById(dto.mediaAssetId());
-			if (asset.getKind() != MediaKind.AUDIO) {
-				throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
-			}
 			log.warn("[Track] MediaAsset bulunamadı: {}", dto.mediaAssetId());
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		var asset = mediaAssetService.getById(dto.mediaAssetId());
+		if (asset.getKind() != MediaKind.AUDIO) {
+			throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
 		}
 		
 		// 2) Owner kim? (Musician mı, Band mi?) + user gerçekten o owner'a bağlı mı?
 		TrackOwnerType ownerType = resolveOwnerType(ownerId, userId);
+		validateOwner(ownerId, userId);
 		
 		// 3) Track oluştur
 		Track track = Track.builder()

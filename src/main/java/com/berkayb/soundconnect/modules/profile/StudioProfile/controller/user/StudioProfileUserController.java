@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +17,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioProfile.*
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('STUDIO')")
 @Tag(name = "FOR USERS / Studio Profile", description = "User kendi stüdyo profilini yönetir")
 public class StudioProfileUserController {
 	private final StudioProfileService studioProfileService;

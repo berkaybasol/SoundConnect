@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -48,6 +49,7 @@ public class CollabSlotController {
 	
 	
 	@PostMapping(FILL_SLOT)
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE', 'PRODUCER', 'ORGANIZER', 'STUDIO')")
 	@Operation(summary = "Owner collab ilanındaki slotu doldur")
 	public ResponseEntity<BaseResponse<CollabResponseDto>> fillSlot(
 			Principal principal,
@@ -72,6 +74,7 @@ public class CollabSlotController {
 	
 	
 	@PostMapping(UNFILL_SLOT)
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE', 'PRODUCER', 'ORGANIZER', 'STUDIO')")
 	@Operation(summary = "Owner collab ilanındaki slotu boşalt")
 	public ResponseEntity<BaseResponse<CollabResponseDto>> unfillSlot(
 			Principal principal,

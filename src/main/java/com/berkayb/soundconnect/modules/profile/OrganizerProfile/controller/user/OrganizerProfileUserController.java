@@ -7,17 +7,17 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.OrganizerProfile.*;
-import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioProfile.ME;
-import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioProfile.UPDATE;
 
 
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ORGANIZER')")
 @Tag(name = "FOR USERS / Organizer Profile", description = "User kendi Organizer profilini yönetir")
 public class OrganizerProfileUserController {
 	private final OrganizerProfileService organizerProfileService;

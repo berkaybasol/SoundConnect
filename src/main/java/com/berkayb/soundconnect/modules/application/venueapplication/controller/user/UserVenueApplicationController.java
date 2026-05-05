@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,6 +22,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueApplicatio
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("isAuthenticated()")
 @Tag(name = "User / Venue Application", description = "Venue applications (user operations)")
 public class UserVenueApplicationController {
 

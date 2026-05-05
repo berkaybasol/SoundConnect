@@ -10,6 +10,9 @@ public enum PermissionEnum {
 	MANAGE_VENUE_APPLICATIONS,
 	MANAGE_VENUES,
 	MANAGE_PROMOTIONS,
+	MANAGE_INSTRUMENTS,
+	MANAGE_PROFILES,
+	MANAGE_DM,
 	
 	// USER
 	READ_USER, // sisteme kayit olan herkes bu role sahip olur.

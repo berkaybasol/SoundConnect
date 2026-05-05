@@ -16,6 +16,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -67,6 +68,7 @@ public class OverthinkingPostController {
 	}
 	
 	@PostMapping(CREATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Post olustur")
 	public ResponseEntity<BaseResponse<OverthinkingPostResponseDto>> createPost(
 			Principal principal,
@@ -87,6 +89,7 @@ public class OverthinkingPostController {
 	}
 	
 	@PutMapping(UPDATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Post guncelle")
 	public ResponseEntity<BaseResponse<OverthinkingPostResponseDto>> updatePost(Principal principal, @PathVariable UUID postId, @Valid @RequestBody OverthinkingPostSaveRequestDto dto) {
 		UUID userId = getAuthenticatedUserId(principal);
@@ -104,6 +107,7 @@ public class OverthinkingPostController {
 	
 	
 	@DeleteMapping(DELETE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Overthinking post sil")
 	public ResponseEntity<BaseResponse<Void>> deletePost(
 			Principal principal,
@@ -166,6 +170,7 @@ public class OverthinkingPostController {
 	}
 	
 	@GetMapping(MY_POSTS)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Giriş yapan kullanıcının postları")
 	public ResponseEntity<BaseResponse<Page<OverthinkingPostResponseDto>>> getMyPosts(
 			Principal principal,

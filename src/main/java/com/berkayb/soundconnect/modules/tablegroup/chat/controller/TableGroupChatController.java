@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
-import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatService;
@@ -35,7 +34,6 @@ public class TableGroupChatController {
 	
 	private final TableGroupChatService chatService;
 	private final UserRepository userRepository;
-	private final TableGroupChatUnreadHelper unreadHelper;
 	
 	/**
 	 * Principal.username -> User -> UUID
@@ -128,7 +126,7 @@ public class TableGroupChatController {
 	) {
 		UUID userId = currentUserId(principal);
 		
-		int unread = unreadHelper.getUnread(userId, tableGroupId);
+		int unread = chatService.getUnreadBadge(userId, tableGroupId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Integer>builder()

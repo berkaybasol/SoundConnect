@@ -72,6 +72,9 @@ public class DataInitializer {
 				MANAGE_VENUE_APPLICATIONS,
 				MANAGE_VENUES,
 				MANAGE_PROMOTIONS,
+				MANAGE_INSTRUMENTS,
+				MANAGE_PROFILES,
+				MANAGE_DM,
 				DELETE_COMMENT
 		));
 		Role venueRole = upsertRole(ROLE_VENUE.name(), permissions(

@@ -1,41 +1,86 @@
 package com.berkayb.soundconnect.shared.config;
 
+import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
+import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+import java.util.List;
+import java.util.UUID;
+
 /**
- * WebSocket uzerinden STOMP protokolu ile masajlasma altyapisini yapilandiran konfigurasyon sinifi.
- * - Client baglanti noktasi: /ws -> ws://host/ws uzerinden baglanilir.
- * - Server tarafi mesaj alma prefix'i: /app -> Client mesaj gonderirken kullanir(orn: send("/app/..."))
- * - Server tarafi mesaj yayinlama prefix'i: /topic -> Client bu adreslere subscribe olur
- *
- * Flutter/Web client
- * - baglan: ws(s)://<host>/ws
- * - dinle(subscribe): /topic/notifications/{userId}
- * - yayin (server publish): simpMessagingTemplate.convertAndSend("/topic/notifications/" + uderId, payload)
+ * WebSocket uzerinden STOMP protokolu ile mesajlasma altyapisini yapilandiran konfigurasyon sinifi.
  */
 @Configuration
-@EnableWebSocketMessageBroker // WebSocket mesajlasmasini STOMP protokolu ile aktif eder
+@EnableWebSocketMessageBroker
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
-	
+
+	private final JwtTokenProvider jwtTokenProvider;
+	private final CustomUserDetailsService userDetailsService;
+
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry config) {
-		// Serverin mesaj yayinladigi (publish ettigi) adres prefix'i -> Client bu adreslere subscribe olur
 		config.enableSimpleBroker("/topic");
-		
-		
-		// Uygulamanin controller/service tarafinda @MessageMapping ile dinledigi prefix
 		config.setApplicationDestinationPrefixes("/app");
 	}
-	
+
 	@Override
 	public void registerStompEndpoints(StompEndpointRegistry registry) {
-		// STOMP endpoint: ws(s)://host/ws
 		registry.addEndpoint("/ws")
-				.setAllowedOriginPatterns("*") //FIXME prod'da kisitlicaz
-		 .withSockJS(); // Gerekirse aç (eski tarayıcılar için)
+				.setAllowedOriginPatterns("*")
+				.withSockJS();
+	}
+
+	@Override
+	public void configureClientInboundChannel(ChannelRegistration registration) {
+		registration.interceptors(new ChannelInterceptor() {
+			@Override
+			public Message<?> preSend(Message<?> message, MessageChannel channel) {
+				StompHeaderAccessor accessor =
+						MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+				if (accessor == null || accessor.getCommand() != StompCommand.CONNECT) {
+					return message;
+				}
+				String token = resolveBearerToken(accessor);
+				if (token == null || !jwtTokenProvider.validateToken(token)) {
+					throw new IllegalArgumentException("Missing or invalid WebSocket token");
+				}
+				UUID userId = jwtTokenProvider.getUserIdFromToken(token);
+				UserDetails userDetails = userDetailsService.loadUserById(userId);
+				UsernamePasswordAuthenticationToken authentication =
+						new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+				accessor.setUser(authentication);
+				return message;
+			}
+		});
+	}
+
+	private String resolveBearerToken(StompHeaderAccessor accessor) {
+		List<String> authorization = accessor.getNativeHeader("Authorization");
+		if (authorization == null || authorization.isEmpty()) {
+			authorization = accessor.getNativeHeader("authorization");
+		}
+		if (authorization == null || authorization.isEmpty()) {
+			return null;
+		}
+		String value = authorization.get(0);
+		if (value == null || !value.startsWith("Bearer ")) {
+			return null;
+		}
+		return value.substring(7);
 	}
 }

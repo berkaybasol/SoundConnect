@@ -71,7 +71,16 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.authorizeHttpRequests(auth -> auth
+						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/venues/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/cities/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/districts/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/neighborhoods/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/events/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/promotions/displayable/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/search/tracks").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/tracks/**").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/spotify/tracks/by-ids").permitAll()
 						.requestMatchers(
 								"/api/v1/auth/**",           // Auth işlemleri
 								"/v3/api-docs/**",            // Swagger dökümantasyonu
@@ -80,14 +89,7 @@ public class SecurityConfig {
 								"/swagger-resources/**",
 								"/webjars/**",
 								"/api/ping",
-								"/api/v1/cities/**",
-								"/api/v1/districts/**",
-								"/api/v1/neighborhoods/**",
 								"/api/v1/public/**",
-								"/api/v1/events/**",
-								"/api/v1/promotions/displayable/**",
-								"/api/v1/spotify/search/tracks",
-								"/api/v1/spotify/tracks/**",
 								"/192.168.1.101:8080/actuator/health",
 								"/ws",             // EKLENDİ
 								"/ws/**",          // EKLENDİ
