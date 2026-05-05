@@ -12,6 +12,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
@@ -34,14 +35,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-// muzisyen ve mekan arasindaki iliski basvurularinin yonetildigi servis sinifidir.
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConnectionRequestService {
-	
-	
+
 	private final ArtistVenueConnectionRequestRepository repository;
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final VenueRepository venueRepository;
@@ -50,283 +48,360 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private final BandMemberRepository bandMemberRepository;
 	private final MediaAssetService mediaAssetService;
 	private final NotificationProducer notificationProducer;
-	
+
 	@Override
-	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByBand(UUID bandId, RequestStatus status) {
+	@Transactional(readOnly = true)
+	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByBand(UUID actorUserId, UUID bandId, RequestStatus status) {
+		Band band = bandRepository.findById(bandId)
+		                          .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+		assertIsActiveBandMember(actorUserId, band);
+
 		List<ArtistVenueConnectionRequest> requests =
 				status == null
 						? repository.findAllByBandId(bandId)
 						: repository.findAllByBandIdAndStatus(bandId, status);
-		
+
 		return requests.stream()
 		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields) //eklendi
+		               .map(this::enrichBandFields)
 		               .toList();
 	}
-	
+
 	@Transactional
 	@Override
-	public ArtistVenueConnectionRequestResponseDto cancelRequest(UUID requestId) {
+	public ArtistVenueConnectionRequestResponseDto cancelRequest(UUID actorUserId, UUID requestId) {
 		log.info("Basvuru iptal ediliyor. requestId={}", requestId);
-		
-		ArtistVenueConnectionRequest request = repository.findById(requestId)
-		                                                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
-		
+
+		ArtistVenueConnectionRequest request = findRequest(requestId);
+		assertCanCancel(actorUserId, request);
+
 		if (request.getStatus() != RequestStatus.PENDING) {
 			if (request.getStatus() == RequestStatus.ACCEPTED) {
 				throw new SoundConnectException(ErrorType.REQUEST_CANCEL_NOT_ALLOWED);
 			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 		}
-		
+
 		request.setStatus(RequestStatus.REJECTED);
 		repository.save(request);
-		
+
 		log.info("Basvuru iptal edildi. requestId={}", requestId);
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
-		
 	}
-	
-	
+
 	@Transactional
 	@Override
-	public ArtistVenueConnectionRequestResponseDto disconnect(UUID requestId) {
+	public ArtistVenueConnectionRequestResponseDto disconnect(UUID actorUserId, UUID requestId) {
 		log.info("Mekan baglantisi kaldiriliyor. requestId={}", requestId);
-		
-		ArtistVenueConnectionRequest request = repository.findById(requestId)
-		                                                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
-		
+
+		ArtistVenueConnectionRequest request = findRequest(requestId);
+		assertCanDisconnect(actorUserId, request);
+
 		if (request.getStatus() != RequestStatus.ACCEPTED) {
 			if (request.getStatus() == RequestStatus.PENDING) {
 				throw new SoundConnectException(ErrorType.REQUEST_DISCONNECT_NOT_ALLOWED);
 			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 		}
-		
+
 		if (request.getRequestByType() == RequestByType.ARTIST || request.getRequestByType() == RequestByType.VENUE) {
 			var musician = request.getMusicianProfile();
 			var venue = request.getVenue();
-			
+
 			if (musician == null) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
-			
+
 			musician.getActiveVenues().remove(venue);
 			venue.getActiveMusicians().remove(musician);
-			
+
 			musicianProfileRepository.save(musician);
 			venueRepository.save(venue);
-		} else if (request.getRequestByType() == RequestByType.BAND) { //eklendi
-			var band = request.getBand(); //eklendi
-			var venue = request.getVenue(); //eklendi
-			
-			if (band == null) throw new SoundConnectException(ErrorType.BAND_NOT_FOUND); //eklendi
-			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND); //eklendi
-			
-			venue.getActiveBands().remove(band); //eklendi
-			venueRepository.save(venue); //eklendi
-		} //eklendi
-		
+		} else if (request.getRequestByType() == RequestByType.BAND) {
+			var band = request.getBand();
+			var venue = request.getVenue();
+
+			if (band == null) throw new SoundConnectException(ErrorType.BAND_NOT_FOUND);
+			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+
+			venue.getActiveBands().remove(band);
+			venueRepository.save(venue);
+		}
+
 		request.setStatus(RequestStatus.REJECTED);
 		repository.save(request);
-		
+
 		log.info("Baglanti kaldirildi. requestId={}", requestId);
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
 	}
-	
-	
-	
+
 	@Override
-	public ArtistVenueConnectionRequestResponseDto createRequest(ArtistVenueConnectionRequestCreateDto dto, RequestByType requestType) {
-		log.info("yeni artist-venue baglantisi basvurusu baslatiliyor. musicianProfileId={}, bandId={}, venueId={}, requestBy={}", //eklendi
-		         dto.musicianProfileId(), dto.bandId(), dto.venueId(), requestType); //eklendi
+	@Transactional
+	public ArtistVenueConnectionRequestResponseDto createRequest(UUID actorUserId, ArtistVenueConnectionRequestCreateDto dto, RequestByType requestType) {
+		log.info("Yeni artist-venue baglantisi baslatiliyor. musicianProfileId={}, bandId={}, venueId={}, requestBy={}",
+		         dto.musicianProfileId(), dto.bandId(), dto.venueId(), requestType);
 		if (requestType == null) {
 			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
 		}
-		
-		// entity'leri getir
+
 		Venue venue = venueRepository.findById(dto.venueId())
-		                             .orElseThrow(() -> {
-			                             log.error("Venue bulunamadı! venueId={}", dto.venueId());
-			                             throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
-		                             });
-		
-		// basvuru olustur
+		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+
 		ArtistVenueConnectionRequest request = new ArtistVenueConnectionRequest();
 		request.setVenue(venue);
 		request.setStatus(RequestStatus.PENDING);
 		request.setRequestByType(requestType);
 		request.setMessage(dto.message());
-		
-		// dublicate kontrolu
-		if (requestType == RequestByType.ARTIST || requestType == RequestByType.VENUE) { //eklendi
-			if (dto.musicianProfileId() == null) { //eklendi
-				throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND); //eklendi
-			} //eklendi
-			
-			if (repository.existsByMusicianProfileIdAndVenueIdAndStatus( //eklendi
-			                                                             dto.musicianProfileId(), dto.venueId(), RequestStatus.PENDING)) { //eklendi
-				log.warn("zaten bekleyen bir basvuru mevcut. musicianProfileId={}, venueId={}", dto.musicianProfileId(), dto.venueId());
+
+		if (requestType == RequestByType.ARTIST || requestType == RequestByType.VENUE) {
+			if (dto.musicianProfileId() == null) {
+				throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+			}
+
+			if (repository.existsByMusicianProfileIdAndVenueIdAndStatus(dto.musicianProfileId(), dto.venueId(), RequestStatus.PENDING)) {
 				throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
 			}
-			
+
 			MusicianProfile musician = musicianProfileRepository.findById(dto.musicianProfileId())
-			                                                    .orElseThrow(() -> {
-				                                                    log.error("Musician profile bulunamadi. musicianProfileId={}", dto.musicianProfileId());
-				                                                    throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-			                                                    });
-			
+			                                                    .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+			if (requestType == RequestByType.ARTIST) {
+				assertCanActForMusician(actorUserId, musician);
+			} else {
+				assertCanActForVenue(actorUserId, venue);
+			}
+
 			request.setMusicianProfile(musician);
-			request.setBand(null); //eklendi
-		} else if (requestType == RequestByType.BAND) { //eklendi
-			if (dto.bandId() == null) { //eklendi
-				throw new SoundConnectException(ErrorType.BAND_NOT_FOUND); //eklendi
-			} //eklendi
-			
-			if (repository.existsByBandIdAndVenueIdAndStatus(dto.bandId(), dto.venueId(), RequestStatus.PENDING)) { //eklendi
-				log.warn("zaten bekleyen bir band basvurusu mevcut. bandId={}, venueId={}", dto.bandId(), dto.venueId()); //eklendi
-				throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY); //eklendi
-			} //eklendi
-			
-			var band = bandRepository.findById(dto.bandId()) //eklendi
-			                         .orElseThrow(() -> { //eklendi
-				                         log.error("Band bulunamadi! bandId={}", dto.bandId()); //eklendi
-				                         throw new SoundConnectException(ErrorType.BAND_NOT_FOUND); //eklendi
-			                         }); //eklendi
-			
-			request.setBand(band); //eklendi
-			request.setMusicianProfile(null); //eklendi
-		} else { //eklendi
-			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED); //eklendi
-		} //eklendi
-		
-		// kaydet
+			request.setBand(null);
+		} else if (requestType == RequestByType.BAND) {
+			if (dto.bandId() == null) {
+				throw new SoundConnectException(ErrorType.BAND_NOT_FOUND);
+			}
+
+			if (repository.existsByBandIdAndVenueIdAndStatus(dto.bandId(), dto.venueId(), RequestStatus.PENDING)) {
+				throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
+			}
+
+			Band band = bandRepository.findById(dto.bandId())
+			                          .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+			assertCanManageBand(actorUserId, band);
+
+			request.setBand(band);
+			request.setMusicianProfile(null);
+		} else {
+			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
+		}
+
 		ArtistVenueConnectionRequest saved = repository.save(request);
-		
-		log.info("Bağlantı başvurusu oluşturuldu. requestId={}", saved.getId());
+
+		log.info("Baglanti basvurusu olusturuldu. requestId={}", saved.getId());
 		publishRequestCreatedNotification(saved);
-		
-		// response'a çevir
+
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(saved));
-		
 	}
-	
-	
-	
+
 	@Transactional
 	@Override
-	public ArtistVenueConnectionRequestResponseDto acceptRequest(UUID requestId) {
-		log.info("Bağlantı başvurusu onaylanıyor, requestId={}", requestId);
-		
-		ArtistVenueConnectionRequest request = repository.findById(requestId)
-		                                                 .orElseThrow(() -> {
-			                                                 log.error("Onay başvurusu bulunamadı. requestId={}", requestId);
-			                                                 return new SoundConnectException(ErrorType.REQUEST_NOT_FOUND);
-		                                                 });
-		
+	public ArtistVenueConnectionRequestResponseDto acceptRequest(UUID actorUserId, UUID requestId) {
+		log.info("Baglanti basvurusu onaylaniyor, requestId={}", requestId);
+
+		ArtistVenueConnectionRequest request = findRequest(requestId);
+		assertCanDecide(actorUserId, request);
+
 		if (request.getStatus() != RequestStatus.PENDING) {
 			if (request.getStatus() == RequestStatus.REJECTED) {
 				throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
 		}
-		
+
 		request.setStatus(RequestStatus.ACCEPTED);
-		
+
 		if (request.getRequestByType() == RequestByType.ARTIST || request.getRequestByType() == RequestByType.VENUE) {
 			var musician = request.getMusicianProfile();
 			var venue = request.getVenue();
-			
+
 			if (musician == null) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
-			
+
 			musician.getActiveVenues().add(venue);
 			venue.getActiveMusicians().add(musician);
-			
+
 			musicianProfileRepository.save(musician);
 			venueRepository.save(venue);
-		} else if (request.getRequestByType() == RequestByType.BAND) { //eklendi
-			var band = request.getBand(); //eklendi
-			var venue = request.getVenue(); //eklendi
-			
-			if (band == null) throw new SoundConnectException(ErrorType.BAND_NOT_FOUND); //eklendi
-			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND); //eklendi
-			
-			venue.getActiveBands().add(band); //eklendi
-			venueRepository.save(venue); //eklendi
-		} //eklendi
-		
+		} else if (request.getRequestByType() == RequestByType.BAND) {
+			var band = request.getBand();
+			var venue = request.getVenue();
+
+			if (band == null) throw new SoundConnectException(ErrorType.BAND_NOT_FOUND);
+			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+
+			venue.getActiveBands().add(band);
+			venueRepository.save(venue);
+		}
+
 		repository.save(request);
-		
-		log.info("Başvuru onaylandı. requestId={}", requestId);
+
+		log.info("Basvuru onaylandi. requestId={}", requestId);
 		publishRequestDecisionNotification(request, true);
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
 	}
-	
-	
-	
-	
+
 	@Transactional
 	@Override
-	public ArtistVenueConnectionRequestResponseDto rejectRequest(UUID requestId) {
-		log.info("Bağlantı başvurusu reddediliyor, requestId={}", requestId);
-		
-		ArtistVenueConnectionRequest request = repository.findById(requestId)
-		                                                 .orElseThrow(() -> {
-			                                                 log.error("Reddetmek için başvuru bulunamadı. requestId={}", requestId);
-			                                                 return new SoundConnectException(ErrorType.REQUEST_NOT_FOUND);
-		                                                 });
-		
-		
-		// zaten pending mi
+	public ArtistVenueConnectionRequestResponseDto rejectRequest(UUID actorUserId, UUID requestId) {
+		log.info("Baglanti basvurusu reddediliyor, requestId={}", requestId);
+
+		ArtistVenueConnectionRequest request = findRequest(requestId);
+		assertCanDecide(actorUserId, request);
+
 		if (request.getStatus() != RequestStatus.PENDING) {
 			if (request.getStatus() == RequestStatus.ACCEPTED) {
 				throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
 			}
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 		}
-		
-		// Statüyü güncelle
+
 		request.setStatus(RequestStatus.REJECTED);
-		
 		repository.save(request);
-		
-		log.info("Başvuru reddedildi. requestId={}", requestId);
+
+		log.info("Basvuru reddedildi. requestId={}", requestId);
 		publishRequestDecisionNotification(request, false);
-		
+
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(request));
-		
 	}
-	
+
 	@Override
-	public List<ArtistVenueConnectionRequestResponseDto> getRequestByMusicianProfile(UUID musicianProfileId, RequestStatus status) {
-		log.info("Müzisyen profilinin başvuruları çekiliyor. musicianProfileId={}", musicianProfileId);
+	@Transactional(readOnly = true)
+	public List<ArtistVenueConnectionRequestResponseDto> getRequestByMusicianProfile(UUID actorUserId, UUID musicianProfileId, RequestStatus status) {
+		log.info("Muzisyen profilinin basvurulari cekiliyor. musicianProfileId={}", musicianProfileId);
+		MusicianProfile musician = musicianProfileRepository.findById(musicianProfileId)
+		                                                    .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		assertCanActForMusician(actorUserId, musician);
+
 		List<ArtistVenueConnectionRequest> requests =
 				status == null
 						? repository.findAllByMusicianProfileId(musicianProfileId)
 						: repository.findAllByMusicianProfileIdAndStatus(musicianProfileId, status);
 		return requests.stream()
 		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields) //eklendi
+		               .map(this::enrichBandFields)
 		               .toList();
 	}
-	
+
 	@Override
-	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByVenue(UUID venueId, RequestStatus status) {
-		
-		log.info("Venue başvuruları çekiliyor. venueId={}", venueId);
+	@Transactional(readOnly = true)
+	public List<ArtistVenueConnectionRequestResponseDto> getRequestsByVenue(UUID actorUserId, UUID venueId, RequestStatus status) {
+		log.info("Venue basvurulari cekiliyor. venueId={}", venueId);
+		Venue venue = venueRepository.findById(venueId)
+		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+		assertCanActForVenue(actorUserId, venue);
+
 		List<ArtistVenueConnectionRequest> requests =
 				status == null
 						? repository.findAllByVenueId(venueId)
 						: repository.findAllByVenueIdAndStatus(venueId, status);
 		return requests.stream()
 		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields) //eklendi
+		               .map(this::enrichBandFields)
 		               .toList();
 	}
-	
+
+	private ArtistVenueConnectionRequest findRequest(UUID requestId) {
+		return repository.findById(requestId)
+		                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
+	}
+
+	private void assertCanCancel(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			assertCanActForVenue(actorUserId, request.getVenue());
+			return;
+		}
+		assertCanActForApplicant(actorUserId, request);
+	}
+
+	private void assertCanDecide(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			assertCanActForApplicant(actorUserId, request);
+			return;
+		}
+		assertCanActForVenue(actorUserId, request.getVenue());
+	}
+
+	private void assertCanDisconnect(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		if (canActForVenue(actorUserId, request.getVenue()) || canActForApplicant(actorUserId, request)) {
+			return;
+		}
+		throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+	}
+
+	private void assertCanActForApplicant(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.BAND) {
+			assertCanManageBand(actorUserId, request.getBand());
+			return;
+		}
+		assertCanActForMusician(actorUserId, request.getMusicianProfile());
+	}
+
+	private boolean canActForApplicant(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		if (request.getRequestByType() == RequestByType.BAND) {
+			return canManageBand(actorUserId, request.getBand());
+		}
+		return canActForMusician(actorUserId, request.getMusicianProfile());
+	}
+
+	private void assertCanActForMusician(UUID actorUserId, MusicianProfile musician) {
+		if (!canActForMusician(actorUserId, musician)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private boolean canActForMusician(UUID actorUserId, MusicianProfile musician) {
+		return musician != null
+				&& musician.getUser() != null
+				&& musician.getUser().getId().equals(actorUserId);
+	}
+
+	private void assertCanActForVenue(UUID actorUserId, Venue venue) {
+		if (!canActForVenue(actorUserId, venue)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private boolean canActForVenue(UUID actorUserId, Venue venue) {
+		return venue != null
+				&& venue.getOwner() != null
+				&& venue.getOwner().getId().equals(actorUserId);
+	}
+
+	private void assertIsActiveBandMember(UUID actorUserId, Band band) {
+		if (!isActiveBandMember(actorUserId, band)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private boolean isActiveBandMember(UUID actorUserId, Band band) {
+		return band != null && band.getMembers().stream()
+		                          .anyMatch(member -> member.getUser() != null
+				                          && member.getUser().getId().equals(actorUserId)
+				                          && member.getStatus() == BandMemberShipStatus.ACTIVE);
+	}
+
+	private void assertCanManageBand(UUID actorUserId, Band band) {
+		if (!canManageBand(actorUserId, band)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private boolean canManageBand(UUID actorUserId, Band band) {
+		return band != null && band.getMembers().stream()
+		                          .anyMatch(member -> member.getUser() != null
+				                          && member.getUser().getId().equals(actorUserId)
+				                          && member.getStatus() == BandMemberShipStatus.ACTIVE
+				                          && (member.getBandRole() == BandRole.FOUNDER || member.getBandRole() == BandRole.MANAGER));
+	}
+
 	private ArtistVenueConnectionRequestResponseDto enrichBandFields(ArtistVenueConnectionRequestResponseDto dto) {
 		if (dto.bandId() == null) return dto;
-		
+
 		String ppUrl = null;
 		try {
 			Band band = bandRepository.findById(dto.bandId()).orElse(null);
@@ -334,7 +409,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 				ppUrl = mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl();
 			}
 		} catch (Exception ignored) {}
-		
+
 		return new ArtistVenueConnectionRequestResponseDto(
 				dto.id(),
 				dto.musicianProfileId(),
@@ -495,5 +570,4 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private boolean hasText(String value) {
 		return value != null && !value.trim().isEmpty();
 	}
-	
 }

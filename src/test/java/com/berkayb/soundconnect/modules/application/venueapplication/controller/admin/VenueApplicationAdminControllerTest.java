@@ -38,6 +38,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -146,7 +147,7 @@ class VenueApplicationAdminControllerTest {
 	
 	private UsernamePasswordAuthenticationToken adminAuth() {
 		return new UsernamePasswordAuthenticationToken(
-				adminDetails, "x", adminDetails.getAuthorities()
+				adminDetails, "x", List.of(new SimpleGrantedAuthority("MANAGE_VENUE_APPLICATIONS"))
 		);
 	}
 	
@@ -238,7 +239,8 @@ class VenueApplicationAdminControllerTest {
 		seedApp(a2, ApplicationStatus.PENDING);
 		seedApp(a3, ApplicationStatus.APPROVED);
 		
-		mockMvc.perform(get(BASE + "/by-status").param("status", "PENDING"))
+		mockMvc.perform(get(BASE + "/by-status").param("status", "PENDING")
+				                .with(authentication(adminAuth())))
 		       .andDo(print())
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
@@ -250,7 +252,8 @@ class VenueApplicationAdminControllerTest {
 		var applicant = seedApplicant();
 		var app = seedApp(applicant, ApplicationStatus.PENDING);
 		
-		mockMvc.perform(get(BASE + "/{id}", app.getId()))
+		mockMvc.perform(get(BASE + "/{id}", app.getId())
+				                .with(authentication(adminAuth())))
 		       .andDo(print())
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))

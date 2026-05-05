@@ -4,7 +4,6 @@ package com.berkayb.soundconnect.modules.role.controller;
 import com.berkayb.soundconnect.modules.role.dto.request.PermissionRequest;
 import com.berkayb.soundconnect.modules.role.dto.response.PermissionResponse;
 import com.berkayb.soundconnect.modules.role.service.PermissionService;
-import com.berkayb.soundconnect.modules.role.service.PermissionServiceImpl;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,7 +24,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Permission.*;
 public class PermissionControllerImpl implements PermissionController {
 	private final PermissionService permissionService;
 	
-	//TODO @PreAuthorize("hasAuthority('WRITE_PERMISSION')")
+	@PreAuthorize("hasAuthority('MANAGE_PERMISSIONS')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<PermissionResponse>> savePermission(@RequestBody @Valid PermissionRequest request) {
@@ -40,7 +39,7 @@ public class PermissionControllerImpl implements PermissionController {
 						.build()
 		);
 	}
-	//TODO @PreAuthorize("hasAuthority('DELETE_PERMISSION')")
+	@PreAuthorize("hasAuthority('MANAGE_PERMISSIONS')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> deletePermission(@PathVariable UUID id) {
@@ -54,7 +53,7 @@ public class PermissionControllerImpl implements PermissionController {
 						.build()
 		);
 	}
-	//TODO @PreAuthorize("hasAuthority('READ_PERMISSION')")
+	@PreAuthorize("hasAuthority('MANAGE_PERMISSIONS')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<PermissionResponse>>> getAllPermissions() {

@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,7 @@ public class VenueProfileUserController {
 	
 	private final VenueProfileService venueProfileService;
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@GetMapping(ME)
 	public ResponseEntity<BaseResponse<List<VenueProfileResponseDto>>> getMyVenueProfiles(
 			@AuthenticationPrincipal UserDetailsImpl userDetails) {
@@ -37,6 +39,7 @@ public class VenueProfileUserController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@GetMapping(MY_DETAIL) //degisti
 	public ResponseEntity<BaseResponse<VenueOwnerProfileResponseDto>> getMyVenueProfileDetail( //degisti
 	                                                                                           @AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -52,6 +55,7 @@ public class VenueProfileUserController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@PutMapping(UPDATE)
 	public ResponseEntity<BaseResponse<VenueProfileResponseDto>> updateMyVenueProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -66,6 +70,7 @@ public class VenueProfileUserController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@PutMapping(MY_DETAIL_UPDATE) //degisti
 	public ResponseEntity<BaseResponse<VenueOwnerProfileResponseDto>> updateMyVenueProfileDetail( //degisti
 	                                                                                              @AuthenticationPrincipal UserDetailsImpl userDetails,

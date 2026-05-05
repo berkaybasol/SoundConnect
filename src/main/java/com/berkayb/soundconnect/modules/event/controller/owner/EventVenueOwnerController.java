@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class EventVenueOwnerController {
 	
 	private final EventService eventService;
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@PostMapping(CREATE)
 	@Operation(summary = "Venue owner kendi mekani icin yeni event olusturur")
 	public ResponseEntity<BaseResponse<EventResponseDto>> createEvent(
@@ -44,6 +46,7 @@ public class EventVenueOwnerController {
 		);
 	}
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@GetMapping("/venue/{venueId}")
 	@Operation(summary = "Venue owner kendi mekanina ait eventleri listeler")
 	public ResponseEntity<BaseResponse<List<EventResponseDto>>> getOwnerVenueEvents(
@@ -60,6 +63,7 @@ public class EventVenueOwnerController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('VENUE')")
 	@DeleteMapping(DELETE)
 	@Operation(summary = "Venue owner kendi mekanina ait eventi siler")
 	public ResponseEntity<BaseResponse<Void>> deleteEvent(

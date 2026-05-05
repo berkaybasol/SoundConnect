@@ -1,6 +1,16 @@
 package com.berkayb.soundconnect.modules.role.enums;
 
 public enum PermissionEnum {
+	// CORE ADMIN
+	MANAGE_ROLES,
+	MANAGE_PERMISSIONS,
+	READ_USERS,
+	MANAGE_USERS,
+	MANAGE_LOCATIONS,
+	MANAGE_VENUE_APPLICATIONS,
+	MANAGE_VENUES,
+	MANAGE_PROMOTIONS,
+	
 	// USER
 	READ_USER, // sisteme kayit olan herkes bu role sahip olur.
 	

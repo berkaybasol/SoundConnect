@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class VenueApplicationAdminController {
 	
 	private final VenueApplicationService venueApplicationService;
 	
+	@PreAuthorize("hasAuthority('MANAGE_VENUE_APPLICATIONS')")
 	@PostMapping(APPROVE)
 	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> approveVenueApplication(
 			@PathVariable UUID applicationId,
@@ -47,6 +49,7 @@ public class VenueApplicationAdminController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasAuthority('MANAGE_VENUE_APPLICATIONS')")
 	@PostMapping(REJECT)
 	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> rejectVenueApplication(
 			@PathVariable UUID applicationId,
@@ -69,6 +72,7 @@ public class VenueApplicationAdminController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasAuthority('MANAGE_VENUE_APPLICATIONS')")
 	@GetMapping(BY_STATUS)
 	public ResponseEntity<BaseResponse<List<VenueApplicationResponseDto>>> getApplicationByStatus(
 			@RequestParam ApplicationStatus status) {
@@ -84,6 +88,7 @@ public class VenueApplicationAdminController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasAuthority('MANAGE_VENUE_APPLICATIONS')")
 	@GetMapping(GET_BY_ID)
 	public ResponseEntity<BaseResponse<VenueApplicationResponseDto>> getVenueApplicationById(@PathVariable UUID id) {
 		log.info("Admin requests venue application by id: {}", id);

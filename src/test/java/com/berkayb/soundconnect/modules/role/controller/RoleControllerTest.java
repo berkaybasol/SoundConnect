@@ -50,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(OrderAnnotation.class)
 // method-level @PreAuthorize için sahte kullanıcı
 @WithMockUser(username = "test-admin",
-		authorities = {"READ_ROLE","WRITE_ROLE","DELETE_ROLE"})
+		authorities = {"MANAGE_ROLES"})
 @Tag("web")
 class RoleControllerTest {
 	

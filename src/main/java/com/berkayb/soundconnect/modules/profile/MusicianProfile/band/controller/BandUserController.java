@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +26,7 @@ public class BandUserController {
 	
 	private final BandService bandService;
 	
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(CREATE)
 	@Operation(summary = "Yeni band (grup) oluşturur")
 	public ResponseEntity<BaseResponse<BandResponseDto>> createBand(
@@ -40,6 +42,7 @@ public class BandUserController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PutMapping(BY_ID) //eklendi
 	@Operation(summary = "Band profilini gunceller") //eklendi
 	public ResponseEntity<BaseResponse<BandResponseDto>> updateBand( //eklendi
@@ -58,6 +61,7 @@ public class BandUserController {
 	
 	
 	@Operation(summary = "kullaniciya ait bandlerin listesini getirir")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@GetMapping(MY_BANDS)
 	public ResponseEntity<BaseResponse<List<BandResponseDto>>> getMyBands(@AuthenticationPrincipal UserDetailsImpl userDetails) {
 		var list = bandService.getBandsByUser(userDetails.getUser().getId());
@@ -69,6 +73,7 @@ public class BandUserController {
 		                                     .build());
 	}
 	
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@GetMapping(BY_ID)
 	@Operation(summary = "Band detayini getirir")
 	public ResponseEntity<BaseResponse<BandResponseDto>> getBandById(
@@ -86,6 +91,7 @@ public class BandUserController {
 	
 	
 	@Operation(summary = "Davet yolla")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(INVITE)
 	public ResponseEntity<BaseResponse<Void>> inviteMember(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -102,6 +108,7 @@ public class BandUserController {
 	}
 	
 	@Operation(summary = "Daveti kabul et")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(ACCEPT_INVITE)
 	public ResponseEntity<BaseResponse<Void>> acceptInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -116,6 +123,7 @@ public class BandUserController {
 	}
 	
 	@Operation(summary = "Daveti reddet")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(REJECT_INVITE)
 	public ResponseEntity<BaseResponse<Void>> rejectInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -130,6 +138,7 @@ public class BandUserController {
 	}
 	
 	@Operation(summary = "uye cikar")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@DeleteMapping(REMOVE_MEMBER)
 	public ResponseEntity<BaseResponse<Void>> removeMember(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -145,6 +154,7 @@ public class BandUserController {
 	}
 	
 	@Operation(summary = "bandden ayril")
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PatchMapping(LEAVE)
 	public ResponseEntity<BaseResponse<Void>> leaveBand(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,

@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,6 +35,7 @@ public class BandTrackController {
 		return null;
 	}
 	
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(EndPoints.BandTrack.CREATE)
 	@Operation(summary = "Band için yeni track oluştur")
 	public ResponseEntity<BaseResponse<TrackResponseDto>> createBandTrack(
@@ -94,6 +96,7 @@ public class BandTrackController {
 		);
 	}
 	
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@DeleteMapping(EndPoints.BandTrack.DELETE)
 	@Operation(summary = "Band track sil")
 	public ResponseEntity<BaseResponse<Void>> deleteBandTrack(

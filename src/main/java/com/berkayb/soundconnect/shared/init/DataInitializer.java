@@ -39,112 +39,52 @@ public class DataInitializer {
 	@PostConstruct
 	public void initData() {
 		
-		// eger veri onceden eklenmisse tekrar ekleme
-		if (roleRepository.count() > 0 || permissionRepository.count() > 0) {
-			log.info("roles and permissions zaten eklenmis.");
-			return;
-		}
+		log.info("roller ve izinler senkronize ediliyor...");
 		
-		log.info("roller ve izinler ekleniyor...");
-		
-		// tum izinleri enumdan al ve kaydet
-		List<Permission> allPermissions = Arrays.stream(PermissionEnum.values())
-		                                        .map(p -> Permission.builder().name(p.name()).build())
-		                                        .collect(Collectors.toList());
-		permissionRepository.saveAll(allPermissions);
+		syncPermissions();
 		
 		// kayitli izinleri map yapisina donustur
 		Map<String, Permission> permissionMap = permissionRepository.findAll().stream()
 		                                                            .collect(Collectors.toMap(Permission::getName, p -> p));
 		
-		// user rolunu olustur
-		Role userRole = Role.builder()
-		                    .name(ROLE_USER.name())
-		                    .permissions(Set.of(
-				                    Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                    ))
-		                    .build();
-		
-		// musician rolunu olustur
-		Role musicianRole = Role.builder()
-		                    .name(ROLE_MUSICIAN.name())
-		                    .permissions(Set.of(
-				                    Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                    ))
-		                    .build();
-		
-		// studio rolunu olustur
-		Role studioRole = Role.builder()
-		                        .name(ROLE_STUDIO.name())
-		                        .permissions(Set.of(
-				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                        ))
-		                        .build();
-		
-		// listener rolunu olustur
-		Role listenerRole = Role.builder()
-		                        .name(ROLE_LISTENER.name())
-		                        .permissions(Set.of(
-				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                        ))
-		                        .build();
-		
-		// Organizer rolunu olustur
-		Role organizerRole = Role.builder()
-		                        .name(ROLE_ORGANIZER.name())
-		                        .permissions(Set.of(
-				                        Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                        ))
-		                        .build();
-		
-		// Producer rolunu olustur
-		Role producerRole = Role.builder()
-		                         .name(ROLE_PRODUCER.name())
-		                         .permissions(Set.of(
-				                         Objects.requireNonNull(permissionMap.get(READ_USER.name()), "READ_USER eksik")
-		                         ))
-		                         .build();
-		
-		
-		
-		// moderator rolunu olustur
-		Role moderatorRole = Role.builder()
-		                         .name(ROLE_ADMIN.name())
-		                         .permissions(Set.of(
-				                         Objects.requireNonNull(permissionMap.get(READ_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_USER.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_ALL_USERS.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name())),
-				                         Objects.requireNonNull(permissionMap.get(READ_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(WRITE_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_LOCATION.name())),
-				                         Objects.requireNonNull(permissionMap.get(DELETE_COMMENT.name()))
-				                         
-		                         ))
-		                         .build();
-		
-		// venue rolunu olustur
-		Role venueRole = Role.builder()
-		                     .name(ROLE_VENUE.name())
-		                     .permissions(Set.of(
-				                     Objects.requireNonNull(permissionMap.get(READ_VENUE.name())),
-				                     Objects.requireNonNull(permissionMap.get(ASSIGN_ARTIST_TO_VENUE.name()))
-		                     ))
-		                     .build();
-		
-		// owner (adminlerin ustu) rolunu olustur
-		Role ownerRole = Role.builder()
-		                     .name(ROLE_OWNER.name())
-		                     .permissions(new HashSet<>(permissionMap.values()))
-		                     .build();
+		Role userRole = upsertRole(ROLE_USER.name(), permissions(permissionMap, READ_USER));
+		Role musicianRole = upsertRole(ROLE_MUSICIAN.name(), permissions(permissionMap, READ_USER));
+		Role studioRole = upsertRole(ROLE_STUDIO.name(), permissions(permissionMap, READ_USER));
+		Role listenerRole = upsertRole(ROLE_LISTENER.name(), permissions(permissionMap, READ_USER));
+		Role organizerRole = upsertRole(ROLE_ORGANIZER.name(), permissions(permissionMap, READ_USER));
+		Role producerRole = upsertRole(ROLE_PRODUCER.name(), permissions(permissionMap, READ_USER));
+		Role moderatorRole = upsertRole(ROLE_ADMIN.name(), permissions(
+				permissionMap,
+				READ_USER,
+				WRITE_USER,
+				DELETE_USER,
+				READ_ALL_USERS,
+				READ_USERS,
+				MANAGE_USERS,
+				READ_VENUE,
+				WRITE_VENUE,
+				DELETE_VENUE,
+				ASSIGN_ARTIST_TO_VENUE,
+				READ_LOCATION,
+				WRITE_LOCATION,
+				DELETE_LOCATION,
+				MANAGE_LOCATIONS,
+				MANAGE_VENUE_APPLICATIONS,
+				MANAGE_VENUES,
+				MANAGE_PROMOTIONS,
+				DELETE_COMMENT
+		));
+		Role venueRole = upsertRole(ROLE_VENUE.name(), permissions(
+				permissionMap,
+				READ_USER,
+				READ_VENUE,
+				ASSIGN_ARTIST_TO_VENUE
+		));
+		Role ownerRole = upsertRole(ROLE_OWNER.name(), new HashSet<>(permissionMap.values()));
 		
 		roleRepository.saveAll(List.of(userRole, moderatorRole, venueRole, ownerRole, musicianRole, listenerRole, studioRole, organizerRole, producerRole));
 		
-		log.info("roller ve izinler eklendi.");
+		log.info("roller ve izinler senkronize edildi.");
 		
 		// default owner kullaniciyi olustur
 		if (userRepository.findByUsername("basol").isEmpty()) {
@@ -171,5 +111,33 @@ public class DataInitializer {
 			userRepository.save(admin);
 			log.info("owner kullanici olusturuldu: basol / raprap12334");
 		}
+	}
+	
+	private void syncPermissions() {
+		Arrays.stream(PermissionEnum.values())
+		      .forEach(permissionEnum -> permissionRepository.findByName(permissionEnum.name())
+		                                                    .orElseGet(() -> permissionRepository.save(
+				                                                    Permission.builder()
+				                                                              .name(permissionEnum.name())
+				                                                              .build()
+		                                                    )));
+	}
+	
+	private Role upsertRole(String roleName, Set<Permission> permissions) {
+		Role role = roleRepository.findByName(roleName)
+		                          .orElseGet(() -> Role.builder().name(roleName).build());
+		role.setPermissions(permissions);
+		return roleRepository.save(role);
+	}
+	
+	private Set<Permission> permissions(Map<String, Permission> permissionMap, PermissionEnum... permissionEnums) {
+		Set<Permission> permissions = new HashSet<>();
+		for (PermissionEnum permissionEnum : permissionEnums) {
+			permissions.add(Objects.requireNonNull(
+					permissionMap.get(permissionEnum.name()),
+					permissionEnum.name() + " eksik"
+			));
+		}
+		return permissions;
 	}
 }

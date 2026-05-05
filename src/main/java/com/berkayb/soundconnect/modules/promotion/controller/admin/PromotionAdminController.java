@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +31,7 @@ public class PromotionAdminController {
 	/**
 	 * Yeni promotion kaydı oluşturur.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@PostMapping(SAVE)
 	public ResponseEntity<BaseResponse<PromotionResponseDto>> save(@RequestBody @Valid PromotionSaveRequestDto dto) {
 		PromotionResponseDto response = promotionService.save(dto);
@@ -46,6 +48,7 @@ public class PromotionAdminController {
 	/**
 	 * Mevcut promotion kaydını günceller.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@PutMapping(UPDATE)
 	public ResponseEntity<BaseResponse<PromotionResponseDto>> update(@PathVariable UUID id,
 	                                                                 @RequestBody @Valid PromotionUpdateRequestDto dto) {
@@ -63,6 +66,7 @@ public class PromotionAdminController {
 	/**
 	 * Promotion kaydını id bilgisine göre getirir.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@GetMapping(BY_ID)
 	public ResponseEntity<BaseResponse<PromotionResponseDto>> getById(@PathVariable UUID id) {
 		PromotionResponseDto response = promotionService.getById(id);
@@ -80,6 +84,7 @@ public class PromotionAdminController {
 	 * Belirli bir placement alanındaki tüm promotion kayıtlarını getirir.
 	 * Admin listeleme ekranları için kullanılır.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@GetMapping(GET_ALL_BY_PLACEMENT)
 	public ResponseEntity<BaseResponse<List<PromotionResponseDto>>> getAllByPlacement(@PathVariable PromotionPlacement placement) {
 		List<PromotionResponseDto> response = promotionService.getAllByPlacement(placement);
@@ -96,6 +101,7 @@ public class PromotionAdminController {
 	/**
 	 * Belirli bir status'e sahip promotion kayıtlarını getirir.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@GetMapping(GET_ALL_BY_STATUS)
 	public ResponseEntity<BaseResponse<List<PromotionResponseDto>>> getAllByStatus(@PathVariable PromotionStatus status) {
 		List<PromotionResponseDto> response = promotionService.getAllByStatus(status);
@@ -112,6 +118,7 @@ public class PromotionAdminController {
 	/**
 	 * Belirli bir type'a sahip promotion kayıtlarını getirir.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@GetMapping(GET_ALL_BY_TYPE)
 	public ResponseEntity<BaseResponse<List<PromotionResponseDto>>> getAllByType(@PathVariable PromotionType type) {
 		List<PromotionResponseDto> response = promotionService.getAllByType(type);
@@ -128,6 +135,7 @@ public class PromotionAdminController {
 	/**
 	 * Promotion kaydını siler.
 	 */
+	@PreAuthorize("hasAuthority('MANAGE_PROMOTIONS')")
 	@DeleteMapping(DELETE)
 	public ResponseEntity<BaseResponse<Void>> deleteById(@PathVariable UUID id) {
 		promotionService.deleteById(id);

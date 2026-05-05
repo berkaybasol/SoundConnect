@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -70,6 +71,7 @@ public class SecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.authorizeHttpRequests(auth -> auth
+						.requestMatchers(HttpMethod.GET, "/api/v1/venues/**").permitAll()
 						.requestMatchers(
 								"/api/v1/auth/**",           // Auth işlemleri
 								"/v3/api-docs/**",            // Swagger dökümantasyonu
@@ -78,13 +80,14 @@ public class SecurityConfig {
 								"/swagger-resources/**",
 								"/webjars/**",
 								"/api/ping",
-								"/api/v1/roles/get-all-roles",
-								"/api/v1/cities/get-all-cities",
-								"/api/v1/districts/get-all-districts",
-								"/api/v1/neighborhoods/get-all",
 								"/api/v1/cities/**",
 								"/api/v1/districts/**",
 								"/api/v1/neighborhoods/**",
+								"/api/v1/public/**",
+								"/api/v1/events/**",
+								"/api/v1/promotions/displayable/**",
+								"/api/v1/spotify/search/tracks",
+								"/api/v1/spotify/tracks/**",
 								"/192.168.1.101:8080/actuator/health",
 								"/ws",             // EKLENDİ
 								"/ws/**",          // EKLENDİ
