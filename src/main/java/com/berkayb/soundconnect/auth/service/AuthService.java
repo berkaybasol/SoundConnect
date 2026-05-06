@@ -73,13 +73,6 @@ public class AuthService {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzu kontrol edin."));
 		}
 		
-		if (user.getStatus() == UserStatus.PENDING_VENUE_REQUEST) {
-			throw new SoundConnectException(
-					ErrorType.UNAUTHORIZED,
-					List.of("Başvurunuz inceleniyor. Onaylandıktan sonra giriş yapabilirsiniz.")
-			);
-		}
-		
 		// Spring Security authentication ile kullaniciyi dogrula.
 		Authentication authentication = authenticationManager.authenticate(
 				new UsernamePasswordAuthenticationToken(request.username(), request.password())
@@ -96,7 +89,7 @@ public class AuthService {
 		                   .success(true)
 		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(new LoginResponse(token))
+		                   .data(new LoginResponse(token, user.getStatus()))
 		                   .build();
 	}
 	
