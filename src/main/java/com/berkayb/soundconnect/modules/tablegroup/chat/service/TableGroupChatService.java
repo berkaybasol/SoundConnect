@@ -15,5 +15,6 @@ public interface TableGroupChatService {
 	// masanin butun mesajlarini getirir
 	Page<TableGroupMessageResponseDto> getMessages(UUID requesterId, UUID tableGroupId, Pageable pageable);
 	
+	int getUnreadBadge(UUID requesterId, UUID tableGroupId);
 	
 }

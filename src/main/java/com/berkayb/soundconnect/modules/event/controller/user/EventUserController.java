@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.event.controller.user;
 
-
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.service.EventService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -13,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam; //eklendi
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -21,16 +21,14 @@ import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Event.*;
 
-
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "FOR USERS / Events (Discover)", description = "Kullanıcılar için etkinlik listeleme servisleri")
 public class EventUserController {
-
-	private final EventService eventService;
 	
+	private final EventService eventService;
 	
 	@GetMapping(USER_BY_ID)
 	@Operation(summary = "Etkinlik detayini getirir")
@@ -40,11 +38,11 @@ public class EventUserController {
 		var dto = eventService.getEventById(eventId);
 		
 		return ResponseEntity.ok(BaseResponse.<EventResponseDto>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Etkinlik detaylari getirildi.")
-				                         .data(dto)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Etkinlik detaylari getirildi.")
+		                                     .data(dto)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_TODAY)
@@ -54,11 +52,11 @@ public class EventUserController {
 		var list = eventService.getEventsByDate(LocalDate.now());
 		
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Bugunku etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Bugunku etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_BY_DATE)
@@ -69,11 +67,11 @@ public class EventUserController {
 		var list = eventService.getEventsByDate(date);
 		
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_BY_CITY)
@@ -84,11 +82,11 @@ public class EventUserController {
 		var list = eventService.getEventsByCity(cityId);
 		
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Sehirdeki etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Sehirdeki etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_BY_DISTRICT)
@@ -100,11 +98,11 @@ public class EventUserController {
 		var list = eventService.getEventsByDistrict(districtId);
 		
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Ilcedeki etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Ilcedeki etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_BY_NEIGHBORHOOD)
@@ -114,11 +112,11 @@ public class EventUserController {
 		
 		var list = eventService.getEventsByNeighborhood(neighborhoodId);
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Mahalledeki etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Mahalledeki etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 	
 	@GetMapping(USER_BY_VENUE)
@@ -128,10 +126,29 @@ public class EventUserController {
 		
 		var list = eventService.getEventsByVenue(venueId);
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
-				                         .success(true)
-				                         .code(200)
-				                         .message("Mekandeki etkinlikler listelendi")
-				                         .data(list)
-				                         .build());
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Mekandeki etkinlikler listelendi")
+		                                     .data(list)
+		                                     .build());
+	}
+	
+	@GetMapping("/venue/{venueId}/weekly")
+	@Operation(summary = "Bir mekanin belirli tarih araligindaki haftalik etkinliklerini getirir")
+	public ResponseEntity<BaseResponse<List<EventResponseDto>>> getWeeklyEventsByVenue(
+	                                                                                    @PathVariable UUID venueId,
+	                                                                                    @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+	                                                                                    @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+		
+		log.info("Mekanin haftalik etkinlikleri listeleniyor. venueId={}, startDate={}, endDate={}", venueId, startDate, endDate);
+		
+		var list = eventService.getWeeklyEventsByVenue(venueId, startDate, endDate);
+		
+		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Mekanin haftalik etkinlikleri listelendi")
+		                                     .data(list)
+		                                     .build());
 	}
 }

@@ -33,11 +33,9 @@ class ListenerProfileAdminControllerTest {
 	
 	private final ObjectMapper om = new ObjectMapper();
 	
-	// Controller’ın dependency’si
 	@MockitoBean
 	ListenerProfileService listenerProfileService;
 	
-	// Security tarafını susturuyoruz
 	@MockitoBean
 	com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter jwtAuthenticationFilter;
 	@MockitoBean
@@ -48,22 +46,26 @@ class ListenerProfileAdminControllerTest {
 	@Test
 	void getListenerProfileByUserId_ok() throws Exception {
 		UUID userId = UUID.randomUUID();
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "bio", "pp.png", userId);
+		UUID ppId = UUID.randomUUID();
 		
+		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "bio", ppId, userId);
 		when(listenerProfileService.getProfileByUserId(userId)).thenReturn(dto);
 		
 		mockMvc.perform(get("/api/v1/admin/listener-profiles/by-user/{userId}", userId))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success", is(true)))
 		       .andExpect(jsonPath("$.code", is(200)))
-		       .andExpect(jsonPath("$.data.userId").value(userId.toString()));
+		       .andExpect(jsonPath("$.data.userId").value(userId.toString()))
+		       .andExpect(jsonPath("$.data.profilePictureMediaId").value(ppId.toString()));
 	}
 	
 	@Test
 	void updateListenerProfileByUserId_ok() throws Exception {
 		UUID userId = UUID.randomUUID();
-		var body = new ListenerSaveRequestDto("upd", "pic.png");
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "upd", "pic.png", userId);
+		UUID newPpId = UUID.randomUUID();
+		
+		var body = new ListenerSaveRequestDto("upd", newPpId);
+		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "upd", newPpId, userId);
 		
 		when(listenerProfileService.updateProfile(userId, body)).thenReturn(dto);
 		
@@ -75,6 +77,7 @@ class ListenerProfileAdminControllerTest {
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success", is(true)))
 		       .andExpect(jsonPath("$.code", is(200)))
-		       .andExpect(jsonPath("$.data.bio").value("upd"));
+		       .andExpect(jsonPath("$.data.bio").value("upd"))
+		       .andExpect(jsonPath("$.data.profilePictureMediaId").value(newPpId.toString()));
 	}
 }

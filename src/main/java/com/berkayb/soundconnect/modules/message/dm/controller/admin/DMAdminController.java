@@ -10,6 +10,7 @@ import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepo
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping(EndPoints.DM.ADMIN_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('MANAGE_DM')")
 public class DMAdminController {
 	
 	private final DMConversationRepository conversationRepository;
@@ -28,7 +30,6 @@ public class DMAdminController {
 	
 	// GET /api/v1/admin/dm/conversations
 	@GetMapping(EndPoints.DM.ADMIN_CONVERSATIONS)
-	//@PreAuthorize("hasAuthority('MANAGE_DM')")
 	public ResponseEntity<BaseResponse<List<DMConversationPreviewResponseDto>>> getAllConversations() {
 		List<DMConversationPreviewResponseDto> data = conversationRepository.findAll()
 		                                                                    .stream()
@@ -47,7 +48,6 @@ public class DMAdminController {
 	
 	// GET /api/v1/admin/dm/{conversationId}
 	@GetMapping(EndPoints.DM.ADMIN_CONVERSATION_BY_ID)
-	//@PreAuthorize("hasAuthority('MANAGE_DM')")
 	public ResponseEntity<BaseResponse<DMConversation>> getConversationById(@PathVariable UUID conversationId) {
 		DMConversation conv = conversationRepository.findById(conversationId)
 		                                            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
@@ -62,7 +62,6 @@ public class DMAdminController {
 	
 	// DELETE /api/v1/admin/dm/{conversationId}
 	@DeleteMapping(EndPoints.DM.ADMIN_CONVERSATION_BY_ID)
-	//@PreAuthorize("hasAuthority('MANAGE_DM')")
 	public ResponseEntity<BaseResponse<Void>> deleteConversation(@PathVariable UUID conversationId) {
 		if (!conversationRepository.existsById(conversationId)) {
 			throw new IllegalArgumentException("Conversation not found: " + conversationId);
@@ -80,7 +79,6 @@ public class DMAdminController {
 	
 	// GET /api/v1/admin/dm/messages?conversationId=...
 	@GetMapping(EndPoints.DM.ADMIN_MESSAGES)
-	//@PreAuthorize("hasAuthority('MANAGE_DM')")
 	public ResponseEntity<BaseResponse<List<DMMessageResponseDto>>> getMessages(@RequestParam UUID conversationId) {
 		// varsa yoksa kontrolü
 		conversationRepository.findById(conversationId)
@@ -101,7 +99,6 @@ public class DMAdminController {
 	
 	// DELETE /api/v1/admin/dm/{conversationId}/messages/{messageId}
 	@DeleteMapping(EndPoints.DM.ADMIN_DELETE_MESSAGE)
-	//@PreAuthorize("hasAuthority('MANAGE_DM')")
 	public ResponseEntity<BaseResponse<Void>> deleteMessage(@PathVariable UUID conversationId,
 	                                                        @PathVariable UUID messageId) {
 		DMMessage msg = messageRepository.findById(messageId)

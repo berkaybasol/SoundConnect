@@ -10,6 +10,7 @@ import org.mapstruct.factory.Mappers;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 @Tag("mapper")
 class OrganizerProfileMapperTest {
 	
@@ -24,12 +25,15 @@ class OrganizerProfileMapperTest {
 		             .password("pw")
 		             .build();
 		
+		UUID ppId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		
 		OrganizerProfile entity = OrganizerProfile.builder()
-		                                          .id(UUID.randomUUID())
+		                                          .id(profileId)
 		                                          .user(u)
 		                                          .name("Org")
 		                                          .description("desc")
-		                                          .profilePicture("pic.png")
+		                                          .profilePictureMediaId(ppId)
 		                                          .address("addr")
 		                                          .phone("555")
 		                                          .instagramUrl("ig")
@@ -38,10 +42,10 @@ class OrganizerProfileMapperTest {
 		
 		OrganizerProfileResponseDto dto = mapper.toDto(entity);
 		
-		assertThat(dto.id()).isEqualTo(entity.getId());
+		assertThat(dto.id()).isEqualTo(profileId);
 		assertThat(dto.name()).isEqualTo("Org");
 		assertThat(dto.description()).isEqualTo("desc");
-		assertThat(dto.profilePicture()).isEqualTo("pic.png");
+		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId); // ✅ aynı UUID
 		assertThat(dto.address()).isEqualTo("addr");
 		assertThat(dto.phone()).isEqualTo("555");
 		assertThat(dto.instagramUrl()).isEqualTo("ig");

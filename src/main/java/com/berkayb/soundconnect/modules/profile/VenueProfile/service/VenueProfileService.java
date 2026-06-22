@@ -1,7 +1,9 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueOwnerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenuePublicProfileResponseDto;
 
 import java.util.List;
 import java.util.UUID;
@@ -16,4 +18,10 @@ VenueProfileResponseDto updateProfile (UUID venueId, VenueProfileSaveRequestDto 
 	
 	// Kullanıcının sahip olduğu bir venue'nun profilini güncelle
 	VenueProfileResponseDto updateProfileByVenueId(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto);
+	
+	VenueOwnerProfileResponseDto getOwnerProfileDetail(UUID userId, UUID venueId);
+	
+	VenueOwnerProfileResponseDto updateOwnerProfileDetail(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto);
+	
+	VenuePublicProfileResponseDto getPublicProfileDetail(UUID venueId);
 }

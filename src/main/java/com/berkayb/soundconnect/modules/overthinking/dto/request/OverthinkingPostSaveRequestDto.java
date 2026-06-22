@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.overthinking.dto.request;
 
+import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingVisibilityType;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
@@ -19,9 +21,14 @@ public record OverthinkingPostSaveRequestDto(
 		@Size(max = 10240)
 		String content,
 		
+		@NotNull OverthinkingVisibilityType visibilityType, // postun gorunur mu anonim mi paylasilacagini belirler
+		
 		// Spotify seçilirse
 		String spotifyTrackUrl,
 		String spotifyArtistId,
+		String spotifyTrackName,
+		String spotifyArtistName,
+		String spotifyAlbumImageUrl,
 		
 		// MusicianProfile’dan track
 		UUID musicianTrackId,

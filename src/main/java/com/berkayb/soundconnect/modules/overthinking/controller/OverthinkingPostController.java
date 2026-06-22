@@ -12,7 +12,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,6 +68,7 @@ public class OverthinkingPostController {
 	}
 	
 	@PostMapping(CREATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Post olustur")
 	public ResponseEntity<BaseResponse<OverthinkingPostResponseDto>> createPost(
 			Principal principal,
@@ -84,6 +89,7 @@ public class OverthinkingPostController {
 	}
 	
 	@PutMapping(UPDATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Post guncelle")
 	public ResponseEntity<BaseResponse<OverthinkingPostResponseDto>> updatePost(Principal principal, @PathVariable UUID postId, @Valid @RequestBody OverthinkingPostSaveRequestDto dto) {
 		UUID userId = getAuthenticatedUserId(principal);
@@ -101,6 +107,7 @@ public class OverthinkingPostController {
 	
 	
 	@DeleteMapping(DELETE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Overthinking post sil")
 	public ResponseEntity<BaseResponse<Void>> deletePost(
 			Principal principal,
@@ -132,7 +139,7 @@ public class OverthinkingPostController {
 		
 		log.info("[Overthinking] Fetching post {} by user {}", postId, userId);
 		
-		var response = postService.getById(postId);
+		var response = postService.getById(postId, userId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<OverthinkingPostResponseDto>builder()
@@ -144,4 +151,59 @@ public class OverthinkingPostController {
 		);
 	}
 	
+	@GetMapping(FEED)
+	@Operation(summary = "Overthinking global feed")
+	public ResponseEntity<BaseResponse<Page<OverthinkingPostResponseDto>>> getFeed(
+			Principal principal,
+			@ParameterObject Pageable pageable
+	) {
+		UUID viewerId = tryGetAuthenticatedUserId(principal);
+		
+		var response = postService.getAll(viewerId, pageable);
+		
+		return ResponseEntity.ok(BaseResponse.<Page<OverthinkingPostResponseDto>>builder()
+		                                     .success(true)
+		                                     .message("Feed başarıyla getirildi")
+		                                     .code(200)
+		                                     .data(response)
+		                                     .build());
+	}
+	
+	@GetMapping(MY_POSTS)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Giriş yapan kullanıcının postları")
+	public ResponseEntity<BaseResponse<Page<OverthinkingPostResponseDto>>> getMyPosts(
+			Principal principal,
+			@ParameterObject Pageable pageable
+	) {
+		UUID userId = getAuthenticatedUserId(principal);
+		
+		var response = postService.getMyPosts(userId, pageable);
+		
+		return ResponseEntity.ok(BaseResponse.<Page<OverthinkingPostResponseDto>>builder()
+		                                     .success(true)
+		                                     .message("Postlarım başarıyla getirildi")
+		                                     .code(200)
+		                                     .data(response)
+		                                     .build());
+	}
+	
+	@GetMapping(BY_ARTIST)
+	@Operation(summary = "Sanatçıya bağlı Overthinking postları")
+	public ResponseEntity<BaseResponse<Page<OverthinkingPostResponseDto>>> getPostsByArtist(
+			Principal principal,
+			@PathVariable UUID artistId,
+			@ParameterObject Pageable pageable
+	) {
+		UUID viewerId = tryGetAuthenticatedUserId(principal);
+		
+		var response = postService.getPostsByArtist(artistId, viewerId, pageable);
+		
+		return ResponseEntity.ok(BaseResponse.<Page<OverthinkingPostResponseDto>>builder()
+		                                     .success(true)
+		                                     .message("Sanatçı postları başarıyla getirildi")
+		                                     .code(200)
+		                                     .data(response)
+		                                     .build());
+	}
 }

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,8 +63,11 @@ class ArtistVenueConnectionRequestControllerTest {
 		sample = new ArtistVenueConnectionRequestResponseDto(
 				requestId,
 				musicianProfileId,
+				null,
 				venueId,
 				"StageNameX",
+				null,
+				null,
 				"VenueX",
 				"see you!",
 				"PENDING",
@@ -74,9 +78,9 @@ class ArtistVenueConnectionRequestControllerTest {
 	
 	@Test
 	void createRequest_ok() throws Exception {
-		when(service.createRequest(any(), eq(RequestByType.ARTIST))).thenReturn(sample);
+		when(service.createRequest(any(), any(), eq(RequestByType.ARTIST))).thenReturn(sample);
 		
-		var body = new ArtistVenueConnectionRequestCreateDto(musicianProfileId, venueId, "see you!");
+		var body = new ArtistVenueConnectionRequestCreateDto(musicianProfileId, null, venueId, "see you!");
 		mockMvc.perform(post(BASE + "/request")
 				                .param("requestByType", "ARTIST")
 				                .contentType(MediaType.APPLICATION_JSON)
@@ -93,7 +97,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		
 		// service'e doğru argüman gitti mi?
 		ArgumentCaptor<ArtistVenueConnectionRequestCreateDto> captor = ArgumentCaptor.forClass(ArtistVenueConnectionRequestCreateDto.class);
-		verify(service).createRequest(captor.capture(), eq(RequestByType.ARTIST));
+		verify(service).createRequest(any(), captor.capture(), eq(RequestByType.ARTIST));
 		var sent = captor.getValue();
 		// basit doğrulama
 		assert sent.musicianProfileId().equals(musicianProfileId);
@@ -103,10 +107,10 @@ class ArtistVenueConnectionRequestControllerTest {
 	@Test
 	void acceptRequest_ok() throws Exception {
 		var accepted = new ArtistVenueConnectionRequestResponseDto(
-				requestId, musicianProfileId, venueId, "StageNameX", "VenueX",
+				requestId, musicianProfileId, null, venueId, "StageNameX", null, null, "VenueX",
 				"see you!", "ACCEPTED", RequestByType.ARTIST, "2025-01-01T12:00:00Z"
 		);
-		when(service.acceptRequest(requestId)).thenReturn(accepted);
+		when(service.acceptRequest(any(), eq(requestId))).thenReturn(accepted);
 		
 		mockMvc.perform(post(BASE + "/" + requestId + "/accept"))
 		       .andExpect(status().isOk())
@@ -115,16 +119,16 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
 		       .andExpect(jsonPath("$.data.id").value(requestId.toString()));
 		
-		verify(service).acceptRequest(requestId);
+		verify(service).acceptRequest(any(), eq(requestId));
 	}
 	
 	@Test
 	void rejectRequest_ok() throws Exception {
 		var rejected = new ArtistVenueConnectionRequestResponseDto(
-				requestId, musicianProfileId, venueId, "StageNameX", "VenueX",
+				requestId, musicianProfileId, null, venueId, "StageNameX", null, null, "VenueX",
 				"see you!", "REJECTED", RequestByType.ARTIST, "2025-01-01T12:00:00Z"
 		);
-		when(service.rejectRequest(requestId)).thenReturn(rejected);
+		when(service.rejectRequest(any(), eq(requestId))).thenReturn(rejected);
 		
 		mockMvc.perform(post(BASE + "/" + requestId + "/reject"))
 		       .andExpect(status().isOk())
@@ -133,46 +137,50 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(jsonPath("$.data.status").value("REJECTED"))
 		       .andExpect(jsonPath("$.data.id").value(requestId.toString()));
 		
-		verify(service).rejectRequest(requestId);
+		verify(service).rejectRequest(any(), eq(requestId));
 	}
 	
 	@Test
 	void getRequestsByMusician_ok() throws Exception {
 		var other = new ArtistVenueConnectionRequestResponseDto(
-				UUID.randomUUID(), musicianProfileId, UUID.randomUUID(),
-				"StageNameX", "VenueY",
+				UUID.randomUUID(), musicianProfileId, null, UUID.randomUUID(),
+				"StageNameX", null, null, "VenueY",
 				"msg", "PENDING", RequestByType.VENUE, "2025-01-02T10:00:00Z"
 		);
 		
-		when(service.getRequestByMusicianProfile(musicianProfileId)).thenReturn(List.of(sample, other));
+		when(service.getRequestByMusicianProfile(any(), eq(musicianProfileId), eq(RequestStatus.PENDING)))
+				.thenReturn(List.of(sample, other));
 		
-		mockMvc.perform(get(BASE + "/musician/" + musicianProfileId))
+		mockMvc.perform(get(BASE + "/musician/" + musicianProfileId)
+				                .param("status", "PENDING"))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data", hasSize(2)))
 		       .andExpect(jsonPath("$.data[0].musicianProfileId").value(musicianProfileId.toString()))
 		       .andExpect(jsonPath("$.data[1].musicianProfileId").value(musicianProfileId.toString()));
 		
-		verify(service).getRequestByMusicianProfile(musicianProfileId);
+		verify(service).getRequestByMusicianProfile(any(), eq(musicianProfileId), eq(RequestStatus.PENDING));
 	}
 	
 	@Test
 	void getRequestsByVenue_ok() throws Exception {
 		var other = new ArtistVenueConnectionRequestResponseDto(
-				UUID.randomUUID(), UUID.randomUUID(), venueId,
-				"StageNameZ", "VenueX",
+				UUID.randomUUID(), UUID.randomUUID(), null, venueId,
+				"StageNameZ", null, null, "VenueX",
 				"msg2", "PENDING", RequestByType.ARTIST, "2025-01-03T09:00:00Z"
 		);
 		
-		when(service.getRequestsByVenue(venueId)).thenReturn(List.of(sample, other));
+		when(service.getRequestsByVenue(any(), eq(venueId), eq(RequestStatus.PENDING)))
+				.thenReturn(List.of(sample, other));
 		
-		mockMvc.perform(get(BASE + "/venue/" + venueId))
+		mockMvc.perform(get(BASE + "/venue/" + venueId)
+				                .param("status", "PENDING"))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data", hasSize(2)))
 		       .andExpect(jsonPath("$.data[0].venueId").value(venueId.toString()))
 		       .andExpect(jsonPath("$.data[1].venueId").value(venueId.toString()));
 		
-		verify(service).getRequestsByVenue(venueId);
+		verify(service).getRequestsByVenue(any(), eq(venueId), eq(RequestStatus.PENDING));
 	}
 }

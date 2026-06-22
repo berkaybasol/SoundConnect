@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -26,7 +29,24 @@ public class VenueControllerImpl implements VenueController {
 	
 	private final VenueService venueService;
 	
-	//TODO @PreAuthorize("hasAuthority('WRITE_VENUE')")
+	@GetMapping(SEARCH) // EndPoints.Venue.SEARCH = "/search"
+	public ResponseEntity<BaseResponse<Page<VenueResponseDto>>> search(
+			@RequestParam String q,
+			@PageableDefault(size = 20, sort = "name") Pageable pageable
+	) {
+		var page = venueService.searchByName(q, pageable);
+		
+		return ResponseEntity.ok(
+				BaseResponse.<Page<VenueResponseDto>>builder()
+				            .success(true)
+				            .message("Venues fetched")
+				            .data(page)
+				            .build()
+		);
+	}
+	
+	
+	@PreAuthorize("hasAuthority('MANAGE_VENUES')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> save(@RequestBody @Valid VenueRequestDto dto) {
@@ -40,7 +60,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('WRITE_VENUE')")
+	@PreAuthorize("hasAuthority('MANAGE_VENUES')")
 	@PutMapping(UPDATE)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> update(@PathVariable UUID id, @RequestBody @Valid VenueRequestDto dto) {
@@ -54,7 +74,6 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('READ_VENUE')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<VenueResponseDto>>> findAll() {
@@ -68,7 +87,6 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('READ_VENUE')")
 	@GetMapping(GET_BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<VenueResponseDto>> findById(@PathVariable UUID id) {
@@ -82,7 +100,7 @@ public class VenueControllerImpl implements VenueController {
 		                                     .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('DELETE_VENUE')")
+	@PreAuthorize("hasAuthority('MANAGE_VENUES')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> delete(@PathVariable UUID id) {

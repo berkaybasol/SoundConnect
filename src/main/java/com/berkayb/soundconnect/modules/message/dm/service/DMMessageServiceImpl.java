@@ -67,6 +67,13 @@ public class DMMessageServiceImpl implements DMMessageService {
 		if (senderId.equals(requestDto.recipientId())) {
 			throw new SoundConnectException(ErrorType.CANNOT_DM_SELF);
 		}
+
+		UUID expectedRecipientId = conversation.getUserAId().equals(senderId)
+				? conversation.getUserBId()
+				: conversation.getUserAId();
+		if (!expectedRecipientId.equals(requestDto.recipientId())) {
+			throw new SoundConnectException(ErrorType.NOT_PARTICIPANT_OF_CONVERSATION);
+		}
 		
 		// mesagi olustur
 		DMMessage message = DMMessage.builder()
@@ -113,6 +120,11 @@ public class DMMessageServiceImpl implements DMMessageService {
 		if (!message.getRecipientId().equals(readerId)) {
 			throw new SoundConnectException(ErrorType.NOT_AUTHORIZED);
 		}
+		DMConversation conversation = conversationRepository.findById(message.getConversationId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
+		if (!(conversation.getUserAId().equals(readerId) || conversation.getUserBId().equals(readerId))) {
+			throw new SoundConnectException(ErrorType.NOT_PARTICIPANT_OF_CONVERSATION);
+		}
 		// daha once okunduysa tekrar setleme
 		if (message.getReadAt() != null) {
 			return; // zaten okunmus
@@ -121,11 +133,8 @@ public class DMMessageServiceImpl implements DMMessageService {
 		messageRepository.save(message);
 		
 		// konusmanin "lastReadMessageId" guncellemesi (UI icin)
-		conversationRepository.findById(message.getConversationId())
-		                      .ifPresent(conv -> {
-			                      conv.setLastReadMessageId(message.getId());
-			                      conversationRepository.save(conv);
-		                      });
+		conversation.setLastReadMessageId(message.getId());
+		conversationRepository.save(conversation);
 		
 		// Unread badge'i guncelle ve WebSocket badge push yap
 		// guncel unread sayisini db'den cek

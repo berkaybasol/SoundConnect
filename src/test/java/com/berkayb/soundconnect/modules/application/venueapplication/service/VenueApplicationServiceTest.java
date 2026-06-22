@@ -136,6 +136,7 @@ class VenueApplicationServiceTest {
 		return new VenueApplicationCreateRequestDto(
 				"Cool Venue",
 				"Some Address 123",
+				"05551234567",
 				city.getId().toString(),
 				district.getId().toString(),
 				neighborhood.getId() != null ? neighborhood.getId().toString() : null

@@ -7,7 +7,7 @@ public record StudioProfileResponseDto(
 		UUID id,
 		String name,
 		String description,
-		String profilePicture,
+		UUID profilePictureMediaId,
 		String adress,
 		String phone,
 		String website,

@@ -45,8 +45,15 @@ public class TableGroup extends BaseEntity {
 	@Column(name = "max_person_count", nullable = false)
 	private int maxPersonCount;
 	
-	@Column(name = "gender_prefs")
-	private List<String> genderPrefs;
+	
+	@ElementCollection(fetch = FetchType.EAGER) //eklendi
+	@CollectionTable( //eklendi
+			name = "tbl_table_group_gender_prefs", //eklendi
+			joinColumns = @JoinColumn(name = "table_group_id") //eklendi
+	) //eklendi
+	@Column(name = "gender_pref", length = 16, nullable = false) //eklendi
+	private List<String> genderPrefs; //degisti
+	
 	
 	@Column (name = "age_min", nullable = false)
 	private int ageMin;

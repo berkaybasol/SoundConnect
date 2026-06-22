@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.comment.entity;
 
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;

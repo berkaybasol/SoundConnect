@@ -9,6 +9,8 @@ import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface MediaAssetService {
@@ -19,6 +21,7 @@ public interface MediaAssetService {
 	// veritabanina draft(taslak) bir MediaAsset kaydi eklenir.
 	// bu sayede dosya henuz gelmeden sistemde varligini tanitmis oluruz.
 	UploadInitResultResponseDto initUpload(
+			UUID actingUserId,
 			MediaOwnerType ownerType, // medya sahibinini tanimlar.
 			UUID ownerId, // medya sahibinin id
 			MediaKind kind, // medya turu (image,video,auidio)
@@ -32,14 +35,14 @@ public interface MediaAssetService {
 	// upload tamamlandiktan sonra cagirilan metod
 	// istemci puut islemlerini bitirdikten sonra bu metod cagirilir.
 	// video ise "processing" durumuna alinir, diger turler dogrudan "ready" yapilir.
-	MediaAsset completeUpload(UUID assetId);
+	MediaAsset completeUpload(UUID actingUserId, UUID assetId);
 	
 	
 	// owner'a ait tum medya varliklarini listeler
-	Page<MediaAsset> listByOwner(MediaOwnerType ownerType, UUID ownerId, Pageable pageable);
+	Page<MediaAsset> listByOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, Pageable pageable);
 	
 	// owner'a ait bel
-	Page<MediaAsset> listByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable);
+	Page<MediaAsset> listByOwnerAndKind(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable);
 	Page<MediaAsset> listPublicByOwner(MediaOwnerType ownerType, UUID ownerId, Pageable pageable);
 	Page<MediaAsset> listPublicByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable);
 	
@@ -51,4 +54,8 @@ public interface MediaAssetService {
 	boolean exists(UUID mediaAssetId);
 	
 	String getPlaybackUrl(UUID mediaAssetId);
+	
+	MediaAsset getById(UUID mediaAssetId);
+	
+	Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds);
 }

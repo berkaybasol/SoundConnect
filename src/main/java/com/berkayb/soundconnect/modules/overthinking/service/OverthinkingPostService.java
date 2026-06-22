@@ -13,13 +13,13 @@ public interface OverthinkingPostService {
 	
 	OverthinkingPostResponseDto update(UUID postId, UUID authorId, OverthinkingPostSaveRequestDto dto);
 	
-	void delete (UUID postId, UUID authorId);
+	void delete(UUID postId, UUID authorId);
 	
-	OverthinkingPostResponseDto getById(UUID postId);
+	OverthinkingPostResponseDto getById(UUID postId, UUID viewerId);
 	
-	Page<OverthinkingPostResponseDto> getAll(Pageable pageable);
+	Page<OverthinkingPostResponseDto> getAll(UUID viewerId, Pageable pageable);
 	
 	Page<OverthinkingPostResponseDto> getMyPosts(UUID userId, Pageable pageable);
 	
-	Page<OverthinkingPostResponseDto> getPostsByArtist(UUID artistId, Pageable pageable);
+	Page<OverthinkingPostResponseDto> getPostsByArtist(UUID artistId, UUID viewerId, Pageable pageable);
 }

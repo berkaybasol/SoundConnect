@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -15,6 +16,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioProfile.*
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('MANAGE_PROFILES')")
 @Tag(name = "FOR ADMIN / Studio Profile", description = "Admin tüm kullanıcıların stüdyo profillerini yönetir")
 public class StudioProfileAdminController {
 	private final StudioProfileService studioProfileService;

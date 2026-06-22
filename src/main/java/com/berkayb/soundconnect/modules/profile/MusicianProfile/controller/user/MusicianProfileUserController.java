@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +24,7 @@ public class MusicianProfileUserController {
 	/**
 	 * Kullanıcı kendi profilini getirir
 	 */
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@GetMapping(ME)
 	public ResponseEntity<BaseResponse<MusicianProfileResponseDto>> getMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails) {
@@ -34,6 +36,7 @@ public class MusicianProfileUserController {
 	/**
 	 * Kullanıcı kendi profili oluşturur
 	 */
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(CREATE)
 	public ResponseEntity<BaseResponse<MusicianProfileResponseDto>> createMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
@@ -46,6 +49,7 @@ public class MusicianProfileUserController {
 	/**
 	 * Kullanıcı kendi profilini günceller
 	 */
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PutMapping(UPDATE)
 	public ResponseEntity<BaseResponse<MusicianProfileResponseDto>> updateMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,

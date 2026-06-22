@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.follow.controller;
 
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.follow.dto.request.FollowRequestDto;
 import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.mapper.FollowMapper;
@@ -11,6 +12,8 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,11 +32,41 @@ public class FollowController {
 	private final UserEntityFinder userEntityFinder;
 	private final FollowMapper followMapper;
 	
-	@PostMapping(FOLLOW)
-	public BaseResponse<Void> follow(@RequestBody @Valid FollowRequestDto requestDto) {
-		log.info("Follow request: followerId={} followingId={}", requestDto.followerId(), requestDto.followingId());
+	@GetMapping(FOLLOWERS_COUNT)
+	public BaseResponse<Long> countFollowers(@PathVariable UUID userId) {
+		User following = userEntityFinder.getUser(userId);
+		long count = followService.countFollowers(following);
 		
-		User follower = userEntityFinder.getUser(requestDto.followerId());
+		return BaseResponse.<Long>builder()
+		                   .success(true)
+		                   .data(count)
+		                   .code(200)
+		                   .message("Followers count fetched successfully.")
+		                   .build();
+	}
+	
+	@GetMapping(FOLLOWING_COUNT)
+	public BaseResponse<Long> countFollowing(@PathVariable UUID userId) {
+		User follower = userEntityFinder.getUser(userId);
+		long count = followService.countFollowing(follower);
+		return BaseResponse.<Long>builder()
+		                   .success(true)
+		                   .data(count)
+		                   .code(200)
+		                   .message("Following count fetched successfully.")
+		                   .build();
+	}
+	
+	@PostMapping(FOLLOW)
+	@PreAuthorize("isAuthenticated()")
+	public BaseResponse<Void> follow(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@RequestBody @Valid FollowRequestDto requestDto
+	) {
+		UUID followerId = userDetails.getUser().getId();
+		log.info("Follow request: followerId={} followingId={}", followerId, requestDto.followingId());
+		
+		User follower = userEntityFinder.getUser(followerId);
 		User following = userEntityFinder.getUser(requestDto.followingId());
 		
 		followService.follow(follower, following);
@@ -49,10 +82,15 @@ public class FollowController {
 	
 	
 	@PostMapping(UNFOLLOW)
-	public BaseResponse<Void> unfollow(@RequestBody @Valid FollowRequestDto requestDto) {
-		log.info("Unfollow request: followerId={} followingId={}", requestDto.followerId(), requestDto.followingId());
+	@PreAuthorize("isAuthenticated()")
+	public BaseResponse<Void> unfollow(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@RequestBody @Valid FollowRequestDto requestDto
+	) {
+		UUID followerId = userDetails.getUser().getId();
+		log.info("Unfollow request: followerId={} followingId={}", followerId, requestDto.followingId());
 		
-		User follower = userEntityFinder.getUser(requestDto.followerId());
+		User follower = userEntityFinder.getUser(followerId);
 		User following = userEntityFinder.getUser(requestDto.followingId());
 		
 		followService.unfollow(follower, following);

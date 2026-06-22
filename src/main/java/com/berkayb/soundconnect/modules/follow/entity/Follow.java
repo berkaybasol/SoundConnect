@@ -31,5 +31,5 @@ public class Follow extends BaseEntity {
 	
 	private LocalDateTime followedAt;
 	
-	//TODO notficiation ve comment modulu hazir olunca..
+	
 }

@@ -21,9 +21,7 @@
 
 🛠 Change Password (useniyorum :D)
 
-🛠 2 yeni profile olusturulacak (Music House Profile, Manager Profile
-
-🛠 Profillerde videolar / sesler alani olcak dedik sesleri hallettik ama videolar icin de bir sey gerekiyor mu? onu gpt askimla arastir profilleri komple bitir
+🛠 4 yeni profile olusturulacak (Music House Profile, Manager Profile, Visual Production Specialist Profile, STUDENT_SOCIETIES Profile)
 
 🛠 Comment, Like, Media modullerinin gerekli modullere entegresi (core)
 
@@ -36,7 +34,11 @@
 
 ## *Bitenler*
 
-✅ Konu bazli allchat Modülü(Pulse) (mainstage)
+✅ Promotion Modülü (mainstage & backstage)
+
+✅ Spotify Modülü (mainstage & backstage)
+
+✅ Konu bazli allchat Modülü (Pulse) (mainstage)
 
 ✅ Setlist Creator (musician profile'larda ve band olustugunda band icinde gozukcek) (backstage)
 

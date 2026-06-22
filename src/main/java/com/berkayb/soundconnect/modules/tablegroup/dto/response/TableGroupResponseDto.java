@@ -13,6 +13,8 @@ public record TableGroupResponseDto(
 		UUID id,
 		
 		UUID ownerId,
+		String ownerUsername,
+		String ownerProfileImageUrl,
 		
 		UUID venueId,
 		

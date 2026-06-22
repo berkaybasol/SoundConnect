@@ -23,6 +23,14 @@ public record RegisterRequestDto(
 		String rePassword,
 		
 		@NotNull(message = "Rol secilmelidir.")
-		RoleEnum role
-
+		RoleEnum role,
+		
+		
+		// role venue secilirse
+        String venueName,
+		String venueAddress,
+		String phone,
+		String cityId,
+		String districtId,
+		String neighborhoodId
 ) {}

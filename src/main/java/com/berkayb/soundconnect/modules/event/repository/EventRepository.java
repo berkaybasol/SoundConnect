@@ -24,4 +24,10 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 	
 	// secilen mahalleye gore
 	List<Event> findByVenue_Neighborhood_Id(UUID neighborhoodId);
+	
+	List<Event> findByVenueOrderByEventDateAscStartTimeAsc(Venue venue);
+	
+	List<Event> findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(
+			Venue venue, LocalDate startDate, LocalDate endDate
+	);
 }

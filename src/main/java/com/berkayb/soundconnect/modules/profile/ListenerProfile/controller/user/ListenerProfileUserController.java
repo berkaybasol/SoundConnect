@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,10 +29,10 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
  *  *   - IDE ile otomatik tamamlama ve Swagger/OpenAPI dokümantasyonuna daha net yansır.
  */
 
-//TODO DENEME KDSGKDSKLGDSKL
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('LISTENER')")
 @Tag(name = "FOR USERS / Listener Profile", description = "Operations related to the profile of users with a Listener " +
 		"profile")
 public class ListenerProfileUserController {

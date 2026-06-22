@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.controller.admi
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -12,7 +13,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Set;
 import java.util.UUID;
@@ -35,6 +35,7 @@ class MusicianProfileAdminControllerIT {
 	@MockitoBean
 	private MusicianProfileService service;
 	
+	// Security bean’leri context’te isteniyorsa diye (filters kapalı ama bean gerekebiliyor)
 	@MockitoBean
 	private com.berkayb.soundconnect.auth.security.JwtTokenProvider jwtTokenProvider;
 	
@@ -46,38 +47,67 @@ class MusicianProfileAdminControllerIT {
 		var uid = UUID.randomUUID();
 		
 		var resp = new MusicianProfileResponseDto(
-				UUID.randomUUID(),
-				"Stage",
-				"Bio",
-				null,null,null,null,null, null,
-				Set.of(),         // instruments
-				Set.of(),         // activeVenues
-				Set.of()          // bands <-- EKLENDİ
+				UUID.randomUUID(),     // id
+				uid,                   // userId
+				"Stage",               // stageName
+				"Bio",                 // bio
+				null,                  // profilePictureMediaId
+				null,                  // instagramUrl
+				null,                  // youtubeUrl
+				null,                  // soundcloudUrl
+				null,                  // spotifyEmbedUrl
+				null,                  // spotifyArtistId
+				Set.of(),              // instruments
+				Set.of(),              // activeVenues
+				Set.of(),               // bands
+				null,
+				null
 		);
 		
 		Mockito.when(service.getProfileByUserId(uid)).thenReturn(resp);
 		
 		mockMvc.perform(get(ADMIN_BASE + BY_USER_ID, uid))
 		       .andExpect(status().isOk())
+		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data.stageName").value("Stage"))
-		       .andExpect(jsonPath("$.data.bands").isArray()); // <-- yeni assertion
+		       .andExpect(jsonPath("$.data.bio").value("Bio"))
+		       .andExpect(jsonPath("$.data.bands").isArray());
 	}
 	
 	@Test
 	void updateMusicianProfileByUserId_ok() throws Exception {
 		var uid = UUID.randomUUID();
+		
 		var req = new MusicianProfileSaveRequestDto(
-				"New","NewBio",null,null,null,null,null,null, null
+				"New",          // stageName
+				"NewBio",       // description
+				null,           // profilePicture
+				null,           // instagramUrl
+				null,           // youtubeUrl
+				null,           // soundcloudUrl
+				null,           // spotifyEmbedUrl
+				null,           // spotifyArtistId
+				null,            // instrumentIds
+				null,
+				null
 		);
 		
 		var resp = new MusicianProfileResponseDto(
-				UUID.randomUUID(),
-				"New",
-				"NewBio",
-				null,null,null,null,null, Set.of().toString(),
+				UUID.randomUUID(), // id
+				uid,               // userId
+				"New",             // stageName
+				"NewBio",          // bio
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 				Set.of(),
 				Set.of(),
-				Set.of()// <-- EKLENDİ
+				Set.of(),
+				null,
+				null
 		);
 		
 		Mockito.when(service.updateProfile(eq(uid), any())).thenReturn(resp);
@@ -88,8 +118,9 @@ class MusicianProfileAdminControllerIT {
 						       .content(om.writeValueAsString(req))
 		       )
 		       .andExpect(status().isOk())
+		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data.stageName").value("New"))
 		       .andExpect(jsonPath("$.data.bio").value("NewBio"))
-		       .andExpect(jsonPath("$.data.bands").isArray()); // <-- yeni assertion
+		       .andExpect(jsonPath("$.data.bands").isArray());
 	}
 }

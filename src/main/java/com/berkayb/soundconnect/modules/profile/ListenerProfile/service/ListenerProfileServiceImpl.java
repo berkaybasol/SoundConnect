@@ -1,8 +1,10 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.service;
 
-
+import com.berkayb.soundconnect.modules.follow.service.FollowService;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.mapper.ListenerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
@@ -14,75 +16,128 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ListenerProfileServiceImpl implements ListenerProfileService {
+	
 	private final ListenerProfileRepository listenerProfileRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final ListenerProfileMapper listenerProfileMapper;
+	private final MediaAssetService mediaAssetService;
+	private final FollowService followService;
 	
+	@Override
+	public List<ListenerProfileSearchItemDto> searchProfiles(String query) {
+		String q = query == null ? "" : query.trim();
+		if (q.isEmpty()) return List.of();
+		
+		return listenerProfileRepository.searchByUsernameOrBio(q)
+		                                .stream()
+		                                .limit(10)
+		                                .map(profile -> new ListenerProfileSearchItemDto(
+				                                profile.getId(),
+				                                profile.getUser().getId(),
+				                                profile.getUser().getUsername(),
+				                                profile.getDescription(),
+				                                resolveProfilePictureUrl(profile.getProfilePictureMediaId())
+		                                ))
+		                                .toList();
+	}
+	
+	@Override
+	public ListenerProfileResponseDto getProfileByProfileId(UUID profileId) {
+		ListenerProfile profile = listenerProfileRepository.findById(profileId)
+		                                                   .orElseThrow(() -> {
+			                                                   log.warn("Listener profile not found. profileId={}", profileId);
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		                                                   });
+		
+		return toResponse(profile);
+	}
 	
 	@Override
 	public ListenerProfileResponseDto createProfile(UUID userId, ListenerSaveRequestDto dto) {
-		// kullaniciyi getir.
 		User user = userEntityFinder.getUser(userId);
 		
-		// daha once profil acilmis mi kontrol et
 		if (listenerProfileRepository.findByUserId(user.getId()).isPresent()) {
-			log.warn("bu profil zaten mevcut userId: {}", userId);
+			log.warn("Listener profile already exists. userId={}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
 		}
-		// profil olustur
+		
 		ListenerProfile profile = ListenerProfile.builder()
-				.user(user)
-				.description(dto.description())
-				.profilePicture(dto.profilePicture())
-				.build();
+		                                         .user(user)
+		                                         .description(dto.description())
+		                                         .profilePictureMediaId(dto.profilePictureMediaId())
+		                                         .build();
 		
-		// kaydet ve response dto'ya cevir ve don
 		ListenerProfile saved = listenerProfileRepository.save(profile);
+		log.info("Listener profile created. userId={}", userId);
 		
-		log.info("Yeni Dinleyici profili olusturuldu. UserId: {}", userId);
-		return listenerProfileMapper.toDto(saved);
+		return toResponse(saved);
 	}
-	
 	
 	@Override
 	public ListenerProfileResponseDto getProfileByUserId(UUID userId) {
-		User user = userEntityFinder.getUser(userId);
+		userEntityFinder.getUser(userId);
 		
-		ListenerProfile profile = listenerProfileRepository.findByUserId(userId).orElseThrow(() -> {
-			log.warn("Profil bulunamadi. UserId: {}", userId);
-			return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-		});
-		log.info("listener profile getirildi UserId: {}", userId);
-		return listenerProfileMapper.toDto(profile);
+		ListenerProfile profile = listenerProfileRepository.findByUserId(userId)
+		                                                   .orElseThrow(() -> {
+			                                                   log.warn("Listener profile not found. userId={}", userId);
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		                                                   });
+		
+		return toResponse(profile);
 	}
 	
 	@Override
-	public ListenerProfileResponseDto updateProfile(UUID userId, ListenerSaveRequestDto dto)
-	{
-		User user = userEntityFinder.getUser(userId);
+	public ListenerProfileResponseDto updateProfile(UUID userId, ListenerSaveRequestDto dto) {
+		userEntityFinder.getUser(userId);
 		
-		ListenerProfile profile = listenerProfileRepository.findByUserId(userId).orElseThrow(() -> {
-			log.warn("Profil bulunamadi. UserId: {}", userId);
-			return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-		});
+		ListenerProfile profile = listenerProfileRepository.findByUserId(userId)
+		                                                   .orElseThrow(() -> {
+			                                                   log.warn("Listener profile not found. userId={}", userId);
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		                                                   });
 		
-		// null degilse alanlari guncelle
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePictureMediaId() != null) profile.setProfilePictureMediaId(dto.profilePictureMediaId());
 		
-		// kaydet
 		ListenerProfile updated = listenerProfileRepository.save(profile);
-		log.info("Yeni Listener profile olusturdu. UserId: {}", userId);
+		log.info("Listener profile updated. userId={}", userId);
 		
-		// response dto'ya sarip don
-		return listenerProfileMapper.toDto(updated);
+		return toResponse(updated);
+	}
+	
+	private ListenerProfileResponseDto toResponse(ListenerProfile profile) {
+		ListenerProfileResponseDto base = listenerProfileMapper.toDto(profile);
 		
+		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId());
+		long followerCount = followService.countFollowers(profile.getUser());
+		long followingCount = followService.countFollowing(profile.getUser());
 		
+		return new ListenerProfileResponseDto(
+				base.id(),
+				base.userId(),
+				base.username(),
+				base.bio(),
+				base.profilePictureMediaId(),
+				profilePictureUrl,
+				followerCount,
+				followingCount
+		);
+	}
+	
+	private String resolveProfilePictureUrl(UUID mediaAssetId) {
+		if (mediaAssetId == null) return null;
+		try {
+			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+		} catch (Exception e) {
+			log.warn("Listener profile picture resolve failed. mediaAssetId={}", mediaAssetId);
+			return null;
+		}
 	}
 }

@@ -76,7 +76,7 @@ class StudioProfileUserControllerTest {
 				UUID.randomUUID(),
 				"S1",
 				"bio",
-				"pp.png",
+				UUID.randomUUID(),
 				"addr",
 				"555",
 				"site",
@@ -98,12 +98,12 @@ class StudioProfileUserControllerTest {
 	@Test
 	void updateMyProfile_ok() throws Exception {
 		var req = new StudioProfileSaveRequestDto(
-				"New", "d", "new.png", "new addr", "555",
+				"New", "d", UUID.randomUUID(), "new addr", "555",
 				"site.com", Set.of("parking"), "ig", "yt"
 		);
 		var resp = new StudioProfileResponseDto(
 				UUID.randomUUID(),
-				"New", "d", "new.png",
+				"New", "d", UUID.randomUUID(),
 				"new addr", "555", "site.com",
 				Set.of("parking"), "ig", "yt"
 		);

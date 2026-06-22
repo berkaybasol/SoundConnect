@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.respons
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus; //eklendi
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -13,12 +14,16 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring")
 public interface BandMapper {
 	@Mapping(target = "members", source = "members", qualifiedByName = "mapMembers")
+	@Mapping(target = "profilePictureUrl", ignore = true) //eklendi
 	BandResponseDto toDto(Band band);
 	
 	@org.mapstruct.Named("mapMembers")
 	default Set<BandMemberResponseDto> mapMembers(Set<BandMember> members) {
 		if (members == null) return null;
-		return members.stream().map(this::toMemberDto).collect(Collectors.toSet());
+		return members.stream()
+		              .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE) //eklendi
+		              .map(this::toMemberDto)
+		              .collect(Collectors.toSet());
 	}
 	
 	@Mapping(target = "userId", source = "user.id")

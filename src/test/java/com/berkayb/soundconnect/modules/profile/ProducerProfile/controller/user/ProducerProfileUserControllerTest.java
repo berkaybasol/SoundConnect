@@ -71,7 +71,7 @@ class ProducerProfileUserControllerTest {
 	@Test
 	void getMyProfile_ok() throws Exception {
 		var dto = new ProducerProfileResponseDto(
-				UUID.randomUUID(), "Mine","desc","pp.png","addr","555","site.com","ig","yt"
+				UUID.randomUUID(), "Mine","desc",UUID.randomUUID(),"addr","555","site.com","ig","yt"
 		);
 		when(producerProfileService.getProfileByUserId(userId)).thenReturn(dto);
 		
@@ -85,10 +85,10 @@ class ProducerProfileUserControllerTest {
 	@Test
 	void updateMyProfile_ok() throws Exception {
 		var body = new ProducerProfileSaveRequestDto(
-				"Upd","new","pic.png","addr2","111","site2.com","ig2","yt2"
+				"Upd","new",UUID.randomUUID(),"addr2","111","site2.com","ig2","yt2"
 		);
 		var dto = new ProducerProfileResponseDto(
-				UUID.randomUUID(), "Upd","new","pic.png","addr2","111","site2.com","ig2","yt2"
+				UUID.randomUUID(), "Upd","new",UUID.randomUUID(),"addr2","111","site2.com","ig2","yt2"
 		);
 		when(producerProfileService.updateProfile(userId, body)).thenReturn(dto);
 		

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.event.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -12,7 +13,7 @@ import java.util.UUID;
  */
 public record EventCreateRequestDto(
 		
-		@NotNull
+		@NotBlank
 		String title,
 		
 		String description,
@@ -32,6 +33,7 @@ public record EventCreateRequestDto(
 		
 		// performer seçenekleri:
 		UUID musicianProfileId,
-		UUID bandId
+		UUID bandId,
+		String manualPerformerName
 
 ) {}

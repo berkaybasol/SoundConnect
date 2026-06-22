@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -21,7 +22,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.InstrumentEndpo
 public class InstrumentAdminController {
 	private final InstrumentService instrumentService;
 	
-	//TODO IZIN
+	@PreAuthorize("hasAuthority('MANAGE_INSTRUMENTS')")
 	@PostMapping(CREATE)
 	public ResponseEntity<BaseResponse<InstrumentResponseDto>> saveInstrument(@Valid @RequestBody InstrumentSaveRequestDto dto) {
 		InstrumentResponseDto saved = instrumentService.save(dto);
@@ -33,7 +34,7 @@ public class InstrumentAdminController {
 		                                     .build());
 	}
 	
-	//TODO IZIN
+	@PreAuthorize("hasAuthority('MANAGE_INSTRUMENTS')")
 	@DeleteMapping(DELETE)
 	public ResponseEntity<BaseResponse<Void>> deleteInstrument(@PathVariable UUID id) {
 		instrumentService.deleteById(id);

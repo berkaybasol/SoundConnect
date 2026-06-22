@@ -1,5 +1,8 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request;
 
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
+
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -8,13 +11,15 @@ import java.util.UUID;
 public record MusicianProfileSaveRequestDto(
 		String stageName,
 		String description,
-		String profilePicture,
+		UUID profilePicture,
 		String instagramUrl,
 		String youtubeUrl,
 		String soundcloudUrl,
 		String spotifyEmbedUrl,
 		String spotifyArtistId,
-		Set<UUID> instrumentIds
+		Set<UUID> instrumentIds,
+		List<String> spotifyTrackIds,
+		List<SpotifyTrackItemDto> spotifyTracks
 		
 ) {
 }

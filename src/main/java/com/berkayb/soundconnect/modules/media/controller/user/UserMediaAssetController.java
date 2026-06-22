@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.controller.user;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.media.dto.request.CompleteUploadRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.request.UploadInitRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
@@ -18,6 +19,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -27,6 +30,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Media.*;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(USER_BASE) // sadece USER endpointleri
+@PreAuthorize("isAuthenticated()")
 @Tag(name = "MEDIA / USERS", description = "Users Media Management")
 public class UserMediaAssetController {
 	
@@ -34,8 +38,11 @@ public class UserMediaAssetController {
 	private final MediaAssetMapper mapper;
 	
 	@PostMapping(INIT_UPLOAD)
-	public BaseResponse<UploadInitResultResponseDto> initUpload(@Valid @RequestBody UploadInitRequestDto dto) {
+	public BaseResponse<UploadInitResultResponseDto> initUpload(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody UploadInitRequestDto dto) {
 		var result = mediaAssetService.initUpload(
+				currentUserId(userDetails),
 				dto.ownerType(),
 				dto.ownerId(),
 				dto.kind(),
@@ -53,8 +60,10 @@ public class UserMediaAssetController {
 	}
 	
 	@PostMapping(COMPLETE_UPLOAD)
-	public BaseResponse<MediaResponseDto> completeUpload(@Valid @RequestBody CompleteUploadRequestDto dto) {
-		MediaAsset asset = mediaAssetService.completeUpload(dto.assetId());
+	public BaseResponse<MediaResponseDto> completeUpload(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody CompleteUploadRequestDto dto) {
+		MediaAsset asset = mediaAssetService.completeUpload(currentUserId(userDetails), dto.assetId());
 		return BaseResponse.<MediaResponseDto>builder()
 		                   .success(true)
 		                   .code(200)
@@ -65,13 +74,14 @@ public class UserMediaAssetController {
 	
 	@GetMapping(LIST_BY_OWNER)
 	public BaseResponse<Page<MediaResponseDto>> listByOwner(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable MediaOwnerType ownerType,
 			@PathVariable UUID ownerId,
 			@ParameterObject
 			@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
 			Pageable pageable
 	) {
-		var page = mediaAssetService.listByOwner(ownerType, ownerId, pageable).map(mapper::toDto);
+		var page = mediaAssetService.listByOwner(currentUserId(userDetails), ownerType, ownerId, pageable).map(mapper::toDto);
 		return BaseResponse.<Page<MediaResponseDto>>builder()
 		                   .success(true)
 		                   .code(200)
@@ -82,6 +92,7 @@ public class UserMediaAssetController {
 	
 	@GetMapping(LIST_BY_OWNER_AND_KIND)
 	public BaseResponse<Page<MediaResponseDto>> listByOwnerAndKind(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable MediaOwnerType ownerType,
 			@PathVariable UUID ownerId,
 			@PathVariable MediaKind kind,
@@ -89,7 +100,7 @@ public class UserMediaAssetController {
 			@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
 			Pageable pageable
 	) {
-		var page = mediaAssetService.listByOwnerAndKind(ownerType, ownerId, kind, pageable).map(mapper::toDto);
+		var page = mediaAssetService.listByOwnerAndKind(currentUserId(userDetails), ownerType, ownerId, kind, pageable).map(mapper::toDto);
 		return BaseResponse.<Page<MediaResponseDto>>builder()
 		                   .success(true)
 		                   .code(200)
@@ -101,15 +112,19 @@ public class UserMediaAssetController {
 	@DeleteMapping(DELETE)
 	public BaseResponse<Void> delete(
 			@PathVariable UUID assetId,
-			@RequestParam UUID actingUserId,
 			@RequestParam MediaOwnerType actingAsType,
-			@RequestParam UUID actingAsId
+			@RequestParam UUID actingAsId,
+			@AuthenticationPrincipal UserDetailsImpl userDetails
 	) {
-		mediaAssetService.delete(assetId, actingUserId, actingAsType, actingAsId);
+		mediaAssetService.delete(assetId, currentUserId(userDetails), actingAsType, actingAsId);
 		return BaseResponse.<Void>builder()
 		                   .success(true)
 		                   .code(200)
 		                   .message("Media deleted")
 		                   .build();
+	}
+
+	private UUID currentUserId(UserDetailsImpl userDetails) {
+		return userDetails.getUser().getId();
 	}
 }

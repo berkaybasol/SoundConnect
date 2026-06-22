@@ -10,6 +10,7 @@ import org.mapstruct.factory.Mappers;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 @Tag("mapper")
 class ProducerProfileMapperTest {
 	
@@ -24,12 +25,15 @@ class ProducerProfileMapperTest {
 		             .password("pw")
 		             .build();
 		
+		UUID profileId = UUID.randomUUID();
+		UUID ppId = UUID.randomUUID();
+		
 		ProducerProfile entity = ProducerProfile.builder()
-		                                        .id(UUID.randomUUID())
+		                                        .id(profileId)
 		                                        .user(u)
 		                                        .name("Prod")
 		                                        .description("desc")
-		                                        .profilePicture("pic.png")
+		                                        .profilePictureMediaId(ppId)
 		                                        .address("addr")
 		                                        .phone("555")
 		                                        .website("site.com")
@@ -39,10 +43,10 @@ class ProducerProfileMapperTest {
 		
 		ProducerProfileResponseDto dto = mapper.toDto(entity);
 		
-		assertThat(dto.id()).isEqualTo(entity.getId());
+		assertThat(dto.id()).isEqualTo(profileId);
 		assertThat(dto.name()).isEqualTo("Prod");
 		assertThat(dto.description()).isEqualTo("desc");
-		assertThat(dto.profilePicture()).isEqualTo("pic.png");
+		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId); // ✅ UUID beklenir
 		assertThat(dto.address()).isEqualTo("addr");
 		assertThat(dto.phone()).isEqualTo("555");
 		assertThat(dto.website()).isEqualTo("site.com");

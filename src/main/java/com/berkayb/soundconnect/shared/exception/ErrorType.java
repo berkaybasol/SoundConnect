@@ -22,10 +22,13 @@ public enum ErrorType {
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
 	ALREADY_FOLLOWING(1201, "You are already following this user", HttpStatus.CONFLICT, "Bu kullanıcıyı zaten takip ediyorsunuz."),
 	CANNOT_FOLLOW_SELF(1202, "You cannot follow yourself", HttpStatus.BAD_REQUEST, "Kendinizi takip edemezsiniz."),
-	
+	BAND_ALREADY_FOLLOWED(1203, "Band already followed", HttpStatus.BAD_REQUEST, "Bu band zaten takip ediliyor."),
+	BAND_FOLLOW_RELATION_NOT_FOUND(1204, "Band follow relation not found", HttpStatus.NOT_FOUND, "Band takip ilişkisi bulunamadı."),
+	BAND_MEMBER_CANNOT_FOLLOW_OWN_BAND(1205, "Band member cannot follow own band", HttpStatus.BAD_REQUEST, "Band üyesi kendi grubunu takip edemez."),
 	// PROFILE (1300-1399)
 	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.BAD_REQUEST, "Bu profil zaten var."),
 	PROFILE_NOT_FOUND(1301, "Profile not found", HttpStatus.NOT_FOUND, "Profil bulunamadi."),
+	PROFILE_MEDIA_NOT_FOUND(1302, "Profile media not found", HttpStatus.NOT_FOUND, "Profil medyasi bulunamadi."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
@@ -36,6 +39,12 @@ public enum ErrorType {
 	REQUEST_NOT_FOUND(1501,"Request not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi."),
 	REQUEST_ALREADY_ACCEPTED(1502,"Request already accepted.", HttpStatus.BAD_REQUEST,"Basvuru zaten onaylandi."),
 	REQUEST_ALREADY_REJECTED(1503,"Request already rejected.", HttpStatus.BAD_REQUEST,"Basvuru zaten reddedildi."),
+	REQUEST_CANCEL_NOT_ALLOWED(1504,"Only pending requests can be cancelled",HttpStatus.FORBIDDEN,"Yalnızca beklemede olan istekler iptal edilebilir."),
+	CONNECTION_NOT_ACTIVE(1505,"Artist-venue connection is not active",HttpStatus.FORBIDDEN,"Sanatçı-mekan bağlantısı aktif değil."),
+	VENUE_SEARCH_QUERY_REQUIRED(1506,"Search query is required",HttpStatus.FORBIDDEN,"Arama sorgusu gereklidir."),
+	REQUEST_DISCONNECT_NOT_ALLOWED(1507,"Only accepted requests can be disconnected",HttpStatus.FORBIDDEN,"Yalnızca kabul edilen isteklerin bağlantısı kesilebilir."),
+	REQUEST_BY_TYPE_REQUIRED(1508, "Request by type is required", HttpStatus.BAD_REQUEST, "İsteği başlatan taraf belirtilmelidir."
+	),
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.BAD_REQUEST, "Zaten basvuru yapilmis."),
@@ -66,6 +75,8 @@ public enum ErrorType {
 	HLS_PROCESS_SKIPPED_TERMINAL(1810,"HLS proces skipped due to terminal asset state",HttpStatus.CONFLICT,"Asset terminal durumda oldugu icin islem atlandi." ),
 	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
 	MEDIA_NOT_IMPLEMENTED(1812,"Media not implemented", HttpStatus.BAD_REQUEST, "medya henuz implement edilmemis"),
+	MEDIA_KIND_INVALID(1813,"Media kind invalid.", HttpStatus.BAD_REQUEST,"Yanlis medya turu"),
+	MEDIA_ASSET_NOT_READY(1814,"Media asset not ready.", HttpStatus.BAD_REQUEST,"medya varligi hazir degil"),
 	
 	
 	// NOTIFICATION (1900 - 2000)
@@ -131,8 +142,10 @@ public enum ErrorType {
 	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
 	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
 	MUSICIAN_NOT_FOUND(9212,"Musician not found", HttpStatus.NOT_FOUND, "Musician bulunamadi."),
+	
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
+	INVALID_PARAMETER(9251,"INVALID PARAMETER", HttpStatus.NOT_FOUND, "PARAMETRE YANLIS"),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND_OR_NOT_OWNER(9301,"Collab not found or not owner", HttpStatus.NOT_FOUND, "Collab bulunamadi veya sahibi degil."),
@@ -153,10 +166,24 @@ public enum ErrorType {
 	COMMENT_TEXT_INVALID(9351,"Comment text must not be empty or longer than MAX_COMMENT_LENGTH.",HttpStatus.BAD_REQUEST,"Yorum metni bos veya maksimum uzunlugu asamaz."),
 	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
 	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
+	COMMENT_PARENT_DELETED(9353,"Comment parent is deleted.", HttpStatus.CONFLICT,"Silinmis yoruma yanit verilemez"),
+	COMMENT_REPLY_DEPTH_NOT_ALLOWED(9354,"Comment reply depth not allowed", HttpStatus.CONFLICT,"yanita yanit " +
+			"verilemez"),
 	
 	// OVERTHINKING(9400 - 9449)
 	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
 	OVERTHINKING_POST_NOT_FOUND(9401,"Overthinking post not found",HttpStatus.NOT_FOUND,"Overthinking postu bulunamadi."),
+	OVERTHINKING_REVEAL_REQUEST_RECEIVED(9402,"Overthinking reveal request received",HttpStatus.OK,"kimlik goruntuleme istegi alindi"),
+	OVERTHINKING_REVEAL_REQUEST_APPROVED(9403,"Overthinking reveal request approved",HttpStatus.ACCEPTED,"kimlik goruntuleme istegi onaylandi"),
+	OVERTHINKING_REVEAL_REQUEST_REJECTED(9404,"Overthinking reveal request rejected",HttpStatus.OK,"kimlik goruntuleme istegi reddedildi"),
+	OVERTHINKING_POST_NOT_ANONYMOUS(9405,"Overthinking post is not anonymous",HttpStatus.BAD_REQUEST,"Bu post anonim olmadığı için profil görüntüleme isteği gönderilemez."),
+	OVERTHINKING_REVEAL_REQUEST_ALREADY_EXISTS(9406, "Reveal request already exists", HttpStatus.CONFLICT, "Bu post için daha önce profil görüntüleme isteği gönderdiniz."),
+	OVERTHINKING_REVEAL_REQUEST_SELF_NOT_ALLOWED(9407, "Author cannot request own profile reveal", HttpStatus.BAD_REQUEST, "Kendi postunuz için profil görüntüleme isteği gönderemezsiniz."),
+	OVERTHINKING_REVEAL_REQUEST_NOT_FOUND(9408, "Reveal request not found", HttpStatus.NOT_FOUND, "Profil görüntüleme isteği bulunamadı."),
+	OVERTHINKING_REVEAL_REQUEST_ALREADY_DECIDED(9409, "Reveal request already decided", HttpStatus.CONFLICT, "Bu profil görüntüleme isteği daha önce sonuçlandırılmış."),
+	OVERTHINKING_REVEAL_REQUEST_INVALID_STATUS (9410, "Reveal request invalid status", HttpStatus.BAD_REQUEST, "status gecersiz"),
+	OVERTHINKING_SPOTIFY_SOURCE_INVALID(9411,"Spotify source invalid", HttpStatus.BAD_REQUEST,"spotify kaynagi yanlis"),
+	
 	
 	// TRACK(9450 - 9499)
 	TRACK_NOT_FOUND(9450,"Track not found", HttpStatus.NOT_FOUND, "Parca bulunamadi"),
@@ -166,8 +193,28 @@ public enum ErrorType {
 	SETLIST_NOT_FOUND(9500,"Setlist not found", HttpStatus.NOT_FOUND, "Setlist bulunamadi"),
 	SETLIST_SET_NOT_FOUND(9501,"Setlistset not found", HttpStatus.NOT_FOUND, "Setlistset bulunamadi"),
 	
-	// PULSE (9600 - 9699)
-	ROOM_NOT_FOUND(9500,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
+	// PULSE (9600 - 9649)
+	ROOM_NOT_FOUND(9600,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
+	
+	// SPOTIFY (9650-9699)
+	SPOTIFY_AUTH_FAILED(9650, "Spotify auth failed", HttpStatus.UNAUTHORIZED, "Spotify ile bağlantı kurulamadı. (Kimlik doğrulama hatası)"),
+	SPOTIFY_RATE_LIMITED(9651, "Spotify rate limited", HttpStatus.TOO_MANY_REQUESTS, "Spotify çok fazla istek algıladı. Lütfen kısa süre sonra tekrar dene."),
+	SPOTIFY_NOT_FOUND(9652, "Spotify resource not found", HttpStatus.NOT_FOUND, "Spotify kaynağı bulunamadı."),
+	SPOTIFY_BAD_REQUEST(9653, "Spotify bad request", HttpStatus.BAD_REQUEST, "Spotify isteği geçersiz."),
+	SPOTIFY_UPSTREAM_ERROR(9654, "Spotify upstream error", HttpStatus.BAD_GATEWAY, "Spotify servisinde geçici bir sorun var. Lütfen tekrar dene."),
+	SPOTIFY_TIMEOUT(9655, "Spotify timeout", HttpStatus.GATEWAY_TIMEOUT, "Spotify yanıt vermedi. Lütfen tekrar dene."),
+	SPOTIFY_UNEXPECTED_ERROR(9656, "Spotify unexpected error", HttpStatus.INTERNAL_SERVER_ERROR, "Spotify işlemi sırasında beklenmeyen bir hata oluştu."),
+	SPOTIFY_FORBIDDEN(9657, "Spotify forbidden", HttpStatus.FORBIDDEN, "Spotify bu isteğe izin vermedi."),
+	
+	// ENGAGEMENT (9700 - 9749)
+	ENGAGEMENT_NOT_FOUND(9700,"target not found", HttpStatus.NOT_FOUND, "target bulunamadi"),
+	
+	// PROMOTION (9750 - 9799)
+	PROMOTION_NOT_FOUND(9750, "Promotion not found", HttpStatus.NOT_FOUND, "Promotion kaydı bulunamadı."),
+	PROMOTION_MEDIA_NOT_FOUND(9751, "Promotion media asset not found", HttpStatus.NOT_FOUND, "Promotion için kullanılan medya kaydı bulunamadı."),
+	PROMOTION_INVALID_DATE_RANGE(9752, "Promotion invalid date range", HttpStatus.BAD_REQUEST, "Promotion başlangıç ve bitiş tarih aralığı geçersiz."),
+	PROMOTION_INVALID_PRIORITY(9753, "Promotion invalid priority", HttpStatus.BAD_REQUEST, "Promotion öncelik değeri geçersiz."),
+	
 	
 	// GENEL (9999)
 	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),

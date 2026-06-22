@@ -7,6 +7,17 @@ import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
 import com.berkayb.soundconnect.modules.media.transcode.TranscodePublisher;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -20,11 +31,31 @@ import org.springframework.transaction.annotation.Transactional;
 //------------------------------TAKILDIGIN NOKTADA MediaModule.md DOSYASINA BAK!----------------------------------------
 
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class MediaAssetServiceImpl implements MediaAssetService {
+	
+	
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds) {
+		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		return mediaAssetRepository.findAllById(mediaAssetIds).stream()
+		                           .collect(Collectors.toMap(MediaAsset::getId, MediaAsset::getPlaybackUrl));
+	}
+	
+	@Override
+	public MediaAsset getById(UUID mediaAssetId) {
+		return mediaAssetRepository.findById(mediaAssetId)
+		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+	}
+	
 	@Override
 	public String getPlaybackUrl(UUID mediaAssetId) {
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
@@ -34,6 +65,14 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 	
 	private final MediaAssetRepository mediaAssetRepository;
+	private final BandRepository bandRepository;
+	private final VenueRepository venueRepository;
+	private final MusicianProfileRepository musicianProfileRepository;
+	private final ProducerProfileRepository producerProfileRepository;
+	private final OrganizerProfileRepository organizerProfileRepository;
+	private final StudioProfileRepository studioProfileRepository;
+	private final ListenerProfileRepository listenerProfileRepository;
+	private final VenueProfileRepository venueProfileRepository;
 	
 	// dosya depolama (S3/R2) islemleri icin storage client
 	private final StorageClient storageClient;
@@ -56,7 +95,8 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	 */
 	@Override
 	@Transactional
-	public UploadInitResultResponseDto initUpload(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes, String originalFileName) {
+	public UploadInitResultResponseDto initUpload(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes, String originalFileName) {
+		assertCanActForOwner(actingUserId, ownerType, ownerId);
 		
 		// yukleme politikalarini dogrula
 		// (mime, boyut, tur kurallarini kontrol et
@@ -111,10 +151,11 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	
 	@Override
 	@Transactional
-	public MediaAsset completeUpload(UUID assetId) {
+	public MediaAsset completeUpload(UUID actingUserId, UUID assetId) {
 		// Asseti db'den bul yoksa hata firlat
 		MediaAsset asset = mediaAssetRepository.findById(assetId)
 		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		assertCanActForOwner(actingUserId, asset.getOwnerType(), asset.getOwnerId());
 		
 		// eger asset turu video ise status processinge cek(yuklemenin bittigi, islenmenin oldugu surec)
 		if (asset.getKind() == MediaKind.VIDEO) {
@@ -140,14 +181,16 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	// belirli bir owner'a ait tum assetleri her statu ve gorunlurlukte sayfali olarak dondurur.
 	@Override
 	@Transactional (readOnly = true)
-	public Page<MediaAsset> listByOwner(MediaOwnerType ownerType, UUID ownerId, Pageable pageable) {
+	public Page<MediaAsset> listByOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, Pageable pageable) {
+		assertCanActForOwner(actingUserId, ownerType, ownerId);
 		return mediaAssetRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId, pageable);
 	}
 	
 	// belirli bir owner ve belirli bir media turune (auidio, video, image) sahip asset'leri dondurur.
 	@Transactional (readOnly = true)
 	@Override
-	public Page<MediaAsset> listByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable) {
+	public Page<MediaAsset> listByOwnerAndKind(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable) {
+		assertCanActForOwner(actingUserId, ownerType, ownerId);
 		return mediaAssetRepository.findByOwnerTypeAndOwnerIdAndKind(ownerType, ownerId, kind, pageable);
 	}
 	
@@ -174,6 +217,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	public void delete(UUID assetId, UUID actingUserId, MediaOwnerType actingAsType, UUID actingAsId) {
 	MediaAsset asset = mediaAssetRepository.findById(assetId)
 			.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+	assertCanActForOwner(actingUserId, actingAsType, actingAsId);
 	
 	boolean ownerMatch = asset.getOwnerType() == actingAsType && asset.getOwnerId().equals(actingAsId);
 	
@@ -197,4 +241,53 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	public boolean exists(UUID mediaAssetId) {
 		return mediaAssetRepository.existsById(mediaAssetId);
 	}
+
+	private void assertCanActForOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId) {
+		if (ownerType == null || ownerId == null || !canActForOwner(actingUserId, ownerType, ownerId)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private boolean canActForOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId) {
+		return switch (ownerType) {
+			case USER -> ownerId.equals(actingUserId);
+			case BAND -> bandRepository.findById(ownerId)
+					.map(band -> canManageBand(actingUserId, band))
+					.orElse(false);
+			case VENUE -> venueRepository.findById(ownerId)
+					.map(venue -> venue.getOwner() != null && venue.getOwner().getId().equals(actingUserId))
+					.orElse(false);
+			case MUSICIAN_PROFILE -> musicianProfileRepository.findById(ownerId)
+					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
+					.orElse(false);
+			case PRODUCER_PROFILE -> producerProfileRepository.findById(ownerId)
+					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
+					.orElse(false);
+			case ORGANIZER_PROFILE -> organizerProfileRepository.findById(ownerId)
+					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
+					.orElse(false);
+			case STUDIO_PROFILE -> studioProfileRepository.findById(ownerId)
+					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
+					.orElse(false);
+			case LISTENER_PROFILE -> listenerProfileRepository.findById(ownerId)
+					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
+					.orElse(false);
+			case VENUE_PROFILE -> venueProfileRepository.findById(ownerId)
+					.map(profile -> profile.getVenue() != null
+							&& profile.getVenue().getOwner() != null
+							&& profile.getVenue().getOwner().getId().equals(actingUserId))
+					.orElse(false);
+			case MUSIC_HOUSE_PROFILE, MANAGER_PROFILE -> false;
+		};
+	}
+
+	private boolean canManageBand(UUID actingUserId, Band band) {
+		return band.getMembers().stream()
+				.anyMatch(member -> member.getUser() != null
+						&& member.getUser().getId().equals(actingUserId)
+						&& member.getStatus() == BandMemberShipStatus.ACTIVE
+						&& (member.getBandRole() == BandRole.FOUNDER || member.getBandRole() == BandRole.MANAGER));
+	}
+	
+	
 }

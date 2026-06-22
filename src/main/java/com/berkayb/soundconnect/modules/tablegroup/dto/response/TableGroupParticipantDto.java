@@ -10,6 +10,9 @@ import java.util.UUID;
 public record TableGroupParticipantDto(
 		UUID userId,
 		LocalDateTime joinedAt,
-		ParticipantStatus status
+		ParticipantStatus status,
+		String joinNote,
+		String username, //eklendi
+		String profilePictureUrl //eklendi
 ) {
 }

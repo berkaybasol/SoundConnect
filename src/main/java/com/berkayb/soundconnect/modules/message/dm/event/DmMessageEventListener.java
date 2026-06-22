@@ -4,12 +4,20 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+
+import java.time.Instant;
+import java.util.Map;
 
 /**
  * Dm mesaj event'lerini dinleyip, WebSocket/STOMP uzerinden anlik push yapan subscriber.
@@ -23,6 +31,9 @@ public class DmMessageEventListener {
 	private final DMMessageMapper messageMapper;
 	private final DMMessageRepository messageRepository;
 	private final DmBadgeCacheHelper badgeCacheHelper;
+	private final NotificationProducer notificationProducer;
+	private final UserRepository userRepository;
+	private final PublicProfileResolverService publicProfileResolverService;
 	
 	@EventListener
 	public void onDmMessaggeSent (DmMessageSentEvent event) {
@@ -59,5 +70,89 @@ public class DmMessageEventListener {
 		String badgeDestination = WebSocketChannels.dmBadge(event.getRecipientId());
 		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
 		log.debug("DM unread badge WS push: userId={}, badge={}", event.getRecipientId(), cacheUnread);
+
+		publishNotification(event);
+	}
+
+	private void publishNotification(DmMessageSentEvent event) {
+		try {
+			String senderUsername = resolveSenderUsername(event);
+			String senderAvatarUrl = resolveSenderAvatarUrl(event);
+			notificationProducer.publish(
+					NotificationInboundEvent.builder()
+					                        .recipientId(event.getRecipientId())
+					                        .type(NotificationType.DM_NEW_MESSAGE)
+					                        .title(senderUsername + " size bir mesaj gönderdi")
+					                        .message(messagePreview(event))
+					                        .payload(Map.of(
+							                        "module", "DM",
+							                        "conversationId", event.getConversationId().toString(),
+							                        "messageId", event.getMessageId().toString(),
+							                        "senderId", event.getSenderId().toString(),
+							                        "senderUsername", senderUsername,
+							                        "senderAvatarUrl", senderAvatarUrl,
+							                        "recipientId", event.getRecipientId().toString(),
+							                        "messageType", event.getMessageType() == null ? "text" : event.getMessageType()
+					                        ))
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
+		} catch (Exception e) {
+			log.warn("DM notification publish failed. messageId={}, recipientId={}, err={}",
+			         event.getMessageId(), event.getRecipientId(), e.toString());
+		}
+	}
+
+	private String resolveSenderUsername(DmMessageSentEvent event) {
+		return userRepository.findById(event.getSenderId())
+		                     .map(user -> {
+			                     String username = user.getUsername();
+			                     return username == null || username.isBlank() ? "Bir kullanici" : username.trim();
+		                     })
+		                     .orElse("Bir kullanici");
+	}
+
+	private String resolveSenderAvatarUrl(DmMessageSentEvent event) {
+		try {
+			var profiles = publicProfileResolverService.resolveByUserId(event.getSenderId()).profiles();
+			if (profiles != null) {
+				return profiles.stream()
+				               .map(profile -> profile.profilePictureUrl())
+				               .filter(this::hasText)
+				               .findFirst()
+				               .map(String::trim)
+				               .orElseGet(() -> resolveUserProfilePicture(event));
+			}
+		} catch (Exception e) {
+			log.warn("DM notification sender avatar resolve failed. senderId={}, err={}",
+			         event.getSenderId(), e.toString());
+		}
+		return resolveUserProfilePicture(event);
+	}
+
+	private String resolveUserProfilePicture(DmMessageSentEvent event) {
+		return userRepository.findById(event.getSenderId())
+		                     .map(user -> {
+			                     String profilePicture = user.getProfilePicture();
+			                     return profilePicture == null ? "" : profilePicture.trim();
+		                     })
+		                     .orElse("");
+	}
+
+	private String messagePreview(DmMessageSentEvent event) {
+		String type = event.getMessageType() == null ? "text" : event.getMessageType().trim();
+		if (!type.equalsIgnoreCase("text")) {
+			return "Yeni bir " + type + " mesaji aldin.";
+		}
+		String content = event.getContent() == null ? "" : event.getContent().trim();
+		if (content.isEmpty()) {
+			return "Yeni bir mesaj aldin.";
+		}
+		return content.length() > 120 ? content.substring(0, 120) + "..." : content;
+	}
+
+	private boolean hasText(String value) {
+		return value != null && !value.trim().isEmpty();
 	}
 }

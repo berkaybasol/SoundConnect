@@ -75,7 +75,7 @@ class StudioProfileRepositoryTest {
 		StudioProfile profile = StudioProfile.builder()
 		                                     .user(user)
 		                                     .description("desc")
-		                                     .profilePicture("pp.png")
+		                                     .profilePictureMediaId(UUID.randomUUID())
 		                                     .facilities(Set.of("Piano"))
 		                                     .build();
 		repository.saveAndFlush(profile);

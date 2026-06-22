@@ -39,7 +39,7 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 		ProducerProfile profile = ProducerProfile.builder()
 				.user(user)
 				.name(dto.name())
-				.profilePicture(dto.profilePicture())
+				.profilePictureMediaId(dto.profilePicture())
 				.address(dto.address())
 				.phone(dto.phone())
 				.website(dto.website())
@@ -83,7 +83,7 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 		
 		// guncelle
 		if (dto.name() != null) profile.setName(dto.name());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.address() != null) profile.setAddress(dto.address());
 		if (dto.phone() != null) profile.setPhone(dto.phone());
 		if (dto.website() != null) profile.setWebsite(dto.website());

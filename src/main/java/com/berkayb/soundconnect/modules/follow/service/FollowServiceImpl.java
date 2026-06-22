@@ -2,16 +2,22 @@ package com.berkayb.soundconnect.modules.follow.service;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 
@@ -20,6 +26,7 @@ import java.util.List;
 @Slf4j
 public class FollowServiceImpl implements FollowService {
 	private final FollowRepository followRepository;
+	private final NotificationProducer notificationProducer;
 	
 	@Transactional // islemlerden birinde bile hata olursa butun islemleri geri al
 	@Override
@@ -49,7 +56,7 @@ public class FollowServiceImpl implements FollowService {
 		
 		log.info("User {} succesfully followed user {}", follower.getId(), following.getId());
 		
-		//TODO nitification modulu geldiginde burada bildirim tetiklencek.
+		publishNewFollowerNotification(follower, following);
 	}
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemleri geri al
@@ -100,5 +107,39 @@ public class FollowServiceImpl implements FollowService {
 	@Override
 	public long countFollowers(User following) {
 		return followRepository.countByFollowing(following);
+	}
+	
+	private void publishNewFollowerNotification(User follower, User following) {
+		try {
+			Map<String, Object> payload = new HashMap<>();
+			payload.put("module", "SOCIAL");
+			payload.put("action", "NEW_FOLLOWER");
+			payload.put("followerId", follower.getId().toString());
+			payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanici"));
+			putIfPresent(payload, "followerAvatarUrl", follower.getProfilePicture());
+			
+			notificationProducer.publish(
+					NotificationInboundEvent.builder()
+					                        .recipientId(following.getId())
+					                        .type(NotificationType.SOCIAL_NEW_FOLLOWER)
+					                        .title(safe(follower.getUsername(), "Bir kullanici") + " seni takip etmeye basladi")
+					                        .message("Yeni bir takipcin var.")
+					                        .payload(payload)
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
+		} catch (Exception e) {
+			log.warn("Follow notification publish failed. follower={}, following={}, err={}",
+			         follower.getId(), following.getId(), e.toString());
+		}
+	}
+	
+	private void putIfPresent(Map<String, Object> payload, String key, String value) {
+		if (value != null && !value.isBlank()) payload.put(key, value.trim());
+	}
+	
+	private String safe(String value, String fallback) {
+		return value == null || value.isBlank() ? fallback : value.trim();
 	}
 }

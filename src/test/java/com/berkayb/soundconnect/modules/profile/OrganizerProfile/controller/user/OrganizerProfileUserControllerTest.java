@@ -71,7 +71,7 @@ class OrganizerProfileUserControllerTest {
 	@Test
 	void getMyProfile_ok() throws Exception {
 		var dto = new OrganizerProfileResponseDto(
-				UUID.randomUUID(), "OrgMine","desc","pp.png","addr","555","ig","yt"
+				UUID.randomUUID(), "OrgMine","desc",UUID.randomUUID(),"addr","555","ig","yt"
 		);
 		when(organizerProfileService.getProfileByUserId(userId)).thenReturn(dto);
 		
@@ -85,10 +85,10 @@ class OrganizerProfileUserControllerTest {
 	@Test
 	void updateMyProfile_ok() throws Exception {
 		var body = new OrganizerProfileSaveRequestDto(
-				"UpdName","newdesc","pic.png","newaddr","111","ig2","yt2"
+				"UpdName","newdesc",UUID.randomUUID(),"newaddr","111","ig2","yt2"
 		);
 		var dto = new OrganizerProfileResponseDto(
-				UUID.randomUUID(), "UpdName","newdesc","pic.png","newaddr","111","ig2","yt2"
+				UUID.randomUUID(), "UpdName","newdesc",UUID.randomUUID(),"newaddr","111","ig2","yt2"
 		);
 		when(organizerProfileService.updateProfile(userId, body)).thenReturn(dto);
 		

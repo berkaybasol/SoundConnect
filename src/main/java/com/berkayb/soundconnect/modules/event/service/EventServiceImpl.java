@@ -9,8 +9,10 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -27,7 +29,6 @@ import java.util.UUID;
 @Slf4j
 public class EventServiceImpl implements EventService{
 	
-	
 	private final EventRepository eventRepository;
 	private final VenueEntityFinder venueEntityFinder;
 	private final UserEntityFinder userEntityFinder;
@@ -36,34 +37,86 @@ public class EventServiceImpl implements EventService{
 	private final EventMapper eventMapper;
 	
 	@Override
+	public List<EventResponseDto> getWeeklyEventsByVenue(UUID venueId, LocalDate startDate, LocalDate endDate) {
+		Venue venue = venueEntityFinder.getVenue(venueId);
+		
+		if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		return eventRepository.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, startDate, endDate)
+				.stream()
+				.map(eventMapper::toDto)
+				.toList();
+	}
+	
+	@Override
+	public List<EventResponseDto> getOwnerEventsByVenue(UUID ownerUserId, UUID venueId) {
+		User owner = userEntityFinder.getUser(ownerUserId);
+		Venue venue = venueEntityFinder.getVenue(venueId);
+		
+		if (venue.getOwner() == null || !venue.getOwner().getId().equals(owner.getId())) {
+			log.warn("[EVENT] Kullanici bu venue'nun sahibi degil. userId={}, venueId={}", ownerUserId, venueId);
+			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+		}
+		return eventRepository.findByVenueOrderByEventDateAscStartTimeAsc(venue)
+		                      .stream()
+		                      .map(eventMapper::toDto)
+		                      .toList();
+		
+	}
+	
+	@Override
 	public EventResponseDto createEvent(UUID createdByUserId, EventCreateRequestDto dto) {
 		log.info("[EVENT] Yeni etkinlik oluşturma isteği alındı. title={}", dto.title());
 		
-		// kullanici var mi?
-		userEntityFinder.getUser(createdByUserId);
+		// eventi olusturan kullaniciyi dogrula
+		User createdByUser = userEntityFinder.getUser(createdByUserId);
 		
 		// Venue dogru mu?
 		Venue venue = venueEntityFinder.getVenue(dto.venueId());
 		
+		// eventi sadece ilgili venue sahibi olusturabilsin
+		if (venue.getOwner() == null || !venue.getOwner().getId().equals(createdByUserId)) {
+			log.warn("[EVENT] Kullanici bu venue'nun sahibi degil. userId={}, venueId={}",
+			         createdByUserId, dto.venueId());
+			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+		}
+		
+		// sadece onayli mekanlar event olusturabilsin
+		if (!VenueStatus.APPROVED.equals(venue.getStatus())) {
+			log.warn("[EVENT] Onaysiz mekan event olusturmaya calisti. venueId={}, status={}",
+			         venue.getId(), venue.getStatus());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+		
 		// Performer dogrulamasi
 		boolean musicianProvided = dto.musicianProfileId() != null;
 		boolean bandProvided = dto.bandId() != null;
+		boolean manualProvided = dto.manualPerformerName() != null && !dto.manualPerformerName().isBlank();
 		
-		if (musicianProvided == bandProvided) {
-			// ya ikisi de null → hata
-			// ya ikisi de dolu → hata
-			log.warn("[EVENT] Performer doğrulaması başarısız. musician={}, band={}",
-			         dto.musicianProfileId(), dto.bandId());
+		int providedCount = 0;
+		if (musicianProvided) providedCount++;
+		if (bandProvided) providedCount++;
+		if (manualProvided) providedCount++;
+		
+		if (providedCount > 1) {
 			throw new SoundConnectException(ErrorType.INVALID_PERFORMER_SELECTION);
+		}
+		
+		// saat araligi dogrulamasi
+		if (dto.endTime() != null && dto.endTime().isBefore(dto.startTime())) {
+			log.warn("[EVENT] Gecersiz saat araligi. startTime={}, endTime={}",
+			         dto.startTime(), dto.endTime());
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		}
 		
 		MusicianProfile musician = null;
 		Band band = null;
 		
 		// hangisi geldiyse onu getir
-		if (musicianProvided) {
+		if (musicianProvided) { //degisti
 			musician = musicianProfileService.getProfileEntity(dto.musicianProfileId());
-		} else {
+		} else if (bandProvided) { //degisti
 			band = bandService.getBandEntity(dto.bandId());
 		}
 		
@@ -78,7 +131,8 @@ public class EventServiceImpl implements EventService{
 				.venue(venue)
 				.musicianProfile(musician)
 				.band(band)
-				           .build();
+				.manualPerformerName(manualProvided ? dto.manualPerformerName().trim() : null)
+				.build();
 		
 		Event saved = eventRepository.save(event);
 		
@@ -89,9 +143,20 @@ public class EventServiceImpl implements EventService{
 	}
 	
 	@Override
-	public void deleteEventById(UUID eventId) {
+	public void deleteEventById(UUID deletedByUserId, UUID eventId) {
+		// degistirildi: event'i silen kullaniciyi dogrula
+		User deletedByUser = userEntityFinder.getUser(deletedByUserId);
+		
 		Event event = eventRepository.findById(eventId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.EVENT_NOT_FOUND));
+		                             .orElseThrow(() -> new SoundConnectException(ErrorType.EVENT_NOT_FOUND));
+		
+		// degistirildi: sadece event'in bagli oldugu venue'nun sahibi silebilsin
+		if (event.getVenue() == null || event.getVenue().getOwner() == null ||
+				!event.getVenue().getOwner().getId().equals(deletedByUser.getId())) {
+			log.warn("[EVENT] Kullanici bu event'i silme yetkisine sahip degil. userId={}, eventId={}",
+			         deletedByUserId, eventId);
+			throw new SoundConnectException(ErrorType.EVENT_NOT_FOUND);
+		}
 		
 		eventRepository.delete(event);
 		log.info("Event deleted succesfully: {}", eventId);
@@ -131,7 +196,8 @@ public class EventServiceImpl implements EventService{
 	@Override
 	public List<EventResponseDto> getEventsByVenue(UUID venueId) {
 		Venue venue = venueEntityFinder.getVenue(venueId);
-		return eventRepository.findByVenue(venue)
-				.stream().map(eventMapper::toDto).toList();
+		return eventRepository.findByVenueOrderByEventDateAscStartTimeAsc(venue)
+				.stream().map(eventMapper::toDto)
+				              .toList();
 	}
 }

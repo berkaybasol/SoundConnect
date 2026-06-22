@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.setlistcreator.service;
 
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.support.MusicianProfileEntityFinder;
 import com.berkayb.soundconnect.modules.setlistcreator.dto.request.SetlistCreateRequestDto;
@@ -44,17 +46,20 @@ public class SetistServiceImpl implements SetlistService{
 	
 	@Override
 	@Transactional
-	public SetlistResponseDto createSetlist(SetlistCreateRequestDto request) {
+	public SetlistResponseDto createSetlist(UUID userId, SetlistCreateRequestDto request) {
 		log.info("Creating setlist with name: {}", request.name());
 		
 		Setlist setlist = setlistMapper.toEntity(request);
+		validateSinglePerformer(request);
 		
 		if (request.musicianProfileId() != null) {
 			MusicianProfile profile =
 					musicianProfileFinder.getMusician(request.musicianProfileId());
+			assertCanManageMusician(userId, profile);
 			setlist.setMusicianProfile(profile);
 		} else if (request.bandId() != null) {
 			Band band = bandEntityFinder.getBand(request.bandId());
+			assertCanManageBand(userId, band);
 			setlist.setBand(band);
 		} else {
 			throw new SoundConnectException(ErrorType.BAD_REQUEST, "Setlist must belong to musician profile or band");
@@ -64,9 +69,10 @@ public class SetistServiceImpl implements SetlistService{
 	
 	@Override
 	@Transactional
-	public SetlistResponseDto addSetToSetlist(UUID setlistId, SetlistSetRequestDto request) {
+	public SetlistResponseDto addSetToSetlist(UUID userId, UUID setlistId, SetlistSetRequestDto request) {
 		Setlist setlist = setlistRepository.findById(setlistId)
 				.orElseThrow(()-> new SoundConnectException(ErrorType.SETLIST_NOT_FOUND));
+		assertCanManageSetlist(userId, setlist);
 		SetlistSet set = setlistSetMapper.toEntity(request);
 		set.setSetlist(setlist);
 		setlist.addSet(set);
@@ -74,9 +80,10 @@ public class SetistServiceImpl implements SetlistService{
 	}
 	
 	@Override
-	public SetlistResponseDto addItemToSet(UUID setId, SetlistItemRequestDto request) {
+	public SetlistResponseDto addItemToSet(UUID userId, UUID setId, SetlistItemRequestDto request) {
 		SetlistSet set = setlistSetRepository.findById(setId)
 		                                     .orElseThrow(() -> new SoundConnectException(ErrorType.SETLIST_SET_NOT_FOUND));
+		assertCanManageSetlist(userId, set.getSetlist());
 		
 		SetlistItem item = setlistItemMapper.toEntity(request);
 		item.setSet(set);
@@ -89,18 +96,54 @@ public class SetistServiceImpl implements SetlistService{
 	
 	@Override
 	@Transactional(readOnly = true)
-	public SetlistResponseDto getSetlistDetail(UUID setlistId) {
+	public SetlistResponseDto getSetlistDetail(UUID userId, UUID setlistId) {
 		Setlist setlist = setlistRepository.findById(setlistId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.SETLIST_NOT_FOUND));
+		assertCanManageSetlist(userId, setlist);
 		return setlistMapper.toResponse(setlist);
 	}
 	
 	@Override
 	@Transactional
-	public void deleteSetlist(UUID setlistId) {
-		if (!setlistRepository.existsById(setlistId)) {
-			throw new SoundConnectException(ErrorType.SETLIST_NOT_FOUND);
+	public void deleteSetlist(UUID userId, UUID setlistId) {
+		Setlist setlist = setlistRepository.findById(setlistId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.SETLIST_NOT_FOUND));
+		assertCanManageSetlist(userId, setlist);
+		setlistRepository.delete(setlist);
+	}
+
+	private void validateSinglePerformer(SetlistCreateRequestDto request) {
+		if (request.musicianProfileId() != null && request.bandId() != null) {
+			throw new SoundConnectException(ErrorType.INVALID_PERFORMER_SELECTION);
 		}
-		setlistRepository.deleteById(setlistId);
+	}
+
+	private void assertCanManageSetlist(UUID userId, Setlist setlist) {
+		if (setlist.getMusicianProfile() != null) {
+			assertCanManageMusician(userId, setlist.getMusicianProfile());
+			return;
+		}
+		if (setlist.getBand() != null) {
+			assertCanManageBand(userId, setlist.getBand());
+			return;
+		}
+		throw new SoundConnectException(ErrorType.BAD_REQUEST, "Setlist owner is invalid");
+	}
+
+	private void assertCanManageMusician(UUID userId, MusicianProfile profile) {
+		if (profile.getUser() == null || !profile.getUser().getId().equals(userId)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private void assertCanManageBand(UUID userId, Band band) {
+		boolean authorized = band.getMembers().stream()
+				.anyMatch(member -> member.getUser() != null
+						&& member.getUser().getId().equals(userId)
+						&& member.getStatus() == BandMemberShipStatus.ACTIVE
+						&& (member.getBandRole() == BandRole.FOUNDER || member.getBandRole() == BandRole.MANAGER));
+		if (!authorized) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
 	}
 }

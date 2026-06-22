@@ -2,9 +2,11 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.mapper.MusicianProfileMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
@@ -17,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -30,6 +33,25 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final InstrumentRepository instrumentRepository;
 	private final MusicianProfileMapper musicianProfileMapper;
 	private final BandService bandService;
+	private final MediaAssetService mediaAssetService;
+	
+	@Override
+	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
+		String q = query == null ? "" : query.trim(); //eklendi
+		if (q.isEmpty()) return List.of(); //eklendi
+		
+		return musicianProfileRepository.searchByStageNameOrUsername(q) //eklendi
+		                                .stream() //eklendi
+		                                .limit(10) //eklendi
+		                                .map(profile -> new MusicianProfileSearchItemDto( //eklendi
+		                                                                                  profile.getId(), //eklendi
+		                                                                                  profile.getUser().getId(), //eklendi
+		                                                                                  profile.getUser().getUsername(), //eklendi
+		                                                                                  profile.getStageName(), //eklendi
+		                                                                                  resolveProfilePictureUrl(profile.getProfilePictureMediaId()) //eklendi
+		                                )) //eklendi
+		                                .toList(); //eklendi
+	}
 	
 	@Override
 	public MusicianProfile getProfileEntity(UUID profileId) {
@@ -37,10 +59,8 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 	}
 	
-	
 	@Override
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		
 		User user = userEntityFinder.getUser(userId);
 		
 		if (musicianProfileRepository.findByUserId(userId).isPresent()) {
@@ -57,28 +77,32 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .user(user)
 		                                         .stageName(dto.stageName())
 		                                         .description(dto.description())
-		                                         .profilePicture(dto.profilePicture())
+		                                         .profilePictureMediaId(dto.profilePicture())
 		                                         .instagramUrl(dto.instagramUrl())
 		                                         .youtubeUrl(dto.youtubeUrl())
 		                                         .soundcloudUrl(dto.soundcloudUrl())
 		                                         .spotifyEmbedUrl(dto.spotifyEmbedUrl())
 		                                         .instruments(instruments)
-												 .spotifyArtistId(dto.spotifyArtistId())
+		                                         .spotifyArtistId(dto.spotifyArtistId())
+		                                         .spotifyTracks(dto.spotifyTracks() != null ? dto.spotifyTracks() : List.of())
 		                                         .build();
 		
 		MusicianProfile saved = musicianProfileRepository.save(profile);
 		
 		log.info("Yeni muzisyen profili olusturuldu. UserId: {}", userId);
 		
-		// ---- PROFILE + BANDS ----
 		var base = musicianProfileMapper.toDto(saved);
+		String profilePictureUrl = resolveProfilePictureUrl(saved.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				saved.getUser().getId(),
+				saved.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -86,14 +110,14 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
-				bands
+				bands,
+				base.spotifyTrackIds(),
+				base.spotifyTracks()
 		);
 	}
 	
-	
 	@Override
 	public MusicianProfileResponseDto getProfileByUserId(UUID userId) {
-		
 		userEntityFinder.getUser(userId);
 		
 		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
@@ -105,13 +129,17 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		log.info("Musician profile getirildi. UserId: {}", userId);
 		
 		var base = musicianProfileMapper.toDto(profile);
+		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				profile.getUser().getId(),
+				profile.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -119,13 +147,14 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
-				bands
+				bands,
+				base.spotifyTrackIds(),
+				base.spotifyTracks()
 		);
 	}
 	
 	@Override
 	public MusicianProfileResponseDto updateProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		
 		userEntityFinder.getUser(userId);
 		
 		MusicianProfile profile = musicianProfileRepository.findByUserId(userId)
@@ -136,12 +165,14 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		
 		if (dto.stageName() != null) profile.setStageName(dto.stageName());
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePicture() != null) profile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
 		if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
 		if (dto.spotifyArtistId() != null) profile.setSpotifyArtistId(dto.spotifyArtistId());
+		if (dto.spotifyTrackIds() != null) profile.setSpotifyTrackIds(dto.spotifyTrackIds());
+		if (dto.spotifyTracks() != null) profile.setSpotifyTracks(dto.spotifyTracks());
 		
 		if (dto.instrumentIds() != null) {
 			Set<Instrument> instruments = new HashSet<>(instrumentRepository.findAllById(dto.instrumentIds()));
@@ -153,13 +184,17 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		log.info("Musician profile güncellendi. UserId: {}", userId);
 		
 		var base = musicianProfileMapper.toDto(updated);
+		String profilePictureUrl = resolveProfilePictureUrl(updated.getProfilePictureMediaId());
 		var bands = new HashSet<>(bandService.getBandsByUser(userId));
 		
 		return new MusicianProfileResponseDto(
 				base.id(),
+				updated.getUser().getId(),
+				updated.getUser().getUsername(),
 				base.stageName(),
 				base.bio(),
-				base.profilePicture(),
+				base.profilePictureMediaId(),
+				profilePictureUrl,
 				base.instagramUrl(),
 				base.youtubeUrl(),
 				base.soundcloudUrl(),
@@ -167,12 +202,53 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
-				bands
+				bands,
+				base.spotifyTrackIds(),
+				base.spotifyTracks()
 		);
 	}
 	
 	@Override
-	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) {
-		return null;
+	public MusicianProfileResponseDto getProfileByProfileId(UUID profileId) { //degisti
+		MusicianProfile profile = musicianProfileRepository.findById(profileId) //degisti
+		                                                   .orElseThrow(() -> { //degisti
+			                                                   log.warn("Profil bulunamadi. profileId: {}", profileId); //degisti
+			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND); //degisti
+		                                                   }); //degisti
+		
+		var base = musicianProfileMapper.toDto(profile); //degisti
+		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId()); //degisti
+		var bands = new HashSet<>(bandService.getBandsByUser(profile.getUser().getId())); //degisti
+		
+		return new MusicianProfileResponseDto( //degisti
+		                                       base.id(), //degisti
+		                                       profile.getUser().getId(), //degisti
+		                                       profile.getUser().getUsername(), //degisti
+		                                       base.stageName(), //degisti
+		                                       base.bio(), //degisti
+		                                       base.profilePictureMediaId(), //degisti
+		                                       profilePictureUrl, //degisti
+		                                       base.instagramUrl(), //degisti
+		                                       base.youtubeUrl(), //degisti
+		                                       base.soundcloudUrl(), //degisti
+		                                       base.spotifyEmbedUrl(), //degisti
+		                                       base.spotifyArtistId(), //degisti
+		                                       base.instruments(), //degisti
+		                                       base.activeVenues(), //degisti
+		                                       bands, //degisti
+		                                       base.spotifyTrackIds(), //degisti
+		                                       base.spotifyTracks() //degisti
+		); //degisti
+	}
+	
+	
+	private String resolveProfilePictureUrl(UUID mediaAssetId) {
+		if (mediaAssetId == null) return null;
+		try {
+			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+		} catch (Exception e) {
+			log.warn("Profile picture resolve failed. mediaAssetId={}", mediaAssetId);
+			return null;
+		}
 	}
 }

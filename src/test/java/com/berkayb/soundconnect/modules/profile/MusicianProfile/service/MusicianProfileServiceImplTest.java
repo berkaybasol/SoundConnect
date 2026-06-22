@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
@@ -34,6 +34,7 @@ class MusicianProfileServiceImplTest {
 	@Mock InstrumentRepository instrumentRepo;
 	@Mock MusicianProfileMapper mapper;
 	@Mock BandService bandService;
+	@Mock MediaAssetService mediaAssetService;
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;
@@ -41,10 +42,19 @@ class MusicianProfileServiceImplTest {
 	@Test
 	void createProfile_shouldCreate_whenNotExists() {
 		UUID userId = UUID.randomUUID();
+		UUID ppId = UUID.randomUUID();
+		UUID instrumentId = UUID.randomUUID();
 		
 		var dto = new MusicianProfileSaveRequestDto(
-				"Stage", "Bio", "pic", "ig", "yt", "sc", "embed123", "artist123",
-				Set.of(UUID.randomUUID())
+				"Stage",
+				"Bio",
+				ppId,
+				"ig",
+				"yt",
+				"sc",
+				"embed123",
+				"artist123",
+				Set.of(instrumentId)
 		);
 		
 		var user = User.builder().id(userId).build();
@@ -54,20 +64,33 @@ class MusicianProfileServiceImplTest {
 		var instrument = Instrument.builder().name("Guitar").build();
 		when(instrumentRepo.findAllById(any())).thenReturn(List.of(instrument));
 		
-		var saved = MusicianProfile.builder().id(UUID.randomUUID()).user(user).build();
+		UUID profileId = UUID.randomUUID();
+		var saved = MusicianProfile.builder().id(profileId).user(user).build();
 		when(repo.save(any(MusicianProfile.class))).thenReturn(saved);
 		
 		var baseDto = new MusicianProfileResponseDto(
-				saved.getId(), "Stage", "Bio", "pic","ig","yt","sc","embed123","artist123",
-				Set.of("Guitar"), Collections.emptySet(), Collections.emptySet()
+				profileId,
+				userId,
+				"Stage",
+				"Bio",
+				ppId,
+				"ig",
+				"yt",
+				"sc",
+				"embed123",
+				"artist123",
+				Set.of("Guitar"),
+				Set.of(),
+				null // bands ignore -> null kabul
 		);
-		
 		when(mapper.toDto(saved)).thenReturn(baseDto);
+		
 		when(bandService.getBandsByUser(userId)).thenReturn(Collections.emptyList());
 		
 		var result = service.createProfile(userId, dto);
 		
 		assertThat(result.stageName()).isEqualTo("Stage");
+		assertThat(result.bio()).isEqualTo("Bio");
 		assertThat(result.bands()).isEmpty();
 		
 		verify(repo).save(any(MusicianProfile.class));
@@ -80,8 +103,7 @@ class MusicianProfileServiceImplTest {
 		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(new MusicianProfile()));
 		
-		assertThatThrownBy(() -> service.createProfile(userId,
-		                                               mock(MusicianProfileSaveRequestDto.class)))
+		assertThatThrownBy(() -> service.createProfile(userId, mock(MusicianProfileSaveRequestDto.class)))
 				.isInstanceOf(SoundConnectException.class)
 				.satisfies(ex -> assertThat(((SoundConnectException) ex).getErrorType())
 						.isEqualTo(ErrorType.PROFILE_ALREADY_EXISTS));
@@ -93,22 +115,34 @@ class MusicianProfileServiceImplTest {
 	void getProfileByUserId_shouldReturn_whenExists() {
 		UUID userId = UUID.randomUUID();
 		
-		var profile = MusicianProfile.builder().id(UUID.randomUUID()).build();
+		var user = User.builder().id(userId).build();
+		var profileId = UUID.randomUUID();
+		var profile = MusicianProfile.builder().id(profileId).user(user).build();
 		
-		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
+		when(userFinder.getUser(userId)).thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(profile));
 		
 		var baseDto = new MusicianProfileResponseDto(
-				profile.getId(), "S", "B", "p","i","y","s","embed","artist",
-				Collections.emptySet(), Collections.emptySet(), Collections.emptySet()
+				profileId,
+				userId,
+				"Stage",
+				"Bio",
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				Set.of(),
+				Set.of(),
+				null
 		);
-		
 		when(mapper.toDto(profile)).thenReturn(baseDto);
 		when(bandService.getBandsByUser(userId)).thenReturn(Collections.emptyList());
 		
 		var result = service.getProfileByUserId(userId);
 		
-		assertThat(result.id()).isEqualTo(profile.getId());
+		assertThat(result.id()).isEqualTo(profileId);
 		assertThat(result.bands()).isEmpty();
 	}
 	
@@ -128,32 +162,56 @@ class MusicianProfileServiceImplTest {
 	@Test
 	void updateProfile_shouldPatchAndReturn() {
 		UUID userId = UUID.randomUUID();
-		var profile = MusicianProfile.builder().id(UUID.randomUUID()).build();
+		var user = User.builder().id(userId).build();
 		
-		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
+		var profileId = UUID.randomUUID();
+		var profile = MusicianProfile.builder().id(profileId).user(user).build();
+		
+		when(userFinder.getUser(userId)).thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(profile));
+		when(instrumentRepo.findAllById(any())).thenReturn(Collections.emptyList());
 		
+		when(repo.save(any(MusicianProfile.class))).thenAnswer(inv -> inv.getArgument(0));
+		
+		UUID ppId = UUID.randomUUID();
 		var dto = new MusicianProfileSaveRequestDto(
-				"NewStage", "NewBio", "pp", "ig","yt","sc","embedX","artistX",
+				"NewStage",
+				"NewBio",
+				ppId,
+				"ig",
+				"yt",
+				"sc",
+				"embedX",
+				"artistX",
 				Set.of()
 		);
 		
-		when(instrumentRepo.findAllById(any())).thenReturn(List.of());
-		when(repo.save(profile)).thenReturn(profile);
-		
 		var baseDto = new MusicianProfileResponseDto(
-				profile.getId(), "NewStage", "NewBio", "pp","ig","yt","sc","embedX","artistX",
-				Collections.emptySet(), Collections.emptySet(), Collections.emptySet()
+				profileId,
+				userId,
+				"NewStage",
+				"NewBio",
+				ppId,
+				"ig",
+				"yt",
+				"sc",
+				"embedX",
+				"artistX",
+				Set.of(),
+				Set.of(),
+				null
 		);
 		
-		when(mapper.toDto(profile)).thenReturn(baseDto);
+		when(mapper.toDto(any(MusicianProfile.class))).thenReturn(baseDto);
 		when(bandService.getBandsByUser(userId)).thenReturn(Collections.emptyList());
 		
 		var result = service.updateProfile(userId, dto);
 		
 		assertThat(result.stageName()).isEqualTo("NewStage");
+		assertThat(result.bio()).isEqualTo("NewBio");
+		assertThat(result.profilePictureMediaId()).isEqualTo(ppId);
 		assertThat(result.bands()).isEmpty();
 		
-		verify(repo).save(profile);
+		verify(repo).save(any(MusicianProfile.class));
 	}
 }

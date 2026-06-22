@@ -10,6 +10,7 @@ import org.mapstruct.factory.Mappers;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 @Tag("mapper")
 class ListenerProfileMapperTest {
 	
@@ -18,6 +19,8 @@ class ListenerProfileMapperTest {
 	@Test
 	void toDto_should_map_all_fields() {
 		UUID userId = UUID.randomUUID();
+		UUID ppId = UUID.randomUUID();
+		
 		User u = User.builder()
 		             .id(userId)
 		             .username("alice")
@@ -28,14 +31,14 @@ class ListenerProfileMapperTest {
 		                                        .id(UUID.randomUUID())
 		                                        .user(u)
 		                                        .description("about me")
-		                                        .profilePicture("pic.png")
+		                                        .profilePictureMediaId(ppId)
 		                                        .build();
 		
 		ListenerProfileResponseDto dto = mapper.toDto(entity);
 		
 		assertThat(dto.id()).isEqualTo(entity.getId());
 		assertThat(dto.userId()).isEqualTo(userId);
-		assertThat(dto.profilePicture()).isEqualTo("pic.png");
-		assertThat(dto.bio()).isEqualTo("about me"); // <- description -> bio
+		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId);
+		assertThat(dto.bio()).isEqualTo("about me"); // description -> bio
 	}
 }

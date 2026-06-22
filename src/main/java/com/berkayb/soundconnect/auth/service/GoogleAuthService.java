@@ -109,7 +109,7 @@ public class GoogleAuthService {
 				.success(true)
 				.message("Google ile giris basarili")
 				.code(200)
-				.data(new LoginResponse(token))
+				.data(new LoginResponse(token, user.getStatus()))
 				.build();
 	}
 	

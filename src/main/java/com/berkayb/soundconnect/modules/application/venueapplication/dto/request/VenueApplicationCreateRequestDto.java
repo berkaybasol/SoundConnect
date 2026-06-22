@@ -12,6 +12,10 @@ public record VenueApplicationCreateRequestDto(
 		@Size(max = 255, message = "Venue address can be at most 255 characters")
 		String venueAddress,
 		
+		@NotBlank(message = "Telefon numarası zorunludur")
+		@Size(min = 10, max = 15, message = "Telefon numarası geçersiz")
+		String phone,
+		
 		@NotBlank(message = "City ID is required")
 		String cityId,
 		

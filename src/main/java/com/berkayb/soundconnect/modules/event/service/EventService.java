@@ -17,7 +17,7 @@ public interface EventService {
 	EventResponseDto getEventById(UUID eventId);
 	
 	// id gore event sil
-	void deleteEventById(UUID eventId);
+	void deleteEventById(UUID deletedByUserId, UUID eventId);
 	
 	// ============ USER ==============
 	
@@ -35,4 +35,8 @@ public interface EventService {
 	
 	// mekana gore event getir
 	List<EventResponseDto> getEventsByVenue(UUID venueId);
+	
+	List<EventResponseDto> getWeeklyEventsByVenue(UUID venueId, LocalDate startDate, LocalDate endDate);
+	
+	List<EventResponseDto> getOwnerEventsByVenue(UUID ownerUserId, UUID venueId);
 }

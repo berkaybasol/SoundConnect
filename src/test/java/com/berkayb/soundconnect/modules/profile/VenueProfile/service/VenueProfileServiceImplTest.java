@@ -181,7 +181,7 @@ class VenueProfileServiceImplTest {
 	private VenueProfileSaveRequestDto dto(String bio) {
 		return new VenueProfileSaveRequestDto(
 				bio,
-				"pic.png",
+				UUID.randomUUID(),
 				"https://instagram.com/x",
 				"https://youtube.com/x",
 				"https://site.com"

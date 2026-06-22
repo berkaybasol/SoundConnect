@@ -26,7 +26,7 @@ public class NeighborhoodControllerImpl implements NeighborhoodController {
 	
 	private final NeighborhoodService neighborhoodService;
 	
-	//TODO @PreAuthorize("hasAuthority('WRITE_LOCATION')")
+	@PreAuthorize("hasAuthority('MANAGE_LOCATIONS')")
 	@PostMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<NeighborhoodResponseDto>> save(@RequestBody @Valid NeighborhoodRequestDto dto) {
@@ -42,7 +42,6 @@ public class NeighborhoodControllerImpl implements NeighborhoodController {
 		);
 	}
 	
-	//TODO  @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<NeighborhoodResponseDto>>> getAll() {
@@ -58,7 +57,6 @@ public class NeighborhoodControllerImpl implements NeighborhoodController {
 		);
 	}
 	
-	//TODO  @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_BY_ID)
 	@Override
 	public ResponseEntity<BaseResponse<NeighborhoodResponseDto>> getById(@PathVariable UUID id) {
@@ -74,7 +72,6 @@ public class NeighborhoodControllerImpl implements NeighborhoodController {
 		);
 	}
 	
-	//TODO  @PreAuthorize("hasAuthority('READ_LOCATION')")
 	@GetMapping(GET_BY_DISTRICT)
 	@Override
 	public ResponseEntity<BaseResponse<List<NeighborhoodResponseDto>>> getByDistrictId(@PathVariable UUID districtId) {
@@ -90,7 +87,7 @@ public class NeighborhoodControllerImpl implements NeighborhoodController {
 		);
 	}
 	
-	//TODO  @PreAuthorize("hasAuthority('DELETE_LOCATION')")
+	@PreAuthorize("hasAuthority('MANAGE_LOCATIONS')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> delete(@PathVariable UUID id) {

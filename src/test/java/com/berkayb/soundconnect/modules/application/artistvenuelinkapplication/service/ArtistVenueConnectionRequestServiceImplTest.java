@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.m
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -41,6 +42,8 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	
 	UUID mpId;
 	UUID venueId;
+	UUID musicianUserId;
+	UUID venueOwnerId;
 	
 	// mock’lar
 	MusicianProfile mp;
@@ -50,15 +53,23 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	void init() {
 		mpId = UUID.randomUUID();
 		venueId = UUID.randomUUID();
+		musicianUserId = UUID.randomUUID();
+		venueOwnerId = UUID.randomUUID();
 		
 		mp = mock(MusicianProfile.class);
 		venue = mock(Venue.class);
+		User musicianUser = new User();
+		musicianUser.setId(musicianUserId);
+		User venueOwner = new User();
+		venueOwner.setId(venueOwnerId);
 		
 		// id/stageName/name
 		when(mp.getId()).thenReturn(mpId);
 		when(mp.getStageName()).thenReturn("Stage X");
+		when(mp.getUser()).thenReturn(musicianUser);
 		when(venue.getId()).thenReturn(venueId);
 		when(venue.getName()).thenReturn("Venue X");
+		when(venue.getOwner()).thenReturn(venueOwner);
 		
 		// ilişki set’lerini gerçek set’lerle döndür
 		Set<Venue> activeVenues = new HashSet<>();
@@ -70,7 +81,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	
 	@Test
 	void createRequest_ok() {
-		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, venueId, "hi");
+		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, "hi");
 		
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(false);
@@ -88,11 +99,11 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(requestRepo.save(any())).thenReturn(saved);
 		when(mapper.toResponseDto(saved))
 				.thenReturn(new ArtistVenueConnectionRequestResponseDto(
-						saved.getId(), mpId, venueId, "Stage X", "Venue X",
+						saved.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X",
 						"hi", RequestStatus.PENDING.name(), RequestByType.ARTIST, null
 				));
 		
-		var res = service.createRequest(dto, RequestByType.ARTIST);
+		var res = service.createRequest(musicianUserId, dto, RequestByType.ARTIST);
 		
 		assertThat(res).isNotNull();
 		assertThat(res.musicianProfileId()).isEqualTo(mpId);
@@ -107,11 +118,11 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	
 	@Test
 	void createRequest_should_throw_when_duplicate_pending() {
-		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, venueId, null);
+		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, null);
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(true);
 		
-		assertThatThrownBy(() -> service.createRequest(dto, RequestByType.ARTIST))
+		assertThatThrownBy(() -> service.createRequest(musicianUserId, dto, RequestByType.ARTIST))
 				.isInstanceOf(SoundConnectException.class);
 		
 		verify(musicianRepo, never()).findById(any());
@@ -121,12 +132,12 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	
 	@Test
 	void createRequest_should_throw_when_musician_not_found() {
-		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, venueId, null);
+		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, null);
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(false);
 		when(musicianRepo.findById(mpId)).thenReturn(Optional.empty());
 		
-		assertThatThrownBy(() -> service.createRequest(dto, RequestByType.ARTIST))
+		assertThatThrownBy(() -> service.createRequest(musicianUserId, dto, RequestByType.ARTIST))
 				.isInstanceOf(SoundConnectException.class);
 		
 		verify(venueRepo, never()).findById(any());
@@ -135,13 +146,13 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	
 	@Test
 	void createRequest_should_throw_when_venue_not_found() {
-		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, venueId, null);
+		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, null);
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(false);
 		when(musicianRepo.findById(mpId)).thenReturn(Optional.of(mp));
 		when(venueRepo.findById(venueId)).thenReturn(Optional.empty());
 		
-		assertThatThrownBy(() -> service.createRequest(dto, RequestByType.ARTIST))
+		assertThatThrownBy(() -> service.createRequest(musicianUserId, dto, RequestByType.ARTIST))
 				.isInstanceOf(SoundConnectException.class);
 		
 		verify(requestRepo, never()).save(any());
@@ -159,12 +170,13 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(requestRepo.save(req)).thenReturn(req);
 		when(mapper.toResponseDto(req)).thenReturn(
 				new ArtistVenueConnectionRequestResponseDto(
-						req.getId(), mpId, venueId, "Stage X", "Venue X",
+						req.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X",
 						null, RequestStatus.ACCEPTED.name(), RequestByType.ARTIST, null
 				)
 		);
 		
-		var res = service.acceptRequest(req.getId());
+		req.setRequestByType(RequestByType.ARTIST);
+		var res = service.acceptRequest(venueOwnerId, req.getId());
 		
 		assertThat(req.getStatus()).isEqualTo(RequestStatus.ACCEPTED);
 		assertThat(mp.getActiveVenues()).contains(venue);
@@ -187,7 +199,8 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		
 		when(requestRepo.findById(req.getId())).thenReturn(Optional.of(req));
 		
-		assertThatThrownBy(() -> service.acceptRequest(req.getId()))
+		req.setRequestByType(RequestByType.ARTIST);
+		assertThatThrownBy(() -> service.acceptRequest(venueOwnerId, req.getId()))
 				.isInstanceOf(SoundConnectException.class);
 		
 		verifyNoInteractions(musicianRepo, venueRepo);
@@ -206,12 +219,13 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(requestRepo.save(req)).thenReturn(req);
 		when(mapper.toResponseDto(req)).thenReturn(
 				new ArtistVenueConnectionRequestResponseDto(
-						req.getId(), mpId, venueId, "Stage X", "Venue X",
+						req.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X",
 						null, RequestStatus.REJECTED.name(), RequestByType.ARTIST, null
 				)
 		);
 		
-		var res = service.rejectRequest(req.getId());
+		req.setRequestByType(RequestByType.ARTIST);
+		var res = service.rejectRequest(venueOwnerId, req.getId());
 		
 		assertThat(req.getStatus()).isEqualTo(RequestStatus.REJECTED);
 		assertThat(res.status()).isEqualTo(RequestStatus.REJECTED.name());
@@ -230,7 +244,8 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		
 		when(requestRepo.findById(req.getId())).thenReturn(Optional.of(req));
 		
-		assertThatThrownBy(() -> service.rejectRequest(req.getId()))
+		req.setRequestByType(RequestByType.ARTIST);
+		assertThatThrownBy(() -> service.rejectRequest(venueOwnerId, req.getId()))
 				.isInstanceOf(SoundConnectException.class);
 		
 		verify(requestRepo, never()).save(any());
@@ -251,10 +266,11 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		r2.setStatus(RequestStatus.ACCEPTED);
 		
 		when(requestRepo.findAllByMusicianProfileId(mpId)).thenReturn(List.of(r1, r2));
-		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, venueId, "Stage X", "Venue X", null, r1.getStatus().name(), null, null));
-		when(mapper.toResponseDto(r2)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r2.getId(), mpId, venueId, "Stage X", "Venue X", null, r2.getStatus().name(), null, null));
+		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X", null, r1.getStatus().name(), null, null));
+		when(mapper.toResponseDto(r2)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r2.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X", null, r2.getStatus().name(), null, null));
 		
-		var list = service.getRequestByMusicianProfile(mpId);
+		when(musicianRepo.findById(mpId)).thenReturn(Optional.of(mp));
+		var list = service.getRequestByMusicianProfile(musicianUserId, mpId, null);
 		
 		assertThat(list).hasSize(2);
 		verify(requestRepo).findAllByMusicianProfileId(mpId);
@@ -271,9 +287,10 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		r1.setStatus(RequestStatus.PENDING);
 		
 		when(requestRepo.findAllByVenueId(venueId)).thenReturn(List.of(r1));
-		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, venueId, "Stage X", "Venue X", null, r1.getStatus().name(), null, null));
+		when(mapper.toResponseDto(r1)).thenReturn(new ArtistVenueConnectionRequestResponseDto(r1.getId(), mpId, null, venueId, "Stage X", null, null, "Venue X", null, r1.getStatus().name(), null, null));
 		
-		var list = service.getRequestsByVenue(venueId);
+		when(venueRepo.findById(venueId)).thenReturn(Optional.of(venue));
+		var list = service.getRequestsByVenue(venueOwnerId, venueId, null);
 		
 		assertThat(list).hasSize(1);
 		verify(requestRepo).findAllByVenueId(venueId);

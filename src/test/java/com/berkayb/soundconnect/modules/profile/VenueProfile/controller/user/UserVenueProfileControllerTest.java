@@ -157,7 +157,7 @@ class UserVenueProfileControllerTest {
 		                                                  .instagramUrl("https://ig/old")
 		                                                  .youtubeUrl(null)
 		                                                  .websiteUrl(null)
-		                                                  .profilePicture(null)
+		                                                  .profilePictureMediaId(UUID.randomUUID())
 		                                                  .build());
 		
 		// SecurityContext’e principal koy

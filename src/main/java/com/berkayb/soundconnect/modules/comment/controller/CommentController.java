@@ -1,18 +1,21 @@
 package com.berkayb.soundconnect.modules.comment.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
-import com.berkayb.soundconnect.modules.comment.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.comment.service.CommentService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,13 +32,14 @@ public class CommentController {
 	
 	
 	@PostMapping(CREATE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Yorum olustur")
 	public ResponseEntity<BaseResponse<CommentResponseDto>> createComment(
-			@AuthenticationPrincipal(expression = "id")UUID userId,
+			@AuthenticationPrincipal(expression = "id") UUID userId,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId,
-			@RequestBody CommentCreateRequestDto request
-			) {
+			@Valid @RequestBody CommentCreateRequestDto request
+	) {
 		CommentResponseDto result = commentService.createComment(userId, targetType, targetId, request);
 		
 		return ResponseEntity.ok(BaseResponse.<CommentResponseDto>builder()
@@ -47,6 +51,7 @@ public class CommentController {
 	}
 	
 	@DeleteMapping(DELETE)
+	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Yorum sil")
 	public ResponseEntity<BaseResponse<Void>> deleteComment(
 			@AuthenticationPrincipal(expression = "id") UUID userId,
@@ -64,33 +69,39 @@ public class CommentController {
 	@GetMapping(LIST_BY_TARGET)
 	@Operation(summary = "Yorumlari getir")
 	public ResponseEntity<BaseResponse<Page<CommentResponseDto>>> getComments(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId,
 			@ParameterObject Pageable pageable
 	) {
-		Page<CommentResponseDto> result = commentService.getComments(targetType, targetId, pageable);
+		UUID viewerId = principal != null ? principal.getId() : null;
+		
+		Page<CommentResponseDto> result = commentService.getComments(viewerId, targetType, targetId, pageable);
 		
 		return ResponseEntity.ok(BaseResponse.<Page<CommentResponseDto>>builder()
-				                         .success(true)
-				                         .message("Yorumlar listelendi")
-				                         .code(200)
-				                         .data(result)
-				                         .build());
+		                                     .success(true)
+		                                     .message("Yorumlar listelendi")
+		                                     .code(200)
+		                                     .data(result)
+		                                     .build());
 	}
 	
 	@GetMapping(LIST_REPLIES)
 	@Operation(summary = "Yanitlari getir")
 	public ResponseEntity<BaseResponse<Page<CommentReplyResponseDto>>> getReplies(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID commentId,
 			@ParameterObject Pageable pageable
 	) {
-		Page<CommentReplyResponseDto> result = commentService.getReplies(commentId, pageable);
+		UUID viewerId = principal != null ? principal.getId() : null;
+		
+		Page<CommentReplyResponseDto> result = commentService.getReplies(viewerId, commentId, pageable);
 		
 		return ResponseEntity.ok(BaseResponse.<Page<CommentReplyResponseDto>>builder()
-				                         .success(true)
-				                         .message("Yanitlar listelendi")
-				                         .code(200)
-				                         .data(result)
-				                         .build());
+		                                     .success(true)
+		                                     .message("Yanitlar listelendi")
+		                                     .code(200)
+		                                     .data(result)
+		                                     .build());
 	}
 }

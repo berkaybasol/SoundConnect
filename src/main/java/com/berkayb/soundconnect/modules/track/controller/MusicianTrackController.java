@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -38,6 +39,7 @@ public class MusicianTrackController {
 	// ===============================
 	// CREATE TRACK
 	// ===============================
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(EndPoints.Track.CREATE)
 	@Operation(summary = "Müzisyen profiline ait yeni bir track oluştur")
 	public ResponseEntity<BaseResponse<TrackResponseDto>> createTrack(
@@ -108,6 +110,7 @@ public class MusicianTrackController {
 	// ===============================
 	// DELETE (Owner authorization service içinde kontrol edilir)
 	// ===============================
+	@PreAuthorize("hasRole('MUSICIAN')")
 	@DeleteMapping(EndPoints.Track.DELETE)
 	@Operation(summary = "Track sil")
 	public ResponseEntity<BaseResponse<Void>> deleteTrack(

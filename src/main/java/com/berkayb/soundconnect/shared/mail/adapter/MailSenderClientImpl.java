@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -22,11 +23,18 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MailSenderClientImpl implements MailSenderClient {
 	
 	private final MailJobHelper helper;
-	private final WebClient mailerSendWebClient; //
+	private final WebClient mailerSendWebClient;
+	
+	public MailSenderClientImpl(
+			MailJobHelper helper,
+			@Qualifier("mailersendWebClient") WebClient mailerSendWebClient
+	) {
+		this.helper = helper;
+		this.mailerSendWebClient = mailerSendWebClient;
+	}
 	
 	@Value("${mailersend.from-email}")
 	private String fromEmail;

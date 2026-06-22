@@ -4,6 +4,10 @@ import com.berkayb.soundconnect.modules.tablegroup.chat.entity.TableGroupMessage
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -11,4 +15,10 @@ public interface TableGroupMessageRepository extends JpaRepository<TableGroupMes
 	
 	// belirli bir masaya ait aktif mesajlari olusturma zamanina gore ascending seklinde getirir
 	Page<TableGroupMessage> findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(UUID tableGroupId, Pageable pageable);
+	
+	@Transactional //eklendi
+	@Modifying //eklendi
+	@Query("delete from TableGroupMessage m where m.tableGroupId = :tableGroupId") //eklendi
+	void deleteAllByTableGroupId(@Param("tableGroupId") UUID tableGroupId); //eklendi
+	
 }

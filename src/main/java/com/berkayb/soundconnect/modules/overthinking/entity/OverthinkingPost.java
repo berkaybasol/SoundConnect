@@ -1,14 +1,12 @@
 package com.berkayb.soundconnect.modules.overthinking.entity;
 
 import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingArtistType;
+import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingVisibilityType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.util.UUID;
@@ -20,7 +18,14 @@ import java.util.UUID;
  */
 
 @Entity
-@Table(name = "tbl_overthinking_post")
+@Table(
+		name = "tbl_overthinking_post",
+		indexes = {
+				@Index(name = "idx_overthinking_post_author", columnList = "author_id"),
+				@Index(name = "idx_overthinking_post_artist", columnList = "artist_id"),
+				@Index(name = "idx_overthinking_post_visibility", columnList = "visibility_type")
+		}
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -38,11 +43,25 @@ public class OverthinkingPost extends BaseEntity {
 	@Column(name = "content", length = 10240, nullable = false)
 	private String content;
 	
+	@Enumerated(EnumType.STRING)
+	@Column(name = "visibility_type",nullable = false,length = 32)
+	@Builder.Default
+	private OverthinkingVisibilityType visibilityType = OverthinkingVisibilityType.VISIBLE; // kullaniciya hangi sekilde gorunebilecegini belirler
+	
 	@Column(name = "spotify_track_url", length = 1024)
 	private String spotifyTrackUrl; // spotify'dan eslestirilecek muzigin track urlsi
 	
 	@Column(name = "spotify_artist_id", length = 255)
 	private String spotifyArtistId; // MusicianProfile veya Band entitylerindeki spotifyArtistId ile eslestirme icin kullanilcak
+	
+	@Column(name = "spotify_track_name", length = 512)
+	private String spotifyTrackName;
+	
+	@Column(name = "spotify_artist_name", length = 512)
+	private String spotifyArtistName;
+	
+	@Column(name = "spotify_album_image_url", length = 1024)
+	private String spotifyAlbumImageUrl;
 	
 	@Column(name = "musician_track_id")
 	private UUID musicianTrackId; // spotiden degil de uygulama icinden secerse
@@ -68,6 +87,16 @@ public class OverthinkingPost extends BaseEntity {
 	// post sanatciyla eslesmis mi?
 	public boolean hasAttachedArtist() {
 		return artistId != null && artistType != null;
+	}
+	
+	// post anonim mi?
+	public boolean isAnonymous() {
+		return visibilityType == OverthinkingVisibilityType.ANONYMOUS;
+	}
+	
+	// Post görünür mü?
+	public boolean isVisible() {
+		return visibilityType == OverthinkingVisibilityType.VISIBLE;
 	}
 	
 	

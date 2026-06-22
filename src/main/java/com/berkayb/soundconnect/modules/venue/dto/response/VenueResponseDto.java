@@ -15,8 +15,11 @@ public record VenueResponseDto(
 		String description,
 		String musicStartTime,
 		
+		UUID cityId,
 		String cityName,
+		UUID districtId,
 		String districtName,
+		UUID neighborhoodId,
 		String neighborhoodName,
 		
 		VenueStatus status,

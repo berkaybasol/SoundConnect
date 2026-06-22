@@ -37,4 +37,12 @@ public class TableGroupChatUnreadHelper {
 		String value = redisTemplate.opsForValue().get(key(userId, tableGroupId));
 		return value == null ? 0 : Integer.parseInt(value);
 	}
+	
+	public void clearAllUnreadForTableGroup(UUID tableGroupId) { //eklendi
+		String pattern = "table-group:chat:unread:*:" + tableGroupId; //eklendi
+		var keys = redisTemplate.keys(pattern); //eklendi
+		if (keys != null && !keys.isEmpty()) { //eklendi
+			redisTemplate.delete(keys); //eklendi
+		} //eklendi
+	}
 }

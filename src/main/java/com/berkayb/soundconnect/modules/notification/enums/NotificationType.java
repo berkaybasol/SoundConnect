@@ -20,14 +20,17 @@ public enum NotificationType {
 	
 	// SOCIAL
 	SOCIAL_NEW_FOLLOWER("SOCIAL", "Yeni takipçi", false),
+	SOCIAL_NEW_BAND_FOLLOWER("SOCIAL", "Yeni band takipcisi", false),
 	// SOCIAL_MENTION("SOCIAL", "Bahsedildin", false),
 	// SOCIAL_LIKE("SOCIAL", "İçeriğin beğenildi", false),
 	// SOCIAL_COMMENT("SOCIAL", "İçeriğine yorum geldi", false),
 	
 	
+	// DM
+	DM_NEW_MESSAGE("DM", "Yeni mesaj", false),
+	
 	// VENUE
 	VENUE_APPLICATION_REJECTED("VENUE", "Mekan başvurun reddedildi", true),
-	
 	
 	// ARTISTVENUELINKAPPLICATION
 	ARTIST_VENUE_LINK_APPLICATION_REQUEST("ARTIST_VENUE", "Bağlanma isteği gönderildi", false),
@@ -41,10 +44,23 @@ public enum NotificationType {
 	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false),
 	TABLE_REMOVED ("TABLE","Masadan cikarildin",false),
 	TABLE_CANCELLED ("TABLE","Masa etkinligi iptal edildi.",false),
-	TABLE_EXPIRED("TABLE","Masa suresi doldu",false);
+	TABLE_EXPIRED("TABLE","Masa suresi doldu",false),
+	
+	// BAND
+	BAND_INVITE_RECEIVED("BAND","Band daveti alindi",false),
+	BAND_INVITE_ACCEPTED("BAND","Band daveti kabul edildi",false),
+	BAND_INVITE_REJECTED("BAND","Band daveti reddedildi",false),
+	BAND_MEMBER_REMOVED("BAND","Bandden cikarildin",false),
+	BAND_MEMBER_LEFT("BAND","Band uyesi ayrildi",false),
+	
+	// OVERTHINKING
+	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil goruntuleme istegi alindi",false),
+	OVERTHINKING_REVEAL_REQUEST_APPROVED("OVERTHINKING","Profil goruntuleme istegi kabul edildi",false),
+	OVERTHINKING_REVEAL_REQUEST_REJECTED("OVERTHINKING","Profil goruntuleme istegi reddedildi",false);
 	
 	
-	//TODO diger moduller gelecek simdilik bu sekilde kalsin once moduleyi bitirelim.
+	
+	//FIXME diger modulleri de gelistirdikce eklemeyi unutma
 	
 	
 	

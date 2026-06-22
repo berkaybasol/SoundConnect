@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -26,7 +28,7 @@ public class VenueProfile extends BaseEntity {
 	private String bio;
 	
 	
-	private String profilePicture; // dosya yolu verdicez
+	private UUID profilePictureMediaId; // dosya yolu verdicez
 	
 	private String instagramUrl;
 	
@@ -34,8 +36,5 @@ public class VenueProfile extends BaseEntity {
 	
 	private String websiteUrl;
 	
-	/** TODO bu profile ileride comment sistemi eklenecek.
-	 *  yorumlar RabbitMQ uzerinden notification event'leri ile birlikte entegre edilecek.
-	 *  notification & comment modulleri mvp'den sonra, profil yapisi oturdugunda gelistirilecek.
- 	 */
+	
 }

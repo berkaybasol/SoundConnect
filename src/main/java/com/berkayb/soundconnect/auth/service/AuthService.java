@@ -11,6 +11,8 @@ import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService; // <-- yeni eklendi!
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -48,6 +50,7 @@ public class AuthService {
 	private final OtpService otpService;
 	private final OtpMailService otpMailService; // <-- yeni eklendi!
 	private final EmailUtils emailUtils;
+	private final VenueApplicationService venueApplicationService;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -86,7 +89,7 @@ public class AuthService {
 		                   .success(true)
 		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(new LoginResponse(token))
+		                   .data(new LoginResponse(token, user.getStatus()))
 		                   .build();
 	}
 	
@@ -122,31 +125,48 @@ public class AuthService {
 		
 		// eğer başvuru mekan sahibi (ROLE_VENUE) ise
 		if (selectedRoleEnum == RoleEnum.ROLE_VENUE) {
-			// dinleyici rolünü ver
-			Role listenerRole = roleRepository.findByName(RoleEnum.ROLE_LISTENER.name())
-			                                  .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND,
-			                                                                               List.of("ROLE_LISTENER " +
-					                                                                                       "bulunamadı!")));
 			
-			// user'ı dinleyici olarak kaydet, status pending_venue_request olsun
+			if (dto.venueName() == null || dto.venueName().isBlank()
+					|| dto.venueAddress() == null || dto.venueAddress().isBlank()
+					|| dto.phone() == null || dto.phone().isBlank()
+					|| dto.cityId() == null || dto.cityId().isBlank()
+					|| dto.districtId() == null || dto.districtId().isBlank()) {
+				
+				throw new SoundConnectException(
+						ErrorType.VALIDATION_ERROR,
+						List.of("Mekan başvurusu için gerekli alanlar eksik.")
+				);
+			}
+			
 			User user = User.builder()
 			                .username(dto.username())
 			                .email(normalizedEmail)
-			                .roles(Set.of(listenerRole))
+			                .roles(Set.of()) // henuz bos rol
 			                .password(encodedPassword)
 			                .status(UserStatus.PENDING_VENUE_REQUEST)
 			                .emailVerified(false)
 			                .build();
 			
-			// kullanıcıyı kaydet
 			userRepository.save(user);
 			
-			// TODO: buraya admin'e başvuru bildirimi veya özel bir mail logic'i ekle
+			venueApplicationService.createApplication(
+					user.getId(),
+					new VenueApplicationCreateRequestDto(
+							dto.venueName(),
+							dto.venueAddress(),
+							dto.phone(),
+							dto.cityId(),
+							dto.districtId(),
+							dto.neighborhoodId()
+					)
+			);
 			
-			// OTP kodu uret ve mail ile gonder
+			// OTP üret ve mail gönder
 			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
+			
+			
 			try {
-				otpMailService.sendVerificationMail(user.getEmail(), otpCode); // ARTIK BURADA!
+				otpMailService.sendVerificationMail(user.getEmail(), otpCode);
 				mailQueued = true;
 			} catch (Exception e) {
 				log.error("Verification mail send error for email={} code={}", user.getEmail(), otpCode, e);
@@ -156,11 +176,14 @@ public class AuthService {
 			
 			return BaseResponse.<RegisterResponseDto>builder()
 			                   .success(true)
-			                   .message("Basvurun alindi. biz sizinle iletisime gecene kadar gecici olarak dinleyici olarak " +
-					                            "kaydedildin. size en kisa sure icerisinde geri donus yapacagiz! Mail adresinden" +
-					                            " kaydini onaylamayi unutma!")
+			                   .message("Başvurun alındı. Sizinle iletisime gececegiz. o zamana kadar hesabiniz beklemede.")
 			                   .code(201)
-			                   .data(new RegisterResponseDto(user.getEmail(), UserStatus.PENDING_VENUE_REQUEST, ttl, mailQueued))
+			                   .data(new RegisterResponseDto(
+					                   user.getEmail(),
+					                   UserStatus.PENDING_VENUE_REQUEST,
+					                   ttl,
+					                   mailQueued
+			                   ))
 			                   .build();
 		}
 		

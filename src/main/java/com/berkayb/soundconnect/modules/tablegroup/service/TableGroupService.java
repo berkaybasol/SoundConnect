@@ -21,7 +21,7 @@ public interface TableGroupService {
 	TableGroupResponseDto getTableGroupDetail(UUID tableGroupId);
 	
 	// masaya katilma istegi
-	void joinTableGroup(UUID userId, UUID tableGroupId);
+	void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote);
 	
 	// masa sahibi katilim istegini onaylar
 	void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);
@@ -38,5 +38,4 @@ public interface TableGroupService {
 	// masa sahibi masayi iptal etsin
 	void cancelTableGroup(UUID ownerId, UUID tableGroupId);
 	
-	//TODO masaya katilim/istek notification, update/delete vs methodlar eklencek
 }

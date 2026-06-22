@@ -23,7 +23,7 @@ public class RoleControllerImpl implements RoleController {
 	private final RoleService roleService;
 	
 	
-	//TODO @PreAuthorize("hasAuthority('READ_ROLE')")
+	@PreAuthorize("hasAuthority('MANAGE_ROLES')")
 	@GetMapping(GET_ALL)
 	@Override
 	public ResponseEntity<BaseResponse<List<RoleResponse>>> getAllRoles() {
@@ -37,7 +37,7 @@ public class RoleControllerImpl implements RoleController {
 				                         .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('WRITE_ROLE')")
+	@PreAuthorize("hasAuthority('MANAGE_ROLES')")
 	@PutMapping(SAVE)
 	@Override
 	public ResponseEntity<BaseResponse<RoleResponse>> saveRole(@RequestBody RoleRequest request) {
@@ -50,7 +50,7 @@ public class RoleControllerImpl implements RoleController {
 				                         .build());
 	}
 	
-	//TODO @PreAuthorize("hasAuthority('DELETE_ROLE')")
+	@PreAuthorize("hasAuthority('MANAGE_ROLES')")
 	@DeleteMapping(DELETE)
 	@Override
 	public ResponseEntity<BaseResponse<Void>> deleteRole(@PathVariable UUID id) {

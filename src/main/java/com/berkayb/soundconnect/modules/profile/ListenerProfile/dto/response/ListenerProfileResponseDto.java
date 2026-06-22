@@ -4,7 +4,11 @@ import java.util.UUID;
 
 public record ListenerProfileResponseDto(
 		UUID id,
+		UUID userId,
+		String username,
 		String bio,
-		String profilePicture,
-		UUID userId
+		UUID profilePictureMediaId,
+		String profilePictureUrl,
+		long followerCount,
+		long followingCount
 ) {}

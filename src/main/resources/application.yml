@@ -12,7 +12,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false  # degistirildi
     properties:
       hibernate:
         format_sql: true
@@ -66,6 +66,7 @@ app:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
+  share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:
       enabled: true     # RUNTIME’DA AÇIK (prod’da kapatacağız)
@@ -125,7 +126,10 @@ logging:
   level:
     root: INFO
     org.springframework.web: DEBUG
-    org.hibernate.SQL: DEBUG
+    org.hibernate.SQL: OFF  # degistirildi
+    org.hibernate.orm.jdbc.bind: OFF  # eklendi
+    org.hibernate.type.descriptor.sql.BasicBinder: OFF  # eklendi
+    com.berkayb.soundconnect: DEBUG  # eklendi
 
 # --- MEDIA / STORAGE ---
 cloud:
@@ -203,3 +207,20 @@ pulse:
     - "Düşünmeden Söyle: Şu Anki Ruh Hâlin?"
     - "Underrated Şarkılar"
     - "Seni Çok Etkileyen Herhangi Birşey?"
+
+soundconnect:
+  admin-notifications:
+    venue-application-emails: ${SOUNDCONNECT_VENUE_APPLICATION_NOTIFY_TO:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}
+  spotify:
+    client-id: ${SPOTIFY_CLIENT_ID}
+    client-secret: ${SPOTIFY_CLIENT_SECRET}
+    token-url: https://accounts.spotify.com/api/token
+    api-base-url: https://api.spotify.com/v1
+    market: TR
+
+    # prod için kritik:
+    http:
+      connect-timeout-ms: 2000
+      response-timeout-ms: 3500
+      read-timeout-ms: 3500
+      write-timeout-ms: 3500

@@ -40,7 +40,7 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 				.user(user)
 				.name(dto.name())
 				.description(dto.description())
-				.profilePicture(dto.profilePicture())
+				.profilePictureMediaId(dto.profilePicture())
 				.address(dto.address())
 				.phone(dto.phone())
 				.instagramUrl(dto.instagramUrl())
@@ -83,7 +83,7 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 		
 		// guncelle
 		if (dto.name() != null) organizerProfile.setName(dto.name());
-		if (dto.profilePicture() != null) organizerProfile.setProfilePicture(dto.profilePicture());
+		if (dto.profilePicture() != null) organizerProfile.setProfilePictureMediaId(dto.profilePicture());
 		if (dto.description() != null) organizerProfile.setDescription(dto.description());
 		if (dto.phone() != null) organizerProfile.setPhone(dto.phone());
 		if (dto.address() != null) organizerProfile.setAddress(dto.address());

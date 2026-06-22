@@ -12,7 +12,7 @@ public interface VenueApplicationMapper {
 	@Mapping(target = "applicantUsername", source = "applicant.username")
 	@Mapping(target = "venueName", source = "venueName")
 	@Mapping(target = "venueAddress", source = "venueAddress")
-	@Mapping(target = "phone", source = "applicant.phone")
+	@Mapping(target = "phone", source = "phone")
 	@Mapping(target = "status", source = "status")
 	@Mapping(target = "applicationDate", source = "applicationDate")
 	@Mapping(target = "decisionDate", source = "decisionDate")

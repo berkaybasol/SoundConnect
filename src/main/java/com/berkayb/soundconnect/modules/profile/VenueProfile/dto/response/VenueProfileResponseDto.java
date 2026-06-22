@@ -7,7 +7,7 @@ public record VenueProfileResponseDto(
 		UUID venueId,
 		String venueName,
 		String bio,
-		String profilePicture,
+		UUID profilePictureMediaId,
 		String instagramUrl,
 		String youtubeUrl,
 		String websiteUrl

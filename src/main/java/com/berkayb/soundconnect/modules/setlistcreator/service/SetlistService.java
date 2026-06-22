@@ -9,13 +9,13 @@ import java.util.UUID;
 
 public interface SetlistService {
 	
-	SetlistResponseDto createSetlist(SetlistCreateRequestDto request);
+	SetlistResponseDto createSetlist(UUID userId, SetlistCreateRequestDto request);
 	
-	SetlistResponseDto addSetToSetlist(UUID setlistId, SetlistSetRequestDto request);
+	SetlistResponseDto addSetToSetlist(UUID userId, UUID setlistId, SetlistSetRequestDto request);
 	
-	SetlistResponseDto addItemToSet(UUID setId, SetlistItemRequestDto request);
+	SetlistResponseDto addItemToSet(UUID userId, UUID setId, SetlistItemRequestDto request);
 	
-	SetlistResponseDto getSetlistDetail(UUID setlistId);
+	SetlistResponseDto getSetlistDetail(UUID userId, UUID setlistId);
 	
-	void deleteSetlist(UUID setlistId);
+	void deleteSetlist(UUID userId, UUID setlistId);
 }
