@@ -88,8 +88,8 @@ public class NotificationServiceImpl implements NotificationService {
 		int updated =  notificationRepository.markAsRead(notificationId, userId);
 		if (updated == 1) {
 			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			// badge sayacini guvenli azalt
-			badgeCacheHelper.decrementUnreadSafely(userId,1,freshUnread);
+			// DB guncel sayiyi verdigi icin cache'i dogrudan senkronla.
+			badgeCacheHelper.setUnread(userId, freshUnread);
 		} else {
 			log.debug("markAsRead noop: id={}, user={}", notificationId, userId);
 		}
@@ -129,9 +129,9 @@ public class NotificationServiceImpl implements NotificationService {
 			throw new SoundConnectException(ErrorType.NOTIFICATION_NOT_FOUND);
 		}
 		if (wasUnread) {
-			// eger silinen bildirim unread ise -> cache'deki sayaci azalt
+			// eger silinen bildirim unread ise -> cache'i DB'deki guncel sayiyla senkronla
 			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			badgeCacheHelper.decrementUnreadSafely(userId, 1, freshUnread);
+			badgeCacheHelper.setUnread(userId, freshUnread);
 		}
 		return true;
 	}

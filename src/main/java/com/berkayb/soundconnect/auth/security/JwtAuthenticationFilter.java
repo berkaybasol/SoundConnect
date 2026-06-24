@@ -42,7 +42,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-			throws ServletException, IOException {;
+			throws ServletException, IOException {
 		
 		// Header null mu, "Bearer " ile mi basliyor onu kontrol ediyoruz ve headerdan tokeni kesip aliyoruz.
 		// bunu metodlastirdim cunku baska yerlerde de lazim oluyor
@@ -51,17 +51,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			filterChain.doFilter(request, response);
 			return;
 		}
+
+		if (!jwtTokenProvider.validateToken(token)) {
+			handleUnauthenticatedRequest(request, response, filterChain);
+			return;
+		}
 		
-		// Token gecerli mi? token'dan usernameyi aliyoruz
-		UUID userId = jwtTokenProvider.getUserIdFromToken(token);
+		try {
+			// Token gecerli mi? token'dan usernameyi aliyoruz
+			UUID userId = jwtTokenProvider.getUserIdFromToken(token);
 		
-		// SecurityContext bossa (kullanici daha tanitilmamissa)
-		if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-			// db'den kullaniciyi bulalim
-			UserDetails userDetails = userDetailsService.loadUserById(userId);
+			// SecurityContext bossa (kullanici daha tanitilmamissa)
+			if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+				// db'den kullaniciyi bulalim
+				UserDetails userDetails = userDetailsService.loadUserById(userId);
 			
-			// token gecerli mi diye tekrar kontrol edelim
-			if (jwtTokenProvider.validateToken(token)){
 				// SecurityContext'e kimlik tanimlayalim
 				UsernamePasswordAuthenticationToken authToken =
 						new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
@@ -72,10 +76,61 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				// spring security sistemi artik bu kullaniciyi tanisin
 				SecurityContextHolder.getContext().setAuthentication(authToken);
 			}
+		} catch (RuntimeException e) {
+			log.warn("JWT authentication failed for {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
+			handleUnauthenticatedRequest(request, response, filterChain);
+			return;
 		}
 		
 		// filtre -> controller -> service vs zincir devam etsin
 		filterChain.doFilter(request, response);
 		
+	}
+
+	private void handleUnauthenticatedRequest(
+			HttpServletRequest request,
+			HttpServletResponse response,
+			FilterChain filterChain
+	) throws IOException, ServletException {
+		SecurityContextHolder.clearContext();
+		if (isPublicRequest(request)) {
+			filterChain.doFilter(request, response);
+			return;
+		}
+		response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
+	}
+
+	private boolean isPublicRequest(HttpServletRequest request) {
+		String method = request.getMethod();
+		String path = request.getRequestURI();
+
+		if ("OPTIONS".equalsIgnoreCase(method)) {
+			return true;
+		}
+		if (path.startsWith("/api/v1/auth/")
+				|| path.startsWith("/api/v1/public/")
+				|| path.startsWith("/v3/api-docs/")
+				|| path.startsWith("/swagger-ui/")
+				|| path.startsWith("/swagger-resources/")
+				|| path.startsWith("/webjars/")
+				|| path.startsWith("/ws")
+				|| path.startsWith("/topic/")
+				|| path.startsWith("/app/")) {
+			return true;
+		}
+		if ("/api/ping".equals(path) || "/swagger-ui.html".equals(path) || "/test-ws.html".equals(path)) {
+			return true;
+		}
+		if ("GET".equalsIgnoreCase(method)) {
+			return path.startsWith("/api/v1/venues/")
+					|| path.startsWith("/api/v1/cities/")
+					|| path.startsWith("/api/v1/districts/")
+					|| path.startsWith("/api/v1/neighborhoods/")
+					|| path.startsWith("/api/v1/events/")
+					|| path.startsWith("/api/v1/promotions/displayable/")
+					|| path.equals("/api/v1/spotify/search/tracks")
+					|| path.startsWith("/api/v1/spotify/tracks/");
+		}
+		return "POST".equalsIgnoreCase(method) && path.equals("/api/v1/spotify/tracks/by-ids");
 	}
 }

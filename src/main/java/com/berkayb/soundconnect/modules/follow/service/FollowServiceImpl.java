@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.follow.service;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -27,6 +29,7 @@ import java.util.Map;
 public class FollowServiceImpl implements FollowService {
 	private final FollowRepository followRepository;
 	private final NotificationProducer notificationProducer;
+	private final PublicProfileResolverService publicProfileResolverService;
 	
 	@Transactional // islemlerden birinde bile hata olursa butun islemleri geri al
 	@Override
@@ -116,7 +119,7 @@ public class FollowServiceImpl implements FollowService {
 			payload.put("action", "NEW_FOLLOWER");
 			payload.put("followerId", follower.getId().toString());
 			payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanici"));
-			putIfPresent(payload, "followerAvatarUrl", follower.getProfilePicture());
+			putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));
 			
 			notificationProducer.publish(
 					NotificationInboundEvent.builder()
@@ -134,12 +137,24 @@ public class FollowServiceImpl implements FollowService {
 			         follower.getId(), following.getId(), e.toString());
 		}
 	}
-	
+
+	private String resolveFollowerProfilePictureUrl(User follower) {
+		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
+				.map(UserProfileTargetDto::profilePictureUrl)
+				.filter(this::notBlank)
+				.findFirst()
+				.orElse(follower.getProfilePicture());
+	}
+
 	private void putIfPresent(Map<String, Object> payload, String key, String value) {
 		if (value != null && !value.isBlank()) payload.put(key, value.trim());
 	}
-	
+
 	private String safe(String value, String fallback) {
 		return value == null || value.isBlank() ? fallback : value.trim();
+	}
+
+	private boolean notBlank(String value) {
+		return value != null && !value.isBlank();
 	}
 }

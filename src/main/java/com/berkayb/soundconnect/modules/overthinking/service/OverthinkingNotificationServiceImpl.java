@@ -3,10 +3,9 @@ package com.berkayb.soundconnect.modules.overthinking.service;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRequest;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -19,16 +18,11 @@ import java.util.UUID;
 @Slf4j
 public class OverthinkingNotificationServiceImpl implements OverthinkingNotificationService {
 	
-	private static final String OVERTHINKING_NOTIFICATION_ROUTING_KEY = "notification.overthinking";
-	
-	private final RabbitTemplate rabbitTemplate;
-	
-	@Value("${app.messaging.notification.exchange:notification.exchange}")
-	private String notificationExchange;
+	private final NotificationProducer notificationProducer;
 	
 	@Override
 	public void sendRevealRequestReceivedNotification(OverthinkingRevealRequest request) {
-		Map<String, Object> payload = basePayload(request);
+		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_RECEIVED");
 		payload.put("requesterId", request.getRequester().getId().toString());
 		
 		publish(
@@ -43,7 +37,7 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 	
 	@Override
 	public void sendRevealRequestApprovedNotification(OverthinkingRevealRequest request) {
-		Map<String, Object> payload = basePayload(request);
+		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_APPROVED");
 		payload.put("authorId", request.getAuthor().getId().toString());
 		
 		publish(
@@ -58,7 +52,7 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 	
 	@Override
 	public void sendRevealRequestRejectedNotification(OverthinkingRevealRequest request) {
-		Map<String, Object> payload = basePayload(request);
+		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_REJECTED");
 		
 		publish(
 				request.getRequester().getId(),
@@ -70,9 +64,10 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 		);
 	}
 	
-	private Map<String, Object> basePayload(OverthinkingRevealRequest request) {
+	private Map<String, Object> basePayload(OverthinkingRevealRequest request, String action) {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("module", "OVERTHINKING");
+		payload.put("action", action);
 		payload.put("postId", request.getPost().getId().toString());
 		payload.put("postTitle", request.getPost().getTitle());
 		payload.put("revealRequestId", request.getId().toString());
@@ -98,11 +93,7 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 		                                                         .build();
 		
 		try {
-			rabbitTemplate.convertAndSend(
-					notificationExchange,
-					OVERTHINKING_NOTIFICATION_ROUTING_KEY,
-					event
-			);
+			notificationProducer.publish(event);
 			
 			log.info(
 					"[OverthinkingNotification] Notification published. type={}, recipient={}, request={}",

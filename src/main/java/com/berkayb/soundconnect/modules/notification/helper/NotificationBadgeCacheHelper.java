@@ -38,9 +38,8 @@ public class NotificationBadgeCacheHelper {
 		try {
 			String val = stringRedisTemplate.opsForValue().get(key);
 			if (val == null) {
-				// cache yoksa freshUnread ile gercek unread sayiyi paramatre olarak al
-				long decreased = max(0, freshUnread - n);
-				stringRedisTemplate.opsForValue().set(key, Long.toString(decreased), UNREAD_COUNT_TTL);
+				// Cache yoksa freshUnread zaten DB'deki guncel okunmamis sayidir.
+				stringRedisTemplate.opsForValue().set(key, Long.toString(max(0, freshUnread)), UNREAD_COUNT_TTL);
 				return;
 			}
 			long current = Long.parseLong(val);

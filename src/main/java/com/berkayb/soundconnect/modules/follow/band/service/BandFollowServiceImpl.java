@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -39,6 +41,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 	private final BandFollowMapper bandFollowMapper;
 	private final MediaAssetService mediaAssetService;
 	private final NotificationProducer notificationProducer;
+	private final PublicProfileResolverService publicProfileResolverService;
 	
 	@Override
 	@Transactional
@@ -201,15 +204,27 @@ public class BandFollowServiceImpl implements BandFollowService {
 		payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanici"));
 		payload.put("bandId", band.getId().toString());
 		payload.put("bandName", safe(band.getName(), "Band"));
-		putIfPresent(payload, "followerAvatarUrl", follower.getProfilePicture());
+		putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));
 		return payload;
 	}
-	
+
+	private String resolveFollowerProfilePictureUrl(User follower) {
+		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
+				.map(UserProfileTargetDto::profilePictureUrl)
+				.filter(this::notBlank)
+				.findFirst()
+				.orElse(follower.getProfilePicture());
+	}
+
 	private void putIfPresent(Map<String, Object> payload, String key, String value) {
 		if (value != null && !value.isBlank()) payload.put(key, value.trim());
 	}
-	
+
 	private String safe(String value, String fallback) {
 		return value == null || value.isBlank() ? fallback : value.trim();
+	}
+
+	private boolean notBlank(String value) {
+		return value != null && !value.isBlank();
 	}
 }

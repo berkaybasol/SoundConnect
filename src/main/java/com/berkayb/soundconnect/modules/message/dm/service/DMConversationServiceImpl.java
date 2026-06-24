@@ -121,6 +121,13 @@ public class DMConversationServiceImpl implements DMConversationService {
 	// User'in hangi profile'a sahip oldugunu bilinmiyorsa tum profile repolarinda sirayla aratan yardimci metod
 	// buluinca name doner bbulamazsa user'a sahip username'i doner
 	private String getDisplayNameForUser(UUID userId) {
+		Optional<String> username = userRepository.findById(userId)
+		                                          .map(User::getUsername)
+		                                          .map(this::safe)
+		                                          .filter(value -> !value.isBlank());
+		if (username.isPresent()) {
+			return username.get();
+		}
 		return musicianProfileRepository.findByUserId(userId)
 				.map(profile -> safe(profile.getName()))
 				.or(() -> organizerProfileRepository.findByUserId(userId).map(profile -> safe(profile.getName())))

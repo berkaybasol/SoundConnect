@@ -78,6 +78,7 @@ app:
       exchange: notification.exchange
       queue: notification.queue
       routingKey: notification.#
+      publishRoutingKey: notification.event
       dlxExchange: notification.dlx
       dlq: notification.queue.dlq
 

@@ -59,8 +59,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 				if (token == null || !jwtTokenProvider.validateToken(token)) {
 					throw new IllegalArgumentException("Missing or invalid WebSocket token");
 				}
-				UUID userId = jwtTokenProvider.getUserIdFromToken(token);
-				UserDetails userDetails = userDetailsService.loadUserById(userId);
+				UserDetails userDetails;
+				try {
+					UUID userId = jwtTokenProvider.getUserIdFromToken(token);
+					userDetails = userDetailsService.loadUserById(userId);
+				} catch (RuntimeException e) {
+					throw new IllegalArgumentException("Missing or invalid WebSocket token", e);
+				}
 				UsernamePasswordAuthenticationToken authentication =
 						new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 				accessor.setUser(authentication);

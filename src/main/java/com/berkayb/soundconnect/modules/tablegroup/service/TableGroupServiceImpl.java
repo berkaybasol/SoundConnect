@@ -82,10 +82,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.type(NotificationType.TABLE_REMOVED)
 						.title("masadan cikarildin")
 						.message("bir masa etkinliginden cikarildin")
-						.payload(Map.of(
-								"tableGroupId",tableGroupId,
-								"ownerId", ownerId
-						))
+						.payload(tablePayload(tableGroupId, "PARTICIPANT_REMOVED", Map.of("ownerId", ownerId)))
 						.build()
 		);
 		log.info("Participant {} kicked from tableGroup {}", participantId, tableGroupId);
@@ -114,9 +111,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					                                  .type(NotificationType.TABLE_CANCELLED)
 					                                  .title("Masa iptal edildi")
 					                                  .message("Katıldığın masa etkinliği iptal edildi.")
-					                                  .payload(Map.of(
-							                                  "tableGroupId", tableGroupId
-					                                  ))
+					                                  .payload(tablePayload(tableGroupId, "CANCELLED", Map.of()))
 					                                  .build()
 			          );
 		          });
@@ -174,10 +169,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					                        .type(NotificationType.TABLE_JOIN_REQUEST_RECEVIED)
 					                        .title("Yeni masa başvurusu!")
 					                        .message("Masana yeni bir başvuru geldi. Katılımcı onayı bekliyor.")
-					                        .payload(Map.of(
-							                        "tableGroupId", tableGroup.getId(),
-							                        "applicantId", userId
-					                        ))
+					                        .payload(tablePayload(tableGroup.getId(), "JOIN_REQUEST_RECEIVED", Map.of("applicantId", userId)))
 					                        .build()
 			);
 		}
@@ -221,10 +213,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.type(NotificationType.TABLE_JOIN_REQUEST_APPROVED)
 						.title("Basvurun onaylandi")
 						.message("Katildigin masa basvurun onaylandi")
-						.payload(Map.of(
-								"tableGroupId",tableGroup.getId(),
-								"ownerId", ownerId
-						))
+						.payload(tablePayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId)))
 						.build()
 		);
 		
@@ -262,10 +251,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.type(NotificationType.TABLE_JOIN_REQUEST_REJECTED)
 						.title("Basvurun reddedildi")
 						.message("Katildigin masa basvurun reddedildi")
-						.payload(Map.of(
-								"tableGroupId",tableGroup.getId(),
-								"ownerId", ownerId
-						))
+						.payload(tablePayload(tableGroup.getId(), "JOIN_REQUEST_REJECTED", Map.of("ownerId", ownerId)))
 						.build()
 		);
 	}
@@ -299,10 +285,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.type(NotificationType.TABLE_PARTICIPANT_LEFT)
 						.title("Katilimci ayrildi")
 						.message("Masandaki bir katilimci ayrildi")
-						.payload(Map.of(
-								"tableGroupId",tableGroupId,
-								"leaverId",userId
-						))
+						.payload(tablePayload(tableGroupId, "PARTICIPANT_LEFT", Map.of("leaverId", userId)))
 						.build()
 		);
 		
@@ -483,10 +466,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				                             .type(NotificationType.TABLE_EXPIRED)
 				                             .title("Masa süresi doldu")
 				                             .message("Katıldığın masa etkinliğinin süresi doldu.")
-				                             .payload(Map.of(
-						                             "tableGroupId", group.getId(),
-						                             "ownerId", group.getOwnerId()
-				                             ))
+				                             .payload(tablePayload(group.getId(), "EXPIRED", Map.of("ownerId", group.getOwnerId())))
 				                             .build()
 		     ));
 		
@@ -587,5 +567,19 @@ public class TableGroupServiceImpl implements TableGroupService{
 		               .orElse(null); //eklendi
 	} //eklendi
 	
-	
+	private Map<String, Object> tablePayload(UUID tableGroupId, String action, Map<String, Object> extraPayload) {
+		Map<String, Object> payload = new HashMap<>();
+		payload.put("module", "TABLE");
+		payload.put("action", action);
+		payload.put("tableGroupId", tableGroupId.toString());
+		if (extraPayload != null) {
+			extraPayload.forEach((key, value) -> {
+				if (key != null && value != null) {
+					payload.put(key, value.toString());
+				}
+			});
+		}
+		return payload;
+	}
+
 }
