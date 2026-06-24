@@ -1,5 +1,9 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
+import com.berkayb.soundconnect.modules.event.entity.Event;
+import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
@@ -14,8 +18,12 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.setlistcreator.repository.SetlistRepository;
+import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
+import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -36,6 +44,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class BandServiceImpl implements BandService {
+	private static final int MAX_ACTIVE_BANDS_PER_USER = 3;
 	
 	private final BandRepository bandRepository;
 	private final BandMemberRepository bandMemberRepository;
@@ -45,6 +54,11 @@ public class BandServiceImpl implements BandService {
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final MediaAssetService mediaAssetService;
 	private final NotificationProducer notificationProducer;
+	private final BandFollowRepository bandFollowRepository;
+	private final ArtistVenueConnectionRequestRepository artistVenueConnectionRequestRepository;
+	private final SetlistRepository setlistRepository;
+	private final EventRepository eventRepository;
+	private final TrackRepository trackRepository;
 	
 	
 	@Override
@@ -229,6 +243,45 @@ public class BandServiceImpl implements BandService {
 				Map.of("action", "MEMBER_LEFT", "memberId", userId.toString())
 		);
 	}
+
+	@Override
+	@Transactional
+	public void deleteBand(UUID bandId, UUID userId) {
+		Band band = bandEntityFinder.getBand(bandId);
+		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, userId)
+		                                           .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
+
+		if (requester.getStatus() != BandMemberShipStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_ACTIVE);
+		}
+
+		if (requester.getBandRole() != BandRole.FOUNDER) {
+			log.warn("Yetkisiz band silme girisimi: requesterId={}, bandId={}", userId, bandId);
+			throw new SoundConnectException(ErrorType.BAND_REMOVE_UNAUTHORIZED);
+		}
+
+		String deletedBandName = safe(band.getName(), "Band");
+
+		for (Venue venue : new HashSet<>(band.getActiveVenues())) {
+			venue.getActiveBands().remove(band);
+		}
+		band.getActiveVenues().clear();
+
+		for (Event event : eventRepository.findAllByBand_Id(bandId)) {
+			if (event.getManualPerformerName() == null || event.getManualPerformerName().isBlank()) {
+				event.setManualPerformerName(deletedBandName);
+			}
+			event.setBand(null);
+		}
+
+		artistVenueConnectionRequestRepository.deleteAllByBandId(bandId);
+		setlistRepository.deleteAllByBand_Id(bandId);
+		trackRepository.deleteAllByOwnerIdAndOwnerType(bandId, TrackOwnerType.BAND);
+		bandFollowRepository.deleteAllByBand(band);
+		bandRepository.delete(band);
+
+		log.info("Band silindi. bandId={}, requesterId={}", bandId, userId);
+	}
 	
 	// band olusturur. olusturan kullanici otomatik olarak founder ve active statusunde uye olur
 	@Override
@@ -241,6 +294,12 @@ public class BandServiceImpl implements BandService {
 		if (musicianProfileRepository.findByUserId(userId).isEmpty()) {
 			log.warn("Band olusturmak icin musician profile bulunamadi. userId={}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		}
+
+		long activeBandCount = bandMemberRepository.countByUserIdAndStatus(userId, BandMemberShipStatus.ACTIVE);
+		if (activeBandCount >= MAX_ACTIVE_BANDS_PER_USER) {
+			log.warn("Band olusturma limiti asildi. userId={}, activeBandCount={}", userId, activeBandCount);
+			throw new SoundConnectException(ErrorType.BAND_CREATE_LIMIT_EXCEEDED);
 		}
 		
 		// band adi daha once kullanilmis mi?

@@ -15,4 +15,6 @@ public interface TrackRepository extends JpaRepository<Track, UUID> {
 	Page<Track> findByOwnerIdAndOwnerType(UUID ownerId, TrackOwnerType ownerType, Pageable pageable);
 	
 	List<Track> findAllByOwnerIdAndOwnerType(UUID ownerId, TrackOwnerType ownerType);
+
+	void deleteAllByOwnerIdAndOwnerType(UUID ownerId, TrackOwnerType ownerType);
 }

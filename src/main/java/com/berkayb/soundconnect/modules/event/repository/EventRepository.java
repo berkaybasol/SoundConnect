@@ -30,4 +30,6 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 	List<Event> findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(
 			Venue venue, LocalDate startDate, LocalDate endDate
 	);
+
+	List<Event> findAllByBand_Id(UUID bandId);
 }

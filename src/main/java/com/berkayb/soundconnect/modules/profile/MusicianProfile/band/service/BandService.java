@@ -43,6 +43,9 @@ public interface BandService {
 	
 	// bandden ayril
 	void leaveBand(UUID bandId, UUID userId);
+
+	// bandi sil
+	void deleteBand(UUID bandId, UUID userId);
 	
 	Band getBandEntity(UUID bandId);
 }

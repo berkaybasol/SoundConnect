@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -66,7 +67,7 @@ public class AuthService {
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
 		// kullanici db'den bul
 		User user = userRepository.findByUsername(request.username()).
-				orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+				orElseThrow(() -> new SoundConnectException(ErrorType.INVALID_CREDENTIALS));
 		
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
@@ -74,9 +75,14 @@ public class AuthService {
 		}
 		
 		// Spring Security authentication ile kullaniciyi dogrula.
-		Authentication authentication = authenticationManager.authenticate(
-				new UsernamePasswordAuthenticationToken(request.username(), request.password())
-		);
+		Authentication authentication;
+		try {
+			authentication = authenticationManager.authenticate(
+					new UsernamePasswordAuthenticationToken(request.username(), request.password())
+			);
+		} catch (AuthenticationException e) {
+			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
+		}
 		
 		// dogrulanmis kullaniciyi al (UserDetailsImpl tipine downcast ederek)
 		UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();

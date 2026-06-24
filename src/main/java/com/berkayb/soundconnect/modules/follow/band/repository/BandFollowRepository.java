@@ -20,4 +20,6 @@ public interface BandFollowRepository extends JpaRepository<BandFollow, UUID> {
 	List<BandFollow> findAllByBand(Band band);
 	
 	long countByBand(Band band);
+
+	void deleteAllByBand(Band band);
 }

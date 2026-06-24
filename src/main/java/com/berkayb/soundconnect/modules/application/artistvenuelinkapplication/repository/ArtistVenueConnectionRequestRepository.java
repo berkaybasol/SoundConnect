@@ -31,6 +31,7 @@ public interface ArtistVenueConnectionRequestRepository extends JpaRepository <A
 	
 	List<ArtistVenueConnectionRequest> findAllByBandIdAndStatus(UUID bandId, RequestStatus status);
 	
+	void deleteAllByBandId(UUID bandId);
 	
 	
 }

@@ -88,6 +88,21 @@ public class BandUserController {
 		                                     .data(dto)
 		                                     .build());
 	}
+
+	@PreAuthorize("hasRole('MUSICIAN')")
+	@DeleteMapping(DELETE)
+	@Operation(summary = "Band siler")
+	public ResponseEntity<BaseResponse<Void>> deleteBand(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@PathVariable UUID bandId
+	) {
+		bandService.deleteBand(bandId, userDetails.getUser().getId());
+		return ResponseEntity.ok(BaseResponse.<Void>builder()
+		                                     .success(true)
+		                                     .code(200)
+		                                     .message("Band silindi")
+		                                     .build());
+	}
 	
 	
 	@Operation(summary = "Davet yolla")

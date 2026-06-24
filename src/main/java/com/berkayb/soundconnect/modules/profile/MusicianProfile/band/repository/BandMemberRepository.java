@@ -22,6 +22,8 @@ public interface BandMemberRepository extends JpaRepository<BandMember, UUID> {
 	List<BandMember> findByUserId(UUID userId);
 	
 	List<BandMember> findByUserIdAndStatus(UUID userId, BandMemberShipStatus status);
+
+	long countByUserIdAndStatus(UUID userId, BandMemberShipStatus status);
 	
 	boolean existsByUser_IdAndStatus(UUID userId, BandMemberShipStatus status);
 }

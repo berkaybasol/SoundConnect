@@ -10,4 +10,6 @@ public interface SetlistRepository extends JpaRepository<Setlist, UUID> {
 	List<Setlist> findAllByMusicianProfile_Id(UUID musicianProfileId);
 	
 	List<Setlist> findAllByBand_Id(UUID bandId);
+
+	void deleteAllByBand_Id(UUID bandId);
 }
