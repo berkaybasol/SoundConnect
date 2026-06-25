@@ -182,8 +182,8 @@ public class BandFollowServiceImpl implements BandFollowService {
 						NotificationInboundEvent.builder()
 						                        .recipientId(recipientId)
 						                        .type(NotificationType.SOCIAL_NEW_BAND_FOLLOWER)
-						                        .title(safe(follower.getUsername(), "Bir kullanici") + " bandini takip etmeye basladi")
-						                        .message(safe(band.getName(), "Band") + " yeni bir takipci kazandi.")
+						                        .title(safe(follower.getUsername(), "Bir kullanıcı") + " bandını takip etmeye başladı")
+						                        .message(safe(band.getName(), "Band") + " yeni bir takipçi kazandı.")
 						                        .payload(bandFollowerPayload(follower, band))
 						                        .emailForce(false)
 						                        .occurredAt(Instant.now())
@@ -201,7 +201,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 		payload.put("module", "SOCIAL");
 		payload.put("action", "NEW_BAND_FOLLOWER");
 		payload.put("followerId", follower.getId().toString());
-		payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanici"));
+		payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanıcı"));
 		payload.put("bandId", band.getId().toString());
 		payload.put("bandName", safe(band.getName(), "Band"));
 		putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));

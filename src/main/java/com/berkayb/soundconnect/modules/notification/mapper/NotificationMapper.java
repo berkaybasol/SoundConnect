@@ -9,7 +9,7 @@ import org.mapstruct.ReportingPolicy;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 
 @Mapper(
@@ -33,6 +33,6 @@ public interface NotificationMapper {
 	
 	// --- helper method ---
 	default Instant map(LocalDateTime value) {
-		return value != null ? value.toInstant(ZoneOffset.UTC) : null;
+		return value != null ? value.atZone(ZoneId.systemDefault()).toInstant() : null;
 	}
 }

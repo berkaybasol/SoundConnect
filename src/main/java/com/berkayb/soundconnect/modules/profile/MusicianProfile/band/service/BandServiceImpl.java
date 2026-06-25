@@ -108,7 +108,7 @@ public class BandServiceImpl implements BandService {
 					invited.getId(),
 					NotificationType.BAND_INVITE_RECEIVED,
 					safe(band.getName(), "Band") + " seni banda davet etti",
-					safe(inviter.getUsername(), "Bir kullanici") + " tarafindan band daveti aldin.",
+					safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından band daveti aldın.",
 					band,
 					Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
 			);
@@ -131,7 +131,7 @@ public class BandServiceImpl implements BandService {
 				invited.getId(),
 				NotificationType.BAND_INVITE_RECEIVED,
 				safe(band.getName(), "Band") + " seni banda davet etti",
-				safe(inviter.getUsername(), "Bir kullanici") + " tarafindan band daveti aldin.",
+				safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından band daveti aldın.",
 				band,
 				Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
 		);
@@ -152,8 +152,8 @@ public class BandServiceImpl implements BandService {
 				member.getBand(),
 				userId,
 				NotificationType.BAND_INVITE_ACCEPTED,
-				safe(member.getUser().getUsername(), "Bir kullanici") + " band davetini kabul etti",
-				safe(member.getBand().getName(), "Band") + " icin gonderilen davet kabul edildi.",
+				safe(member.getUser().getUsername(), "Bir kullanıcı") + " band davetini kabul etti",
+				safe(member.getBand().getName(), "Band") + " için gönderilen davet kabul edildi.",
 				Map.of("action", "INVITE_ACCEPTED", "memberId", userId.toString())
 		);
 	}
@@ -173,8 +173,8 @@ public class BandServiceImpl implements BandService {
 				member.getBand(),
 				userId,
 				NotificationType.BAND_INVITE_REJECTED,
-				safe(member.getUser().getUsername(), "Bir kullanici") + " band davetini reddetti",
-				safe(member.getBand().getName(), "Band") + " icin gonderilen davet reddedildi.",
+				safe(member.getUser().getUsername(), "Bir kullanıcı") + " band davetini reddetti",
+				safe(member.getBand().getName(), "Band") + " için gönderilen davet reddedildi.",
 				Map.of("action", "INVITE_REJECTED", "memberId", userId.toString())
 		);
 	}
@@ -210,8 +210,8 @@ public class BandServiceImpl implements BandService {
 		publishBandNotification(
 				targetUserId,
 				NotificationType.BAND_MEMBER_REMOVED,
-				safe(member.getBand().getName(), "Band") + " bandinden cikarildin",
-				"Band uyeligin sonlandirildi.",
+				safe(member.getBand().getName(), "Band") + " bandından çıkarıldın",
+				"Band üyeliğin sonlandırıldı.",
 				member.getBand(),
 				Map.of("action", "MEMBER_REMOVED", "requesterId", requesterId.toString())
 		);
@@ -238,8 +238,8 @@ public class BandServiceImpl implements BandService {
 				member.getBand(),
 				userId,
 				NotificationType.BAND_MEMBER_LEFT,
-				safe(member.getUser().getUsername(), "Bir kullanici") + " bandden ayrildi",
-				safe(member.getBand().getName(), "Band") + " uyelerinden biri ayrildi.",
+				safe(member.getUser().getUsername(), "Bir kullanıcı") + " banddan ayrıldı",
+				safe(member.getBand().getName(), "Band") + " üyelerinden biri ayrıldı.",
 				Map.of("action", "MEMBER_LEFT", "memberId", userId.toString())
 		);
 	}

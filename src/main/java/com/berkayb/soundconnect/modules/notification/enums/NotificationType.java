@@ -20,7 +20,7 @@ public enum NotificationType {
 	
 	// SOCIAL
 	SOCIAL_NEW_FOLLOWER("SOCIAL", "Yeni takipçi", false),
-	SOCIAL_NEW_BAND_FOLLOWER("SOCIAL", "Yeni band takipcisi", false),
+	SOCIAL_NEW_BAND_FOLLOWER("SOCIAL", "Yeni band takipçisi", false),
 	// SOCIAL_MENTION("SOCIAL", "Bahsedildin", false),
 	// SOCIAL_LIKE("SOCIAL", "İçeriğin beğenildi", false),
 	// SOCIAL_COMMENT("SOCIAL", "İçeriğine yorum geldi", false),
@@ -38,25 +38,25 @@ public enum NotificationType {
 	ARTIST_VENUE_LINK_APPLICATION_REJECT("ARTIST_VENUE", "Bağlanma isteğin reddedildi", false),
 	
 	// TABLE GROUP (Muzik birlestirir)
-	TABLE_JOIN_REQUEST_RECEVIED("TABLE","Yeni basvuru istegi", false),
-	TABLE_JOIN_REQUEST_APPROVED("TABLE","Basvurun onaylandi",false),
-	TABLE_JOIN_REQUEST_REJECTED("TABLE","Basvurun reddedildi",false),
-	TABLE_PARTICIPANT_LEFT("TABLE","Katilimci ayrildi",false),
-	TABLE_REMOVED ("TABLE","Masadan cikarildin",false),
-	TABLE_CANCELLED ("TABLE","Masa etkinligi iptal edildi.",false),
-	TABLE_EXPIRED("TABLE","Masa suresi doldu",false),
+	TABLE_JOIN_REQUEST_RECEVIED("TABLE","Yeni başvuru isteği", false),
+	TABLE_JOIN_REQUEST_APPROVED("TABLE","Başvurun onaylandı",false),
+	TABLE_JOIN_REQUEST_REJECTED("TABLE","Başvurun reddedildi",false),
+	TABLE_PARTICIPANT_LEFT("TABLE","Katılımcı ayrıldı",false),
+	TABLE_REMOVED ("TABLE","Masadan çıkarıldın",false),
+	TABLE_CANCELLED ("TABLE","Masa etkinliği iptal edildi.",false),
+	TABLE_EXPIRED("TABLE","Masa süresi doldu",false),
 	
 	// BAND
-	BAND_INVITE_RECEIVED("BAND","Band daveti alindi",false),
+	BAND_INVITE_RECEIVED("BAND","Band daveti alındı",false),
 	BAND_INVITE_ACCEPTED("BAND","Band daveti kabul edildi",false),
 	BAND_INVITE_REJECTED("BAND","Band daveti reddedildi",false),
-	BAND_MEMBER_REMOVED("BAND","Bandden cikarildin",false),
-	BAND_MEMBER_LEFT("BAND","Band uyesi ayrildi",false),
+	BAND_MEMBER_REMOVED("BAND","Banddan çıkarıldın",false),
+	BAND_MEMBER_LEFT("BAND","Band üyesi ayrıldı",false),
 	
 	// OVERTHINKING
-	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil goruntuleme istegi alindi",false),
-	OVERTHINKING_REVEAL_REQUEST_APPROVED("OVERTHINKING","Profil goruntuleme istegi kabul edildi",false),
-	OVERTHINKING_REVEAL_REQUEST_REJECTED("OVERTHINKING","Profil goruntuleme istegi reddedildi",false);
+	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil görüntüleme isteği alındı",false),
+	OVERTHINKING_REVEAL_REQUEST_APPROVED("OVERTHINKING","Profil görüntüleme isteği kabul edildi",false),
+	OVERTHINKING_REVEAL_REQUEST_REJECTED("OVERTHINKING","Profil görüntüleme isteği reddedildi",false);
 	
 	
 	

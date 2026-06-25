@@ -12,6 +12,7 @@ public record ArtistVenueConnectionRequestResponseDto(
 		String musicianStageName,
 		String bandName,
 		String bandProfilePictureUrl,
+		String venueProfilePictureUrl,
 		String venueName,
 		String message,
 		String status,
@@ -19,4 +20,34 @@ public record ArtistVenueConnectionRequestResponseDto(
 		String createdAt
 		
 ) {
+	public ArtistVenueConnectionRequestResponseDto(
+			UUID id,
+			UUID musicianProfileId,
+			UUID bandId,
+			UUID venueId,
+			String musicianStageName,
+			String bandName,
+			String bandProfilePictureUrl,
+			String venueName,
+			String message,
+			String status,
+			RequestByType requestByType,
+			String createdAt
+	) {
+		this(
+				id,
+				musicianProfileId,
+				bandId,
+				venueId,
+				musicianStageName,
+				bandName,
+				bandProfilePictureUrl,
+				null,
+				venueName,
+				message,
+				status,
+				requestByType,
+				createdAt
+		);
+	}
 }

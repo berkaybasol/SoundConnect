@@ -80,8 +80,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationInboundEvent.builder()
 						.recipientId(participantId)
 						.type(NotificationType.TABLE_REMOVED)
-						.title("masadan cikarildin")
-						.message("bir masa etkinliginden cikarildin")
+						.title("Masadan çıkarıldın")
+						.message("Bir masa etkinliğinden çıkarıldın.")
 						.payload(tablePayload(tableGroupId, "PARTICIPANT_REMOVED", Map.of("ownerId", ownerId)))
 						.build()
 		);
@@ -211,8 +211,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationInboundEvent.builder()
 						.recipientId(participantId)
 						.type(NotificationType.TABLE_JOIN_REQUEST_APPROVED)
-						.title("Basvurun onaylandi")
-						.message("Katildigin masa basvurun onaylandi")
+						.title("Başvurun onaylandı")
+						.message("Katıldığın masa başvurun onaylandı.")
 						.payload(tablePayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId)))
 						.build()
 		);
@@ -249,8 +249,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationInboundEvent.builder()
 						.recipientId(participantId)
 						.type(NotificationType.TABLE_JOIN_REQUEST_REJECTED)
-						.title("Basvurun reddedildi")
-						.message("Katildigin masa basvurun reddedildi")
+						.title("Başvurun reddedildi")
+						.message("Katıldığın masa başvurun reddedildi.")
 						.payload(tablePayload(tableGroup.getId(), "JOIN_REQUEST_REJECTED", Map.of("ownerId", ownerId)))
 						.build()
 		);
@@ -283,8 +283,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationInboundEvent.builder()
 						.recipientId(tableGroup.getOwnerId())
 						.type(NotificationType.TABLE_PARTICIPANT_LEFT)
-						.title("Katilimci ayrildi")
-						.message("Masandaki bir katilimci ayrildi")
+						.title("Katılımcı ayrıldı")
+						.message("Masandaki bir katılımcı ayrıldı.")
 						.payload(tablePayload(tableGroupId, "PARTICIPANT_LEFT", Map.of("leaverId", userId)))
 						.build()
 		);

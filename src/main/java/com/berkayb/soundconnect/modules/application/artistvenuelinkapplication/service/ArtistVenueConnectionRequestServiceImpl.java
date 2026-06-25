@@ -17,6 +17,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -46,6 +47,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private final ArtistVenueConnectionRequestMapper artistVenueConnectionRequestMapper;
 	private final BandRepository bandRepository;
 	private final BandMemberRepository bandMemberRepository;
+	private final VenueProfileRepository venueProfileRepository;
 	private final MediaAssetService mediaAssetService;
 	private final NotificationProducer notificationProducer;
 
@@ -400,15 +402,21 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private ArtistVenueConnectionRequestResponseDto enrichBandFields(ArtistVenueConnectionRequestResponseDto dto) {
-		if (dto.bandId() == null) return dto;
-
-		String ppUrl = null;
-		try {
-			Band band = bandRepository.findById(dto.bandId()).orElse(null);
-			if (band != null && band.getProfilePictureMediaId() != null) {
-				ppUrl = mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl();
+		String bandPpUrl = dto.bandProfilePictureUrl();
+		if (dto.bandId() != null) {
+			try {
+				Band band = bandRepository.findById(dto.bandId()).orElse(null);
+				if (band != null && band.getProfilePictureMediaId() != null) {
+					bandPpUrl = mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl();
+				}
+			} catch (Exception ignored) {
 			}
-		} catch (Exception ignored) {}
+		}
+
+		String venuePpUrl = dto.venueProfilePictureUrl();
+		if (dto.venueId() != null) {
+			venuePpUrl = venueProfilePictureUrl(dto.venueId());
+		}
 
 		return new ArtistVenueConnectionRequestResponseDto(
 				dto.id(),
@@ -417,7 +425,8 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 				dto.venueId(),
 				dto.musicianStageName(),
 				dto.bandName(),
-				ppUrl,
+				bandPpUrl,
+				venuePpUrl,
 				dto.venueName(),
 				dto.message(),
 				dto.status(),
@@ -511,17 +520,34 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 	private String requestCreatedTitle(ArtistVenueConnectionRequest request) {
 		if (request.getRequestByType() == RequestByType.VENUE) {
-			return displayVenueName(request) + " sana baglanti istegi gonderdi";
+			return displayVenueName(request) + " sana bağlantı isteği gönderdi";
 		}
-		return displayApplicantName(request) + " mekanina baglanti istegi gonderdi";
+		if (request.getRequestByType() == RequestByType.ARTIST) {
+			return displayArtistUsername(request) + " mekânına bağlantı isteği gönderdi";
+		}
+		return displayApplicantName(request) + " mekânına bağlantı isteği gönderdi";
 	}
 
 	private String requestAcceptedTitle(ArtistVenueConnectionRequest request) {
-		return displayVenueName(request) + " baglanti istegini onayladi";
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			return displayArtistUsername(request) + " bağlantı isteğini onayladı";
+		}
+		if (request.getRequestByType() == RequestByType.BAND) {
+			return displayVenueName(request) + " " + displayApplicantName(request)
+					+ " adlı bandının bağlantı isteğini onayladı";
+		}
+		return displayVenueName(request) + " bağlantı isteğini onayladı";
 	}
 
 	private String requestRejectedTitle(ArtistVenueConnectionRequest request) {
-		return displayVenueName(request) + " baglanti istegini reddetti";
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			return displayArtistUsername(request) + " bağlantı isteğini reddetti";
+		}
+		if (request.getRequestByType() == RequestByType.BAND) {
+			return displayVenueName(request) + " " + displayApplicantName(request)
+					+ " adlı bandının bağlantı isteğini reddetti";
+		}
+		return displayVenueName(request) + " bağlantı isteğini reddetti";
 	}
 
 	private Map<String, Object> notificationPayload(ArtistVenueConnectionRequest request, String action) {
@@ -536,7 +562,72 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		put(payload, "venueId", request.getVenue() == null ? null : request.getVenue().getId());
 		put(payload, "applicantName", displayApplicantName(request));
 		put(payload, "venueName", displayVenueName(request));
+		String avatarUrl = notificationAvatarUrl(request, action);
+		put(payload, "actorAvatarUrl", avatarUrl);
+		put(payload, "avatarUrl", avatarUrl);
+		if (("REQUEST_ACCEPTED".equals(action) || "REQUEST_REJECTED".equals(action))
+				&& request.getRequestByType() == RequestByType.VENUE) {
+			put(payload, "applicantAvatarUrl", avatarUrl);
+			put(payload, "applicantProfilePictureUrl", avatarUrl);
+		} else if ("REQUEST_ACCEPTED".equals(action)
+				|| "REQUEST_REJECTED".equals(action)
+				|| request.getRequestByType() == RequestByType.VENUE) {
+			put(payload, "venueAvatarUrl", avatarUrl);
+			put(payload, "venueProfilePictureUrl", avatarUrl);
+		} else {
+			put(payload, "applicantAvatarUrl", avatarUrl);
+			put(payload, "applicantProfilePictureUrl", avatarUrl);
+		}
 		return payload;
+	}
+
+	private String notificationAvatarUrl(ArtistVenueConnectionRequest request, String action) {
+		if ("REQUEST_ACCEPTED".equals(action) || "REQUEST_REJECTED".equals(action)) {
+			if (request.getRequestByType() == RequestByType.VENUE && request.getMusicianProfile() != null) {
+				return profileMediaSourceUrl(request.getMusicianProfile().getProfilePictureMediaId());
+			}
+			return venueProfilePictureUrl(request);
+		}
+		if (request.getRequestByType() == RequestByType.BAND && request.getBand() != null) {
+			return profileMediaSourceUrl(request.getBand().getProfilePictureMediaId());
+		}
+		if (request.getRequestByType() == RequestByType.ARTIST && request.getMusicianProfile() != null) {
+			return profileMediaSourceUrl(request.getMusicianProfile().getProfilePictureMediaId());
+		}
+		if (request.getRequestByType() == RequestByType.VENUE) {
+			return venueProfilePictureUrl(request);
+		}
+		return null;
+	}
+
+	private String venueProfilePictureUrl(ArtistVenueConnectionRequest request) {
+		if (request.getVenue() == null || request.getVenue().getId() == null) {
+			return null;
+		}
+		return venueProfilePictureUrl(request.getVenue().getId());
+	}
+
+	private String venueProfilePictureUrl(UUID venueId) {
+		if (venueId == null) {
+			return null;
+		}
+		return venueProfileRepository.findByVenueId(venueId)
+		                             .map(profile -> profileMediaSourceUrl(profile.getProfilePictureMediaId()))
+		                             .orElse(null);
+	}
+
+	private String profileMediaSourceUrl(UUID mediaAssetId) {
+		if (mediaAssetId == null) {
+			return null;
+		}
+		try {
+			String sourceUrl = mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return hasText(sourceUrl) ? sourceUrl.trim() : null;
+		} catch (Exception e) {
+			log.debug("Profile image could not be resolved for notification. mediaAssetId={}, err={}",
+			          mediaAssetId, e.toString());
+			return null;
+		}
 	}
 
 	private void put(Map<String, Object> payload, String key, Object value) {
@@ -551,6 +642,13 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			String stageName = request.getMusicianProfile().getStageName();
 			if (hasText(stageName)) return stageName.trim();
 			return safe(request.getMusicianProfile().getName(), "Sanatci");
+		}
+		return "Sanatci";
+	}
+
+	private String displayArtistUsername(ArtistVenueConnectionRequest request) {
+		if (request.getMusicianProfile() != null && request.getMusicianProfile().getUser() != null) {
+			return safe(request.getMusicianProfile().getUser().getUsername(), "Sanatci");
 		}
 		return "Sanatci";
 	}

@@ -4,14 +4,17 @@ import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileActiveVenueDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.mapper.MusicianProfileMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final MusicianProfileMapper musicianProfileMapper;
 	private final BandService bandService;
 	private final MediaAssetService mediaAssetService;
+	private final VenueProfileRepository venueProfileRepository;
 	
 	@Override
 	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
@@ -110,6 +114,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
+				activeVenueConnections(saved),
 				bands,
 				base.spotifyTrackIds(),
 				base.spotifyTracks()
@@ -147,6 +152,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
+				activeVenueConnections(profile),
 				bands,
 				base.spotifyTrackIds(),
 				base.spotifyTracks()
@@ -202,6 +208,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 				base.spotifyArtistId(),
 				base.instruments(),
 				base.activeVenues(),
+				activeVenueConnections(updated),
 				bands,
 				base.spotifyTrackIds(),
 				base.spotifyTracks()
@@ -235,6 +242,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                       base.spotifyArtistId(), //degisti
 		                                       base.instruments(), //degisti
 		                                       base.activeVenues(), //degisti
+		                                       activeVenueConnections(profile), //degisti
 		                                       bands, //degisti
 		                                       base.spotifyTrackIds(), //degisti
 		                                       base.spotifyTracks() //degisti
@@ -242,6 +250,26 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	}
 	
 	
+	private List<MusicianProfileActiveVenueDto> activeVenueConnections(MusicianProfile profile) {
+		if (profile == null || profile.getActiveVenues() == null || profile.getActiveVenues().isEmpty()) {
+			return List.of();
+		}
+		return profile.getActiveVenues().stream()
+		              .map(venue -> new MusicianProfileActiveVenueDto(
+				              venue.getId(),
+				              venue.getName(),
+				              resolveVenueProfilePictureUrl(venue)
+		              ))
+		              .toList();
+	}
+
+	private String resolveVenueProfilePictureUrl(Venue venue) {
+		if (venue == null || venue.getId() == null) return null;
+		return venueProfileRepository.findByVenueId(venue.getId())
+		                             .map(profile -> resolveProfilePictureUrl(profile.getProfilePictureMediaId()))
+		                             .orElse(null);
+	}
+
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {

@@ -2,9 +2,14 @@ package com.berkayb.soundconnect.modules.follow.service;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,6 +33,12 @@ class FollowServiceImplTest {
 	
 	@Mock
 	private FollowRepository followRepository;
+
+	@Mock
+	private NotificationProducer notificationProducer;
+
+	@Mock
+	private PublicProfileResolverService publicProfileResolverService;
 	
 	@InjectMocks
 	private FollowServiceImpl sut;
@@ -60,6 +71,8 @@ class FollowServiceImplTest {
 		// not self, not already following
 		when(followRepository.existsByFollowerAndFollowing(follower, following)).thenReturn(false);
 		when(followRepository.save(any(Follow.class))).thenAnswer(inv -> inv.getArgument(0));
+		when(publicProfileResolverService.resolveByUserId(follower.getId()))
+				.thenReturn(new UserProfilesResolveResponseDto(follower.getId(), List.of()));
 		
 		ArgumentCaptor<Follow> captor = ArgumentCaptor.forClass(Follow.class);
 		
@@ -74,6 +87,43 @@ class FollowServiceImplTest {
 		assertThat(saved.getFollowing()).isSameAs(following);
 		assertThat(saved.getFollowedAt()).isNotNull();
 		assertThat(saved.getFollowedAt()).isBeforeOrEqualTo(LocalDateTime.now());
+	}
+
+	@Test
+	void follow_notification_uses_venue_name_when_follower_has_venue_profile() {
+		when(followRepository.existsByFollowerAndFollowing(follower, following)).thenReturn(false);
+		when(followRepository.save(any(Follow.class))).thenAnswer(inv -> inv.getArgument(0));
+		when(publicProfileResolverService.resolveByUserId(follower.getId()))
+				.thenReturn(new UserProfilesResolveResponseDto(
+						follower.getId(),
+						List.of(new UserProfileTargetDto("VENUE", UUID.randomUUID(), "Karga Sahne", null))
+				));
+		ArgumentCaptor<NotificationInboundEvent> eventCaptor =
+				ArgumentCaptor.forClass(NotificationInboundEvent.class);
+
+		sut.follow(follower, following);
+
+		verify(notificationProducer).publish(eventCaptor.capture());
+		assertThat(eventCaptor.getValue().title()).isEqualTo("Karga Sahne seni takip etmeye basladi");
+		assertThat(eventCaptor.getValue().payload()).containsEntry("followerUsername", "follower");
+	}
+
+	@Test
+	void follow_notification_keeps_username_when_follower_profile_is_not_venue() {
+		when(followRepository.existsByFollowerAndFollowing(follower, following)).thenReturn(false);
+		when(followRepository.save(any(Follow.class))).thenAnswer(inv -> inv.getArgument(0));
+		when(publicProfileResolverService.resolveByUserId(follower.getId()))
+				.thenReturn(new UserProfilesResolveResponseDto(
+						follower.getId(),
+						List.of(new UserProfileTargetDto("MUSICIAN", UUID.randomUUID(), "Artist Name", null))
+				));
+		ArgumentCaptor<NotificationInboundEvent> eventCaptor =
+				ArgumentCaptor.forClass(NotificationInboundEvent.class);
+
+		sut.follow(follower, following);
+
+		verify(notificationProducer).publish(eventCaptor.capture());
+		assertThat(eventCaptor.getValue().title()).isEqualTo("follower seni takip etmeye basladi");
 	}
 	
 	@Test

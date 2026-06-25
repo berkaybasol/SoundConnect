@@ -114,19 +114,20 @@ public class FollowServiceImpl implements FollowService {
 	
 	private void publishNewFollowerNotification(User follower, User following) {
 		try {
+			String followerNotificationName = resolveFollowerNotificationName(follower);
 			Map<String, Object> payload = new HashMap<>();
 			payload.put("module", "SOCIAL");
 			payload.put("action", "NEW_FOLLOWER");
 			payload.put("followerId", follower.getId().toString());
-			payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanici"));
+			payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanıcı"));
 			putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));
 			
 			notificationProducer.publish(
 					NotificationInboundEvent.builder()
 					                        .recipientId(following.getId())
 					                        .type(NotificationType.SOCIAL_NEW_FOLLOWER)
-					                        .title(safe(follower.getUsername(), "Bir kullanici") + " seni takip etmeye basladi")
-					                        .message("Yeni bir takipcin var.")
+					                        .title(followerNotificationName + " seni takip etmeye başladı")
+					                        .message("Yeni bir takipçin var.")
 					                        .payload(payload)
 					                        .emailForce(false)
 					                        .occurredAt(Instant.now())
@@ -136,6 +137,15 @@ public class FollowServiceImpl implements FollowService {
 			log.warn("Follow notification publish failed. follower={}, following={}, err={}",
 			         follower.getId(), following.getId(), e.toString());
 		}
+	}
+
+	private String resolveFollowerNotificationName(User follower) {
+		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
+				.filter(profile -> "VENUE".equals(profile.type()))
+				.map(UserProfileTargetDto::displayName)
+				.filter(this::notBlank)
+				.findFirst()
+				.orElse(safe(follower.getUsername(), "Bir kullanıcı"));
 	}
 
 	private String resolveFollowerProfilePictureUrl(User follower) {

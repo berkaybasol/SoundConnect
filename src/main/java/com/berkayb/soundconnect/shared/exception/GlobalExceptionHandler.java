@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -33,6 +35,22 @@ public class GlobalExceptionHandler {
 		                                      .build();
 		
 		return new ResponseEntity<>(response, errorType.getHttpStatus());
+	}
+
+	@ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
+	public ResponseEntity<ErrorResponse> handleAccessDenied(Exception e, HttpServletRequest request) {
+		log.warn("Access denied. path={}, err={}", request.getRequestURI(), e.getMessage());
+
+		ErrorResponse response = ErrorResponse.builder()
+		                                      .message("Access denied")
+		                                      .code(4030)
+		                                      .httpStatus(HttpStatus.FORBIDDEN)
+		                                      .path(request.getRequestURI())
+		                                      .timestamp(LocalDateTime.now())
+		                                      .details(List.of("Bu islem icin yetkin yok."))
+		                                      .build();
+
+		return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
 	}
 	
 	// Bilinmeyen hatalari burada karsiliyoruz(NullPointerExceotin, IllegalStateException vs

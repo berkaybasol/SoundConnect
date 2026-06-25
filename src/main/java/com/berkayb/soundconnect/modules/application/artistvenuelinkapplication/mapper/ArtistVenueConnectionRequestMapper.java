@@ -19,5 +19,6 @@ public interface ArtistVenueConnectionRequestMapper {
 	@Mapping(target = "message", source = "message")
 	@Mapping(target = "createdAt", source = "createdAt")
 	@Mapping(target = "bandProfilePictureUrl", ignore = true)
+	@Mapping(target = "venueProfilePictureUrl", ignore = true)
 	ArtistVenueConnectionRequestResponseDto toResponseDto(ArtistVenueConnectionRequest entity);
 }
