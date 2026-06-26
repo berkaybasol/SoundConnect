@@ -107,6 +107,20 @@ public class NotificationServiceImpl implements NotificationService {
 		}
 		return updated;
 	}
+
+	@Override
+	@Transactional
+	public int markDmConversationAsRead(UUID userId, UUID conversationId) {
+		int updated = notificationRepository.markUnreadDmNotificationsAsReadByConversation(
+				userId,
+				conversationId.toString()
+		);
+		if (updated > 0) {
+			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
+			badgeCacheHelper.setUnread(userId, freshUnread);
+		}
+		return updated;
+	}
 	
 	
 	@Override

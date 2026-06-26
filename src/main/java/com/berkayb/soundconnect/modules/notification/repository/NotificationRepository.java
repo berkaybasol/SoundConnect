@@ -45,6 +45,21 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 	@Transactional
 	@Query("update Notification n set n.read = true where n.recipientId = :recipientId and n.read = false")
 	int markAllAsRead(@Param("recipientId") UUID recipientId);
+
+	@Modifying
+	@Transactional
+	@Query(value = """
+			update tbl_notification
+			set is_read = true
+			where recipient_id = :recipientId
+			  and type = 'DM_NEW_MESSAGE'
+			  and is_read = false
+			  and payload ->> 'conversationId' = :conversationId
+			""", nativeQuery = true)
+	int markUnreadDmNotificationsAsReadByConversation(
+			@Param("recipientId") UUID recipientId,
+			@Param("conversationId") String conversationId
+	);
 	
 	@Query("select distinct n.recipientId from Notification n where n.createdAt < :cutoff")
 	List<UUID> findDistinctRecipientIdsByCreatedAtBefore(@Param("cutoff") LocalDateTime cutoff);

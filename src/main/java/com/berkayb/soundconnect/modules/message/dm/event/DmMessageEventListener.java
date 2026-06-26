@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -76,8 +77,9 @@ public class DmMessageEventListener {
 
 	private void publishNotification(DmMessageSentEvent event) {
 		try {
-			String senderUsername = resolveSenderUsername(event);
-			String senderAvatarUrl = resolveSenderAvatarUrl(event);
+			UserProfileTargetDto senderProfile = resolvePreferredSenderProfile(event);
+			String senderUsername = resolveSenderUsername(event, senderProfile);
+			String senderAvatarUrl = resolveSenderAvatarUrl(event, senderProfile);
 			notificationProducer.publish(
 					NotificationInboundEvent.builder()
 					                        .recipientId(event.getRecipientId())
@@ -104,7 +106,10 @@ public class DmMessageEventListener {
 		}
 	}
 
-	private String resolveSenderUsername(DmMessageSentEvent event) {
+	private String resolveSenderUsername(DmMessageSentEvent event, UserProfileTargetDto profile) {
+		if (profile != null && hasText(profile.displayName())) {
+			return profile.displayName().trim();
+		}
 		return userRepository.findById(event.getSenderId())
 		                     .map(user -> {
 			                     String username = user.getUsername();
@@ -113,22 +118,28 @@ public class DmMessageEventListener {
 		                     .orElse("Bir kullanici");
 	}
 
-	private String resolveSenderAvatarUrl(DmMessageSentEvent event) {
-		try {
-			var profiles = publicProfileResolverService.resolveByUserId(event.getSenderId()).profiles();
-			if (profiles != null) {
-				return profiles.stream()
-				               .map(profile -> profile.profilePictureUrl())
-				               .filter(this::hasText)
-				               .findFirst()
-				               .map(String::trim)
-				               .orElseGet(() -> resolveUserProfilePicture(event));
-			}
-		} catch (Exception e) {
-			log.warn("DM notification sender avatar resolve failed. senderId={}, err={}",
-			         event.getSenderId(), e.toString());
+	private String resolveSenderAvatarUrl(DmMessageSentEvent event, UserProfileTargetDto profile) {
+		if (profile != null && hasText(profile.profilePictureUrl())) {
+			return profile.profilePictureUrl().trim();
 		}
 		return resolveUserProfilePicture(event);
+	}
+
+	private UserProfileTargetDto resolvePreferredSenderProfile(DmMessageSentEvent event) {
+		try {
+			var profiles = publicProfileResolverService.resolveByUserId(event.getSenderId()).profiles();
+			if (profiles == null || profiles.isEmpty()) {
+				return null;
+			}
+			return profiles.stream()
+			               .filter(profile -> "VENUE".equalsIgnoreCase(profile.type()))
+			               .findFirst()
+			               .orElseGet(() -> profiles.stream().findFirst().orElse(null));
+		} catch (Exception e) {
+			log.warn("DM notification sender profile resolve failed. senderId={}, err={}",
+			         event.getSenderId(), e.toString());
+			return null;
+		}
 	}
 
 	private String resolveUserProfilePicture(DmMessageSentEvent event) {

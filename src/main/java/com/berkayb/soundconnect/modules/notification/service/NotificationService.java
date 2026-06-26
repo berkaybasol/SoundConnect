@@ -29,6 +29,9 @@ public interface NotificationService {
 	
 	// tek bir bildirimi sahiplik kontrolu ile okundu olarak isaretler
 	void markAsRead(UUID userId, UUID notificationId);
+
+	// DM konusmasi acildiginda o konusmaya ait okunmamis DM bildirimlerini okundu yapar
+	int markDmConversationAsRead(UUID userId, UUID conversationId);
 	
 	// sahiplik kontroluyle tek bir bildirimi siler
 	boolean deleteById(UUID userId, UUID notificationId);

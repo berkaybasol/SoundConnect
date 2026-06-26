@@ -29,6 +29,8 @@ import java.util.UUID;
 		indexes = { // indexes = butun veritabanini sorgulamak yerine direkt belirtilen yere gider. (bir kitabin icindekiler kismi gibi hayal et)
 				// Belirli bir konuşmadaki tüm mesajları hızlıca çekmek için index
 				@Index(name = "idx_dm_message_conversation_id", columnList = "conversation_id"),
+				@Index(name = "idx_dm_message_conversation_created", columnList = "conversation_id, created_at"),
+				@Index(name = "idx_dm_message_recipient_read", columnList = "recipient_id, read_at"),
 				// Gönderen bazlı arama/sorgular için index
 				@Index(name = "idx_dm_message_sender_id", columnList = "sender_id")
 		}

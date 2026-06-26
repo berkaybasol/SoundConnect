@@ -10,11 +10,14 @@ import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,22 +37,32 @@ public class DMMessageServiceImpl implements DMMessageService {
 	private final DmMessageEventPublisher dmMessageEventPublisher;
 	private final DmBadgeCacheHelper dmBadgeCacheHelper;
 	private final SimpMessagingTemplate messagingTemplate;
-	
+	private final NotificationService notificationService;
+
 	// belirli bir conversation'in tum mesajlarini gonderim sirasina gore doner.
 	@Override
 	public List<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId) {
 		// conversation mevcut degilse exception firlat
 		DMConversation conversation = conversationRepository.findById(conversationId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
-		
+
 		// mesajlari sirali olarak cek ve dto'ya cevir
 		return messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId)
 				.stream()
 				.map(messageMapper::toResponseDto)
 				.collect(Collectors.toList());
 	}
-	
-	
+
+	@Override
+	public Page<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId, Pageable pageable) {
+		conversationRepository.findById(conversationId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
+
+		return messageRepository.findByConversationId(conversationId, pageable)
+				.map(messageMapper::toResponseDto);
+	}
+
+
 	// mesaji gonderir, conversation'i gunceller
 	@Override
 	@Transactional
@@ -57,12 +70,12 @@ public class DMMessageServiceImpl implements DMMessageService {
 		// conversation mevcut mu?
 		DMConversation conversation = conversationRepository.findById(requestDto.conversationId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
-		
+
 		// sender bu conversation'un katilimcisi mi?
 		if (!(conversation.getUserAId().equals(senderId) || conversation.getUserBId().equals(senderId))) {
 			throw new SoundConnectException(ErrorType.NOT_PARTICIPANT_OF_CONVERSATION);
 		}
-		
+
 		// sender ve recipient ayni mi?
 		if (senderId.equals(requestDto.recipientId())) {
 			throw new SoundConnectException(ErrorType.CANNOT_DM_SELF);
@@ -74,7 +87,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 		if (!expectedRecipientId.equals(requestDto.recipientId())) {
 			throw new SoundConnectException(ErrorType.NOT_PARTICIPANT_OF_CONVERSATION);
 		}
-		
+
 		// mesagi olustur
 		DMMessage message = DMMessage.builder()
 				.conversationId(conversation.getId())
@@ -83,15 +96,15 @@ public class DMMessageServiceImpl implements DMMessageService {
 				.content(requestDto.content())
 				.messageType(requestDto.messageType() == null ? "text" : requestDto.messageType())
 				.build();
-		
+
 		// mesaji kaydet
 		messageRepository.save(message);
-		
+
 		// conversation'i guncelle (son mesaj tarihi ve lastMessageId)
 		conversation.setLastMessageAt(LocalDateTime.now());
 		conversation.setLastReadMessageId(null);
 		conversationRepository.save(conversation);
-		
+
 		// Event Fire
 		DmMessageSentEvent event = DmMessageSentEvent.builder()
 		                                             .messageId(message.getId())
@@ -102,13 +115,13 @@ public class DMMessageServiceImpl implements DMMessageService {
 		                                             .messageType(message.getMessageType())
 		                                             .sentAt(message.getCreatedAt())
 		                                             .build();
-		
+
 		dmMessageEventPublisher.publishMessageSentEvent(event);
-		
+
 		// response dto'ya cevir
 		return messageMapper.toResponseDto(message);
 	}
-	
+
 	// Goruldu olarak isaretle
 	@Override
 	@Transactional
@@ -127,28 +140,30 @@ public class DMMessageServiceImpl implements DMMessageService {
 		}
 		// daha once okunduysa tekrar setleme
 		if (message.getReadAt() != null) {
+			notificationService.markDmConversationAsRead(readerId, message.getConversationId());
 			return; // zaten okunmus
 		}
 		message.setReadAt(LocalDateTime.now());
 		messageRepository.save(message);
-		
+
 		// konusmanin "lastReadMessageId" guncellemesi (UI icin)
 		conversation.setLastReadMessageId(message.getId());
 		conversationRepository.save(conversation);
-		
+
 		// Unread badge'i guncelle ve WebSocket badge push yap
 		// guncel unread sayisini db'den cek
-		long unread = messageRepository.findByRecipientIdAndReadAtIsNull(readerId).size();
-		
+		long unread = messageRepository.countByRecipientIdAndReadAtIsNull(readerId);
+
 		// badge cache'i guncelle
 		dmBadgeCacheHelper.setUnread(readerId, unread);
-		
+
 		// WebSocket ile badge'i pushla
 		Long cacheUnread = dmBadgeCacheHelper.getCacheUnread(readerId);
 		String badgeDestination = WebSocketChannels.dmBadge(readerId);
 		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
 		log.debug("DM badge (okundu) WS push: userId={}, badge={}", readerId, cacheUnread);
-		
-		
+		notificationService.markDmConversationAsRead(readerId, message.getConversationId());
+
+
 	}
 }

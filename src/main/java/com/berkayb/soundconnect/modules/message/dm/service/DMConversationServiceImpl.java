@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class DMConversationServiceImpl implements DMConversationService {
-	
+
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageRepository messageRepository;
 	private final UserRepository userRepository;
@@ -43,28 +43,28 @@ public class DMConversationServiceImpl implements DMConversationService {
 	private final StudioProfileRepository studioProfileRepository;
 	private final VenueRepository venueRepository;
 	private final MediaAssetService mediaAssetService;
-	
-	
+
+
 	// kullanicinin dahil oldugu tum konusmalari ozet halinde getirir.
 	// her konusma icin son mesaj ve karsi taraf bilgisi profile'dan alinir
 	@Override
 	public List<DMConversationPreviewResponseDto> getAllConversationsForUser(UUID userId) {
 	// kullanicinin dahil oldugu tum conversationlari bul
 		List<DMConversation> conversations = conversationRepository.findByUserAIdOrUserBId(userId, userId);
-		
+
 		// son mesaji ve karsi tarafi profile lookup ile bul
 		List<DMConversationPreviewResponseDto> result = conversations.stream()
 				.map(conversation -> {
 					// son mesaji bul
 					Optional<DMMessage> lastMessageOpt = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversation.getId());
-					
+
 					// karsi tarafi bul (userB veya userA)
 					UUID otherUserId = conversation.getUserAId().equals(userId) ? conversation.getUserBId() : conversation.getUserAId();
-					
+
 					// profile lookup
 					String otherUsername = getDisplayNameForUser(otherUserId);
 					String otherUserProfilePicture = getProfilePictureForUser(otherUserId);
-					
+
 					// son mesaj icerigi ve bilgileri
 					String lastMessageContent = lastMessageOpt.map(DMMessage::getContent).orElse(null);
 					String lastMessageType = lastMessageOpt.map(DMMessage::getMessageType).orElse(null);
@@ -74,7 +74,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 					Boolean lastMessageRead =
 							lastMessageOpt.map(msg -> (msg.getRecipientId().equals(userId) &&  msg.getReadAt() == null) ? false : true)
 									.orElse(null);
-					
+
 					return new DMConversationPreviewResponseDto(
 							conversation.getId(),
 							otherUserId,
@@ -92,8 +92,8 @@ public class DMConversationServiceImpl implements DMConversationService {
 				.collect(Collectors.toList());
 		return result;
  	}
-	 
-	 
+
+
 	// iki kisi arasinda var olan conversation'u bulur yoksa yeni conversation olusturur ve id'sini doner
 	@Override
 	@Transactional
@@ -115,12 +115,21 @@ public class DMConversationServiceImpl implements DMConversationService {
 					return conversation.getId();
 				});
 	}
-	
-	
-	
+
+
+
 	// User'in hangi profile'a sahip oldugunu bilinmiyorsa tum profile repolarinda sirayla aratan yardimci metod
 	// buluinca name doner bbulamazsa user'a sahip username'i doner
 	private String getDisplayNameForUser(UUID userId) {
+		Optional<String> venueName = venueRepository.findAllByOwnerId(userId)
+		                                            .stream()
+		                                            .map(venue -> safe(venue.getName()))
+		                                            .filter(value -> !value.isBlank())
+		                                            .findFirst();
+		if (venueName.isPresent()) {
+			return venueName.get();
+		}
+
 		Optional<String> username = userRepository.findById(userId)
 		                                          .map(User::getUsername)
 		                                          .map(this::safe)
@@ -140,11 +149,11 @@ public class DMConversationServiceImpl implements DMConversationService {
 				.orElseGet(() -> userRepository.findById(userId)
 				.map(User::getUsername)
 				.orElse("Bilinmeyen Kullanıcı"));
-				
+
 	}
-	
-	
-	
+
+
+
 	/**
 	 * User'in hangi profile a sahip oldugunu bilmiyorsan tum profile repolarinda sirayla aratan yardimci metod
 	 * bulunca profilePicture doner bulamazsa User'in profilePicture'i doner.
@@ -169,7 +178,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 		                                                               .orElse(null));
 	}
 	// helpers
-	
+
 	private String resolveProfilePicture(UUID mediaAssetId) {
 		if (mediaAssetId == null) {
 			return null;

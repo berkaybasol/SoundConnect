@@ -7,17 +7,22 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -27,17 +32,22 @@ public class DMMessageUserController {
 	
 	private final DMMessageService messageService;
 	private final DMConversationRepository conversationRepository;
+	private final NotificationService notificationService;
 	private final UserRepository userRepository;
 	
 	@GetMapping(EndPoints.DM.MESSAGE_LIST) // /messages/conversation/{conversationId}
 	//@PreAuthorize("hasAuthority('READ_DM')")
-	public ResponseEntity<BaseResponse<List<DMMessageResponseDto>>> listByConversation(Principal principal,
-	                                                                                   @PathVariable("conversationId") UUID conversationId) {
+	public ResponseEntity<BaseResponse<Page<DMMessageResponseDto>>> listByConversation(
+			Principal principal,
+			@PathVariable("conversationId") UUID conversationId,
+			@ParameterObject @PageableDefault(size = 30, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+	) {
 		UUID currentUserId = currentUserId(principal);
 		ensureParticipant(conversationId, currentUserId);
+		notificationService.markDmConversationAsRead(currentUserId, conversationId);
 		
-		List<DMMessageResponseDto> data = messageService.getMessagesByConversationId(conversationId);
-		return ResponseEntity.ok(BaseResponse.<List<DMMessageResponseDto>>builder()
+		Page<DMMessageResponseDto> data = messageService.getMessagesByConversationId(conversationId, pageable);
+		return ResponseEntity.ok(BaseResponse.<Page<DMMessageResponseDto>>builder()
 		                                     .success(true)
 		                                     .message("Messages listed")
 		                                     .code(200)
