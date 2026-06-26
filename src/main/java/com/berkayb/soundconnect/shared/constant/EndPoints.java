@@ -289,6 +289,7 @@ public class EndPoints {
 		public static final String UNREAD_COUNT = "/unread-count";
 		public static final String MARK_READ = "/{id}/read";
 		public static final String MARK_ALL_READ = "/read-all";
+		public static final String CLEAR_ALL = "/clear-all";
 		public static final String DELETE = "/{id}";
 	}
 	

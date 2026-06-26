@@ -33,5 +33,7 @@ public interface NotificationService {
 	// sahiplik kontroluyle tek bir bildirimi siler
 	boolean deleteById(UUID userId, UUID notificationId);
 	
+	// kullanicinin tum bildirimlerini siler
+	int clearAll(UUID userId);
 	
 }

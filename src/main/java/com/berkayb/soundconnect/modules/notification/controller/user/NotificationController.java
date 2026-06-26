@@ -116,6 +116,21 @@ public class NotificationController {
 		                   .build();
 	}
 	
+	// DELETE /api/v1/user/notifications/clear-all
+	@DeleteMapping(CLEAR_ALL)
+	public BaseResponse<Map<String, Integer>> clearAll(
+			@AuthenticationPrincipal UserDetailsImpl principal
+	) {
+		UUID userId = principal.getId();
+		int deleted = notificationService.clearAll(userId);
+		return BaseResponse.<Map<String, Integer>>builder()
+		                   .success(true)
+		                   .code(200)
+		                   .message("All notifications cleared")
+		                   .data(Map.of("deleted", deleted))
+		                   .build();
+	}
+	
 	// DELETE /api/v1/user/notifications/{id}
 	@DeleteMapping(DELETE)
 	public BaseResponse<Void> delete(

@@ -66,6 +66,9 @@ app:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
+  notification:
+    retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
+    cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
   share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:

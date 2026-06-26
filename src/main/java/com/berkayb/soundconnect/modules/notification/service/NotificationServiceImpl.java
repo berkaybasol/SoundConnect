@@ -135,4 +135,12 @@ public class NotificationServiceImpl implements NotificationService {
 		}
 		return true;
 	}
+	
+	@Override
+	@Transactional
+	public int clearAll(UUID userId) {
+		int deleted = notificationRepository.deleteByRecipientId(userId);
+		badgeCacheHelper.setUnread(userId, 0);
+		return deleted;
+	}
 }
