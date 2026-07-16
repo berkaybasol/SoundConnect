@@ -106,7 +106,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_REJECTED);
 		}
 
-		if (request.getRequestByType() == RequestByType.ARTIST || request.getRequestByType() == RequestByType.VENUE) {
+		if (!targetsBand(request)) {
 			var musician = request.getMusicianProfile();
 			var venue = request.getVenue();
 
@@ -118,7 +118,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 			musicianProfileRepository.save(musician);
 			venueRepository.save(venue);
-		} else if (request.getRequestByType() == RequestByType.BAND) {
+		} else {
 			var band = request.getBand();
 			var venue = request.getVenue();
 
@@ -154,7 +154,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		request.setRequestByType(requestType);
 		request.setMessage(dto.message());
 
-		if (requestType == RequestByType.ARTIST || requestType == RequestByType.VENUE) {
+		if (requestType == RequestByType.ARTIST) {
 			if (dto.musicianProfileId() == null) {
 				throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 			}
@@ -188,6 +188,31 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 			request.setBand(band);
 			request.setMusicianProfile(null);
+		} else if (requestType == RequestByType.VENUE) {
+			assertCanActForVenue(actorUserId, venue);
+			boolean hasMusicianTarget = dto.musicianProfileId() != null;
+			boolean hasBandTarget = dto.bandId() != null;
+			if (hasMusicianTarget == hasBandTarget) {
+				throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
+			}
+
+			if (hasBandTarget) {
+				if (repository.existsByBandIdAndVenueIdAndStatus(dto.bandId(), dto.venueId(), RequestStatus.PENDING)) {
+					throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
+				}
+				Band band = bandRepository.findById(dto.bandId())
+				                          .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+				request.setBand(band);
+				request.setMusicianProfile(null);
+			} else {
+				if (repository.existsByMusicianProfileIdAndVenueIdAndStatus(dto.musicianProfileId(), dto.venueId(), RequestStatus.PENDING)) {
+					throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
+				}
+				MusicianProfile musician = musicianProfileRepository.findById(dto.musicianProfileId())
+				                                                    .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+				request.setMusicianProfile(musician);
+				request.setBand(null);
+			}
 		} else {
 			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
 		}
@@ -217,7 +242,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 		request.setStatus(RequestStatus.ACCEPTED);
 
-		if (request.getRequestByType() == RequestByType.ARTIST || request.getRequestByType() == RequestByType.VENUE) {
+		if (!targetsBand(request)) {
 			var musician = request.getMusicianProfile();
 			var venue = request.getVenue();
 
@@ -229,7 +254,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 			musicianProfileRepository.save(musician);
 			venueRepository.save(venue);
-		} else if (request.getRequestByType() == RequestByType.BAND) {
+		} else {
 			var band = request.getBand();
 			var venue = request.getVenue();
 
@@ -336,7 +361,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private void assertCanActForApplicant(UUID actorUserId, ArtistVenueConnectionRequest request) {
-		if (request.getRequestByType() == RequestByType.BAND) {
+		if (targetsBand(request)) {
 			assertCanManageBand(actorUserId, request.getBand());
 			return;
 		}
@@ -344,7 +369,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private boolean canActForApplicant(UUID actorUserId, ArtistVenueConnectionRequest request) {
-		if (request.getRequestByType() == RequestByType.BAND) {
+		if (targetsBand(request)) {
 			return canManageBand(actorUserId, request.getBand());
 		}
 		return canActForMusician(actorUserId, request.getMusicianProfile());
@@ -437,20 +462,19 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request) {
 		try {
-			UUID recipientId = requestCreatedRecipientId(request);
-			if (recipientId == null) return;
-
-			notificationProducer.publish(
-					NotificationInboundEvent.builder()
-					                        .recipientId(recipientId)
-					                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
-					                        .title(requestCreatedTitle(request))
-					                        .message(safe(request.getMessage()))
-					                        .payload(notificationPayload(request, "REQUEST_CREATED"))
-					                        .emailForce(false)
-					                        .occurredAt(Instant.now())
-					                        .build()
-			);
+			for (UUID recipientId : requestCreatedRecipientIds(request)) {
+				notificationProducer.publish(
+						NotificationInboundEvent.builder()
+						                        .recipientId(recipientId)
+						                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
+						                        .title(requestCreatedTitle(request))
+						                        .message(safe(request.getMessage()))
+						                        .payload(notificationPayload(request, "REQUEST_CREATED"))
+						                        .emailForce(false)
+						                        .occurredAt(Instant.now())
+						                        .build()
+				);
+			}
 		} catch (Exception e) {
 			log.warn("ArtistVenue notification request publish failed. requestId={}, err={}",
 			         request.getId(), e.toString());
@@ -484,15 +508,20 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		}
 	}
 
-	private UUID requestCreatedRecipientId(ArtistVenueConnectionRequest request) {
+	private List<UUID> requestCreatedRecipientIds(ArtistVenueConnectionRequest request) {
 		if (request.getRequestByType() == RequestByType.VENUE) {
-			return request.getMusicianProfile() == null || request.getMusicianProfile().getUser() == null
+			if (targetsBand(request)) {
+				return activeBandMemberUserIds(request.getBand());
+			}
+			UUID musicianUserId = request.getMusicianProfile() == null || request.getMusicianProfile().getUser() == null
 					? null
 					: request.getMusicianProfile().getUser().getId();
+			return musicianUserId == null ? List.of() : List.of(musicianUserId);
 		}
-		return request.getVenue() == null || request.getVenue().getOwner() == null
+		UUID venueOwnerId = request.getVenue() == null || request.getVenue().getOwner() == null
 				? null
 				: request.getVenue().getOwner().getId();
+		return venueOwnerId == null ? List.of() : List.of(venueOwnerId);
 	}
 
 	private List<UUID> requestDecisionRecipientIds(ArtistVenueConnectionRequest request) {
@@ -502,15 +531,8 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 					: request.getVenue().getOwner().getId();
 			return ownerId == null ? List.of() : List.of(ownerId);
 		}
-		if (request.getRequestByType() == RequestByType.BAND && request.getBand() != null) {
-			return bandMemberRepository.findByBandId(request.getBand().getId()).stream()
-			                           .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
-			                           .map(BandMember::getUser)
-			                           .filter(Objects::nonNull)
-			                           .map(user -> user.getId())
-			                           .filter(Objects::nonNull)
-			                           .distinct()
-			                           .toList();
+		if (targetsBand(request)) {
+			return activeBandMemberUserIds(request.getBand());
 		}
 		UUID musicianUserId = request.getMusicianProfile() == null || request.getMusicianProfile().getUser() == null
 				? null
@@ -532,7 +554,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		if (request.getRequestByType() == RequestByType.VENUE) {
 			return displayArtistUsername(request) + " bağlantı isteğini onayladı";
 		}
-		if (request.getRequestByType() == RequestByType.BAND) {
+		if (targetsBand(request)) {
 			return displayVenueName(request) + " " + displayApplicantName(request)
 					+ " adlı bandının bağlantı isteğini onayladı";
 		}
@@ -543,7 +565,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		if (request.getRequestByType() == RequestByType.VENUE) {
 			return displayArtistUsername(request) + " bağlantı isteğini reddetti";
 		}
-		if (request.getRequestByType() == RequestByType.BAND) {
+		if (targetsBand(request)) {
 			return displayVenueName(request) + " " + displayApplicantName(request)
 					+ " adlı bandının bağlantı isteğini reddetti";
 		}
@@ -583,8 +605,10 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 	private String notificationAvatarUrl(ArtistVenueConnectionRequest request, String action) {
 		if ("REQUEST_ACCEPTED".equals(action) || "REQUEST_REJECTED".equals(action)) {
-			if (request.getRequestByType() == RequestByType.VENUE && request.getMusicianProfile() != null) {
-				return profileMediaSourceUrl(request.getMusicianProfile().getProfilePictureMediaId());
+			if (request.getRequestByType() == RequestByType.VENUE) {
+				return targetsBand(request)
+						? profileMediaSourceUrl(request.getBand().getProfilePictureMediaId())
+						: profileMediaSourceUrl(request.getMusicianProfile().getProfilePictureMediaId());
 			}
 			return venueProfilePictureUrl(request);
 		}
@@ -635,7 +659,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private String displayApplicantName(ArtistVenueConnectionRequest request) {
-		if (request.getRequestByType() == RequestByType.BAND && request.getBand() != null) {
+		if (targetsBand(request)) {
 			return safe(request.getBand().getName(), "Band");
 		}
 		if (request.getMusicianProfile() != null) {
@@ -647,10 +671,29 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private String displayArtistUsername(ArtistVenueConnectionRequest request) {
+		if (targetsBand(request)) {
+			return displayApplicantName(request);
+		}
 		if (request.getMusicianProfile() != null && request.getMusicianProfile().getUser() != null) {
 			return safe(request.getMusicianProfile().getUser().getUsername(), "Sanatci");
 		}
 		return "Sanatci";
+	}
+
+	private boolean targetsBand(ArtistVenueConnectionRequest request) {
+		return request != null && request.getBand() != null;
+	}
+
+	private List<UUID> activeBandMemberUserIds(Band band) {
+		if (band == null || band.getId() == null) return List.of();
+		return bandMemberRepository.findByBandId(band.getId()).stream()
+		                           .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+		                           .map(BandMember::getUser)
+		                           .filter(Objects::nonNull)
+		                           .map(user -> user.getId())
+		                           .filter(Objects::nonNull)
+		                           .distinct()
+		                           .toList();
 	}
 
 	private String displayVenueName(ArtistVenueConnectionRequest request) {

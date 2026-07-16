@@ -13,6 +13,8 @@ public interface StudioProfileRepository extends JpaRepository<StudioProfile, UU
 	// belirli bir kullaniciya ait studio profilini id ile getir
 	Optional<StudioProfile> findByUserId(UUID userID);
 
+	Optional<StudioProfile> findById(UUID profileId);
+
 	// belirli bir kullaniciya ait studio profilini studioname ile getir.
 	Optional<StudioProfile> findStudioProfileByName(String name);
 

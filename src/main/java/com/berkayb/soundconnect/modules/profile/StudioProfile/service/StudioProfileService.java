@@ -12,6 +12,8 @@ public interface StudioProfileService {
 	
 	// id ye gore studio profile getir.
 	StudioProfileResponseDto getProfileByUserId(UUID userId);
+
+	StudioProfileResponseDto getProfileByProfileId(UUID profileId);
 	
 	StudioProfileResponseDto updateProfile(UUID userId, StudioProfileSaveRequestDto dto);
 	

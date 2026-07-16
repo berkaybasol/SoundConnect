@@ -73,9 +73,11 @@ class StudioProfileServiceImplTest {
 		
 		var resp = new StudioProfileResponseDto(
 				saved.getId(),
+				userId,
 				req.name(),
 				req.descpriction(),
 				req.profilePicture(),
+				null,
 				req.adress(),
 				req.phone(),
 				req.website(),
@@ -111,7 +113,7 @@ class StudioProfileServiceImplTest {
 		when(repository.findByUserId(userId)).thenReturn(Optional.of(profile));
 		
 		var resp = new StudioProfileResponseDto(
-				profile.getId(), "Name", "Desc", UUID.randomUUID(),
+				profile.getId(), userId, "Name", "Desc", UUID.randomUUID(), null,
 				"Addr", "555", "site", Set.of("A"), "ig", "yt"
 		);
 		when(mapper.toDto(profile)).thenReturn(resp);
@@ -149,7 +151,9 @@ class StudioProfileServiceImplTest {
 		
 		var resp = new StudioProfileResponseDto(
 				saved.getId(),
+				userId,
 				req.name(), req.descpriction(), req.profilePicture(),
+				null,
 				req.adress(), req.phone(), req.website(),
 				req.facilities(), req.instagramUrl(), req.youtubeUrl()
 		);

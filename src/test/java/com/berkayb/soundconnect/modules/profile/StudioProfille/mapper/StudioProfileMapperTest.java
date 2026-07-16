@@ -20,7 +20,6 @@ class StudioProfileMapperTest {
 	
 	@Test
 	void toDto_should_map_facilities_and_profilePictureMediaId() {
-		// Arrange
 		UUID ppId = UUID.randomUUID();
 		
 		User user = User.builder()
@@ -35,13 +34,13 @@ class StudioProfileMapperTest {
 		                                    .facilities(Set.of("Piano", "Drums"))
 		                                    .build();
 		
-		// Act
 		StudioProfileResponseDto dto = mapper.toDto(entity);
 		
-		// Assert
 		assertThat(dto).isNotNull();
+		assertThat(dto.userId()).isNull();
 		assertThat(dto.description()).isEqualTo("pro studio");
-		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId); // ✅ aynı UUID
+		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId);
+		assertThat(dto.profilePictureUrl()).isNull();
 		assertThat(dto.facilities()).containsExactlyInAnyOrder("Piano", "Drums");
 	}
 }

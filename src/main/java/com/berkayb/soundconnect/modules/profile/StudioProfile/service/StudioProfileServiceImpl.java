@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.StudioProfile.service;
 
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.StudioProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
@@ -25,6 +26,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 	private final StudioProfileRepository studioProfileRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final StudioProfileMapper studioProfileMapper;
+	private final MediaAssetService mediaAssetService;
 	
 	
 	@Override
@@ -61,7 +63,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		StudioProfile savedProfile = studioProfileRepository.save(profile);
 		log.info("studio profili olusturuldu. UserId: {}", userId);
 		
-		return studioProfileMapper.toDto(savedProfile);
+		return toResponseDto(savedProfile);
 	}
 	
 	@Override
@@ -77,21 +79,31 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				});
 		log.info("Studio profili getirildi. UserId: {}", userId);
 		
-		return studioProfileMapper.toDto(studioProfile);
+		return toResponseDto(studioProfile);
 	}
-	
+
+	@Override
+	public StudioProfileResponseDto getProfileByProfileId(UUID profileId) {
+		StudioProfile studioProfile = studioProfileRepository.findById(profileId)
+				.orElseThrow(() -> {
+					log.warn("Studio profili bulunamadi. ProfileId: {}", profileId);
+					return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+				});
+		return toResponseDto(studioProfile);
+	}
+
 	@Override
 	public StudioProfileResponseDto updateProfile(UUID userId, StudioProfileSaveRequestDto dto) {
 		// kullaniciyi getir
 		userEntityFinder.getUser(userId);
-		
+
 		// profili bul
 		StudioProfile profile = studioProfileRepository.findByUserId(userId)
 		                                               .orElseThrow(() -> {
 			                                               log.warn("Studio profili bulunamadı. UserId: {}", userId);
 			                                               return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		                                               });
-		
+
 		// guncelle
 		if (dto.name() != null) profile.setName(dto.name());
 		if (dto.descpriction() != null) profile.setDescription(dto.descpriction());
@@ -105,8 +117,38 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		
 		// kaydet
 		StudioProfile updated = studioProfileRepository.save(profile);
-		log.info("studio profili olusturuldu. UserId: {}", userId);
-		return studioProfileMapper.toDto(updated);
+		log.info("studio profili guncellendi. UserId: {}", userId);
+		return toResponseDto(updated);
 	}
 	// TODO media, comment, notification
+
+	private StudioProfileResponseDto toResponseDto(StudioProfile profile) {
+		StudioProfileResponseDto dto = studioProfileMapper.toDto(profile);
+		return new StudioProfileResponseDto(
+				dto.id(),
+				dto.userId(),
+				dto.name(),
+				dto.description(),
+				dto.profilePictureMediaId(),
+				resolveProfilePictureUrl(dto.profilePictureMediaId()),
+				dto.adress(),
+				dto.phone(),
+				dto.website(),
+				dto.facilities(),
+				dto.instagramUrl(),
+				dto.youtubeUrl()
+		);
+	}
+
+	private String resolveProfilePictureUrl(UUID mediaAssetId) {
+		if (mediaAssetId == null) {
+			return null;
+		}
+		try {
+			return mediaAssetService.getPlaybackUrl(mediaAssetId);
+		} catch (Exception e) {
+			log.warn("Studio profile picture resolve failed. mediaAssetId={}", mediaAssetId);
+			return null;
+		}
+	}
 }

@@ -8,6 +8,10 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.e
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.mapper.ArtistVenueConnectionRequestMapper;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
@@ -124,6 +128,65 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		verify(venueRepo).findById(venueId);
 		verify(requestRepo).save(any(ArtistVenueConnectionRequest.class));
 		verify(mapper).toResponseDto(saved);
+	}
+
+	@Test
+	void venueCanCreateAndBandManagerCanAcceptBandTargetRequest() {
+		UUID bandId = UUID.randomUUID();
+		UUID bandManagerId = UUID.randomUUID();
+		Band band = mock(Band.class);
+		User bandManager = new User();
+		bandManager.setId(bandManagerId);
+		BandMember managerMembership = BandMember.builder()
+		                                         .band(band)
+		                                         .user(bandManager)
+		                                         .bandRole(BandRole.MANAGER)
+		                                         .status(BandMemberShipStatus.ACTIVE)
+		                                         .build();
+
+		when(band.getId()).thenReturn(bandId);
+		when(band.getName()).thenReturn("Band X");
+		when(band.getMembers()).thenReturn(Set.of(managerMembership));
+		when(venue.getActiveBands()).thenReturn(new HashSet<>());
+		when(venueRepo.findById(venueId)).thenReturn(Optional.of(venue));
+		when(bandRepo.findById(bandId)).thenReturn(Optional.of(band));
+		when(bandMemberRepo.findByBandId(bandId)).thenReturn(List.of(managerMembership));
+		when(requestRepo.existsByBandIdAndVenueIdAndStatus(bandId, venueId, RequestStatus.PENDING))
+				.thenReturn(false);
+
+		ArgumentCaptor<ArtistVenueConnectionRequest> requestCaptor =
+				ArgumentCaptor.forClass(ArtistVenueConnectionRequest.class);
+		when(requestRepo.save(requestCaptor.capture())).thenAnswer(invocation -> {
+			ArtistVenueConnectionRequest request = invocation.getArgument(0);
+			if (request.getId() == null) request.setId(UUID.randomUUID());
+			return request;
+		});
+		when(mapper.toResponseDto(any())).thenAnswer(invocation -> {
+			ArtistVenueConnectionRequest request = invocation.getArgument(0);
+			return new ArtistVenueConnectionRequestResponseDto(
+					request.getId(), null, bandId, venueId, null, "Band X", null, "Venue X",
+					request.getMessage(), request.getStatus().name(), request.getRequestByType(), null
+			);
+		});
+
+		var created = service.createRequest(
+				venueOwnerId,
+				new ArtistVenueConnectionRequestCreateDto(null, bandId, venueId, "hello"),
+				RequestByType.VENUE
+		);
+		ArtistVenueConnectionRequest savedRequest = requestCaptor.getValue();
+
+		assertThat(created.bandId()).isEqualTo(bandId);
+		assertThat(savedRequest.getBand()).isSameAs(band);
+		assertThat(savedRequest.getMusicianProfile()).isNull();
+		assertThat(savedRequest.getRequestByType()).isEqualTo(RequestByType.VENUE);
+
+		when(requestRepo.findById(savedRequest.getId())).thenReturn(Optional.of(savedRequest));
+		var accepted = service.acceptRequest(bandManagerId, savedRequest.getId());
+
+		assertThat(accepted.status()).isEqualTo(RequestStatus.ACCEPTED.name());
+		assertThat(venue.getActiveBands()).contains(band);
+		verify(venueRepo).save(venue);
 	}
 	
 	@Test

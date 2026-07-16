@@ -47,9 +47,11 @@ class StudioProfileAdminControllerTest {
 		UUID userId = UUID.randomUUID();
 		var dto = new StudioProfileResponseDto(
 				UUID.randomUUID(),
+				userId,
 				"S1",
 				"bio",
 				UUID.randomUUID(),
+				null,
 				"addr",
 				"555",
 				"site",
@@ -78,7 +80,7 @@ class StudioProfileAdminControllerTest {
 		);
 		
 		var resp = new StudioProfileResponseDto(
-				UUID.randomUUID(), "New", "d", UUID.randomUUID(),
+				UUID.randomUUID(), userId, "New", "d", UUID.randomUUID(), null,
 				"new addr", "555", "site.com", Set.of("parking"), "ig", "yt"
 		);
 		

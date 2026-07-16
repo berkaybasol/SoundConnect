@@ -74,9 +74,11 @@ class StudioProfileUserControllerTest {
 	void getMyProfile_ok() throws Exception {
 		var dto = new StudioProfileResponseDto(
 				UUID.randomUUID(),
+				userId,
 				"S1",
 				"bio",
 				UUID.randomUUID(),
+				null,
 				"addr",
 				"555",
 				"site",
@@ -103,7 +105,9 @@ class StudioProfileUserControllerTest {
 		);
 		var resp = new StudioProfileResponseDto(
 				UUID.randomUUID(),
+				userId,
 				"New", "d", UUID.randomUUID(),
+				null,
 				"new addr", "555", "site.com",
 				Set.of("parking"), "ig", "yt"
 		);
