@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.profile.OrganizerProfile.service;
 
 
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.request.OrganizerProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.response.OrganizerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
@@ -13,6 +16,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -23,8 +27,10 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 	private final OrganizerProfileRepository organizerProfileRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final OrganizerProfileMapper organizerProfileMapper;
+	private final MediaAssetService mediaAssetService;
 	
 	@Override
+	@Transactional
 	public OrganizerProfileResponseDto createProfile(UUID userId, OrganizerProfileSaveRequestDto dto) {
 		// kullaniciyi getir
 		User user = userEntityFinder.getUser(userId);
@@ -33,6 +39,11 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 		if (organizerProfileRepository.findByUserId(user.getId()).isPresent()) {
 			log.warn("kullanici zaten bu profile'a sahip. {}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
+		}
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.USER, userId, MediaKind.IMAGE
+			);
 		}
 		
 		// profile olustur
@@ -71,6 +82,7 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public OrganizerProfileResponseDto updateProfile(UUID userId, OrganizerProfileSaveRequestDto dto) {
 		// kullaniciyi getir
 		User user = userEntityFinder.getUser(userId);
@@ -83,7 +95,13 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 		
 		// guncelle
 		if (dto.name() != null) organizerProfile.setName(dto.name());
-		if (dto.profilePicture() != null) organizerProfile.setProfilePictureMediaId(dto.profilePicture());
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.ORGANIZER_PROFILE,
+					organizerProfile.getId(), MediaKind.IMAGE
+			);
+			organizerProfile.setProfilePictureMediaId(dto.profilePicture());
+		}
 		if (dto.description() != null) organizerProfile.setDescription(dto.description());
 		if (dto.phone() != null) organizerProfile.setPhone(dto.phone());
 		if (dto.address() != null) organizerProfile.setAddress(dto.address());

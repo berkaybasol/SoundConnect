@@ -76,7 +76,9 @@ class ListenerProfileUserControllerTest {
 	@Test
 	void getMyProfile_ok() throws Exception {
 		UUID ppId = UUID.randomUUID();
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "my bio", ppId, userId);
+		var dto = new ListenerProfileResponseDto(
+				UUID.randomUUID(), userId, "testuser", "my bio", ppId,
+				"https://cdn.example.com/profile.jpg", 0, 0);
 		when(listenerProfileService.getProfileByUserId(userId)).thenReturn(dto);
 		
 		mockMvc.perform(get("/api/v1/user/listener-profiles/me"))
@@ -92,7 +94,9 @@ class ListenerProfileUserControllerTest {
 		UUID ppId = UUID.randomUUID();
 		
 		var body = new ListenerSaveRequestDto("hello", ppId);
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "hello", ppId, userId);
+		var dto = new ListenerProfileResponseDto(
+				UUID.randomUUID(), userId, "testuser", "hello", ppId,
+				"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(listenerProfileService.createProfile(userId, body)).thenReturn(dto);
 		
@@ -111,7 +115,9 @@ class ListenerProfileUserControllerTest {
 		UUID ppId = UUID.randomUUID();
 		
 		var body = new ListenerSaveRequestDto("upd", ppId);
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "upd", ppId, userId);
+		var dto = new ListenerProfileResponseDto(
+				UUID.randomUUID(), userId, "testuser", "upd", ppId,
+				"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(listenerProfileService.updateProfile(userId, body)).thenReturn(dto);
 		

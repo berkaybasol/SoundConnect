@@ -34,7 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = NotificationServiceImplIT.TestConfig.class)
 @TestPropertySource(properties = {
 		// DB & JPA
@@ -47,8 +47,8 @@ import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFOR
 		"spring.rabbitmq.listener.simple.auto-startup=false",
 		
 		// JWT/OAuth dummy (her ihtimale karşı)
-		"SOUNDCONNECT_JWT_SECRETKEY=dummy",
-		"app.jwt.secret=dummy",
+		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
+		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long",
 		"GOOGLE_CLIENT_ID=dummy",
 		"GOOGLE_CLIENT_SECRET=dummy",
 		"spring.security.oauth2.client.registration.google.client-id=dummy",

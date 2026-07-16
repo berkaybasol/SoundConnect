@@ -8,64 +8,76 @@ import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
 import java.util.List;
 
 @Slf4j
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@ConditionalOnProperty(value = "app.location.seed.enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
-public class LocationSeeder {
-	
+public class LocationSeeder implements ApplicationRunner {
+
 	private final CityRepository cityRepository;
 	private final DistrictRepository districtRepository;
 	private final NeighborhoodRepository neighborhoodRepository;
-	
-	@PostConstruct
-	public void seed() {
-		if (cityRepository.count() > 0) {
-			log.info("Seed already executed, skipping...");
-			return;
+	private final ObjectMapper objectMapper;
+
+	@Override
+	@Transactional
+	public void run(ApplicationArguments args) throws Exception {
+		log.info("[location-seed] synchronizing location reference data");
+
+		List<CitySeedDto> cities;
+		try (InputStream inputStream = new ClassPathResource("location-seed.json").getInputStream()) {
+			cities = objectMapper.readValue(inputStream, new TypeReference<>() {});
 		}
-		
-		try {
-			log.info("Starting location seed...");
-			
-			// JSON dosyasını oku
-			InputStream inputStream = new ClassPathResource("location-seed.json").getInputStream();
-			ObjectMapper mapper = new ObjectMapper();
-			List<CitySeedDto> cities = mapper.readValue(inputStream, new TypeReference<>() {});
-			
-			for (CitySeedDto citySeed : cities) {
-				City city = City.builder().name(citySeed.name()).build();
-				City savedCity = cityRepository.save(city);
-				
-				for (DistrictSeedDto districtSeed : citySeed.districts()) {
-					District district = District.builder()
-					                            .name(districtSeed.name())
-					                            .city(savedCity)
-					                            .build();
-					District savedDistrict = districtRepository.save(district);
-					
-					for (String neighborhoodName : districtSeed.neighborhoods()) {
-						Neighborhood neighborhood = Neighborhood.builder()
-						                                        .name(neighborhoodName)
-						                                        .district(savedDistrict)
-						                                        .build();
-						neighborhoodRepository.save(neighborhood);
+
+		int createdCities = 0;
+		int createdDistricts = 0;
+		int createdNeighborhoods = 0;
+		for (CitySeedDto citySeed : cities) {
+			City city = cityRepository.findByName(citySeed.name()).orElse(null);
+			if (city == null) {
+				city = cityRepository.save(City.builder().name(citySeed.name()).build());
+				createdCities++;
+			}
+
+			for (DistrictSeedDto districtSeed : citySeed.districts()) {
+				District district = districtRepository.findByNameAndCity_Id(districtSeed.name(), city.getId())
+						.orElse(null);
+				if (district == null) {
+					district = districtRepository.save(District.builder()
+							.name(districtSeed.name())
+							.city(city)
+							.build());
+					createdDistricts++;
+				}
+
+				for (String neighborhoodName : districtSeed.neighborhoods()) {
+					if (!neighborhoodRepository.existsByNameAndDistrict_Id(neighborhoodName, district.getId())) {
+						neighborhoodRepository.save(Neighborhood.builder()
+								.name(neighborhoodName)
+								.district(district)
+								.build());
+						createdNeighborhoods++;
 					}
 				}
 			}
-			
-			log.info(" location seed completed!");
-			
-		} catch (Exception e) {
-			log.error(" failed to seed locations", e);
 		}
+
+		log.info("[location-seed] synchronized citiesCreated={} districtsCreated={} neighborhoodsCreated={}",
+				createdCities, createdDistricts, createdNeighborhoods);
 	}
 }

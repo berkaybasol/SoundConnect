@@ -37,7 +37,7 @@ public class MediaPolicyImpl implements MediaPolicy {
 	@Value("${media.allowedMime.image:image/png,image/jpeg,image/webp}")
 	private String imageAllowedCsv;
 	
-	@Value("${media.allowedMime.audio:audio/mpeg,audio/aac,audio/wav,audio/x-wav,audio/ogg}")
+	@Value("${media.allowedMime.audio:audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/flac,audio/wav,audio/x-wav,audio/ogg}")
 	private String audioAllowedCsv;
 	
 	@Value("${media.allowedMime.video:video/mp4,video/quicktime,video/x-matroska}")
@@ -62,7 +62,10 @@ public class MediaPolicyImpl implements MediaPolicy {
 			Map.entry("image/webp", "webp"),
 			
 			Map.entry("audio/mpeg", "mp3"),
+			Map.entry("audio/mp4", "m4a"),
+			Map.entry("audio/x-m4a", "m4a"),
 			Map.entry("audio/aac","aac"),
+			Map.entry("audio/flac", "flac"),
 			Map.entry("audio/wav", "wav"),
 			Map.entry("audio/x-wav", "wav"),
 			Map.entry("audio/ogg", "ogg"),
@@ -103,7 +106,7 @@ public class MediaPolicyImpl implements MediaPolicy {
 			case VIDEO -> videoAllowed;
 		};
 		
-		if (!allowed.contains(mimeType)) {
+		if (!allowed.contains(MediaMimeType.sanitize(mimeType))) {
 			throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_UNSUPPORTED_MIME);
 		}
 		
@@ -121,12 +124,14 @@ public class MediaPolicyImpl implements MediaPolicy {
 	
 	// SOURCE KEY: {root}/{assetId}/{sourceBasename}.{ext}
 	// orijinal isim PII sizdirmamak icin kullanilmaz.
-	// uzanti orijinal isimden cikarilir yoksa "dat" fallback.
+	// Uzanti kullanici kontrollu dosya adindan degil, dogrulanmis MIME'dan gelir.
 	@Override
-	public String buildSourceKey(UUID assetId, String originalFileName) {
+	public String buildSourceKey(UUID assetId, String mimeType) {
 		if (assetId == null) throw new SoundConnectException(ErrorType.MEDIA_ASSET_ID_REQUIRED);
-		
-		String ext = safeExtensionFromFilename(originalFileName).orElse("dat");
+		String ext = MIME_TO_EXT.get(MediaMimeType.sanitize(mimeType));
+		if (!StringUtils.hasText(ext)) {
+			throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_UNSUPPORTED_MIME);
+		}
 		return rootDir + "/" + assetId + "/" + sourceBasename + "." + ext;
 	}
 	
@@ -172,7 +177,7 @@ public class MediaPolicyImpl implements MediaPolicy {
 		String[] parts = csv.split(",");
 		Set<String> set = new HashSet<>();
 		for (String p : parts) {
-			String v = p.trim();
+			String v = MediaMimeType.sanitize(p);
 			if (!v.isEmpty()) set.add(v);
 		}
 		return Collections.unmodifiableSet(set);

@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
-import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.enums.MessageType;
@@ -43,9 +42,6 @@ class TableGroupChatControllerTest {
 	
 	@Mock
 	private UserRepository userRepository;
-	
-	@Mock
-	private TableGroupChatUnreadHelper unreadHelper;
 	
 	@InjectMocks
 	private TableGroupChatController controller;
@@ -182,7 +178,7 @@ class TableGroupChatControllerTest {
 		UUID tableGroupId = UUID.randomUUID();
 		int unreadCount = 7;
 		
-		when(unreadHelper.getUnread(userId, tableGroupId)).thenReturn(unreadCount);
+		when(chatService.getUnreadBadge(userId, tableGroupId)).thenReturn(unreadCount);
 		
 		// when & then
 		mockMvc.perform(
@@ -195,6 +191,6 @@ class TableGroupChatControllerTest {
 		       .andExpect(jsonPath("$.message").value("Unread badge fetched"))
 		       .andExpect(jsonPath("$.data").value(unreadCount));
 		
-		verify(unreadHelper).getUnread(userId, tableGroupId);
+		verify(chatService).getUnreadBadge(userId, tableGroupId);
 	}
 }

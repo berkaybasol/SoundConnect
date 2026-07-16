@@ -14,7 +14,7 @@ public class ErrorResponse {
 	private String message;
 	private HttpStatus httpStatus;
 	private String path;
-	public List<String> details;
+	private List<String> details;
 	private LocalDateTime timestamp;
 	
 }

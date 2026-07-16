@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.UUID;
 
 public interface UserService {
-	User saveUser(UserSaveRequestDto dto);
+	User saveUser(UUID actingUserId, UserSaveRequestDto dto);
 	List<UserListDto> getAllUsers();
 	UserListDto getUserById(UUID id);
-	void deleteUserById(UUID id);
-	Boolean updateUser(UUID id, UserUpdateRequestDto dto);
+	void deleteUserById(UUID actingUserId, UUID id);
+	Boolean updateUser(UUID actingUserId, UUID id, UserUpdateRequestDto dto);
 	
 }

@@ -2,6 +2,9 @@ package com.berkayb.soundconnect.modules.profile.shared.media.service;
 
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
@@ -24,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.UUID;
@@ -61,10 +65,26 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 	@Override
 	@Transactional
 	public ProfileMedia addMedia(UUID actingUserId, ProfileType profileType, UUID profileId, UUID mediaAssetId, ProfileMediaRole role, Integer orderIndex) {
+		if (profileType == null || profileId == null || mediaAssetId == null || role == null
+				|| (orderIndex != null && orderIndex < 0)) {
+			throw new SoundConnectException(ErrorType.BAD_REQUEST);
+		}
 		assertCanManageProfile(actingUserId, profileType, profileId);
-		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		assertMediaBelongsToProfile(profileType, profileId, asset);
+		ProfileMedia existing = profileMediaRepository
+				.findByProfileTypeAndProfileIdAndMediaAssetIdAndRole(
+						profileType, profileId, mediaAssetId, role)
+				.orElse(null);
+		if (existing != null) {
+			log.info("[ProfileMedia] idempotent replay profileType={} profileId={} mediaAssetId={} role={}",
+					profileType, profileId, mediaAssetId, role);
+			return existing;
+		}
+		if (!isAttachableProfileMedia(asset, role)) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+		}
 		
 		ProfileMedia media = ProfileMedia.builder()
 				.profileType(profileType)
@@ -78,6 +98,33 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 		log.info("[ProfileMedia] added profileType={} profileId={} mediaAssetId={} role={}",
 		         profileType, profileId, mediaAssetId, role);
 		return saved;
+	}
+
+	/**
+	 * Gallery images are attached only after synchronous validation completes.
+	 * Videos may be associated after durable queueing; public profile reads still
+	 * omit them until READY, so processing media never leaks while the UI polls.
+	 */
+	static boolean isAttachableProfileMedia(MediaAsset asset, ProfileMediaRole role) {
+		if (asset == null
+				|| role == null
+				|| asset.getVisibility() != MediaVisibility.PUBLIC) {
+			return false;
+		}
+		if (asset.getKind() == MediaKind.IMAGE) {
+			return role == ProfileMediaRole.GALLERY
+					&& asset.getStatus() == MediaStatus.READY
+					&& (StringUtils.hasText(asset.getSourceUrl())
+							|| StringUtils.hasText(asset.getPlaybackUrl()));
+		}
+		if (asset.getKind() != MediaKind.VIDEO) {
+			return false;
+		}
+		return switch (asset.getStatus()) {
+			case TRANSCODE_QUEUED, TRANSCODE_SENT, PROCESSING -> true;
+			case READY -> StringUtils.hasText(asset.getPlaybackUrl());
+			default -> false;
+		};
 	}
 	
 	@Override

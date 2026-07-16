@@ -61,6 +61,9 @@ public interface PromotionMapper {
 		if (mediaAsset == null) {
 			return null;
 		}
+		if (mediaAsset.getThumbnailUrl() != null && !mediaAsset.getThumbnailUrl().isBlank()) {
+			return mediaAsset.getThumbnailUrl();
+		}
 		if (mediaAsset.getPlaybackUrl() != null && !mediaAsset.getPlaybackUrl().isBlank()) {
 			return mediaAsset.getPlaybackUrl();
 		}

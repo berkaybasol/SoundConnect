@@ -92,6 +92,7 @@ class MailQueueConfigTest {
 		set(cfg, "mailQueueName", "mail.queue");
 		set(cfg, "mailExchangeName", "mail.exchange");
 		set(cfg, "mailRoutingKey", "mail.send");
+		set(cfg, "mailDelayedExchangeName", "mail.delayed");
 		
 		Queue q = cfg.mailQueue(); // name önemli değil; args burada kontrol etmiyoruz
 		CustomExchange delayed = cfg.mailDelayedExchange();

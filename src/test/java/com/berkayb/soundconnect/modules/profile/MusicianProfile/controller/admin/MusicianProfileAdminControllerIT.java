@@ -15,6 +15,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.MusicianProfile.*;
@@ -49,9 +50,11 @@ class MusicianProfileAdminControllerIT {
 		var resp = new MusicianProfileResponseDto(
 				UUID.randomUUID(),     // id
 				uid,                   // userId
+				"musician",           // username
 				"Stage",               // stageName
 				"Bio",                 // bio
 				null,                  // profilePictureMediaId
+				null,                  // profilePictureUrl
 				null,                  // instagramUrl
 				null,                  // youtubeUrl
 				null,                  // soundcloudUrl
@@ -59,9 +62,9 @@ class MusicianProfileAdminControllerIT {
 				null,                  // spotifyArtistId
 				Set.of(),              // instruments
 				Set.of(),              // activeVenues
-				Set.of(),               // bands
-				null,
-				null
+				Set.of(),              // bands
+				List.of(),             // spotifyTrackIds
+				List.of()              // spotifyTracks
 		);
 		
 		Mockito.when(service.getProfileByUserId(uid)).thenReturn(resp);
@@ -95,6 +98,7 @@ class MusicianProfileAdminControllerIT {
 		var resp = new MusicianProfileResponseDto(
 				UUID.randomUUID(), // id
 				uid,               // userId
+				"musician",       // username
 				"New",             // stageName
 				"NewBio",          // bio
 				null,
@@ -103,11 +107,12 @@ class MusicianProfileAdminControllerIT {
 				null,
 				null,
 				null,
-				Set.of(),
-				Set.of(),
-				Set.of(),
 				null,
-				null
+				Set.of(),
+				Set.of(),
+				Set.of(),
+				List.of(),
+				List.of()
 		);
 		
 		Mockito.when(service.updateProfile(eq(uid), any())).thenReturn(resp);

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.user.repository;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @TestPropertySource(properties = {
@@ -35,8 +36,8 @@ import static org.assertj.core.api.Assertions.*;
 		"spring.flyway.enabled=false",
 		"spring.liquibase.enabled=false",
 		// bazı modüllerin beklediği dummy secretlar
-		"SOUNDCONNECT_JWT_SECRETKEY=dummy",
-		"app.jwt.secret=dummy"
+		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
+		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long"
 })
 @Import(UserRepositoryTest.AuditingTestConfig.class) // << mini auditing config
 @Tag("repo")
@@ -131,6 +132,24 @@ class UserRepositoryTest {
 		userRepository.save(newUser(username, "a@test.com"));
 		
 		var duplicate = newUser(username, "b@test.com");
+		assertThatThrownBy(() -> userRepository.saveAndFlush(duplicate))
+				.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void googleProviderSubjectIsQueryableAndUniqueWithinProvider() {
+		String subject = "google-" + UUID.randomUUID();
+		User first = newUser("g_" + UUID.randomUUID(), "google-a@test.com");
+		first.setProvider(AuthProvider.GOOGLE);
+		first.setProviderSubject(subject);
+		userRepository.saveAndFlush(first);
+
+		assertThat(userRepository.findByProviderAndProviderSubject(AuthProvider.GOOGLE, subject))
+				.contains(first);
+
+		User duplicate = newUser("g_" + UUID.randomUUID(), "google-b@test.com");
+		duplicate.setProvider(AuthProvider.GOOGLE);
+		duplicate.setProviderSubject(subject);
 		assertThatThrownBy(() -> userRepository.saveAndFlush(duplicate))
 				.isInstanceOf(DataIntegrityViolationException.class);
 	}

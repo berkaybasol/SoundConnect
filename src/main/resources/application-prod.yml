@@ -1,0 +1,105 @@
+server:
+  forward-headers-strategy: none
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: true
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME}
+    password: ${SPRING_RABBITMQ_PASSWORD}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,redis,rabbit
+
+app:
+  cors:
+    allowed-origin-patterns: ${SOUNDCONNECT_CORS_ALLOWED_ORIGIN_PATTERNS}
+  security:
+    auth-rate-limit:
+      # Leave empty when directly Internet-facing; otherwise list only the
+      # exact private/load-balancer networks that operate the ingress.
+      trusted-proxy-cidrs: ${AUTH_RATE_LIMIT_TRUSTED_PROXY_CIDRS:}
+      forwarded-header: ${AUTH_RATE_LIMIT_FORWARDED_HEADER:FORWARDED}
+  data:
+    init:
+      enabled: false
+      owner:
+        enabled: false
+        minimum-password-length: 16
+  location:
+    seed:
+      enabled: false
+
+mailersend:
+  api-key: ${MAILERSEND_API_KEY}
+  from-email: ${MAILERSEND_SENDER_EMAIL}
+
+cloud:
+  storage:
+    bucket: ${S3_BUCKET}
+    # Must be non-CDN. Apply the checked-in lifecycle only to quarantine/.
+    # verified/ can be a live video source; private-verified/ is protected media.
+    privateBucket: ${S3_PRIVATE_BUCKET}
+    region: ${AWS_REGION}
+    accessKey: ${S3_ACCESS_KEY:}
+    secretKey: ${S3_SECRET_KEY:}
+    cdnBaseUrl: ${S3_CDN_BASE_URL:}
+
+media:
+  image-variants:
+    worker:
+      enabled: false
+  transcode:
+    # Production API nodes must never fork FFmpeg. A separate least-privilege
+    # worker deployment remains a documented release blocker.
+    worker:
+      enabled: false
+  upload-verification:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_ENABLED:true}
+    request-wait-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_REQUEST_WAIT_TIMEOUT:PT4S}
+    verification-lease: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_LEASE:PT4M}
+    attempt-hard-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_ATTEMPT_HARD_TIMEOUT:PT5M}
+    storage-call-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_STORAGE_CALL_TIMEOUT:PT30S}
+  upload-guard:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_GUARD_ENABLED:true}
+    fail-open: ${SOUNDCONNECT_MEDIA_UPLOAD_GUARD_FAIL_OPEN:false}
+  upload-cleanup:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_ENABLED:true}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+    com.berkayb.soundconnect: INFO

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.message.dm.dto.request.DMMessageRequestDto;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageResponseDto;
+import com.berkayb.soundconnect.modules.message.dm.dto.response.DMUnreadCountResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
@@ -81,6 +82,19 @@ public class DMMessageUserController {
 		                                     .message("Message marked as read")
 		                                     .code(200)
 		                                     .data(null)
+		                                     .build());
+	}
+
+	@GetMapping(EndPoints.DM.UNREAD_COUNT)
+	public ResponseEntity<BaseResponse<DMUnreadCountResponseDto>> unreadCount(Principal principal) {
+		UUID currentUserId = currentUserId(principal);
+		DMUnreadCountResponseDto data = new DMUnreadCountResponseDto(
+				messageService.getUnreadCount(currentUserId));
+		return ResponseEntity.ok(BaseResponse.<DMUnreadCountResponseDto>builder()
+		                                     .success(true)
+		                                     .message("Unread DM count retrieved")
+		                                     .code(200)
+		                                     .data(data)
 		                                     .build());
 	}
 	

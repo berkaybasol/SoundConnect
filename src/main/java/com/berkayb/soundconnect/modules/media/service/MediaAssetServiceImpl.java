@@ -1,12 +1,25 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.media.abuse.MediaUploadAbuseGuard;
+import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementCleanupService;
+import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
+import com.berkayb.soundconnect.modules.media.image.ImageThumbnailRequestedEvent;
+import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionRequestedEvent;
+import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionProperties;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
+import com.berkayb.soundconnect.modules.media.storage.MediaMimeType;
+import com.berkayb.soundconnect.modules.media.storage.MediaContentSignatureValidator;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
-import com.berkayb.soundconnect.modules.media.transcode.TranscodePublisher;
+import com.berkayb.soundconnect.modules.media.storage.StorageObjectMetadata;
+import com.berkayb.soundconnect.modules.media.storage.StorageAccessUrl;
+import com.berkayb.soundconnect.modules.media.storage.StorageObjectKeys;
+import com.berkayb.soundconnect.modules.media.storage.PresignedUploadWriteWindow;
+import com.berkayb.soundconnect.modules.media.transcode.MediaTranscodeQueuedEvent;
+import com.berkayb.soundconnect.modules.media.verification.MediaUploadVerificationCoordinator;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
@@ -24,8 +37,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 
 //------------------------------TAKILDIGIN NOKTADA MediaModule.md DOSYASINA BAK!----------------------------------------
@@ -34,6 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.stream.Collectors;
 
 @Service
@@ -47,6 +64,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	public Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds) {
 		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
 		return mediaAssetRepository.findAllById(mediaAssetIds).stream()
+		                           .filter(this::isPubliclyPlayable)
 		                           .collect(Collectors.toMap(MediaAsset::getId, MediaAsset::getPlaybackUrl));
 	}
 	
@@ -57,11 +75,94 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 	
 	@Override
+	@Transactional(readOnly = true)
 	public String getPlaybackUrl(UUID mediaAssetId) {
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
-		
+		if (!isPubliclyPlayable(asset)) {
+			// Do not disclose whether a private or incomplete object exists.
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
 		return asset.getPlaybackUrl();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public String getDisplayUrl(UUID mediaAssetId) {
+		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		if (asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		if ((asset.getKind() == MediaKind.IMAGE || asset.getKind() == MediaKind.VIDEO)
+				&& StringUtils.hasText(asset.getThumbnailUrl())) {
+			return asset.getThumbnailUrl();
+		}
+		if (!StringUtils.hasText(asset.getPlaybackUrl())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		return asset.getPlaybackUrl();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public MediaAsset getPublicReadyById(UUID mediaAssetId) {
+		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		if (!isPubliclyPlayable(asset)) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		return asset;
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public MediaAccessUrlResponseDto createOwnerAccessUrl(UUID actingUserId, UUID mediaAssetId) {
+		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		if (!canActForOwner(actingUserId, asset.getOwnerType(), asset.getOwnerId())) {
+			// Keep protected object identifiers non-enumerable across principals.
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		if (asset.getStatus() != MediaStatus.READY) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getVisibility() == MediaVisibility.PUBLIC
+				|| asset.getKind() == MediaKind.VIDEO
+				|| !StorageObjectKeys.isProtected(asset.getStorageKey())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+		}
+		StorageAccessUrl accessUrl = storageClient.createPresignedGetUrl(asset.getStorageKey());
+		return new MediaAccessUrlResponseDto(asset.getId(), accessUrl.url(), accessUrl.expiresAt());
+	}
+
+	@Override
+	@Transactional
+	public void validateAssignableMedia(
+			UUID actingUserId,
+			UUID mediaAssetId,
+			MediaOwnerType ownerType,
+			UUID ownerId,
+			MediaKind expectedKind
+	) {
+		assertCanActForOwner(actingUserId, ownerType, ownerId);
+		// Reference writers and delete() serialize on the same row lock. When
+		// invoked from a transactional profile service, this lock is retained until
+		// the referencing row/UUID field commits.
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(mediaAssetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		if (asset.getOwnerType() != ownerType
+				|| !ownerId.equals(asset.getOwnerId())
+				|| asset.getKind() != expectedKind
+				|| !isPubliclyPlayable(asset)) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+	}
+
+	private boolean isPubliclyPlayable(MediaAsset asset) {
+		return asset.getStatus() == MediaStatus.READY
+				&& asset.getVisibility() == MediaVisibility.PUBLIC
+				&& StringUtils.hasText(asset.getPlaybackUrl());
 	}
 	
 	private final MediaAssetRepository mediaAssetRepository;
@@ -80,8 +181,14 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	// dosya turu, mimeType, boyut namin kurallarini yoneten policy katmani
 	private final MediaPolicy mediaPolicy;
 	
-	// video icin upload sonrasi transcode/HLS islemleri icin arka plan isi(event, kuyruk vs.)
-	private final TranscodePublisher transcodePublisher;
+	// Published inside the DB transaction and delivered only after commit.
+	private final ApplicationEventPublisher applicationEventPublisher;
+	private final MediaUploadAbuseGuard mediaUploadAbuseGuard;
+	private final MediaUploadVerificationCoordinator mediaUploadVerificationCoordinator;
+	private final MediaAssetReferenceGuard mediaAssetReferenceGuard;
+	private final MediaEngagementCleanupService mediaEngagementCleanupService;
+	private final PresignedUploadWriteWindow presignedUploadWriteWindow;
+	private final MediaDeletionProperties mediaDeletionProperties;
 	
 	/**
 	 * Kullanici medya yukleme istegi gonderdiginde bu metod calsiir.
@@ -97,6 +204,11 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional
 	public UploadInitResultResponseDto initUpload(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes, String originalFileName) {
 		assertCanActForOwner(actingUserId, ownerType, ownerId);
+		if (visibility == null) {
+			throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_INVALID_REQUEST);
+		}
+		assertSupportedVisibility(kind, visibility);
+		mimeType = MediaMimeType.sanitize(mimeType);
 		
 		// yukleme politikalarini dogrula
 		// (mime, boyut, tur kurallarini kontrol et
@@ -122,62 +234,55 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		// DB'ye taslak kaydi ekle
 		// assetId otomatik olarak burada uretilir.
 		draft = mediaAssetRepository.save(draft);
-		
-		// dosya storage key ve url'lerini olustur
-		// dosyanin depolamadiki anahtarini uret (orn: media/uuid-filename.mp4)
-		String sourceKey = mediaPolicy.buildSourceKey(draft.getId(), originalFileName);
-		
-		// S3/R2'den client'in dosya yuklemesi icin presigned PUT URL al
-		String uploadUrl = storageClient.createPresignedPutUrl(sourceKey, mimeType);
-		
-		// dosya yuklendikten sonra erisilebilecek (CDN) public url al
-		String sourceUrl = storageClient.publicUrl(sourceKey);
-		
-		// taslak kaydi guncelle (storageKey ve sourceUrl'i set et)
-		draft.setStorageKey(sourceKey);
-		draft.setSourceUrl(sourceUrl);
-		mediaAssetRepository.save(draft);
-		
-		log.info("[media] initUpload assetId={} ownerType={} ownerId={} kind={} size={} mime={}",
-		         draft.getId(), ownerType, ownerId, kind, sizeBytes, mimeType);
-		
-		// Client'a assetId ve uploadUrl'i gonder
-		return UploadInitResultResponseDto.builder()
-				.assetId(draft.getId())
-				.uploadUrl(uploadUrl)
-				.build();
+		mediaUploadAbuseGuard.reserve(actingUserId, draft.getId(), sizeBytes);
+		mediaUploadAbuseGuard.releaseAfterRollback(draft.getId());
+		try {
+			String sourceKey = mediaPolicy.buildSourceKey(draft.getId(), mimeType);
+			if (visibility == MediaVisibility.PUBLIC) {
+				sourceKey = StorageObjectKeys.quarantineKey(sourceKey);
+			} else {
+				sourceKey = StorageObjectKeys.protectedKey(sourceKey);
+			}
+
+			String uploadUrl = storageClient.createPresignedPutUrl(sourceKey, mimeType, sizeBytes);
+
+			draft.setStorageKey(sourceKey);
+			// Captured after signing, making the per-row deadline conservative even
+			// if signing itself took measurable time or a later deploy changes TTL.
+			draft.setUploadWriteAuthorityExpiresAt(
+					presignedUploadWriteWindow.deadlineForNewSignature());
+			// Untrusted bytes never receive a stable public URL. PUBLIC image/audio
+			// are promoted only after metadata + signature validation; VIDEO source
+			// remains private and only its generated HLS tree is public.
+			draft.setSourceUrl(null);
+			mediaAssetRepository.save(draft);
+
+			log.info("[media] initUpload assetId={} ownerType={} ownerId={} kind={} size={} mime={}",
+					draft.getId(), ownerType, ownerId, kind, sizeBytes, mimeType);
+			return UploadInitResultResponseDto.builder()
+					.assetId(draft.getId())
+					.uploadUrl(uploadUrl)
+					.build();
+		} catch (RuntimeException exception) {
+			// No signed URL escaped this transaction, so release the phantom slot.
+			mediaUploadAbuseGuard.release(draft.getId());
+			throw exception;
+		}
 	}
 	
 	
 	@Override
-	@Transactional
 	public MediaAsset completeUpload(UUID actingUserId, UUID assetId) {
-		// Asseti db'den bul yoksa hata firlat
+		// Authorization happens before the durable claim. The coordinator repeats
+		// the immutable owner identity check under its short row-lock transaction.
 		MediaAsset asset = mediaAssetRepository.findById(assetId)
-		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		assertCanActForOwner(actingUserId, asset.getOwnerType(), asset.getOwnerId());
-		
-		// eger asset turu video ise status processinge cek(yuklemenin bittigi, islenmenin oldugu surec)
-		if (asset.getKind() == MediaKind.VIDEO) {
-			asset.setStatus(MediaStatus.PROCESSING);
-			mediaAssetRepository.save(asset);
-			
-			// - HLS transcode islemi icin kuyruga job ekle (async yapilcak)
-			String hlsPrefix = mediaPolicy.buildHlsPrefix(asset.getId());
-			transcodePublisher.publishVideoHls(asset.getId(), asset.getStorageKey(), hlsPrefix);
-			log.info("[media] completeUpload VIDEO queued for HLS assetId={}", assetId);
-		} else {
-			// gorsel ve audio'da statusu direkt ready yap
-			asset.setStatus(MediaStatus.READY);
-			asset.setPlaybackUrl(asset.getSourceUrl()); // proressive
-			mediaAssetRepository.save(asset);
-			
-			log.info("[media] completeUpload READY assetId={} kind={}", assetId, asset.getKind());
-		}
-		return asset;
-		
+		assertSupportedVisibility(asset.getKind(), asset.getVisibility());
+		return mediaUploadVerificationCoordinator.complete(
+				assetId, asset.getOwnerType(), asset.getOwnerId());
 	}
-	
+
 	// belirli bir owner'a ait tum assetleri her statu ve gorunlurlukte sayfali olarak dondurur.
 	@Override
 	@Transactional (readOnly = true)
@@ -215,31 +320,66 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional
 	public void delete(UUID assetId, UUID actingUserId, MediaOwnerType actingAsType, UUID actingAsId) {
-	MediaAsset asset = mediaAssetRepository.findById(assetId)
-			.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
-	assertCanActForOwner(actingUserId, actingAsType, actingAsId);
-	
-	boolean ownerMatch = asset.getOwnerType() == actingAsType && asset.getOwnerId().equals(actingAsId);
-	
-	if (!ownerMatch) {
-		log.warn("[media] delete denied assetId={} actingAsType={} actingAsId={}", assetId, actingAsType, actingAsId);
-		throw new SoundConnectException(ErrorType.MEDIA_ASSET_DELETE_FORBIDDEN);
-	}
-	try {
-		storageClient.deleteObject(asset.getStorageKey());
-		if (asset.getKind() == MediaKind.VIDEO) {
-			storageClient.deleteFolder(mediaPolicy.buildHlsPrefix(asset.getId()));
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(assetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		assertCanActForOwner(actingUserId, actingAsType, actingAsId);
+
+		boolean ownerMatch = asset.getOwnerType() == actingAsType && asset.getOwnerId().equals(actingAsId);
+
+		if (!ownerMatch) {
+			log.warn("[media] delete denied assetId={} actingAsType={} actingAsId={}", assetId, actingAsType, actingAsId);
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_DELETE_FORBIDDEN);
 		}
-	} catch (Exception e) {
-		log.error("[media] storage delete failed assetId={} err={}", assetId, e.getMessage());
+		// Do not remove bytes that are still part of first-party content. The check
+		// runs while the asset row is locked and before the durable deletion intent is
+		// published, so a rejected request has no storage or state side effects.
+		mediaAssetReferenceGuard.assertNotReferenced(assetId);
+		// Likes and comments belong to the target and are removed atomically. They
+		// must never let another user veto the owner's deletion request.
+		mediaEngagementCleanupService.purgeForMedia(assetId);
+		// The row is the durable deletion intent. Object storage is intentionally
+		// untouched until this transaction commits, so a rollback cannot resurrect a
+		// database row whose bytes have already been removed.
+		LocalDateTime deletionRequestedAt = LocalDateTime.now(ZoneOffset.UTC);
+		asset.setStatus(MediaStatus.DELETION_PENDING);
+		asset.setDeletionRequestedAt(deletionRequestedAt);
+		asset.setPhysicalDeletionNotBefore(
+				physicalDeletionNotBefore(asset, deletionRequestedAt));
+		mediaAssetRepository.save(asset);
+		applicationEventPublisher.publishEvent(new MediaDeletionRequestedEvent(assetId));
+		mediaUploadAbuseGuard.releaseAfterCommit(assetId);
+		log.info("[media] deletion requested assetId={} by actingAsType={} actingAsId={}",
+				assetId, actingAsType, actingAsId);
 	}
-	mediaAssetRepository.deleteById(assetId);
-		log.info("[media] deleted assetId={} by actingAsType={} actingAsId={}", assetId, actingAsType, actingAsId);
+
+	private LocalDateTime physicalDeletionNotBefore(
+			MediaAsset asset,
+			LocalDateTime deletionRequestedAt
+	) {
+		if (asset.getKind() == MediaKind.VIDEO) {
+			return deletionRequestedAt.plus(
+					mediaDeletionProperties.getPublicVideoProducerGrace());
+		}
+		if (asset.getKind() == MediaKind.IMAGE
+				&& asset.getVisibility() == MediaVisibility.PUBLIC) {
+			return deletionRequestedAt.plus(
+					mediaDeletionProperties.getPublicImageProducerGrace());
+		}
+		return deletionRequestedAt;
 	}
 	
 	@Override
 	public boolean exists(UUID mediaAssetId) {
 		return mediaAssetRepository.existsById(mediaAssetId);
+	}
+
+	private void assertSupportedVisibility(MediaKind kind, MediaVisibility visibility) {
+		// Private HLS requires signed manifests and every referenced segment. Until
+		// that distribution contract exists, accepting it would create public leaks
+		// or broken playback, so it is deliberately fail-closed.
+		if (kind == MediaKind.VIDEO && visibility != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_INVALID_REQUEST);
+		}
 	}
 
 	private void assertCanActForOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId) {

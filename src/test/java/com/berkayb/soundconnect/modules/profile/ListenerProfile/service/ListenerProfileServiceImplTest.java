@@ -1,5 +1,9 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.service;
 
+import com.berkayb.soundconnect.modules.follow.service.FollowService;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
@@ -32,6 +36,8 @@ class ListenerProfileServiceImplTest {
 	@Mock ListenerProfileRepository repo;
 	@Mock UserEntityFinder userFinder;
 	@Mock ListenerProfileMapper mapper;
+	@Mock MediaAssetService mediaAssetService;
+	@Mock FollowService followService;
 	
 	@InjectMocks ListenerProfileServiceImpl service;
 	
@@ -62,13 +68,19 @@ class ListenerProfileServiceImplTest {
 		when(repo.save(any(ListenerProfile.class))).thenReturn(saved);
 		
 		ListenerProfileResponseDto resp =
-				new ListenerProfileResponseDto(saved.getId(), "hello", ppId, userId);
+				new ListenerProfileResponseDto(
+						saved.getId(), userId, "x", "hello", ppId,
+						"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(mapper.toDto(saved)).thenReturn(resp);
+		when(mediaAssetService.getDisplayUrl(ppId)).thenReturn("https://cdn.example.com/profile.jpg");
 		
 		ListenerProfileResponseDto out = service.createProfile(userId, dto);
 		
 		assertThat(out).isEqualTo(resp);
+		verify(mediaAssetService).validateAssignableMedia(
+				userId, ppId, MediaOwnerType.USER, userId, MediaKind.IMAGE
+		);
 		
 		ArgumentCaptor<ListenerProfile> cap = ArgumentCaptor.forClass(ListenerProfile.class);
 		verify(repo).save(cap.capture());
@@ -125,13 +137,19 @@ class ListenerProfileServiceImplTest {
 		when(repo.save(any(ListenerProfile.class))).thenReturn(updated);
 		
 		ListenerProfileResponseDto resp =
-				new ListenerProfileResponseDto(updated.getId(), "new-bio", newPp, userId);
+				new ListenerProfileResponseDto(
+						updated.getId(), userId, "x", "new-bio", newPp,
+						"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(mapper.toDto(updated)).thenReturn(resp);
+		when(mediaAssetService.getDisplayUrl(newPp)).thenReturn("https://cdn.example.com/profile.jpg");
 		
 		ListenerProfileResponseDto out = service.updateProfile(userId, dto);
 		
 		assertThat(out).isEqualTo(resp);
+		verify(mediaAssetService).validateAssignableMedia(
+				userId, newPp, MediaOwnerType.LISTENER_PROFILE, existing.getId(), MediaKind.IMAGE
+		);
 		verify(repo).save(any(ListenerProfile.class));
 	}
 }

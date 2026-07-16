@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.shared.media.service;
 
 import com.berkayb.soundconnect.modules.media.mapper.MediaAssetMapper;
+import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.shared.media.dto.response.ProfileMediaUiResponseDto;
 import com.berkayb.soundconnect.modules.profile.shared.media.entity.ProfileMedia;
@@ -38,11 +39,9 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 				ProfileMediaRole.FEATURED_VIDEO
 		);
 		
-		var featuredDto = featured == null
+		MediaResponseDto featuredDto = featured == null
 				? null
-				: mediaAssetMapper.toDto(
-				mediaAssetService.getById(featured.getMediaAssetId())
-		);
+				: toPublicDtoOrNull(featured.getMediaAssetId());
 		
 		// gallery videos
 		List<ProfileMedia> gallery = profileMediaService.getMediaList(
@@ -51,8 +50,9 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 				ProfileMediaRole.GALLERY
 		);
 		
-		var videos = gallery.stream()
-				.map(pm -> mediaAssetMapper.toDto(mediaAssetService.getById(pm.getMediaAssetId())))
+		List<MediaResponseDto> videos = gallery.stream()
+				.map(pm -> toPublicDtoOrNull(pm.getMediaAssetId()))
+				.filter(java.util.Objects::nonNull)
 				.toList();
 		
 		// audios (Track) //FIXME SESLER KISMI EKLEMEK ISTEDIGIN PROFILLERE BURDAN EKLEME YAP
@@ -69,5 +69,14 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 		log.info("[ProfileMediaUI] loaded profileType={} profileId={}", profileType, profileId);
 		
 		return new ProfileMediaUiResponseDto(featuredDto, videos, audios);
+	}
+
+	private MediaResponseDto toPublicDtoOrNull(UUID mediaAssetId) {
+		try {
+			return mediaAssetMapper.toDto(mediaAssetService.getPublicReadyById(mediaAssetId));
+		} catch (RuntimeException exception) {
+			log.warn("[ProfileMediaUI] unavailable public media omitted mediaAssetId={}", mediaAssetId);
+			return null;
+		}
 	}
 }

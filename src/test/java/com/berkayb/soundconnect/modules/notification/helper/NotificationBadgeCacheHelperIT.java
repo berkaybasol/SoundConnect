@@ -16,7 +16,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @DataRedisTest
 @Import(NotificationBadgeCacheHelper.class)
 class NotificationBadgeCacheHelperIT {
@@ -70,14 +70,15 @@ class NotificationBadgeCacheHelperIT {
 	}
 	
 	@Test
-	@DisplayName("decrementUnreadSafely: cache yoksa freshUnread kullan, negatif olmasın")
+	@DisplayName("decrementUnreadSafely: cache yoksa mutasyon sonrası freshUnread değerini kullanır")
 	void decrement_when_cache_absent_uses_fresh() {
 		// başlangıçta cache yok
 		helper.decrementUnreadSafely(userId, /*n=*/5, /*freshUnread=*/3);
 		
 		Long cached = helper.getCacheUnread(userId);
-		// 3 - 5 -> 0'a sabitlenmeli
-		assertThat(cached).isEqualTo(0L);
+		// freshUnread, veritabanındaki mutasyon sonrası güncel değerdir; tekrar
+		// azaltmak aynı bildirimi iki kez düşürürdü.
+		assertThat(cached).isEqualTo(3L);
 	}
 	
 	@Test

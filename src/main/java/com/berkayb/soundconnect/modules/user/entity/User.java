@@ -12,8 +12,12 @@ import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -27,9 +31,14 @@ import java.util.Set;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
 @Entity
-@Table(name = "tbl_user")
+@Table(
+		name = "tbl_user",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_user_provider_subject",
+				columnNames = {"provider", "provider_subject"}
+		)
+)
 public class User extends BaseEntity {
 	
 	@Column(name = "user_name", unique = true, nullable = false)
@@ -37,8 +46,12 @@ public class User extends BaseEntity {
 	
 	
 	@Column(nullable = false)
+	@JsonIgnore
 	private String password;
 	
+	@NotBlank
+	@Email
+	@Size(max = 254)
 	@Column(unique = true, nullable = false)
 	private String email;
 	
@@ -64,6 +77,16 @@ public class User extends BaseEntity {
 	@Column(name = "provider", nullable = false)
 	@Builder.Default
 	private AuthProvider provider = AuthProvider.LOCAL; // kullanicini kayit tipi local veya google default local baslatiyoruz
+
+	/**
+	 * Stable identity asserted by the external provider (OIDC {@code sub}). It is
+	 * deliberately separate from email because email addresses can change or be
+	 * reassigned. Local accounts keep this field null.
+	 */
+	@Size(max = 255)
+	@Column(name = "provider_subject", length = 255)
+	@JsonIgnore
+	private String providerSubject;
 	
 	@Builder.Default
 	@Column(name = "email_verified", nullable = false)
@@ -113,6 +136,14 @@ public class User extends BaseEntity {
 	private StudioProfile studioProfile;
 	
 	private String profilePicture;
+
+	@PrePersist
+	@PreUpdate
+	private void canonicalizeIdentity() {
+		if (email != null) {
+			email = EmailUtils.normalize(email);
+		}
+	}
 	
 	// BASE ENTITYDEN ALIYOR ZATEN
 	// private LocalDateTime createdAt;

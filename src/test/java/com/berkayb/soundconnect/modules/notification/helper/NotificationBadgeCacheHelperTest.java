@@ -109,10 +109,10 @@ class NotificationBadgeCacheHelperTest {
 			
 			helper.decrementUnreadSafely(userId, 2, /*freshUnread*/ 1);
 			
-			// 1-2 => 0'a clamp
+			// freshUnread, mutasyondan sonra DB'de kalan güncel sayıdır.
 			verify(valueOps).set(
 					eq("unread_count:" + userId),
-					eq("0"),
+					eq("1"),
 					eq(NotificationBadgeCacheHelper.getUnreadCountTtl())
 			);
 		}

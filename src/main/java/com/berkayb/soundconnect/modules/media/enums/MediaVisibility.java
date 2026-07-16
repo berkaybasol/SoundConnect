@@ -7,7 +7,8 @@ package com.berkayb.soundconnect.modules.media.enums;
  */
 public enum MediaVisibility {
 	PUBLIC,
-	UNLISTED, // aramalarda cikmaz yalnizca link yoluyla erisim.
+	// Not publicly listable. Until revocable share tokens exist, access is owner-only.
+	UNLISTED,
 	PRIVATE;
 	
 	

@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = {
 		NotificationRabbitConfig.class,                  // exchange/queue/binding
 		NotificationEventListener.class,                 // dinleyen sınıf
@@ -51,8 +51,8 @@ import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFOR
 		"app.messaging.notification.dlxExchange=notification.dlx",
 		"app.messaging.notification.dlq=notification.queue.dlq",
 		"spring.rabbitmq.listener.simple.default-requeue-rejected=false",
-		"SOUNDCONNECT_JWT_SECRETKEY=dummy",
-		"app.jwt.secret=dummy"
+		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
+		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long"
 })
 @org.springframework.test.annotation.DirtiesContext(classMode = BEFORE_EACH_TEST_METHOD)
 class NotificationEventListenerRabbitIT {

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.media.service;
 
 
+import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
@@ -54,8 +55,31 @@ public interface MediaAssetService {
 	boolean exists(UUID mediaAssetId);
 	
 	String getPlaybackUrl(UUID mediaAssetId);
+
+	/**
+	 * Returns the lightweight visual representation for a public READY asset.
+	 * Images and videos prefer their thumbnail; progressive/HLS playback is the
+	 * compatibility fallback.
+	 */
+	String getDisplayUrl(UUID mediaAssetId);
 	
 	MediaAsset getById(UUID mediaAssetId);
+
+	MediaAsset getPublicReadyById(UUID mediaAssetId);
+
+	/**
+	 * Returns a short-lived origin URL for a READY PRIVATE/UNLISTED progressive
+	 * asset after verifying that the principal can act for its owner.
+	 */
+	MediaAccessUrlResponseDto createOwnerAccessUrl(UUID actingUserId, UUID mediaAssetId);
+
+	void validateAssignableMedia(
+			UUID actingUserId,
+			UUID mediaAssetId,
+			MediaOwnerType ownerType,
+			UUID ownerId,
+			MediaKind expectedKind
+	);
 	
 	Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds);
 }

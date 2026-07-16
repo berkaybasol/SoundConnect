@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
 
 @RestController
@@ -26,28 +28,35 @@ public class AuthControllerImpl implements AuthController {
 	
 	@PostMapping(VERIFY_CODE)
 	@Override
-	public BaseResponse<Void> verifyEmail(@RequestBody @Valid VerifyCodeRequestDto dto) {
-		return authService.verifyCode(dto);
+	public ResponseEntity<BaseResponse<Void>> verifyEmail(@RequestBody @Valid VerifyCodeRequestDto dto) {
+		return ResponseEntity.ok(authService.verifyCode(dto));
 	}
 	
 	
 	@Override
 	@PostMapping(REGISTER)
-	public BaseResponse<RegisterResponseDto> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
-		return authService.register(registerRequestDto);
+	public ResponseEntity<BaseResponse<RegisterResponseDto>> register(@RequestBody @Valid RegisterRequestDto registerRequestDto) {
+		return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(registerRequestDto));
 	}
 	
 	
 	@Override
 	@PostMapping(LOGIN)
-	public BaseResponse<LoginResponse> login(@RequestBody @Valid LoginRequestDto loginRequestDto) {
-		return authService.login(loginRequestDto);
+	public ResponseEntity<BaseResponse<LoginResponse>> login(@RequestBody @Valid LoginRequestDto loginRequestDto) {
+		return ResponseEntity.ok(authService.login(loginRequestDto));
 	}
 	
 	
 	@Override
 	@PostMapping(RESEND_CODE)
-	public BaseResponse<ResendCodeResponseDto> resendCode(@RequestBody @Valid ResendCodeRequestDto dto) {
-		return authService.resendCode(dto);
+	public ResponseEntity<BaseResponse<ResendCodeResponseDto>> resendCode(@RequestBody @Valid ResendCodeRequestDto dto) {
+		BaseResponse<ResendCodeResponseDto> response = authService.resendCode(dto);
+		if (response.getCode() == HttpStatus.TOO_MANY_REQUESTS.value()) {
+			long retryAfter = response.getData() == null ? 1 : Math.max(1, response.getData().cooldownSeconds());
+			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+					.header("Retry-After", Long.toString(retryAfter))
+					.body(response);
+		}
+		return ResponseEntity.ok(response);
 	}
 }

@@ -1,0 +1,227 @@
+name: soundconnect-local
+
+services:
+  backend:
+    image: soundconnect-backend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    env_file:
+      - .env.local
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: 8080
+      SOUNDCONNECT_POSTGRES_URL: jdbc:postgresql://postgres:5432/${SOUNDCONNECT_POSTGRES_DB:-soundconnect}
+      SOUNDCONNECT_POSTGRES_USERNAME: ${SOUNDCONNECT_POSTGRES_USERNAME:-soundconnect}
+      SOUNDCONNECT_POSTGRES_PASSWORD: ${SOUNDCONNECT_POSTGRES_PASSWORD:?SOUNDCONNECT_POSTGRES_PASSWORD must be set in .env.local}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${SPRING_RABBITMQ_USERNAME:-soundconnect}
+      SPRING_RABBITMQ_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?SPRING_RABBITMQ_PASSWORD must be set in .env.local}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # Keep application admission aligned with the hard /tmp tmpfs quota below.
+      SOUNDCONNECT_TRANSCODE_TEMP_VOLUME_BYTES: 6442450944
+      SOUNDCONNECT_TRANSCODE_GLOBAL_TEMP_BUDGET_BYTES: 6442450944
+      # Compose runs native decoding in the isolated worker below. IntelliJ's
+      # normal local profile is unchanged and can still run both capabilities.
+      SOUNDCONNECT_MEDIA_TRANSCODE_WORKER_ENABLED: "false"
+      SOUNDCONNECT_MEDIA_IMAGE_VARIANT_WORKER_ENABLED: "false"
+      SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_ENABLED: "true"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=6442450944,mode=1777
+    cpus: 4.0
+    mem_limit: 8g
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${SOUNDCONNECT_BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - soundconnect
+
+  media-worker-db-role:
+    image: postgres:16.4-alpine
+    env_file:
+      - .env.worker-db.local
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${SOUNDCONNECT_POSTGRES_DB:-soundconnect}
+      POSTGRES_ADMIN_USER: ${SOUNDCONNECT_POSTGRES_USERNAME:-soundconnect}
+      POSTGRES_ADMIN_PASSWORD: ${SOUNDCONNECT_POSTGRES_PASSWORD:?SOUNDCONNECT_POSTGRES_PASSWORD must be set in .env.local}
+    volumes:
+      - ./docker/postgres/configure-media-worker-role.sh:/opt/soundconnect/configure-media-worker-role.sh:ro
+    entrypoint: ["/bin/sh", "/opt/soundconnect/configure-media-worker-role.sh"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - soundconnect
+
+  media-worker-rabbit-role:
+    image: curlimages/curl:8.10.1
+    env_file:
+      - .env.worker-rabbit.local
+    environment:
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+      RABBITMQ_ADMIN_USER: ${SPRING_RABBITMQ_USERNAME:-soundconnect}
+      RABBITMQ_ADMIN_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?SPRING_RABBITMQ_PASSWORD must be set in .env.local}
+    volumes:
+      - ./docker/rabbitmq/configure-media-worker-user.sh:/opt/soundconnect/configure-media-worker-user.sh:ro
+    entrypoint: ["/bin/sh", "/opt/soundconnect/configure-media-worker-user.sh"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - soundconnect
+
+  media-worker:
+    image: soundconnect-media-worker:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: media-worker
+    env_file:
+      - .env.worker-db.local
+      - .env.worker-rabbit.local
+    environment:
+      SPRING_PROFILES_ACTIVE: media-worker
+      SOUNDCONNECT_RUNTIME_ROLE: media-worker
+      SOUNDCONNECT_MEDIA_WORKER_POSTGRES_URL: jdbc:postgresql://postgres:5432/${SOUNDCONNECT_POSTGRES_DB:-soundconnect}
+      SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_HOST: rabbitmq
+      SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_PORT: 5672
+      SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_VIRTUAL_HOST: /
+      # Plaintext is permitted only inside this private local Docker network.
+      # Production deployment configuration must inject worker-only TLS trust.
+      SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_ENABLED: "false"
+      SOUNDCONNECT_MEDIA_WORKER_S3_PUBLIC_BUCKET: ${S3_BUCKET:-soundconnect-media}
+      SOUNDCONNECT_MEDIA_WORKER_S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:-soundconnect-private-media}
+      SOUNDCONNECT_MEDIA_WORKER_AWS_REGION: ${AWS_REGION:-eu-central-1}
+      # These worker-namespaced values are the only static AWS credentials in
+      # the container. Prefer an IAM task role and leave both empty in prod.
+      SOUNDCONNECT_MEDIA_WORKER_S3_ACCESS_KEY: ${SOUNDCONNECT_MEDIA_WORKER_S3_ACCESS_KEY:-${S3_ACCESS_KEY:-}}
+      SOUNDCONNECT_MEDIA_WORKER_S3_SECRET_KEY: ${SOUNDCONNECT_MEDIA_WORKER_S3_SECRET_KEY:-${S3_SECRET_KEY:-}}
+      # Local Compose falls back to the same existing CloudFront distribution
+      # as application.yml. Production must inject its own reviewed OAC URL.
+      SOUNDCONNECT_MEDIA_WORKER_CDN_BASE_URL: ${S3_CDN_BASE_URL:-https://du3pguch18ell.cloudfront.net}
+      SOUNDCONNECT_MEDIA_WORKER_S3_ACL_PUBLIC_READ_ON_PUT: "false"
+      SOUNDCONNECT_MEDIA_WORKER_S3_ENDPOINT: ${S3_ENDPOINT:-}
+      SOUNDCONNECT_MEDIA_WORKER_S3_PATH_STYLE_ACCESS: ${S3_PATH_STYLE_ACCESS:-false}
+      SOUNDCONNECT_MEDIA_TRANSCODE_WORKER_ENABLED: "true"
+      SOUNDCONNECT_MEDIA_IMAGE_VARIANT_WORKER_ENABLED: "true"
+      SOUNDCONNECT_MEDIA_THUMBNAIL_BACKFILL_ENABLED: "true"
+      SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_ENABLED: "false"
+      SOUNDCONNECT_MEDIA_TRANSCODE_WORKER_THREADS: 1
+      SOUNDCONNECT_MEDIA_LISTENER_CONCURRENCY: 1
+      SOUNDCONNECT_MEDIA_WORKER_HEALTH_MAX_AGE_SECONDS: 60
+      SOUNDCONNECT_TRANSCODE_TEMP_VOLUME_BYTES: 6442450944
+      SOUNDCONNECT_TRANSCODE_GLOBAL_TEMP_BUDGET_BYTES: 6442450944
+      SOUNDCONNECT_TRANSCODE_MAX_TEMP_WORK_BYTES: 6442450944
+      FFMPEG_BINARY: ffmpeg
+      FFPROBE_BINARY: ffprobe
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=6442450944,mode=1777
+    cpus: 4.0
+    mem_limit: 8g
+    pids_limit: 256
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      media-worker-db-role:
+        condition: service_completed_successfully
+      media-worker-rabbit-role:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+    networks:
+      - soundconnect
+
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: ${SOUNDCONNECT_POSTGRES_DB:-soundconnect}
+      POSTGRES_USER: ${SOUNDCONNECT_POSTGRES_USERNAME:-soundconnect}
+      POSTGRES_PASSWORD: ${SOUNDCONNECT_POSTGRES_PASSWORD:?SOUNDCONNECT_POSTGRES_PASSWORD must be set in .env.local}
+    ports:
+      - "127.0.0.1:${SOUNDCONNECT_POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - soundconnect
+
+  rabbitmq:
+    image: soundconnect-rabbitmq:3.13.7
+    build:
+      context: docker/rabbitmq
+      dockerfile: Dockerfile
+    environment:
+      RABBITMQ_DEFAULT_USER: ${SPRING_RABBITMQ_USERNAME:-soundconnect}
+      RABBITMQ_DEFAULT_PASS: ${SPRING_RABBITMQ_PASSWORD:?SPRING_RABBITMQ_PASSWORD must be set in .env.local}
+    ports:
+      - "127.0.0.1:${SOUNDCONNECT_RABBITMQ_HOST_PORT:-5673}:5672"
+      - "127.0.0.1:${SOUNDCONNECT_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - soundconnect
+
+  redis:
+    image: redis:7.2.5-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${SOUNDCONNECT_REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - soundconnect
+
+networks:
+  soundconnect:
+    name: soundconnect-local
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:

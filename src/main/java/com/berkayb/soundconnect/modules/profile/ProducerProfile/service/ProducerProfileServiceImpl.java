@@ -1,5 +1,8 @@
 package com.berkayb.soundconnect.modules.profile.ProducerProfile.service;
 
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.request.ProducerProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.response.ProducerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
@@ -12,6 +15,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -22,9 +26,11 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 	private final ProducerProfileRepository producerProfileRepository;
 	private final UserEntityFinder userEntityFinder;
 	private final ProducerProfileMapper producerProfileMapper;
+	private final MediaAssetService mediaAssetService;
 	
 	
 	@Override
+	@Transactional
 	public ProducerProfileResponseDto createProfile(UUID userId, ProducerProfileSaveRequestDto dto) {
 		// kullaniciyi getir
 		User user = userEntityFinder.getUser(userId);
@@ -33,6 +39,11 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 		if (producerProfileRepository.findByUserId(user.getId()).isPresent()) {
 			log.warn("kullanici zaten bu profile sahip: {}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
+		}
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.USER, userId, MediaKind.IMAGE
+			);
 		}
 		
 		// profil olustur
@@ -72,6 +83,7 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 	
 	
 	@Override
+	@Transactional
 	public ProducerProfileResponseDto updateProfile(UUID userId, ProducerProfileSaveRequestDto dto) {
 		User user = userEntityFinder.getUser(userId);
 		
@@ -83,7 +95,13 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 		
 		// guncelle
 		if (dto.name() != null) profile.setName(dto.name());
-		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.PRODUCER_PROFILE,
+					profile.getId(), MediaKind.IMAGE
+			);
+			profile.setProfilePictureMediaId(dto.profilePicture());
+		}
 		if (dto.address() != null) profile.setAddress(dto.address());
 		if (dto.phone() != null) profile.setPhone(dto.phone());
 		if (dto.website() != null) profile.setWebsite(dto.website());

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.message.dm.repository;
 
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
+import com.berkayb.soundconnect.modules.message.dm.model.DmParticipantPair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -25,8 +27,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DMConversationRepositoryIT.JpaAuditConfig.class)
@@ -120,6 +123,22 @@ class DMConversationRepositoryIT {
 		assertThat(ordered).hasSize(2);
 		assertThat(ordered.get(0).getId()).isEqualTo(c13.getId());
 		assertThat(ordered.get(1).getId()).isEqualTo(c12.getId());
+	}
+
+	@Test
+	@DisplayName("participant pair is canonical and reverse duplicates violate the DB invariant")
+	void canonicalPair_isUniqueAtDatabaseLevel() {
+		DmParticipantPair expectedPair = DmParticipantPair.of(u1, u2);
+		assertThat(c12.getUserAId()).isEqualTo(expectedPair.userAId());
+		assertThat(c12.getUserBId()).isEqualTo(expectedPair.userBId());
+
+		DMConversation reverseDuplicate = DMConversation.builder()
+				.userAId(u2)
+				.userBId(u1)
+				.build();
+
+		assertThatThrownBy(() -> conversationRepository.saveAndFlush(reverseDuplicate))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 	
 	// --- JPA auditing'i test context'te açıyoruz ---

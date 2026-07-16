@@ -1,13 +1,41 @@
 server:
-  port: 8080
-  address: 0.0.0.0  # telefon erişimi için
+  port: ${SERVER_PORT:8080}
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  # Keep the transport peer intact. Forwarding headers are parsed only by the
+  # auth limiter and only for explicitly trusted proxy CIDRs.
+  forward-headers-strategy: none
+  shutdown: graceful
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
 
 spring:
+  config:
+    # Lets IntelliJ/Gradle load ignored local secrets without storing them in a run configuration.
+    # The file is absent from container images; Compose injects the same values as environment variables.
+    import: optional:file:.env.local[.properties]
+  profiles:
+    default: local
+  lifecycle:
+    timeout-per-shutdown-phase: ${SPRING_SHUTDOWN_TIMEOUT:30s}
+  jackson:
+    time-zone: UTC
   datasource:
-    url: ${SOUNDCONNECT_POSTGRE_URL}
-    username: ${SOUNDCONNECT_POSTGRE_USERNAME}
-    password: ${SOUNDCONNECT_POSTGRE_PASSWORD}
+    url: ${SOUNDCONNECT_POSTGRES_URL:${SOUNDCONNECT_POSTGRE_URL:${SPRING_DATASOURCE_URL}}}
+    username: ${SOUNDCONNECT_POSTGRES_USERNAME:${SOUNDCONNECT_POSTGRE_USERNAME:${SPRING_DATASOURCE_USERNAME}}}
+    password: ${SOUNDCONNECT_POSTGRES_PASSWORD:${SOUNDCONNECT_POSTGRE_PASSWORD:${SPRING_DATASOURCE_PASSWORD}}}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # Use application-namespaced environment variables. Supplying
+      # SPRING_DATASOURCE_HIKARI_* directly would also participate in relaxed
+      # binding and can attempt to reconfigure an already-started pool.
+      maximum-pool-size: ${SOUNDCONNECT_POSTGRES_POOL_MAX_SIZE:10}
+      minimum-idle: ${SOUNDCONNECT_POSTGRES_POOL_MIN_IDLE:2}
+      connection-timeout: ${SOUNDCONNECT_POSTGRES_POOL_CONNECTION_TIMEOUT_MS:30000}
+      # JPQL bulk updates use database CURRENT_TIMESTAMP; force the same UTC
+      # wall clock as JPA auditing and application lifecycle cutoffs.
+      connection-init-sql: "SET TIME ZONE 'UTC'"
 
   jpa:
     hibernate:
@@ -17,16 +45,21 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc.time_zone: UTC
         type:
           descriptor:
             sql: trace
+    # Transitional compatibility: disable only after the service/fetch-plan audit
+    # (including Studio) is completed with database-backed endpoint tests.
+    open-in-view: true
 
   rabbitmq:
-    host: localhost
-    port: 5673            # LOCAL: delayed plugin'li container (rabbit-delayed) -> 5673
-    username: guest
-    password: guest
-    virtual-host: /
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5673}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    virtual-host: ${SPRING_RABBITMQ_VIRTUAL_HOST:/}
+    connection-timeout: ${SPRING_RABBITMQ_CONNECTION_TIMEOUT:10s}
     publisher-confirm-type: correlated
     publisher-returns: true
     template:
@@ -50,32 +83,82 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      username: ${SPRING_DATA_REDIS_USERNAME:}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: ${SPRING_DATA_REDIS_TIMEOUT:2s}
+      ssl:
+        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false}
     rest:
       default-media-type:
   hateoas:
     use-hal-as-default-json-media-type:
 
 springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
   swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
     path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
 
 app:
   jwt:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
     issuer: ${SOUNDCONNECT_JWT_ISSUER}
+  cors:
+    allowed-origin-patterns: "${SOUNDCONNECT_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}"
+  security:
+    auth-rate-limit:
+      enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
+      key-prefix: ${AUTH_RATE_LIMIT_KEY_PREFIX:soundconnect:auth-rate-limit}
+      trusted-proxy-cidrs: ${AUTH_RATE_LIMIT_TRUSTED_PROXY_CIDRS:}
+      forwarded-header: ${AUTH_RATE_LIMIT_FORWARDED_HEADER:FORWARDED}
+      login:
+        limit: ${AUTH_RATE_LIMIT_LOGIN_LIMIT:10}
+        window: ${AUTH_RATE_LIMIT_LOGIN_WINDOW:1m}
+      google-login:
+        limit: ${AUTH_RATE_LIMIT_GOOGLE_LOGIN_LIMIT:10}
+        window: ${AUTH_RATE_LIMIT_GOOGLE_LOGIN_WINDOW:1m}
+      register:
+        limit: ${AUTH_RATE_LIMIT_REGISTER_LIMIT:5}
+        window: ${AUTH_RATE_LIMIT_REGISTER_WINDOW:5m}
+      otp-verify:
+        limit: ${AUTH_RATE_LIMIT_OTP_VERIFY_LIMIT:10}
+        window: ${AUTH_RATE_LIMIT_OTP_VERIFY_WINDOW:5m}
+      otp-resend:
+        limit: ${AUTH_RATE_LIMIT_OTP_RESEND_LIMIT:3}
+        window: ${AUTH_RATE_LIMIT_OTP_RESEND_WINDOW:5m}
   notification:
     retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
     cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
   share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:
-      enabled: true     # RUNTIME’DA AÇIK (prod’da kapatacağız)
+      enabled: ${SOUNDCONNECT_DATA_INIT_ENABLED:true}
+      owner:
+        enabled: ${SOUNDCONNECT_BOOTSTRAP_OWNER_ENABLED:false}
+        username: ${SOUNDCONNECT_BOOTSTRAP_OWNER_USERNAME:}
+        password: ${SOUNDCONNECT_BOOTSTRAP_OWNER_PASSWORD:}
+        email: ${SOUNDCONNECT_BOOTSTRAP_OWNER_EMAIL:}
+        phone: ${SOUNDCONNECT_BOOTSTRAP_OWNER_PHONE:}
+        city: ${SOUNDCONNECT_BOOTSTRAP_OWNER_CITY:}
+        minimum-password-length: ${SOUNDCONNECT_BOOTSTRAP_OWNER_MIN_PASSWORD_LENGTH:16}
   location:
     seed:
-      enabled: true     # başlangıç verisi gerekiyorsa AÇIK
+      enabled: ${SOUNDCONNECT_LOCATION_SEED_ENABLED:true}
   messaging:
     notification:
       exchange: notification.exchange
@@ -87,77 +170,186 @@ app:
 
 otp:
   ttl:
-    minutes: 3
-  length: 6
-  max-attempt: 5
+    minutes: ${SOUNDCONNECT_OTP_TTL_MINUTES:3}
+  length: ${SOUNDCONNECT_OTP_LENGTH:6}
+  max-attempt: ${SOUNDCONNECT_OTP_MAX_ATTEMPTS:5}
   resend:
     cooldown:
-      seconds: 30
+      seconds: ${SOUNDCONNECT_OTP_RESEND_COOLDOWN_SECONDS:30}
 
 mailersend:
   api-key: ${MAILERSEND_API_KEY}
   from-email: ${MAILERSEND_SENDER_EMAIL}
-  from-name: SoundConnect
-  connectTimeoutMs: 5000
-  readTimeoutSec: 8
-  otp-validity-minutes: 3  # mail içeriğindeki süre — otp.ttl ile senkron
+  from-name: ${MAILERSEND_SENDER_NAME:SoundConnect}
+  connectTimeoutMs: ${MAILERSEND_CONNECT_TIMEOUT_MS:5000}
+  readTimeoutSec: ${MAILERSEND_READ_TIMEOUT_SECONDS:8}
+  otp-validity-minutes: ${SOUNDCONNECT_OTP_TTL_MINUTES:3}
 
 # -------- MAIL (yeni) --------
 mail:
-  exchange: mail.exchange
-  routingKey: mail.send
-  queueName: mail.queue
-  dlx: mail.dlx
-  dlq: mail.queue.dlq
-  ttlMs: 120000            # 2 dk message TTL
+  exchange: ${SOUNDCONNECT_MAIL_EXCHANGE:mail.exchange}
+  routingKey: ${SOUNDCONNECT_MAIL_ROUTING_KEY:mail.send}
+  queueName: ${SOUNDCONNECT_MAIL_QUEUE:mail.queue}
+  dlx: ${SOUNDCONNECT_MAIL_DLX:mail.dlx}
+  dlq: ${SOUNDCONNECT_MAIL_DLQ:mail.queue.dlq}
+  ttlMs: ${SOUNDCONNECT_MAIL_TTL_MS:120000}
   listener:
-    concurrency: 1-5       # custom containerFactory için kullanılacak
-    prefetch: 10
-  idempotencyTtlSec: 900   # 15 dk
-  lockTtlSec: 300
+    concurrency: ${SOUNDCONNECT_MAIL_LISTENER_CONCURRENCY:1-5}
+    prefetch: ${SOUNDCONNECT_MAIL_LISTENER_PREFETCH:10}
+  idempotencyTtlSec: ${SOUNDCONNECT_MAIL_IDEMPOTENCY_TTL_SECONDS:900}
+  lockTtlSec: ${SOUNDCONNECT_MAIL_LOCK_TTL_SECONDS:300}
   producer:
-    confirmTimeoutSec: 5      # producer confirm timeout
-  maxRedeliveries: 5          # tüketicide retry limiti
+    confirmTimeoutSec: ${SOUNDCONNECT_MAIL_CONFIRM_TIMEOUT_SECONDS:5}
+  maxRedeliveries: ${SOUNDCONNECT_MAIL_MAX_REDELIVERIES:5}
   delayed:
-    exchange: mail.delayed    # x-delayed-message exchange adı
+    exchange: ${SOUNDCONNECT_MAIL_DELAYED_EXCHANGE:mail.delayed}
   retry:
-    delaysMs: [3000, 10000, 30000]  # 3s -> 10s -> 30s (attempt 1/2/3 ...)
-    useRetryAfter: true             # 429 varsa Retry-After'ı dikkate al
+    delaysMs: ${SOUNDCONNECT_MAIL_RETRY_DELAYS_MS:3000,10000,30000}
+    useRetryAfter: ${SOUNDCONNECT_MAIL_USE_RETRY_AFTER:true}
 
 # -----------------------------
 
 logging:
   level:
-    root: INFO
-    org.springframework.web: DEBUG
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    org.springframework.web: ${LOGGING_LEVEL_SPRING_WEB:DEBUG}
     org.hibernate.SQL: OFF  # degistirildi
     org.hibernate.orm.jdbc.bind: OFF  # eklendi
     org.hibernate.type.descriptor.sql.BasicBinder: OFF  # eklendi
-    com.berkayb.soundconnect: DEBUG  # eklendi
+    com.berkayb.soundconnect: ${LOGGING_LEVEL_SOUNDCONNECT:DEBUG}
 
 # --- MEDIA / STORAGE ---
 cloud:
   storage:
-    provider: s3
-    bucket: soundconnect-media
-    region: eu-central-1
-    accessKey: ${S3_ACCESS_KEY}
-    secretKey: ${S3_SECRET_KEY}
-    cdnBaseUrl: https://du3pguch18ell.cloudfront.net
-    endpoint: ""
-    pathStyleAccess: false
+    provider: ${S3_PROVIDER:s3}
+    bucket: ${S3_BUCKET:soundconnect-media}
+    # Non-CDN origin for protected media and untrusted quarantine/ uploads.
+    # Lifecycle backstop covers only quarantine/. verified/ may be live video source.
+    privateBucket: ${S3_PRIVATE_BUCKET:soundconnect-private-media}
+    region: ${AWS_REGION:eu-central-1}
+    accessKey: ${S3_ACCESS_KEY:}
+    secretKey: ${S3_SECRET_KEY:}
+    cdnBaseUrl: ${S3_CDN_BASE_URL:https://du3pguch18ell.cloudfront.net}
+    endpoint: ${S3_ENDPOINT:}
+    pathStyleAccess: ${S3_PATH_STYLE_ACCESS:false}
     presign:
-      expirySeconds: 900
-    aclPublicReadOnPut: false
+      uploadExpirySeconds: ${S3_UPLOAD_PRESIGN_EXPIRY_SECONDS:${S3_PRESIGN_EXPIRY_SECONDS:900}}
+      downloadExpirySeconds: ${S3_DOWNLOAD_PRESIGN_EXPIRY_SECONDS:300}
+    aclPublicReadOnPut: ${S3_ACL_PUBLIC_READ_ON_PUT:false}
+    # Optional. When present, deletion submits one /media/{assetId}/* purge.
+    cloudfront:
+      distributionId: ${S3_CLOUDFRONT_DISTRIBUTION_ID:}
+    # Hard runtime ceilings also cover HLS producers and are the deletion-SLA
+    # fallback when CloudFront invalidation is not configured.
+    cache:
+      publicMaxAgeSeconds: ${S3_PUBLIC_CACHE_MAX_AGE_SECONDS:300}
+      sharedMaxAgeSeconds: ${S3_SHARED_CACHE_MAX_AGE_SECONDS:3600}
 
 media:
+  upload-verification:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_ENABLED:true}
+    worker-threads: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_WORKER_THREADS:4}
+    queue-capacity: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_QUEUE_CAPACITY:100}
+    recovery-batch-size: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_RECOVERY_BATCH_SIZE:50}
+    request-wait-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_REQUEST_WAIT_TIMEOUT:PT4S}
+    verification-lease: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_LEASE:PT4M}
+    attempt-hard-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_ATTEMPT_HARD_TIMEOUT:PT5M}
+    storage-call-timeout: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_STORAGE_CALL_TIMEOUT:PT30S}
+    recovery-initial-delay-ms: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_RECOVERY_INITIAL_DELAY_MS:15000}
+    recovery-fixed-delay-ms: ${SOUNDCONNECT_MEDIA_UPLOAD_VERIFICATION_RECOVERY_FIXED_DELAY_MS:30000}
+  image-variants:
+    worker:
+      enabled: ${SOUNDCONNECT_MEDIA_IMAGE_VARIANT_WORKER_ENABLED:true}
+    public-cache-control: "${SOUNDCONNECT_MEDIA_PUBLIC_CACHE_CONTROL:public, max-age=300, s-maxage=3600, stale-while-revalidate=60}"
+    thumbnail-max-dimension: ${SOUNDCONNECT_MEDIA_THUMBNAIL_MAX_DIMENSION:960}
+    max-source-pixels: ${SOUNDCONNECT_MEDIA_IMAGE_MAX_SOURCE_PIXELS:60000000}
+    jpeg-quality: ${SOUNDCONNECT_MEDIA_THUMBNAIL_JPEG_QUALITY:0.82}
+    process-timeout-seconds: ${SOUNDCONNECT_MEDIA_THUMBNAIL_PROCESS_TIMEOUT_SECONDS:30}
+    backfill:
+      enabled: ${SOUNDCONNECT_MEDIA_THUMBNAIL_BACKFILL_ENABLED:true}
+      batch-size: ${SOUNDCONNECT_MEDIA_THUMBNAIL_BACKFILL_BATCH_SIZE:25}
+      worker-threads: ${SOUNDCONNECT_MEDIA_THUMBNAIL_WORKER_THREADS:2}
+      queue-capacity: ${SOUNDCONNECT_MEDIA_THUMBNAIL_QUEUE_CAPACITY:100}
+      initial-delay: ${SOUNDCONNECT_MEDIA_THUMBNAIL_BACKFILL_INITIAL_DELAY:PT2M}
+      fixed-delay: ${SOUNDCONNECT_MEDIA_THUMBNAIL_BACKFILL_FIXED_DELAY:PT10M}
+  upload-guard:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_GUARD_ENABLED:true}
+    # Signed upload creation is storage-expensive, so protection is fail-closed
+    # unless an operator explicitly accepts degraded abuse protection.
+    fail-open: ${SOUNDCONNECT_MEDIA_UPLOAD_GUARD_FAIL_OPEN:false}
+    key-prefix: ${SOUNDCONNECT_MEDIA_UPLOAD_GUARD_KEY_PREFIX:soundconnect:media-upload}
+    max-requests-per-window: ${SOUNDCONNECT_MEDIA_UPLOAD_MAX_REQUESTS:20}
+    max-bytes-per-window: ${SOUNDCONNECT_MEDIA_UPLOAD_MAX_BYTES:8000000000}
+    window: ${SOUNDCONNECT_MEDIA_UPLOAD_WINDOW:1h}
+    max-concurrent-uploads: ${SOUNDCONNECT_MEDIA_UPLOAD_MAX_CONCURRENT:4}
+    reservation-ttl: ${SOUNDCONNECT_MEDIA_UPLOAD_RESERVATION_TTL:30m}
+  upload-cleanup:
+    enabled: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_ENABLED:true}
+    stale-after: ${SOUNDCONNECT_MEDIA_UPLOAD_STALE_AFTER:2h}
+    batch-size: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_BATCH_SIZE:100}
+    worker-threads: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_WORKER_THREADS:4}
+    queue-capacity: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_QUEUE_CAPACITY:200}
+    initial-delay-ms: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_INITIAL_DELAY_MS:600000}
+    fixed-delay-ms: ${SOUNDCONNECT_MEDIA_UPLOAD_CLEANUP_FIXED_DELAY_MS:900000}
+    presign-clock-skew: ${SOUNDCONNECT_MEDIA_UPLOAD_PRESIGN_CLOCK_SKEW:PT1M}
+    # S3 validates expiry when a PUT starts; a transfer already in progress may
+    # finish later. Durable cleanup intents survive this bounded completion grace.
+    in-flight-completion-grace: ${SOUNDCONNECT_MEDIA_UPLOAD_IN_FLIGHT_COMPLETION_GRACE:PT24H}
+    protected-mutable-recovery-enabled: ${SOUNDCONNECT_MEDIA_PROTECTED_MUTABLE_RECOVERY_ENABLED:true}
+    protected-mutable-recovery-batch-size: ${SOUNDCONNECT_MEDIA_PROTECTED_MUTABLE_RECOVERY_BATCH_SIZE:100}
+    protected-mutable-recovery-worker-threads: ${SOUNDCONNECT_MEDIA_PROTECTED_MUTABLE_RECOVERY_WORKER_THREADS:2}
+    protected-mutable-recovery-queue-capacity: ${SOUNDCONNECT_MEDIA_PROTECTED_MUTABLE_RECOVERY_QUEUE_CAPACITY:200}
+  public-promotion-recovery:
+    enabled: ${SOUNDCONNECT_MEDIA_PUBLIC_PROMOTION_RECOVERY_ENABLED:true}
+    batch-size: ${SOUNDCONNECT_MEDIA_PUBLIC_PROMOTION_RECOVERY_BATCH_SIZE:100}
+    worker-threads: ${SOUNDCONNECT_MEDIA_PUBLIC_PROMOTION_RECOVERY_WORKER_THREADS:2}
+    queue-capacity: ${SOUNDCONNECT_MEDIA_PUBLIC_PROMOTION_RECOVERY_QUEUE_CAPACITY:200}
+  deletion:
+    enabled: ${SOUNDCONNECT_MEDIA_DELETION_ENABLED:true}
+    batch-size: ${SOUNDCONNECT_MEDIA_DELETION_BATCH_SIZE:100}
+    worker-threads: ${SOUNDCONNECT_MEDIA_DELETION_WORKER_THREADS:2}
+    queue-capacity: ${SOUNDCONNECT_MEDIA_DELETION_QUEUE_CAPACITY:100}
+    # Logical deletion is immediate. Physical removal waits for producers that
+    # may already hold a pre-delete snapshot, then performs a deterministic sweep.
+    public-image-producer-grace: ${SOUNDCONNECT_MEDIA_DELETION_IMAGE_PRODUCER_GRACE:PT5M}
+    public-video-producer-grace: ${SOUNDCONNECT_MEDIA_DELETION_VIDEO_PRODUCER_GRACE:PT14H}
+  transcode:
+    worker:
+      enabled: ${SOUNDCONNECT_MEDIA_TRANSCODE_WORKER_ENABLED:true}
+    dispatch:
+      enabled: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_ENABLED:true}
+      batch-size: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_BATCH_SIZE:50}
+      worker-threads: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_WORKER_THREADS:2}
+      queue-capacity: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_QUEUE_CAPACITY:100}
+      initial-delay-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_INITIAL_DELAY_MS:15000}
+      fixed-delay-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_DISPATCH_FIXED_DELAY_MS:30000}
+    # Non-renewable upper bound for any writes by one attempt. The short lease
+    # detects crashes; this hard bound fences late writers to deterministic HLS.
+    processing-timeout-hours: ${SOUNDCONNECT_MEDIA_TRANSCODE_PROCESSING_TIMEOUT_HOURS:12}
+    lease:
+      duration: ${SOUNDCONNECT_MEDIA_TRANSCODE_LEASE_DURATION:PT15M}
+      heartbeat-interval: ${SOUNDCONNECT_MEDIA_TRANSCODE_HEARTBEAT_INTERVAL:PT1M}
+      heartbeat-threads: ${SOUNDCONNECT_MEDIA_TRANSCODE_HEARTBEAT_THREADS:4}
+      max-attempts: ${SOUNDCONNECT_MEDIA_TRANSCODE_MAX_ATTEMPTS:3}
+      retry-backoff-base: ${SOUNDCONNECT_MEDIA_TRANSCODE_RETRY_BACKOFF_BASE:PT1H}
+      retry-backoff-max: ${SOUNDCONNECT_MEDIA_TRANSCODE_RETRY_BACKOFF_MAX:PT4H}
+    # One worker per node avoids concurrent per-job disk reservations racing.
+    worker-threads: ${SOUNDCONNECT_MEDIA_TRANSCODE_WORKER_THREADS:1}
+    sent-recovery-delay: ${SOUNDCONNECT_MEDIA_TRANSCODE_SENT_RECOVERY_DELAY:PT5M}
+    sent-recovery-initial-delay-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_SENT_RECOVERY_INITIAL_DELAY_MS:60000}
+    sent-recovery-check-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_SENT_RECOVERY_CHECK_MS:60000}
+    stale-job-initial-delay-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_STALE_INITIAL_DELAY_MS:60000}
+    stale-job-check-ms: ${SOUNDCONNECT_MEDIA_TRANSCODE_STALE_CHECK_MS:3600000}
+    hls-cleanup-quiet-period-hours: ${SOUNDCONNECT_MEDIA_HLS_CLEANUP_QUIET_PERIOD_HOURS:1}
+    hls-cleanup-initial-delay-ms: ${SOUNDCONNECT_MEDIA_HLS_CLEANUP_INITIAL_DELAY_MS:90000}
+    hls-cleanup-check-ms: ${SOUNDCONNECT_MEDIA_HLS_CLEANUP_CHECK_MS:60000}
   limits:
     imageMaxBytes: 20000000
     audioMaxBytes: 200000000
     videoMaxBytes: 4000000000
   allowedMime:
     image: [image/png, image/jpeg, image/webp]
-    audio: [audio/mpeg, audio/aac, audio/wav, audio/x-wav, audio/ogg]
+    audio: [audio/mpeg, audio/mp4, audio/x-m4a, audio/aac, audio/flac, audio/wav, audio/x-wav, audio/ogg]
     video: [video/mp4, video/quicktime, video/x-matroska]
   paths:
     root: media
@@ -166,15 +358,16 @@ media:
 
 rabbitmq:
   media:
-    exchange: media.transcode
-    dlx: media.transcode.dlx
+    exchange: ${SOUNDCONNECT_MEDIA_EXCHANGE:media.transcode}
+    dlx: ${SOUNDCONNECT_MEDIA_DLX:media.transcode.dlx}
     queues:
-      videoHls: media.transcode.video.hls
-      videoHlsDlq: media.transcode.video.hls.dlq
+      videoHls: ${SOUNDCONNECT_MEDIA_VIDEO_HLS_QUEUE:media.transcode.video.hls}
+      videoHlsDlq: ${SOUNDCONNECT_MEDIA_VIDEO_HLS_DLQ:media.transcode.video.hls.dlq}
     routingKeys:
-      videoHlsRequest: video.hls.request
-      videoHlsRequestDlq: video.hls.request.dlq
-    listenerConcurrency: 1-3
+      videoHlsRequest: ${SOUNDCONNECT_MEDIA_VIDEO_HLS_ROUTING_KEY:video.hls.request}
+      videoHlsRequestDlq: ${SOUNDCONNECT_MEDIA_VIDEO_HLS_DLQ_ROUTING_KEY:video.hls.request.dlq}
+    listenerConcurrency: ${SOUNDCONNECT_MEDIA_LISTENER_CONCURRENCY:1}
+    publisherConfirmTimeout: ${SOUNDCONNECT_MEDIA_PUBLISHER_CONFIRM_TIMEOUT:5s}
 
 transcode:
   ladder:
@@ -182,25 +375,41 @@ transcode:
     - { height: 720,  videoBitrate: "3000k", audioBitrate: "160k" }
     - { height: 480,  videoBitrate: "1200k", audioBitrate: "128k" }
     - { height: 360,  videoBitrate: "600k",  audioBitrate: "96k"  }
-  gop: 48
-  preset: veryfast
-  crf: 21
-  container: FMP4
-  segmentDurationSec: 4
-  ffprobeBinary: ffprobe
-  ffprobeTimeoutSec: 30
+  gop: ${SOUNDCONNECT_TRANSCODE_GOP:48}
+  preset: ${SOUNDCONNECT_TRANSCODE_PRESET:veryfast}
+  crf: ${SOUNDCONNECT_TRANSCODE_CRF:21}
+  container: ${SOUNDCONNECT_TRANSCODE_CONTAINER:FMP4}
+  segmentDurationSec: ${SOUNDCONNECT_TRANSCODE_SEGMENT_DURATION_SECONDS:4}
+  ffmpegBinary: ${FFMPEG_BINARY:ffmpeg}
+  ffprobeBinary: ${FFPROBE_BINARY:ffprobe}
+  ffprobeTimeoutSec: ${FFPROBE_TIMEOUT_SECONDS:30}
+  processTimeoutSec: ${FFMPEG_PROCESS_TIMEOUT_SECONDS:3600}
+  sourceDownloadTimeoutSec: ${SOUNDCONNECT_TRANSCODE_SOURCE_DOWNLOAD_TIMEOUT_SECONDS:7200}
+  hlsUploadTimeoutSec: ${SOUNDCONNECT_HLS_UPLOAD_TIMEOUT_SECONDS:3600}
+  maxDurationSeconds: ${SOUNDCONNECT_TRANSCODE_MAX_DURATION_SECONDS:900}
+  maxVideoDimension: ${SOUNDCONNECT_TRANSCODE_MAX_VIDEO_DIMENSION:3840}
+  maxVideoPixels: ${SOUNDCONNECT_TRANSCODE_MAX_VIDEO_PIXELS:8294400}
+  maxFrameRate: ${SOUNDCONNECT_TRANSCODE_MAX_FRAME_RATE:60.0}
+  maxEstimatedOutputBytes: ${SOUNDCONNECT_TRANSCODE_MAX_OUTPUT_BYTES:2147483648}
+  maxTempWorkBytes: ${SOUNDCONNECT_TRANSCODE_MAX_TEMP_WORK_BYTES:6442450944}
+  globalTempBudgetBytes: ${SOUNDCONNECT_TRANSCODE_GLOBAL_TEMP_BUDGET_BYTES:6442450944}
+  tempVolumeBytes: ${SOUNDCONNECT_TRANSCODE_TEMP_VOLUME_BYTES:6442450944}
+  tempBudgetAcquireTimeoutSeconds: ${SOUNDCONNECT_TRANSCODE_TEMP_BUDGET_ACQUIRE_TIMEOUT_SECONDS:300}
+  minFreeTempBytes: ${SOUNDCONNECT_TRANSCODE_MIN_FREE_TEMP_BYTES:536870912}
+  outputEstimateMultiplier: ${SOUNDCONNECT_TRANSCODE_OUTPUT_ESTIMATE_MULTIPLIER:1.20}
+  outputFixedOverheadBytes: ${SOUNDCONNECT_TRANSCODE_OUTPUT_FIXED_OVERHEAD_BYTES:16777216}
 
 # --- PULSE MODULE ---
 pulse:
-  lifecycle-tick-interval-ms: 5000
+  lifecycle-tick-interval-ms: ${SOUNDCONNECT_PULSE_TICK_INTERVAL_MS:5000}
 
-  room-duration-minutes: 30
+  room-duration-minutes: ${SOUNDCONNECT_PULSE_ROOM_DURATION_MINUTES:30}
 
   rooms:
-    count: 8
+    count: ${SOUNDCONNECT_PULSE_ROOM_COUNT:8}
 
   cooldown:
-    seconds: 1
+    seconds: ${SOUNDCONNECT_PULSE_COOLDOWN_SECONDS:1}
 
   default-topics:
     - "Şu Zamana Geri Dönebilsem..."

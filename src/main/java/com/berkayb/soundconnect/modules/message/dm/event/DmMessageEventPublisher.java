@@ -6,4 +6,6 @@ public interface DmMessageEventPublisher {
 	 * Dm mesaji gonderildi eventi
 	 */
 	void publishMessageSentEvent(DmMessageSentEvent event);
+
+	void publishMessageReadEvent(DmMessageReadEvent event);
 }

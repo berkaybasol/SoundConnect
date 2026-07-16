@@ -86,24 +86,24 @@ class MediaPolicyImplTest {
 	}
 	
 	@Test
-	void buildSourceKey_uses_uuid_and_sanitized_extension() {
+	void buildSourceKey_uses_uuid_and_validatedMimeExtension() {
 		UUID id = UUID.randomUUID();
 		
 		// Türkçe/özel karakterli isim + jpeg → jpg normalize edilir
-		String k1 = policy.buildSourceKey(id, "çılgın fotoğraf.JPEG");
+		String k1 = policy.buildSourceKey(id, "image/jpeg");
 		assertThat(k1).isEqualTo("media/" + id + "/source.jpg");
 		
 		// Uzantı yoksa .dat
-		String k2 = policy.buildSourceKey(id, "dosya");
-		assertThat(k2).isEqualTo("media/" + id + "/source.dat");
+		String k2 = policy.buildSourceKey(id, "audio/x-m4a");
+		assertThat(k2).isEqualTo("media/" + id + "/source.m4a");
 		
 		// Boş isim -> .dat
-		String k3 = policy.buildSourceKey(id, "");
-		assertThat(k3).isEqualTo("media/" + id + "/source.dat");
+		assertThatThrownBy(() -> policy.buildSourceKey(id, "text/html"))
+				.isInstanceOf(SoundConnectException.class);
 		
 		// Null id -> hata
 		assertThatThrownBy(() ->
-				                   policy.buildSourceKey(null, "video.mp4")
+				                   policy.buildSourceKey(null, "video/mp4")
 		).isInstanceOf(SoundConnectException.class);
 	}
 	

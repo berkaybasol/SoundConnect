@@ -102,13 +102,18 @@ class TableGroupControllerTest {
 				new TableGroupParticipantDto(
 						userId,
 						LocalDateTime.now(),
-						ParticipantStatus.ACCEPTED
+						ParticipantStatus.ACCEPTED,
+						null,
+						username,
+						null
 				)
 		);
 		
 		return new TableGroupResponseDto(
 				tableGroupId,
 				userId,          // ownerId
+				username,        // ownerUsername
+				null,            // ownerProfileImageUrl
 				null,            // venueId
 				"My Venue",
 				3,
@@ -342,7 +347,7 @@ class TableGroupControllerTest {
 		// given
 		UUID tableGroupId = UUID.randomUUID();
 		
-		doNothing().when(tableGroupService).joinTableGroup(userId, tableGroupId);
+		doNothing().when(tableGroupService).joinTableGroup(userId, tableGroupId, null);
 		
 		// when & then
 		mockMvc.perform(
@@ -354,7 +359,7 @@ class TableGroupControllerTest {
 		       .andExpect(jsonPath("$.code").value(200))
 		       .andExpect(jsonPath("$.message").value("Masaya katilim istegi gonderildi"));
 		
-		verify(tableGroupService).joinTableGroup(userId, tableGroupId);
+		verify(tableGroupService).joinTableGroup(userId, tableGroupId, null);
 	}
 	
 	// -------------------- approveJoinRequest --------------------

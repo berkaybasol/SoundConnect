@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.media.transcode.upload;
 
 import com.berkayb.soundconnect.modules.media.dto.response.HlsUploadResult;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
+import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @Tag("unit")
@@ -37,7 +39,7 @@ class HlsUploaderTest {
 	void uploadHlsTree_thumbnailOutside_uploadsAll_withCorrectHeaders_andReturnsUrlsAndCount() throws Exception {
 		// Arrange
 		StorageClient storage = mock(StorageClient.class);
-		HlsUploader uploader = new HlsUploader(storage);
+		HlsUploader uploader = new HlsUploader(storage, new TranscodeProperties());
 		
 		Path out = Files.createDirectory(tmp.resolve("out"));
 		// master + iki varyant
@@ -107,7 +109,7 @@ class HlsUploaderTest {
 	void uploadHlsTree_thumbnailInsideTree_isNotDoubleUploaded_butUrlReturned() throws Exception {
 		// Arrange
 		StorageClient storage = mock(StorageClient.class);
-		HlsUploader uploader = new HlsUploader(storage);
+		HlsUploader uploader = new HlsUploader(storage, new TranscodeProperties());
 		
 		Path out = Files.createDirectory(tmp.resolve("out2"));
 		Files.writeString(out.resolve("master.m3u8"), "#EXTM3U\n");
@@ -129,5 +131,40 @@ class HlsUploaderTest {
 		assertThat(res.thumbnailUrl()).isEqualTo("https://cdn.example/" + join(prefix, "thumbnail.jpg"));
 		assertThat(res.playbackUrl()).isEqualTo("https://cdn.example/" + join(prefix, "master.m3u8"));
 		assertThat(res.objectCount()).isEqualTo(2);
+	}
+
+	@Test
+	void uploadFailureLeavesPartialTreeForDurableBoundedCleanup() throws Exception {
+		StorageClient storage = mock(StorageClient.class);
+		HlsUploader uploader = new HlsUploader(storage, new TranscodeProperties());
+		Path out = Files.createDirectory(tmp.resolve("partial"));
+		Files.writeString(out.resolve("master.m3u8"), "#EXTM3U\n");
+		String prefix = "media/partial/hls";
+		doThrow(new IllegalStateException("storage unavailable"))
+				.when(storage).putFile(any(Path.class), anyString(), anyString(), anyString());
+
+		assertThatThrownBy(() -> uploader.uploadHlsTree(out, prefix, null))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("storage unavailable");
+
+		verify(storage, never()).deleteFolder(prefix);
+	}
+
+	@Test
+	void aggregateUploadBudgetStopsBeforeAnotherPublicWrite_withoutBlockingCleanup() throws Exception {
+		StorageClient storage = mock(StorageClient.class);
+		TranscodeProperties properties = new TranscodeProperties();
+		properties.setHlsUploadTimeoutSec(0);
+		HlsUploader uploader = new HlsUploader(storage, properties);
+		Path out = Files.createDirectory(tmp.resolve("deadline"));
+		Files.writeString(out.resolve("master.m3u8"), "#EXTM3U\n");
+		String prefix = "media/deadline/hls";
+
+		assertThatThrownBy(() -> uploader.uploadHlsTree(out, prefix, null))
+				.isInstanceOf(java.io.IOException.class)
+				.hasMessageContaining("time budget");
+
+		verify(storage, never()).putFile(any(), anyString(), anyString(), anyString());
+		verify(storage, never()).deleteFolder(prefix);
 	}
 }

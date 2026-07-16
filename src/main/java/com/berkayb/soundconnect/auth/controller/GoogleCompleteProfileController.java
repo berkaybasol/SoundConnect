@@ -1,16 +1,19 @@
 package com.berkayb.soundconnect.auth.controller;
 
 import com.berkayb.soundconnect.auth.dto.request.GoogleCompleteProfileRequestDto;
+import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.auth.service.GoogleCompleteProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
@@ -30,15 +33,18 @@ public class GoogleCompleteProfileController {
 	 */
 	
 	@PostMapping(COMPLETE_GOOGLE_PROFILE)
-	public ResponseEntity<BaseResponse<Void>> completeProfileWithRole(
-			@AuthenticationPrincipal(expression = "user.id") UUID userId,
-			@RequestBody GoogleCompleteProfileRequestDto dto
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<BaseResponse<LoginResponse>> completeProfileWithRole(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@RequestBody @Valid GoogleCompleteProfileRequestDto dto
 	) {
+		UUID userId = principal.getId();
 		log.info("Profil tamamlama isteği geldi. UserId: {}, Role: {}", userId, dto.role());
-		googleCompleteProfileService.completeProfileWithRole(userId, dto);
+		LoginResponse session = googleCompleteProfileService.completeProfileWithRole(userId, dto);
 		
-		return ResponseEntity.ok(BaseResponse.<Void>builder()
+		return ResponseEntity.ok(BaseResponse.<LoginResponse>builder()
 		                                     .success(true)
+		                                     .data(session)
 		                                     .message("Profil başarıyla tamamlandı.")
 		                                     .build());
 	}

@@ -1,8 +1,14 @@
 package com.berkayb.soundconnect.modules.track.service;
 
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
+import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
@@ -79,6 +85,7 @@ public class TrackServiceImpl implements TrackService {
 	private final MediaAssetService mediaAssetService;
 	private final MusicianProfileService musicianProfileService;
 	private final BandService bandService;
+	private final MediaAssetRepository mediaAssetRepository;
 	
 	@Override
 	@Transactional
@@ -87,20 +94,37 @@ public class TrackServiceImpl implements TrackService {
 		if (userId == null) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
+		TrackOwnerType ownerType = resolveOwnerType(ownerId, userId);
+		validateOwner(ownerId, userId);
 		
-		// 1) MediaAsset var mı?
-		if (!mediaAssetService.exists(dto.mediaAssetId())) {
-			log.warn("[Track] MediaAsset bulunamadı: {}", dto.mediaAssetId());
-			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		var asset = mediaAssetRepository.findByIdForUpdate(dto.mediaAssetId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		MediaOwnerType expectedMediaOwnerType = ownerType == TrackOwnerType.BAND
+				? MediaOwnerType.BAND
+				: MediaOwnerType.MUSICIAN_PROFILE;
+		if (asset.getOwnerType() != expectedMediaOwnerType || !ownerId.equals(asset.getOwnerId())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_OWNER_MISMATCH);
 		}
-		var asset = mediaAssetService.getById(dto.mediaAssetId());
+
+		Track existing = trackRepository
+				.findByOwnerTypeAndOwnerIdAndMediaAssetId(ownerType, ownerId, dto.mediaAssetId())
+				.orElse(null);
+		if (existing != null) {
+			log.info("[Track] Idempotent replay. ownerId={}, ownerType={}, trackId={}",
+					ownerId, ownerType, existing.getId());
+			return trackMapper.toDto(existing, mediaAssetService);
+		}
+
 		if (asset.getKind() != MediaKind.AUDIO) {
 			throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
 		}
 		
-		// 2) Owner kim? (Musician mı, Band mi?) + user gerçekten o owner'a bağlı mı?
-		TrackOwnerType ownerType = resolveOwnerType(ownerId, userId);
-		validateOwner(ownerId, userId);
+		if (asset.getStatus() != MediaStatus.READY) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getVisibility() != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_PUBLIC);
+		}
 		
 		// 3) Track oluştur
 		Track track = Track.builder()
@@ -156,13 +180,17 @@ public class TrackServiceImpl implements TrackService {
 		try {
 			musicianProfileService.getProfileEntity(ownerId);
 			isMusicianProfile = true;
-		} catch (Exception ignored) {}
+		} catch (SoundConnectException exception) {
+			if (exception.getErrorType() != ErrorType.PROFILE_NOT_FOUND) throw exception;
+		}
 		
 		// Band var mı?
 		try {
 			bandService.getBandEntity(ownerId);
 			isBand = true;
-		} catch (Exception ignored) {}
+		} catch (SoundConnectException exception) {
+			if (exception.getErrorType() != ErrorType.BAND_NOT_FOUND) throw exception;
+		}
 		
 		// Aynı ID hem band hem musician profili olamaz → veri bozukluğu
 		if (isMusicianProfile && isBand) {
@@ -194,7 +222,8 @@ public class TrackServiceImpl implements TrackService {
 				log.warn("[Track] Kullanıcı musician profil sahibi değil. userId={} ownerId={}", userId, ownerId);
 				throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 			}
-		} catch (Exception ignored) {
+		} catch (SoundConnectException exception) {
+			if (exception.getErrorType() != ErrorType.PROFILE_NOT_FOUND) throw exception;
 			// musician değil → band olup olmadığına bakacağız
 		}
 		
@@ -203,8 +232,11 @@ public class TrackServiceImpl implements TrackService {
 			var band = bandService.getBandEntity(ownerId);
 			var isActiveMember = band.getMembers().stream()
 			                         .anyMatch(m ->
-					                                   m.getUser().getId().equals(userId) &&
-							                                   m.getStatus().name().equals("ACTIVE")
+					                                   m.getUser() != null
+							                                   && m.getUser().getId().equals(userId)
+							                                   && m.getStatus() == BandMemberShipStatus.ACTIVE
+							                                   && (m.getBandRole() == BandRole.FOUNDER
+							                                   || m.getBandRole() == BandRole.MANAGER)
 			                         );
 			
 			if (!isActiveMember) {
@@ -214,7 +246,8 @@ public class TrackServiceImpl implements TrackService {
 			
 			return; // işlem yapmaya yetkili
 			
-		} catch (Exception ignored) {
+		} catch (SoundConnectException exception) {
+			if (exception.getErrorType() != ErrorType.BAND_NOT_FOUND) throw exception;
 			// ne musician ne de band → invalid
 		}
 		

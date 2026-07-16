@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.ProducerProfile.service;
 
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.request.ProducerProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.response.ProducerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
@@ -33,6 +34,7 @@ class ProducerProfileServiceImplTest {
 	@Mock ProducerProfileRepository repo;
 	@Mock UserEntityFinder userFinder;
 	@Mock ProducerProfileMapper mapper;
+	@Mock MediaAssetService mediaAssetService;
 	
 	@InjectMocks ProducerProfileServiceImpl service;
 	

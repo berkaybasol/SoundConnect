@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,6 +28,32 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
 	
 	// bir icerikte toplam kac yorum oldugunu getirir.
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
+
+	/** Delete replies first so the self-referencing parent foreign key stays valid. */
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			delete from Comment c
+			where c.targetType = :targetType
+			  and c.targetId = :targetId
+			  and c.parentComment is not null
+			""")
+	int deleteRepliesByTarget(
+			@Param("targetType") EngagementTargetType targetType,
+			@Param("targetId") UUID targetId
+	);
+
+	/** Delete roots only after every reply for the target has been removed. */
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			delete from Comment c
+			where c.targetType = :targetType
+			  and c.targetId = :targetId
+			  and c.parentComment is null
+			""")
+	int deleteRootsByTarget(
+			@Param("targetType") EngagementTargetType targetType,
+			@Param("targetId") UUID targetId
+	);
 	
 	// kullanici bir yorum yazmis mi? (silme kontrolu icin gerekli)
 	boolean existsByIdAndUserId(UUID id, UUID userId);

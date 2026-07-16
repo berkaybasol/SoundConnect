@@ -275,10 +275,10 @@ public class TableGroupServiceImpl implements TableGroupService{
 						"katilimci degil"));
 		// statuyu left yap
 		participant.setStatus(ParticipantStatus.LEFT);
-		
+
 		tableGroupRepository.save(tableGroup);
 		log.info("User {} left table group {}", userId, tableGroupId);
-		
+
 		notificationProducer.publish(
 				NotificationInboundEvent.builder()
 						.recipientId(tableGroup.getOwnerId())

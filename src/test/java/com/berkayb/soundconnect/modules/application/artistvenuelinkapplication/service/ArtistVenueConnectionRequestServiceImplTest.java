@@ -7,12 +7,17 @@ import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.e
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.mapper.ArtistVenueConnectionRequestMapper;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -36,6 +41,11 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	@Mock MusicianProfileRepository musicianRepo;
 	@Mock VenueRepository venueRepo;
 	@Mock ArtistVenueConnectionRequestMapper mapper;
+	@Mock BandRepository bandRepo;
+	@Mock BandMemberRepository bandMemberRepo;
+	@Mock VenueProfileRepository venueProfileRepo;
+	@Mock MediaAssetService mediaAssetService;
+	@Mock NotificationProducer notificationProducer;
 	
 	@InjectMocks
 	ArtistVenueConnectionRequestServiceImpl service;
@@ -119,6 +129,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	@Test
 	void createRequest_should_throw_when_duplicate_pending() {
 		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, null);
+		when(venueRepo.findById(venueId)).thenReturn(Optional.of(venue));
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(true);
 		
@@ -126,13 +137,14 @@ class ArtistVenueConnectionRequestServiceImplTest {
 				.isInstanceOf(SoundConnectException.class);
 		
 		verify(musicianRepo, never()).findById(any());
-		verify(venueRepo, never()).findById(any());
+		verify(venueRepo).findById(venueId);
 		verify(requestRepo, never()).save(any());
 	}
 	
 	@Test
 	void createRequest_should_throw_when_musician_not_found() {
 		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, null);
+		when(venueRepo.findById(venueId)).thenReturn(Optional.of(venue));
 		when(requestRepo.existsByMusicianProfileIdAndVenueIdAndStatus(mpId, venueId, RequestStatus.PENDING))
 				.thenReturn(false);
 		when(musicianRepo.findById(mpId)).thenReturn(Optional.empty());
@@ -140,7 +152,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		assertThatThrownBy(() -> service.createRequest(musicianUserId, dto, RequestByType.ARTIST))
 				.isInstanceOf(SoundConnectException.class);
 		
-		verify(venueRepo, never()).findById(any());
+		verify(venueRepo).findById(venueId);
 		verify(requestRepo, never()).save(any());
 	}
 	

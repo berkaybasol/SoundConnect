@@ -36,7 +36,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = RabbitToDbE2E.TestApp.class)
 @ImportAutoConfiguration(RabbitAutoConfiguration.class)
 @TestPropertySource(properties = {
@@ -50,7 +50,8 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 		// JPA/Redis için gereksizleri kapatma / dummy
 		"spring.flyway.enabled=false",
 		"spring.liquibase.enabled=false",
-		"SOUNDCONNECT_JWT_SECRETKEY=dummy", "app.jwt.secret=dummy"
+		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
+		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long"
 })
 class RabbitToDbE2E {
 	

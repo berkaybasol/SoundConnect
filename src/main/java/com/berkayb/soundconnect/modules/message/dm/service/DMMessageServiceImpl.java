@@ -5,20 +5,17 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.event.DmMessageEventPublisher;
+import com.berkayb.soundconnect.modules.message.dm.event.DmMessageReadEvent;
 import com.berkayb.soundconnect.modules.message.dm.event.DmMessageSentEvent;
-import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,14 +26,11 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class DMMessageServiceImpl implements DMMessageService {
 	private final DMMessageRepository messageRepository;
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageMapper messageMapper;
 	private final DmMessageEventPublisher dmMessageEventPublisher;
-	private final DmBadgeCacheHelper dmBadgeCacheHelper;
-	private final SimpMessagingTemplate messagingTemplate;
 	private final NotificationService notificationService;
 
 	// belirli bir conversation'in tum mesajlarini gonderim sirasina gore doner.
@@ -141,6 +135,8 @@ public class DMMessageServiceImpl implements DMMessageService {
 		// daha once okunduysa tekrar setleme
 		if (message.getReadAt() != null) {
 			notificationService.markDmConversationAsRead(readerId, message.getConversationId());
+			dmMessageEventPublisher.publishMessageReadEvent(
+					new DmMessageReadEvent(message.getConversationId(), readerId));
 			return; // zaten okunmus
 		}
 		message.setReadAt(LocalDateTime.now());
@@ -150,20 +146,15 @@ public class DMMessageServiceImpl implements DMMessageService {
 		conversation.setLastReadMessageId(message.getId());
 		conversationRepository.save(conversation);
 
-		// Unread badge'i guncelle ve WebSocket badge push yap
-		// guncel unread sayisini db'den cek
-		long unread = messageRepository.countByRecipientIdAndReadAtIsNull(readerId);
-
-		// badge cache'i guncelle
-		dmBadgeCacheHelper.setUnread(readerId, unread);
-
-		// WebSocket ile badge'i pushla
-		Long cacheUnread = dmBadgeCacheHelper.getCacheUnread(readerId);
-		String badgeDestination = WebSocketChannels.dmBadge(readerId);
-		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
-		log.debug("DM badge (okundu) WS push: userId={}, badge={}", readerId, cacheUnread);
 		notificationService.markDmConversationAsRead(readerId, message.getConversationId());
+		dmMessageEventPublisher.publishMessageReadEvent(
+				new DmMessageReadEvent(message.getConversationId(), readerId));
 
+	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public long getUnreadCount(UUID userId) {
+		return messageRepository.countByRecipientIdAndReadAtIsNull(userId);
 	}
 }

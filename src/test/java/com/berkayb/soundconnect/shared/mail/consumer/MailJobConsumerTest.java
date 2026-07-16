@@ -144,14 +144,14 @@ class MailJobConsumerTest {
 		doThrow(ex).when(mailSenderClient).send(anyString(), anyString(), any(), any());
 		
 		// retry değerlendirmeleri
-		when(helper.redeliveryCount(hdrs)).thenReturn(1);
+		when(helper.retryAttempt(hdrs)).thenReturn(1);
 		when(helper.isTransient(ex)).thenReturn(true);
 		when(helper.chooseDelayMs(eq(ex), eq(1), anyList(), eq(true))).thenReturn(5000L);
 		
 		consumer.listenMailJobs(r, tag, hdrs, channel);
 		
 		// Retry publish çağrılmalı
-		verify(retryPublisher).publishWithDelay(eq(r), eq(5000L), contains("deaths=1"));
+		verify(retryPublisher).publishWithDelay(eq(r), eq(5000L), eq(2), contains("attempt=2"));
 		// Kilit serbest bırakılmalı
 		verify(helper).releaseLock("mail:lock:idem-4");
 		
@@ -172,7 +172,6 @@ class MailJobConsumerTest {
 		RuntimeException ex = new RuntimeException("bad-request");
 		doThrow(ex).when(mailSenderClient).send(anyString(), anyString(), any(), any());
 		
-		when(helper.redeliveryCount(anyMap())).thenReturn(3);
 		when(helper.isTransient(ex)).thenReturn(false); // kalıcı
 		
 		consumer.listenMailJobs(r, tag, headers(3), channel);
@@ -182,6 +181,52 @@ class MailJobConsumerTest {
 		verify(helper).releaseLock("mail:lock:idem-5");
 		verify(channel).basicReject(tag, false);
 		
+		verifyNoInteractions(retryPublisher);
+	}
+
+	@Test
+	@DisplayName("retry publish broker confirm basarisizsa original mesaj ACK edilmez")
+	void retryPublishFailure_requeuesOriginal() throws Exception {
+		MailSendRequest r = req();
+		long tag = 15L;
+		Map<String, Object> hdrs = headers(0);
+
+		when(helper.buildIdemKey(r)).thenReturn("idem-6");
+		when(helper.isAlreadySent("mail:sent:idem-6")).thenReturn(false);
+		when(helper.acquireLock("mail:lock:idem-6", Duration.ofSeconds(300L))).thenReturn(true);
+		RuntimeException sendFailure = new RuntimeException("timeout");
+		doThrow(sendFailure).when(mailSenderClient).send(anyString(), anyString(), any(), any());
+		when(helper.retryAttempt(hdrs)).thenReturn(0);
+		when(helper.isTransient(sendFailure)).thenReturn(true);
+		when(helper.chooseDelayMs(sendFailure, 0, List.of(3000L, 10000L, 30000L), true))
+				.thenReturn(3000L);
+		doThrow(new RuntimeException("broker nack"))
+				.when(retryPublisher).publishWithDelay(r, 3000L, 1, "attempt=1");
+
+		consumer.listenMailJobs(r, tag, hdrs, channel);
+
+		verify(channel).basicReject(tag, true);
+		verify(channel, never()).basicAck(anyLong(), anyBoolean());
+	}
+
+	@Test
+	@DisplayName("persisted retry attempt max degerindeyse mesaj DLQ'ya gider")
+	void maxRetryAttempt_goesToDlq() throws Exception {
+		MailSendRequest r = req();
+		long tag = 16L;
+		Map<String, Object> hdrs = Map.of(MailJobHelper.RETRY_ATTEMPT_HEADER, 5);
+
+		when(helper.buildIdemKey(r)).thenReturn("idem-7");
+		when(helper.isAlreadySent("mail:sent:idem-7")).thenReturn(false);
+		when(helper.acquireLock("mail:lock:idem-7", Duration.ofSeconds(300L))).thenReturn(true);
+		RuntimeException sendFailure = new RuntimeException("timeout");
+		doThrow(sendFailure).when(mailSenderClient).send(anyString(), anyString(), any(), any());
+		when(helper.retryAttempt(hdrs)).thenReturn(5);
+		when(helper.isTransient(sendFailure)).thenReturn(true);
+
+		consumer.listenMailJobs(r, tag, hdrs, channel);
+
+		verify(channel).basicReject(tag, false);
 		verifyNoInteractions(retryPublisher);
 	}
 }

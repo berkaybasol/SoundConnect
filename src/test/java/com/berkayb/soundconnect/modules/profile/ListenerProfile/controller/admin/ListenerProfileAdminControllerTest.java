@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.UUID;
 
@@ -26,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @Tag("web")
+@WithMockUser(authorities = "MANAGE_PROFILES")
 class ListenerProfileAdminControllerTest {
 	
 	@Autowired
@@ -48,7 +50,9 @@ class ListenerProfileAdminControllerTest {
 		UUID userId = UUID.randomUUID();
 		UUID ppId = UUID.randomUUID();
 		
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "bio", ppId, userId);
+		var dto = new ListenerProfileResponseDto(
+				UUID.randomUUID(), userId, "listener", "bio", ppId,
+				"https://cdn.example.com/profile.jpg", 0, 0);
 		when(listenerProfileService.getProfileByUserId(userId)).thenReturn(dto);
 		
 		mockMvc.perform(get("/api/v1/admin/listener-profiles/by-user/{userId}", userId))
@@ -65,12 +69,14 @@ class ListenerProfileAdminControllerTest {
 		UUID newPpId = UUID.randomUUID();
 		
 		var body = new ListenerSaveRequestDto("upd", newPpId);
-		var dto = new ListenerProfileResponseDto(UUID.randomUUID(), "upd", newPpId, userId);
+		var dto = new ListenerProfileResponseDto(
+				UUID.randomUUID(), userId, "listener", "upd", newPpId,
+				"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(listenerProfileService.updateProfile(userId, body)).thenReturn(dto);
 		
 		mockMvc.perform(
-				       put("/api/v1/admin/listener-profiles/update/{userId}", userId)
+			       put("/api/v1/admin/listener-profiles/by-user/{userId}/update", userId)
 						       .contentType(MediaType.APPLICATION_JSON)
 						       .content(om.writeValueAsString(body))
 		       )

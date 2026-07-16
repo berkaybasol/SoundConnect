@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RequiredArgsConstructor
 @Component
@@ -19,5 +18,12 @@ public class DmMessageEventPublisherImpl implements DmMessageEventPublisher{
 		          event.getMessageId(), event.getConversationId(), event.getSenderId(), event.getRecipientId());
 		applicationEventPublisher.publishEvent(event);
 		
+	}
+
+	@Override
+	public void publishMessageReadEvent(DmMessageReadEvent event) {
+		log.debug("Publishing DmMessageReadEvent: conversationId={}, readerId={}",
+		          event.conversationId(), event.readerId());
+		applicationEventPublisher.publishEvent(event);
 	}
 }

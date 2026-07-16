@@ -26,7 +26,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DMMessageRepositoryIT.JpaAuditConfig.class)
@@ -152,12 +152,16 @@ class DMMessageRepositoryIT {
 				messageRepository.findByConversationIdAndRecipientIdAndReadAtIsNull(conversation.getId(), userB);
 		
 		List<DMMessage> unreadForAAll = messageRepository.findByRecipientIdAndReadAtIsNull(userA);
+		long unreadCountForB = messageRepository.countByRecipientIdAndReadAtIsNull(userB);
+		long unreadCountForA = messageRepository.countByRecipientIdAndReadAtIsNull(userA);
 		
 		// then
 		assertThat(unreadForBAll).hasSize(2);
 		assertThat(unreadForBInThisConv).hasSize(2);
+		assertThat(unreadCountForB).isEqualTo(2L);
 		
 		assertThat(unreadForAAll).isEmpty(); // A için tek mesaj readAt set edildi
+		assertThat(unreadCountForA).isZero();
 	}
 	
 	// --- Testte JPA auditing'i etkinleştiriyoruz ---

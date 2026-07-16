@@ -407,7 +407,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			try {
 				Band band = bandRepository.findById(dto.bandId()).orElse(null);
 				if (band != null && band.getProfilePictureMediaId() != null) {
-					bandPpUrl = mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl();
+					bandPpUrl = mediaAssetService.getDisplayUrl(band.getProfilePictureMediaId());
 				}
 			} catch (Exception ignored) {
 			}
@@ -621,7 +621,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			return null;
 		}
 		try {
-			String sourceUrl = mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			String sourceUrl = mediaAssetService.getDisplayUrl(mediaAssetId);
 			return hasText(sourceUrl) ? sourceUrl.trim() : null;
 		} catch (Exception e) {
 			log.debug("Profile image could not be resolved for notification. mediaAssetId={}, err={}",

@@ -87,6 +87,19 @@ class MediaAssetMapperTest {
 		// progressive bekliyoruz
 		assertThat(dto.streamingProtocol()).isEqualTo(MediaStreamingProtocol.PROGRESSIVE);
 	}
+
+	@Test
+	void toDto_neverExposesUrlFieldsForProtectedAssets() {
+		MediaAsset asset = entity(MediaKind.AUDIO);
+		asset.setId(UUID.randomUUID());
+		asset.setVisibility(MediaVisibility.PRIVATE);
+
+		MediaResponseDto dto = mapper.toDto(asset);
+
+		assertThat(dto.sourceUrl()).isNull();
+		assertThat(dto.playbackUrl()).isNull();
+		assertThat(dto.thumbnailUrl()).isNull();
+	}
 	
 	@Test
 	void toDtoList_maps_all_items_preserving_order() {

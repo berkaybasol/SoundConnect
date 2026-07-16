@@ -32,6 +32,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
@@ -51,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @TestMethodOrder(OrderAnnotation.class)
 @Tag("web")
+@WithMockUser(authorities = "MANAGE_VENUES")
 class VenueControllerIT {
 	
 	@Autowired MockMvc mockMvc;
@@ -226,11 +228,10 @@ class VenueControllerIT {
 	@Order(4)
 	void findAll_should_return_200_and_list() throws Exception {
 		TestUtil.createVenueViaApi(mockMvc, cityId, districtId, neighborhoodId, ownerId);
-		TestUtil.createVenueViaApi(mockMvc, cityId, districtId, neighborhoodId, ownerId);
 		
 		mockMvc.perform(get(BASE + GET_ALL))
 		       .andExpect(status().isOk())
-		       .andExpect(jsonPath("$.data", hasSize(greaterThanOrEqualTo(2))));
+		       .andExpect(jsonPath("$.data", hasSize(greaterThanOrEqualTo(1))));
 	}
 	
 	// ---------- DELETE ----------

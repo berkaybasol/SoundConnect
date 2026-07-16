@@ -5,6 +5,8 @@ import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
 import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
@@ -301,6 +303,13 @@ public class BandServiceImpl implements BandService {
 			log.warn("Band olusturma limiti asildi. userId={}, activeBandCount={}", userId, activeBandCount);
 			throw new SoundConnectException(ErrorType.BAND_CREATE_LIMIT_EXCEEDED);
 		}
+		if (dto.profilePicture() != null) {
+			// The band id does not exist yet, so creation-time media belongs to
+			// the founder's USER scope. Updates use the BAND scope below.
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.USER, userId, MediaKind.IMAGE
+			);
+		}
 		
 		// band adi daha once kullanilmis mi?
 		bandRepository.findByName(dto.name()).ifPresent(existing -> {
@@ -366,7 +375,12 @@ public class BandServiceImpl implements BandService {
 		}
 		
 		if (dto.description() != null) band.setDescription(dto.description());
-		if (dto.profilePicture() != null) band.setProfilePictureMediaId(dto.profilePicture());
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.BAND, bandId, MediaKind.IMAGE
+			);
+			band.setProfilePictureMediaId(dto.profilePicture());
+		}
 		if (dto.instagramUrl() != null) band.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) band.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundCloudUrl() != null) band.setSoundCloudUrl(dto.soundCloudUrl());
@@ -507,7 +521,7 @@ public class BandServiceImpl implements BandService {
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("Band profile picture resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;

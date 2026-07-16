@@ -54,7 +54,9 @@ class MusicianProfileServiceImplTest {
 				"sc",
 				"embed123",
 				"artist123",
-				Set.of(instrumentId)
+				Set.of(instrumentId),
+				List.of(),
+				List.of()
 		);
 		
 		var user = User.builder().id(userId).build();
@@ -71,9 +73,11 @@ class MusicianProfileServiceImplTest {
 		var baseDto = new MusicianProfileResponseDto(
 				profileId,
 				userId,
+				"musician",
 				"Stage",
 				"Bio",
 				ppId,
+				null,
 				"ig",
 				"yt",
 				"sc",
@@ -81,7 +85,9 @@ class MusicianProfileServiceImplTest {
 				"artist123",
 				Set.of("Guitar"),
 				Set.of(),
-				null // bands ignore -> null kabul
+				null, // bands ignore -> null kabul
+				List.of(),
+				List.of()
 		);
 		when(mapper.toDto(saved)).thenReturn(baseDto);
 		
@@ -125,6 +131,7 @@ class MusicianProfileServiceImplTest {
 		var baseDto = new MusicianProfileResponseDto(
 				profileId,
 				userId,
+				"musician",
 				"Stage",
 				"Bio",
 				null,
@@ -133,9 +140,12 @@ class MusicianProfileServiceImplTest {
 				null,
 				null,
 				null,
+				null,
 				Set.of(),
 				Set.of(),
-				null
+				null,
+				List.of(),
+				List.of()
 		);
 		when(mapper.toDto(profile)).thenReturn(baseDto);
 		when(bandService.getBandsByUser(userId)).thenReturn(Collections.emptyList());
@@ -183,15 +193,19 @@ class MusicianProfileServiceImplTest {
 				"sc",
 				"embedX",
 				"artistX",
-				Set.of()
+				Set.of(),
+				List.of(),
+				List.of()
 		);
 		
 		var baseDto = new MusicianProfileResponseDto(
 				profileId,
 				userId,
+				"musician",
 				"NewStage",
 				"NewBio",
 				ppId,
+				null,
 				"ig",
 				"yt",
 				"sc",
@@ -199,7 +213,9 @@ class MusicianProfileServiceImplTest {
 				"artistX",
 				Set.of(),
 				Set.of(),
-				null
+				null,
+				List.of(),
+				List.of()
 		);
 		
 		when(mapper.toDto(any(MusicianProfile.class))).thenReturn(baseDto);

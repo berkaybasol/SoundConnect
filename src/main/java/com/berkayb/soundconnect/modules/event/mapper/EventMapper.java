@@ -59,19 +59,16 @@ public class EventMapper {
 			return null;
 		}
 		
+		final UUID assetId;
 		try {
-			UUID assetId = UUID.fromString(raw);
-			MediaAsset asset = mediaAssetService.getById(assetId);
-			
-			if (asset.getSourceUrl() != null && !asset.getSourceUrl().isBlank()) {
-				return asset.getSourceUrl();
-			}
-			if (asset.getPlaybackUrl() != null && !asset.getPlaybackUrl().isBlank()) {
-				return asset.getPlaybackUrl();
-			}
-			return null;
-		} catch (Exception ignored) {
+			assetId = UUID.fromString(raw);
+		} catch (IllegalArgumentException ignored) {
 			return raw;
+		}
+		try {
+			return mediaAssetService.getDisplayUrl(assetId);
+		} catch (Exception ignored) {
+			return null;
 		}
 	}
 	

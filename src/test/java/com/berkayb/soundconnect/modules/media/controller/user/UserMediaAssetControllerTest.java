@@ -3,8 +3,10 @@ package com.berkayb.soundconnect.modules.media.controller.user;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.media.dto.request.CompleteUploadRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.request.UploadInitRequestDto;
+import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionDispatcher;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
@@ -12,11 +14,15 @@ import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
+import com.berkayb.soundconnect.modules.media.storage.StorageObjectMetadata;
 import com.berkayb.soundconnect.modules.media.transcode.TranscodePublisher;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -28,10 +34,14 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.ByteArrayInputStream;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Media.*;
@@ -39,8 +49,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -58,6 +70,7 @@ class UserMediaAssetControllerTest {
 	
 	// Dış bağımlılıklar – context'i sakinleştirmek için mock
 	@MockitoBean StorageClient storageClient;
+	@MockitoBean MediaDeletionDispatcher mediaDeletionDispatcher;
 	@MockitoBean TranscodePublisher transcodePublisher;
 	// MailProducerImpl yüzünden gerekecek
 	@MockitoBean RabbitTemplate rabbitTemplate;
@@ -97,17 +110,31 @@ class UserMediaAssetControllerTest {
 	@BeforeEach
 	void setup() {
 		mediaRepo.deleteAll();
-		ownerId = UUID.randomUUID();
 		actingUserId = UUID.randomUUID();
+		ownerId = actingUserId;
+		UserDetailsImpl principal = UserDetailsImpl.fromUser(User.builder()
+				.id(actingUserId)
+				.username("media-test-user")
+				.password("not-used")
+				.email("media-test@example.com")
+				.status(UserStatus.ACTIVE)
+				.emailVerified(true)
+				.build());
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(
+						principal, null, principal.getAuthorities()));
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	@Test
 	void initUpload_ok_createsDraftAndReturnsPresigned() throws Exception {
 		// Storage davranışları
-		when(storageClient.createPresignedPutUrl(any(), eq("image/png")))
+		when(storageClient.createPresignedPutUrl(any(), eq("image/png"), eq(12345L)))
 				.thenReturn("https://upload.url/presigned");
-		when(storageClient.publicUrl(any()))
-				.thenAnswer(inv -> "https://cdn.test/" + inv.getArgument(0, String.class));
 		
 		UploadInitRequestDto dto = UploadInitRequestDto.builder()
 		                                               .ownerType(MediaOwnerType.USER)
@@ -134,8 +161,8 @@ class UserMediaAssetControllerTest {
 		assertThat(draft.getStatus()).isEqualTo(MediaStatus.UPLOADING);
 		assertThat(draft.getOwnerType()).isEqualTo(MediaOwnerType.USER);
 		assertThat(draft.getOwnerId()).isEqualTo(ownerId);
-		assertThat(draft.getSourceUrl()).startsWith("https://cdn.test/");
-		assertThat(draft.getStorageKey()).isNotBlank();
+		assertThat(draft.getSourceUrl()).isNull();
+		assertThat(draft.getStorageKey()).startsWith("quarantine/media/");
 		assertThat(draft.getMimeType()).isEqualTo("image/png");
 		assertThat(draft.getSize()).isEqualTo(12345L);
 	}
@@ -151,9 +178,21 @@ class UserMediaAssetControllerTest {
 		                                            .ownerId(ownerId)
 		                                            .mimeType("image/png")
 		                                            .size(100L)
-		                                            .storageKey("media/" + UUID.randomUUID() + "/source.png")
-		                                            .sourceUrl("https://cdn.test/source.png")
+		                                            .storageKey("quarantine/media/" + UUID.randomUUID() + "/source.png")
 		                                            .build());
+		String quarantineKey = asset.getStorageKey();
+		when(storageClient.getObjectMetadata(quarantineKey))
+				.thenReturn(Optional.of(new StorageObjectMetadata(100L, "image/png", "etag")));
+		when(storageClient.getObjectMetadata(argThat(key -> key != null
+				&& key.startsWith("verified/") && key.contains("/attempts/"))))
+				.thenReturn(Optional.of(new StorageObjectMetadata(100L, "image/png", "immutable-etag")));
+		when(storageClient.getObjectStream(argThat(key -> key != null
+				&& key.startsWith("verified/") && key.contains("/attempts/")))).thenReturn(
+				new ByteArrayInputStream(new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+		);
+		when(storageClient.publicUrl(argThat(key -> key != null
+				&& !key.startsWith("verified/") && key.contains("/attempts/"))))
+				.thenReturn("https://cdn.test/source.png");
 		
 		CompleteUploadRequestDto body = CompleteUploadRequestDto.builder()
 		                                                        .assetId(asset.getId())
@@ -268,7 +307,7 @@ class UserMediaAssetControllerTest {
 	}
 	
 	@Test
-	void delete_ok_ownerMatches_deletesFromDb_andStorageCalled() throws Exception {
+	void delete_ok_ownerMatches_commitsDurableDeletionIntent() throws Exception {
 		MediaAsset asset = mediaRepo.save(MediaAsset.builder()
 		                                            .kind(MediaKind.VIDEO)
 		                                            .status(MediaStatus.READY)
@@ -289,6 +328,9 @@ class UserMediaAssetControllerTest {
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true));
 		
-		assertThat(mediaRepo.findById(asset.getId())).isEmpty();
+		assertThat(mediaRepo.findById(asset.getId())).get()
+				.extracting(MediaAsset::getStatus)
+				.isEqualTo(MediaStatus.DELETION_PENDING);
+		verifyNoInteractions(storageClient);
 	}
 }

@@ -57,6 +57,7 @@ class TranscodePropertiesTest {
 		assertThat(props.getCrf()).isGreaterThanOrEqualTo(0);
 		assertThat(props.getPreset()).isNotBlank();
 		assertThat(props.getThumbnailSecond()).isGreaterThanOrEqualTo(0);
+		assertThat(props.getFfmpegBinary()).isEqualTo("ffmpeg");
 		
 		// override edelim
 		props.setContainer(Container.TS);
@@ -65,6 +66,7 @@ class TranscodePropertiesTest {
 		props.setCrf(23);
 		props.setPreset("faster");
 		props.setThumbnailSecond(3);
+		props.setFfmpegBinary("/opt/ffmpeg/bin/ffmpeg");
 		
 		assertThat(props.getContainer()).isEqualTo(Container.TS);
 		assertThat(props.getSegmentDurationSec()).isEqualTo(6);
@@ -72,6 +74,7 @@ class TranscodePropertiesTest {
 		assertThat(props.getCrf()).isEqualTo(23);
 		assertThat(props.getPreset()).isEqualTo("faster");
 		assertThat(props.getThumbnailSecond()).isEqualTo(3);
+		assertThat(props.getFfmpegBinary()).isEqualTo("/opt/ffmpeg/bin/ffmpeg");
 	}
 	
 	@Test

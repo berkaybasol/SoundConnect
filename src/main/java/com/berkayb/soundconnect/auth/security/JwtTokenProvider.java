@@ -5,11 +5,14 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.security.Key;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,11 +32,25 @@ public class JwtTokenProvider {
 	// application.yml icinde tanimladigim issueri yani tokenin kimin olusturdugunu belirtir.
 	@Value("${app.jwt.issuer}")
 	private String jwtIssuer;
+
+	@PostConstruct
+	void validateConfiguration() {
+		if (!StringUtils.hasText(jwtSecret)
+				|| jwtSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+			throw new IllegalStateException("app.jwt.secret must contain at least 32 UTF-8 bytes");
+		}
+		if (jwtExpiration <= 0) {
+			throw new IllegalStateException("app.jwt.expiration must be greater than zero");
+		}
+		if (!StringUtils.hasText(jwtIssuer)) {
+			throw new IllegalStateException("app.jwt.issuer must not be blank");
+		}
+	}
 	
 	// JWT secret'i HMAC imzasi icin gerekli olan key objesine donustururuz. (byte array tabanli)
 	// HMAC, token'in backend tarafindan uretildigini ve yolda bozulmadigini garantileyen imzalama yontemidir.
 	private Key getSigningKey() {
-		return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+		return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
 	}
 	
 	// Token uretme metodu (login sonrasi bu cagiriliyor)
@@ -48,7 +65,11 @@ public class JwtTokenProvider {
 		                               .flatMap(role -> role.getPermissions().stream())
 		                               .map(Permission::getName)
 		                               .distinct()
-		                               .collect(Collectors.toList());
+		                               .collect(Collectors.toCollection(ArrayList::new));
+		user.getPermissions().stream()
+				.map(Permission::getName)
+				.filter(permission -> !permissions.contains(permission))
+				.forEach(permissions::add);
 		
 		
 		// Rolleri String listesine ceviriyoruz
@@ -115,6 +136,10 @@ public class JwtTokenProvider {
 	// token cozulmeden once imzasi kontrol edilir ve gecerliyse payload kismindan subject alinir.
 	public UUID getUserIdFromToken(String token) {
 		return UUID.fromString(extractAllClaims(token).getSubject()); // generateToken'da koydumuz sub alanini cekiyoruz
+	}
+
+	public Date getExpirationFromToken(String token) {
+		return extractAllClaims(token).getExpiration();
 	}
 	
 	// token gecerli mi diye kontrol ettigimiz metod (filtrede kullanicaz)

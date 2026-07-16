@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,6 +48,7 @@ class DMMessageUserControllerTest {
 	static final String PATH_LIST = EndPoints.DM.MESSAGE_LIST;
 	static final String PATH_SEND = EndPoints.DM.MESSAGE_SEND;
 	static final String PATH_MARK = EndPoints.DM.MESSAGE_MARK_READ;
+	static final String PATH_UNREAD_COUNT = EndPoints.DM.UNREAD_COUNT;
 	
 	@Resource MockMvc mockMvc;
 	@Resource ObjectMapper objectMapper;
@@ -52,6 +56,7 @@ class DMMessageUserControllerTest {
 	@MockitoBean
 	DMMessageService messageService;
 	@MockitoBean DMConversationRepository conversationRepository;
+	@MockitoBean NotificationService notificationService;
 	@MockitoBean UserRepository userRepository;
 	
 	@MockitoBean
@@ -89,16 +94,19 @@ class DMMessageUserControllerTest {
 		                                  "a", "text", LocalDateTime.now(), null, null);
 		var m2 = new DMMessageResponseDto(UUID.randomUUID(), conversationId, otherId, currentUserId,
 		                                  "b", "text", LocalDateTime.now(), null, null);
-		when(messageService.getMessagesByConversationId(conversationId)).thenReturn(List.of(m1, m2));
+		when(messageService.getMessagesByConversationId(eq(conversationId), org.mockito.Mockito.any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(m1, m2)));
 		
 		mockMvc.perform(get(BASE + PATH_LIST, conversationId).principal(p))
 		       .andExpect(status().isOk())
 		       .andExpect(content().contentType(MediaType.APPLICATION_JSON))
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.code").value(200))
-		       .andExpect(jsonPath("$.data", hasSize(2)))
-		       .andExpect(jsonPath("$.data[0].content").value("a"))
-		       .andExpect(jsonPath("$.data[1].content").value("b"));
+		       .andExpect(jsonPath("$.data.content", hasSize(2)))
+		       .andExpect(jsonPath("$.data.content[0].content").value("a"))
+		       .andExpect(jsonPath("$.data.content[1].content").value("b"));
+
+		verify(notificationService).markDmConversationAsRead(currentUserId, conversationId);
 	}
 	
 	@Test
@@ -165,5 +173,28 @@ class DMMessageUserControllerTest {
 		       .andExpect(jsonPath("$.message", containsString("marked as read")));
 		
 		verify(messageService).markMessageAsRead(messageId, currentUserId);
+	}
+
+	@Test
+	@DisplayName("GET /unread-count returns the authenticated user's total unread DM message count")
+	void unreadCount_ok() throws Exception {
+		String username = "berkay";
+		UUID currentUserId = UUID.randomUUID();
+		Principal principal = () -> username;
+		User user = new User();
+		user.setId(currentUserId);
+		user.setUsername(username);
+		when(userRepository.findByUsername(username)).thenReturn(Optional.of(user));
+		when(messageService.getUnreadCount(currentUserId)).thenReturn(7L);
+
+		mockMvc.perform(get(BASE + PATH_UNREAD_COUNT).principal(principal))
+		       .andExpect(status().isOk())
+		       .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+		       .andExpect(jsonPath("$.success").value(true))
+		       .andExpect(jsonPath("$.code").value(200))
+		       .andExpect(jsonPath("$.data.unreadCount").value(7));
+
+		verify(messageService).getUnreadCount(currentUserId);
+		verifyNoInteractions(conversationRepository, notificationService);
 	}
 }

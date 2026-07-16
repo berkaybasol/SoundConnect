@@ -49,7 +49,7 @@ public class MusicianProfileContributor implements PublicProfileContributor {
 	private String resolveMediaUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getPlaybackUrl(mediaAssetId);
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("[resolver] musician media lookup failed mediaAssetId={}", mediaAssetId);
 			return null;

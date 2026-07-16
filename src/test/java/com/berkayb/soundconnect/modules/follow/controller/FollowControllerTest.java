@@ -2,8 +2,10 @@ package com.berkayb.soundconnect.modules.follow.controller;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
@@ -20,6 +22,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -114,14 +118,32 @@ class FollowControllerTest {
 		                                         .roles(new HashSet<>())
 		                                         .build());
 		followingId = following.getId();
+
+		User securityUser = User.builder()
+		                        .id(followerId)
+		                        .username(follower.getUsername())
+		                        .email(follower.getEmail())
+		                        .password(follower.getPassword())
+		                        .emailVerified(true)
+		                        .status(UserStatus.ACTIVE)
+		                        .build();
+		UserDetailsImpl principal = UserDetailsImpl.fromUser(securityUser);
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
+		);
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	// ---------- FOLLOW ----------
 	@Test @Order(1)
 	void follow_should_return_200_and_isFollowing_true() throws Exception {
 		String body = """
-          { "followerId": "%s", "followingId": "%s" }
-        """.formatted(followerId, followingId);
+          { "followingId": "%s" }
+        """.formatted(followingId);
 		
 		mockMvc.perform(post(BASE + FOLLOW)
 				                .contentType(APPLICATION_JSON)
@@ -146,8 +168,8 @@ class FollowControllerTest {
 		follow(followerId, followingId);
 		
 		String body = """
-          { "followerId": "%s", "followingId": "%s" }
-        """.formatted(followerId, followingId);
+          { "followingId": "%s" }
+        """.formatted(followingId);
 		
 		mockMvc.perform(post(BASE + UNFOLLOW)
 				                .contentType(APPLICATION_JSON)
@@ -203,8 +225,8 @@ class FollowControllerTest {
 	@Test @Order(5)
 	void follow_should_fail_when_self_follow() throws Exception {
 		String body = """
-          { "followerId": "%s", "followingId": "%s" }
-        """.formatted(followerId, followerId);
+          { "followingId": "%s" }
+        """.formatted(followerId);
 		
 		mockMvc.perform(post(BASE + FOLLOW)
 				                .contentType(APPLICATION_JSON)
@@ -219,8 +241,8 @@ class FollowControllerTest {
 	@Test
 	void follow_should_fail_when_duplicate() throws Exception {
 		String body = """
-          {"followerId":"%s","followingId":"%s"}
-        """.formatted(followerId, followingId);
+          {"followingId":"%s"}
+        """.formatted(followingId);
 		
 		mockMvc.perform(post(BASE + FOLLOW)
 				                .contentType(APPLICATION_JSON)
@@ -241,8 +263,8 @@ class FollowControllerTest {
 	// ---- util ----
 	private void follow(UUID followerId, UUID followingId) throws Exception {
 		String body = """
-          { "followerId": "%s", "followingId": "%s" }
-        """.formatted(followerId, followingId);
+          { "followingId": "%s" }
+        """.formatted(followingId);
 		
 		mockMvc.perform(post(BASE + FOLLOW)
 				                .contentType(APPLICATION_JSON)

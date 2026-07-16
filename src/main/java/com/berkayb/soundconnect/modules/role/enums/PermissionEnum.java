@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.role.enums;
 
 public enum PermissionEnum {
 	// CORE ADMIN
+	ADMIN_PANEL_ACCESS,
 	MANAGE_ROLES,
 	MANAGE_PERMISSIONS,
 	READ_USERS,

@@ -1,3 +1,7 @@
-/gradlew text eol=lf
+# Container entrypoints and health checks are executed by POSIX shells.
+# Force LF even when contributors use Git with core.autocrlf=true on Windows.
+*.sh text eol=lf
+
+# Keep native Windows launchers in their platform line-ending convention.
 *.bat text eol=crlf
-*.jar binary
+*.cmd text eol=crlf

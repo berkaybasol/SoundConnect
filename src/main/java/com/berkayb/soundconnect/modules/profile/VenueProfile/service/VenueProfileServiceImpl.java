@@ -4,6 +4,12 @@ import com.berkayb.soundconnect.modules.event.entity.Event; //eklendi
 import com.berkayb.soundconnect.modules.event.repository.EventRepository; //eklendi
 import com.berkayb.soundconnect.modules.event.enums.PerformerType; //eklendi
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
+import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile; //eklendi
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
@@ -20,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate; //eklendi
 import java.util.Comparator; //eklendi
@@ -40,6 +47,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private final VenueEntityFinder venueEntityFinder;
 	private final EventRepository eventRepository;
 	private final MediaAssetService mediaAssetService;
+	private final MediaAssetRepository mediaAssetRepository;
 	
 	@Override
 	public List<VenueProfileResponseDto> getProfilesByUserId(UUID userId) {
@@ -62,7 +70,10 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	public VenueProfileResponseDto updateProfileByVenueId(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto) {
 		Venue venue = venueRepository.findByIdAndOwnerId(venueId, userId)
 		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
-		return updateProfile(venue.getId(), dto);
+		VenueProfile profile = venueProfileRepository.findByVenueId(venue.getId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		applyOwnerUpdate(userId, profile, dto);
+		return venueProfileMapper.toResponse(venueProfileRepository.save(profile));
 	}
 	
 	@Override
@@ -72,6 +83,9 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		
 		if (venueProfileRepository.findByVenueId(venueId).isPresent()) {
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
+		}
+		if (dto.profilePicture() != null) {
+			lockAssignableVenueImage(dto.profilePicture(), MediaOwnerType.VENUE, venueId);
 		}
 		
 		VenueProfile profile = VenueProfile.builder()
@@ -101,7 +115,11 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 		
 		if (dto.bio() != null) profile.setBio(dto.bio());
-		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
+		if (dto.profilePicture() != null) {
+			lockAssignableVenueImage(
+					dto.profilePicture(), MediaOwnerType.VENUE_PROFILE, profile.getId());
+			profile.setProfilePictureMediaId(dto.profilePicture());
+		}
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl());
@@ -130,14 +148,44 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		VenueProfile profile = venueProfileRepository.findByVenueId(venueId) //eklendi
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)); //eklendi
 		
-		if (dto.bio() != null) profile.setBio(dto.bio()); //eklendi
-		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture()); //eklendi
-		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl()); //eklendi
-		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl()); //eklendi
-		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl()); //eklendi
+		applyOwnerUpdate(userId, profile, dto);
 		
 		VenueProfile updated = venueProfileRepository.save(profile); //eklendi
 		return toOwnerProfileDetail(venue, updated); //eklendi
+	}
+
+	private void applyOwnerUpdate(UUID userId, VenueProfile profile, VenueProfileSaveRequestDto dto) {
+		if (dto.bio() != null) profile.setBio(dto.bio());
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.VENUE_PROFILE,
+					profile.getId(), MediaKind.IMAGE
+			);
+			profile.setProfilePictureMediaId(dto.profilePicture());
+		}
+		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
+		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
+		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl());
+	}
+
+	private void lockAssignableVenueImage(UUID assetId, MediaOwnerType ownerType, UUID ownerId) {
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(assetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		if (asset.getKind() != MediaKind.IMAGE) {
+			throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
+		}
+		if (asset.getStatus() != MediaStatus.READY) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getVisibility() != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_PUBLIC);
+		}
+		if (asset.getOwnerType() != ownerType || !ownerId.equals(asset.getOwnerId())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_OWNER_MISMATCH);
+		}
+		if (!StringUtils.hasText(asset.getPlaybackUrl()) && !StringUtils.hasText(asset.getSourceUrl())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+		}
 	}
 	
 	@Override
@@ -252,7 +300,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private String resolveMusicianProfileImageUrl(MusicianProfile profile) { //degisti
 		if (profile == null || profile.getProfilePictureMediaId() == null) return null; //degisti
 		try { //degisti
-			return mediaAssetService.getById(profile.getProfilePictureMediaId()).getSourceUrl(); //degisti
+			return mediaAssetService.getDisplayUrl(profile.getProfilePictureMediaId()); //degisti
 		} catch (Exception e) { //degisti
 			log.warn("Musician profile picture resolve failed. musicianProfileId={}, mediaAssetId={}", //degisti
 			         profile.getId(), profile.getProfilePictureMediaId()); //degisti
@@ -290,7 +338,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private String resolveBandProfileImageUrl(Band band) { //eklendi
 		if (band == null || band.getProfilePictureMediaId() == null) return null; //eklendi
 		try { //eklendi
-			return mediaAssetService.getById(band.getProfilePictureMediaId()).getSourceUrl(); //eklendi
+			return mediaAssetService.getDisplayUrl(band.getProfilePictureMediaId()); //eklendi
 		} catch (Exception e) { //eklendi
 			log.warn("Band profile picture resolve failed. bandId={}, mediaAssetId={}", //eklendi
 			         band.getId(), band.getProfilePictureMediaId()); //eklendi
@@ -345,7 +393,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private String resolveProfilePictureUrl(UUID mediaId) { //degisti
 		if (mediaId == null) return null; //degisti
 		try { //degisti
-			return mediaAssetService.getById(mediaId).getSourceUrl(); //degisti
+			return mediaAssetService.getDisplayUrl(mediaId); //degisti
 		} catch (Exception e) { //degisti
 			log.warn("Venue profile picture resolve failed. mediaAssetId={}", mediaId); //degisti
 			return null; //degisti

@@ -16,7 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 //---------------------------------Terimlerde Takilirsan RabbitMQ.md'ye bak---------------------------------------------
 
@@ -40,10 +44,20 @@ public class TranscodePublisherImpl implements TranscodePublisher {
 	// Mesajın gideceği routing key  (DÜZELTİLDİ)
 	@Value("${rabbitmq.media.routingKeys.videoHlsRequest}")
 	private String videoHlsRoutingKey;
+
+	@Value("${rabbitmq.media.publisherConfirmTimeout:5s}")
+	private Duration publisherConfirmTimeout;
 	
 	// Uygulama ayağa kalkınca callback’leri bağla
 	@PostConstruct
 	void init() {
+		if (publisherConfirmTimeout == null
+				|| publisherConfirmTimeout.compareTo(Duration.ofSeconds(1)) < 0
+				|| publisherConfirmTimeout.compareTo(Duration.ofSeconds(30)) > 0) {
+			throw new IllegalStateException(
+					"rabbitmq.media.publisherConfirmTimeout must be between 1s and 30s"
+			);
+		}
 		// Unroutable mesajlar geri dönsün
 		rabbitTemplate.setMandatory(true);
 		
@@ -76,6 +90,7 @@ public class TranscodePublisherImpl implements TranscodePublisher {
 		// Mesaj özellikleri
 		MessagePostProcessor mpp = message -> {
 			message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+			message.getMessageProperties().setCorrelationId(assetId.toString());
 			message.getMessageProperties().setHeader("eventType", "VIDEO_HLS_REQUEST");
 			message.getMessageProperties().setHeader("assetId", assetId.toString());
 			message.getMessageProperties().setHeader("schemaVersion", 1);
@@ -87,10 +102,28 @@ public class TranscodePublisherImpl implements TranscodePublisher {
 		
 		try {
 			rabbitTemplate.convertAndSend(exchange, videoHlsRoutingKey, payload, mpp, cd);
+			CorrelationData.Confirm confirm = cd.getFuture().get(
+					publisherConfirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+			ReturnedMessage returned = cd.getReturned();
+			if (!confirm.isAck() || returned != null) {
+				log.warn("[transcode-publisher] broker rejected publish assetId={} ack={} returned={}",
+						assetId, confirm.isAck(), returned != null);
+				throw new SoundConnectException(ErrorType.INTERNAL_ERROR);
+			}
 			log.info("[transcode-publisher] queued VIDEO_HLS_REQUEST assetId={} sourceKey={} hlsPrefix={}",
 			         assetId, sourceKey, hlsPrefix);
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			throw new SoundConnectException(ErrorType.INTERNAL_ERROR);
+		} catch (TimeoutException | ExecutionException exception) {
+			log.warn("[transcode-publisher] publish confirmation failed assetId={} exceptionType={}",
+					assetId, exception.getClass().getSimpleName());
+			throw new SoundConnectException(ErrorType.INTERNAL_ERROR);
+		} catch (SoundConnectException exception) {
+			throw exception;
 		} catch (Exception e) {
-			log.error("[transcode-publisher] publish failed assetId={} err={}", assetId, e.getMessage(), e);
+			log.error("[transcode-publisher] publish failed assetId={} exceptionType={}",
+					assetId, e.getClass().getSimpleName());
 			throw new SoundConnectException(ErrorType.INTERNAL_ERROR);
 		}
 	}
@@ -107,11 +140,10 @@ public class TranscodePublisherImpl implements TranscodePublisher {
 	
 	// Return callback (unroutable)
 	private void onReturned(ReturnedMessage returned) {
-		log.error("[transcode-publisher] returned message exchange={} routingKey={} replyCode={} replyText={} body={}",
+		log.error("[transcode-publisher] returned message exchange={} routingKey={} replyCode={} replyText={}",
 		          returned.getExchange(),
 		          returned.getRoutingKey(),
 		          returned.getReplyCode(),
-		          returned.getReplyText(),
-		          new String(returned.getMessage().getBody()));
+		          returned.getReplyText());
 	}
 }

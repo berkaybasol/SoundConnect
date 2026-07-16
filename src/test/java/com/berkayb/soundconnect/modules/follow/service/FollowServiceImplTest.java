@@ -104,7 +104,7 @@ class FollowServiceImplTest {
 		sut.follow(follower, following);
 
 		verify(notificationProducer).publish(eventCaptor.capture());
-		assertThat(eventCaptor.getValue().title()).isEqualTo("Karga Sahne seni takip etmeye basladi");
+		assertThat(eventCaptor.getValue().title()).isEqualTo("Karga Sahne seni takip etmeye başladı");
 		assertThat(eventCaptor.getValue().payload()).containsEntry("followerUsername", "follower");
 	}
 
@@ -123,7 +123,7 @@ class FollowServiceImplTest {
 		sut.follow(follower, following);
 
 		verify(notificationProducer).publish(eventCaptor.capture());
-		assertThat(eventCaptor.getValue().title()).isEqualTo("follower seni takip etmeye basladi");
+		assertThat(eventCaptor.getValue().title()).isEqualTo("follower seni takip etmeye başladı");
 	}
 	
 	@Test

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.location.dto.response.CityResponseDto;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
+import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -13,11 +14,13 @@ import com.berkayb.soundconnect.modules.user.mapper.UserMapper;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.data.jpa.repository.Lock;
 
 import java.util.List;
 import java.util.Optional;
@@ -75,10 +78,12 @@ class UserServiceImplTest {
 		                   .email("old@mail.com")
 		                   .password("old-hash")
 		                   .status(UserStatus.ACTIVE)
+		                   .roles(Set.of(Role.builder().name("ROLE_OWNER").build()))
 		                   .build();
 		
 		// Finder default davranışı: her çağrıda aynı existingUser dönsün
 		when(userEntityFinder.getUser(userId)).thenReturn(existingUser);
+		when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(existingUser));
 		
 		// Repository.save(...) çağrıldığında, verilen argümanı aynen geri döndür (JPA davranışını taklit)
 		when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -163,7 +168,7 @@ class UserServiceImplTest {
 		UserUpdateRequestDto dto = new UserUpdateRequestDto("newName", null, null, null);
 		
 		// Çalıştır
-		Boolean updated = userService.updateUser(userId, dto);
+		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		// Beklenti: true + save çağrıldı + username değişti + updatedAt yazıldı
 		assertThat(updated).isTrue();
@@ -183,16 +188,45 @@ class UserServiceImplTest {
 	 */
 	@Test
 	void updateUser_WhenEmailChanged_ShouldUpdateAndSaveAndReturnTrue() {
-		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, "new@mail.com", null);
+		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, " New@Example.COM ", null);
 		
-		Boolean updated = userService.updateUser(userId, dto);
+		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isTrue();
 		verify(userRepository).save(userCaptor.capture());
 		
 		User saved = userCaptor.getValue();
-		assertThat(saved.getEmail()).isEqualTo("new@mail.com");
+		assertThat(saved.getEmail()).isEqualTo("new@example.com");
 		assertThat(saved.getUpdatedAt()).isNotNull();
+		verify(userRepository).existsByEmailAndIdNot("new@example.com", userId);
+	}
+
+	@Test
+	void updateUser_WhenCanonicalEmailBelongsToAnotherUser_ShouldReject() {
+		when(userRepository.existsByEmailAndIdNot("taken@example.com", userId)).thenReturn(true);
+		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, " TAKEN@Example.com ", null);
+
+		assertThatThrownBy(() -> userService.updateUser(userId, userId, dto))
+				.isInstanceOf(SoundConnectException.class)
+				.hasMessageContaining("Email already exists");
+
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void saveUser_CanonicalizesEmailBeforeLookupAndPersistence() {
+		UUID roleId = UUID.randomUUID();
+		Role role = Role.builder().id(roleId).name("ROLE_LISTENER").build();
+		when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		UserSaveRequestDto dto = new UserSaveRequestDto(
+				"listener", " Listener@Example.COM ", roleId, "password123"
+		);
+
+		User saved = userService.saveUser(userId, dto);
+
+		assertThat(saved.getEmail()).isEqualTo("listener@example.com");
+		verify(userRepository).existsByEmail("listener@example.com");
 	}
 	
 	/**
@@ -210,7 +244,7 @@ class UserServiceImplTest {
 		// Encoder'ın nasıl davranacağını belirliyoruz
 		when(passwordEncoder.encode("plain-pass")).thenReturn("encoded-pass");
 		
-		Boolean updated = userService.updateUser(userId, dto);
+		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isTrue();
 		verify(passwordEncoder).encode("plain-pass");        // gerçekten encode edildi mi?
@@ -233,13 +267,16 @@ class UserServiceImplTest {
 	void updateUser_WhenRoleChanged_ShouldReplaceRolesAndSaveAndReturnTrue() {
 		UUID roleId = UUID.randomUUID();
 		Role newRole = Role.builder().id(roleId).name("ROLE_ADMIN").build();
+		Role ownerRole = existingUser.getRoles().iterator().next();
 		
 		// Rol bulundu senaryosu
 		when(roleRepository.findById(roleId)).thenReturn(Optional.of(newRole));
+		when(roleRepository.findByNameForUpdate("ROLE_OWNER")).thenReturn(Optional.of(ownerRole));
+		when(userRepository.countDistinctByRoles_Name("ROLE_OWNER")).thenReturn(2L);
 		
 		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, null, roleId);
 		
-		Boolean updated = userService.updateUser(userId, dto);
+		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isTrue();
 		verify(roleRepository).findById(roleId);             // rol lookup yapıldı mı?
@@ -252,6 +289,60 @@ class UserServiceImplTest {
 				.extracting("name")
 				.containsExactly("ROLE_ADMIN");
 		assertThat(saved.getUpdatedAt()).isNotNull();
+	}
+
+	@Test
+	void updateUser_WhenDowngradingLastOwner_ShouldLockInvariantAndReject() {
+		UUID roleId = UUID.randomUUID();
+		Role replacement = Role.builder().id(roleId).name("ROLE_ADMIN").build();
+		Role ownerRole = existingUser.getRoles().iterator().next();
+		when(roleRepository.findById(roleId)).thenReturn(Optional.of(replacement));
+		when(roleRepository.findByNameForUpdate("ROLE_OWNER")).thenReturn(Optional.of(ownerRole));
+		when(userRepository.countDistinctByRoles_Name("ROLE_OWNER")).thenReturn(1L);
+
+		assertThatThrownBy(() -> userService.updateUser(
+				userId,
+				userId,
+				new UserUpdateRequestDto(null, null, null, roleId)
+		)).isInstanceOf(SoundConnectException.class);
+
+		InOrder invariantOrder = inOrder(roleRepository, userRepository);
+		invariantOrder.verify(roleRepository).findByNameForUpdate("ROLE_OWNER");
+		invariantOrder.verify(userRepository).countDistinctByRoles_Name("ROLE_OWNER");
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void ownerInvariantFinderDeclaresPessimisticWriteLock() throws NoSuchMethodException {
+		Lock lock = RoleRepository.class
+				.getMethod("findByNameForUpdate", String.class)
+				.getAnnotation(Lock.class);
+
+		assertThat(lock).isNotNull();
+		assertThat(lock.value()).isEqualTo(LockModeType.PESSIMISTIC_WRITE);
+	}
+
+	@Test
+	void deleteUserById_LocksDifferentUsersInStableUuidOrder() {
+		UUID lowerTargetId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+		UUID higherActorId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+		User ownerActor = User.builder()
+		                           .id(higherActorId)
+		                           .roles(Set.of(Role.builder().name("ROLE_OWNER").build()))
+		                           .build();
+		User regularTarget = User.builder()
+		                              .id(lowerTargetId)
+		                              .roles(Set.of(Role.builder().name("ROLE_USER").build()))
+		                              .build();
+		when(userRepository.findByIdForUpdate(lowerTargetId)).thenReturn(Optional.of(regularTarget));
+		when(userRepository.findByIdForUpdate(higherActorId)).thenReturn(Optional.of(ownerActor));
+
+		userService.deleteUserById(higherActorId, lowerTargetId);
+
+		InOrder lockOrder = inOrder(userRepository);
+		lockOrder.verify(userRepository).findByIdForUpdate(lowerTargetId);
+		lockOrder.verify(userRepository).findByIdForUpdate(higherActorId);
+		verify(userRepository).delete(regularTarget);
 	}
 	
 	/**
@@ -268,7 +359,7 @@ class UserServiceImplTest {
 		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, null, roleId);
 		
 		// Doğru tipte exception bekliyoruz
-		assertThatThrownBy(() -> userService.updateUser(userId, dto))
+		assertThatThrownBy(() -> userService.updateUser(userId, userId, dto))
 				.isInstanceOf(SoundConnectException.class);
 		
 		// Hata fırladıysa save çağrısı olmamalı
@@ -285,7 +376,7 @@ class UserServiceImplTest {
 	void updateUser_WhenNoFieldsProvided_ShouldReturnFalseAndNotSave() {
 		UserUpdateRequestDto dto = new UserUpdateRequestDto(null, null, null, null);
 		
-		Boolean updated = userService.updateUser(userId, dto);
+		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isFalse();                      // hiçbir alan gelmedi => false
 		verify(userRepository, never()).save(any());        // persiste gerek yok

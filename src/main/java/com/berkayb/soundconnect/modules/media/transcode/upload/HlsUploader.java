@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.media.transcode.upload;
 
 import com.berkayb.soundconnect.modules.media.dto.response.HlsUploadResult;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
+import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 //------------------------------------Takildigin Yerde MediaModule.md Bak-----------------------------------------------
 
@@ -19,6 +21,7 @@ import java.util.Locale;
 public class HlsUploader {
 	
 	private final StorageClient storage;
+	private final TranscodeProperties transcodeProperties;
 	
 	/**
 	 * HLS çıktı ağacını (master.m3u8 + {height}p/index.m3u8 + segmentler) S3'e yükler.
@@ -33,13 +36,24 @@ public class HlsUploader {
 	 *     -> thumbnail.jpg       →  hlsPrefix/thumbnail.jpg
 	 */
 	public HlsUploadResult uploadHlsTree(Path hlsOutDir, String hlsPrefix, Path thumbnail) throws IOException {
+		// Failure cleanup is deliberately not performed on the Rabbit listener
+		// thread. VideoHlsWorkflow first persists HLS_CLEANUP; its bounded, retryable
+		// worker owns the potentially large prefix delete.
+		return uploadHlsTreeInternal(hlsOutDir, hlsPrefix, thumbnail);
+	}
+
+	private HlsUploadResult uploadHlsTreeInternal(Path hlsOutDir, String hlsPrefix, Path thumbnail)
+			throws IOException {
 		if (hlsOutDir == null || !Files.isDirectory(hlsOutDir)) {
 			throw new IOException("HLS output directory missing: " + hlsOutDir);
 		}
 		int count = 0;
+		long deadlineNanos = System.nanoTime()
+				+ TimeUnit.SECONDS.toNanos(transcodeProperties.getHlsUploadTimeoutSec());
 		
 		try (var walk = Files.walk(hlsOutDir)) {
 			for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
+				assertWithinUploadBudget(deadlineNanos);
 				String rel = unixify(hlsOutDir.relativize(file).toString());
 				String key = joinKey(hlsPrefix, rel);
 				var ct = guessContentType(file);
@@ -54,6 +68,7 @@ public class HlsUploader {
 				&& thumbnail.toAbsolutePath().normalize().startsWith(hlsOutDir.toAbsolutePath().normalize());
 		
 		if (thumbnail != null && Files.exists(thumbnail) && Files.isRegularFile(thumbnail) && !thumbInsideTree) {
+			assertWithinUploadBudget(deadlineNanos);
 			String key = joinKey(hlsPrefix, thumbnail.getFileName().toString());
 			var ct = guessContentType(thumbnail);
 			storage.putFile(thumbnail, key, ct.contentType, ct.cacheControl);
@@ -68,6 +83,12 @@ public class HlsUploader {
 		String playbackUrl = storage.publicUrl(joinKey(hlsPrefix, "master.m3u8"));
 		log.info("[hls-uploader] uploaded {} objects under prefix={}", count, hlsPrefix);
 		return new HlsUploadResult(playbackUrl, thumbUrl, count);
+	}
+
+	private static void assertWithinUploadBudget(long deadlineNanos) throws IOException {
+		if (System.nanoTime() >= deadlineNanos) {
+			throw new IOException("HLS upload time budget exceeded");
+		}
 	}
 	
 	// Path'leri her zaman unix formatına (/) çeviriyoruz (Windows vs fark etmesin diye)
@@ -102,11 +123,11 @@ public class HlsUploader {
 		} else if (name.equals("init.mp4") || name.endsWith(".mp4")) {
 			return new Content("video/mp4", "public, max-age=31536000, immutable");
 		} else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
-			return new Content("image/jpeg", "public, max-age=2592000");
+			return new Content("image/jpeg", "public, max-age=31536000, immutable");
 		} else if (name.endsWith(".png")) {
-			return new Content("image/png", "public, max-age=2592000");
+			return new Content("image/png", "public, max-age=31536000, immutable");
 		} else if (name.endsWith(".webp")) {
-			return new Content("image/webp", "public, max-age=2592000");
+			return new Content("image/webp", "public, max-age=31536000, immutable");
 		}
 		return new Content("application/octet-stream", "public, max-age=31536000, immutable");
 	}

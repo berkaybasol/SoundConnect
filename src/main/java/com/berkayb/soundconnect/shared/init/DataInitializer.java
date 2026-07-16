@@ -11,12 +11,19 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
-import jakarta.annotation.PostConstruct;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -26,18 +33,35 @@ import static com.berkayb.soundconnect.modules.role.enums.PermissionEnum.*;
 import static com.berkayb.soundconnect.modules.role.enums.RoleEnum.*;
 
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 100)
 @ConditionalOnProperty(value = "app.data.init.enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
-public class DataInitializer {
+public class DataInitializer implements ApplicationRunner {
 	private final RoleRepository roleRepository;
 	private final PermissionRepository permissionRepository;
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final LocationEntityFinder locationEntityFinder;
-	
-	@PostConstruct
-	public void initData() {
+
+	@Value("${app.data.init.owner.enabled:false}")
+	private boolean ownerBootstrapEnabled;
+	@Value("${app.data.init.owner.username:}")
+	private String ownerUsername;
+	@Value("${app.data.init.owner.password:}")
+	private String ownerPassword;
+	@Value("${app.data.init.owner.email:}")
+	private String ownerEmail;
+	@Value("${app.data.init.owner.phone:}")
+	private String ownerPhone;
+	@Value("${app.data.init.owner.city:}")
+	private String ownerCity;
+	@Value("${app.data.init.owner.minimum-password-length:16}")
+	private int ownerMinimumPasswordLength = 16;
+
+	@Override
+	@Transactional
+	public void run(ApplicationArguments args) {
 		
 		log.info("roller ve izinler senkronize ediliyor...");
 		
@@ -60,6 +84,7 @@ public class DataInitializer {
 				DELETE_USER,
 				READ_ALL_USERS,
 				READ_USERS,
+				ADMIN_PANEL_ACCESS,
 				MANAGE_USERS,
 				READ_VENUE,
 				WRITE_VENUE,
@@ -89,30 +114,68 @@ public class DataInitializer {
 		
 		log.info("roller ve izinler senkronize edildi.");
 		
-		// default owner kullaniciyi olustur
-		if (userRepository.findByUsername("basol").isEmpty()) {
-			log.info("default owner olusturuluyor...");
-			
-			Role owner = roleRepository.findByName(ROLE_OWNER.name())
-			                           .orElseThrow(() -> new RuntimeException("ROLE_OWNER bulunamadi"));
-			
-			City cityEntity = locationEntityFinder.getCityByName("Ankara");
-			User admin = User.builder()
-			                 .username("basol")
-			                 .password(passwordEncoder.encode("raprap12334"))
-			                 .email("admin@soundconnect.com")
-			                 .phone("05555555555")
-			                 .city(cityEntity)
-			                 .gender(Gender.MALE)
-			                 .status(UserStatus.ACTIVE)
-							 .emailVerified(true)
-			                 .roles(Set.of(owner))
-			                 .createdAt(LocalDateTime.now())
-			                 .updatedAt(LocalDateTime.now())
-			                 .build();
-			
-			userRepository.save(admin);
-			log.info("owner kullanici olusturuldu: basol / raprap12334");
+		bootstrapOwnerIfExplicitlyEnabled();
+	}
+
+	private void bootstrapOwnerIfExplicitlyEnabled() {
+		if (!ownerBootstrapEnabled) {
+			log.info("owner bootstrap disabled");
+			return;
+		}
+
+		requireConfigured("username", ownerUsername);
+		requireConfigured("password", ownerPassword);
+		requireConfigured("email", ownerEmail);
+		requireConfigured("phone", ownerPhone);
+		requireConfigured("city", ownerCity);
+		if (ownerMinimumPasswordLength < 10 || ownerMinimumPasswordLength > 128) {
+			throw new IllegalStateException("Owner bootstrap minimum password length must be between 10 and 128");
+		}
+		if (ownerPassword.length() < ownerMinimumPasswordLength) {
+			throw new IllegalStateException("Owner bootstrap password must contain at least "
+					+ ownerMinimumPasswordLength + " characters");
+		}
+
+		Role ownerRole = roleRepository.findByName(ROLE_OWNER.name())
+		                               .orElseThrow(() -> new IllegalStateException("ROLE_OWNER bulunamadi"));
+		Optional<User> existing = userRepository.findByUsername(ownerUsername);
+		if (existing.isPresent()) {
+			boolean alreadyOwner = existing.get().getRoles().stream()
+			                               .anyMatch(role -> ROLE_OWNER.name().equals(role.getName()));
+			if (!alreadyOwner) {
+				throw new IllegalStateException("Configured owner bootstrap username belongs to a non-owner account");
+			}
+			log.info("owner bootstrap account already exists username={}", ownerUsername);
+			return;
+		}
+		String normalizedOwnerEmail = EmailUtils.normalize(ownerEmail);
+		if (userRepository.existsByEmail(normalizedOwnerEmail)) {
+			throw new IllegalStateException("Configured owner bootstrap email is already in use");
+		}
+
+		City cityEntity = locationEntityFinder.getCityByName(ownerCity);
+		User owner = User.builder()
+		                 .username(ownerUsername)
+		                 .password(passwordEncoder.encode(ownerPassword))
+		                 .email(normalizedOwnerEmail)
+		                 .phone(ownerPhone)
+		                 .city(cityEntity)
+		                 .gender(Gender.OTHER)
+		                 .status(UserStatus.ACTIVE)
+		                 .emailVerified(true)
+		                 .roles(Set.of(ownerRole))
+		                 .createdAt(LocalDateTime.now())
+		                 .updatedAt(LocalDateTime.now())
+		                 .build();
+
+		User savedOwner = userRepository.save(owner);
+		log.warn("owner bootstrap account created id={} username={}; disable bootstrap immediately",
+		         savedOwner.getId(), savedOwner.getUsername());
+	}
+
+	private void requireConfigured(String property, String value) {
+		if (!StringUtils.hasText(value)) {
+			throw new IllegalStateException("Owner bootstrap is enabled but app.data.init.owner." + property + " is empty");
 		}
 	}
 	

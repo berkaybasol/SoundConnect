@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.auth.security;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import lombok.AllArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -99,7 +100,8 @@ public class UserDetailsImpl implements UserDetails {
 	
 	@Override
 	public boolean isAccountNonLocked() {
-		return true; // Hesap kitli mi?
+		// Pending venue hesaplari onaylanana kadar kimlik dogrulayamaz.
+		return user.getStatus() != UserStatus.PENDING_VENUE_REQUEST;
 	}
 	
 	@Override
@@ -109,6 +111,7 @@ public class UserDetailsImpl implements UserDetails {
 	
 	@Override
 	public boolean isEnabled() {
-		return true; // Hesap aktif mi?
+		return Boolean.TRUE.equals(user.getEmailVerified())
+				&& user.getStatus() == UserStatus.ACTIVE;
 	}
 }

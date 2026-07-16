@@ -193,7 +193,7 @@ class RoleControllerTest {
 		// 1) başarılı
 		createRoleViaApi(duplicateName, List.of(permAId, permBId));
 		
-		// 2) aynı isim -> 400 + ErrorResponse (GlobalExceptionHandler)
+		// 2) aynı isim -> 409 + ErrorResponse (GlobalExceptionHandler)
 		String body = """
         { "name": "%s", "permissionIds": ["%s"] }
         """.formatted(duplicateName, permAId);
@@ -202,9 +202,9 @@ class RoleControllerTest {
 				                .contentType(APPLICATION_JSON)
 				                .content(body))
 		       .andDo(print())
-		       .andExpect(status().isBadRequest())
+		       .andExpect(status().isConflict())
 		       .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
-		       .andExpect(jsonPath("$.httpStatus").value("BAD_REQUEST"))
+		       .andExpect(jsonPath("$.httpStatus").value("CONFLICT"))
 		       .andExpect(jsonPath("$.message").value("Role already exists"));
 		// Error code'u sabit bilmiyorsak spesifik sayıya bağlamıyoruz.
 	}

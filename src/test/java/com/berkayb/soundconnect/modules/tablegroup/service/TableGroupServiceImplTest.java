@@ -5,6 +5,9 @@ import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
+import com.berkayb.soundconnect.modules.tablegroup.chat.repository.TableGroupMessageRepository;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroup;
@@ -14,6 +17,7 @@ import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.mapper.TableGroupMapper;
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
 import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -60,6 +64,18 @@ class TableGroupServiceImplTest {
 	
 	@Mock
 	private TableGroupEntityFinder tableGroupEntityFinder;
+
+	@Mock
+	private TableGroupMessageRepository tableGroupMessageRepository;
+
+	@Mock
+	private TableGroupChatUnreadHelper unreadHelper;
+
+	@Mock
+	private UserRepository userRepository;
+
+	@Mock
+	private PublicProfileResolverService publicProfileResolverService;
 	
 	@InjectMocks
 	private TableGroupServiceImpl tableGroupService;
@@ -116,7 +132,7 @@ class TableGroupServiceImplTest {
 				.thenAnswer(invocation -> invocation.getArgument(0));
 		
 		// when
-		tableGroupService.joinTableGroup(userId, tableGroupId);
+		tableGroupService.joinTableGroup(userId, tableGroupId, null);
 		
 		// then
 		assertThat(tableGroup.getParticipants())
@@ -137,7 +153,7 @@ class TableGroupServiceImplTest {
 				.thenReturn(tableGroup);
 		
 		// when / then
-		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId))
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_NOT_FOUND);
 	}
@@ -151,7 +167,7 @@ class TableGroupServiceImplTest {
 				.thenReturn(tableGroup);
 		
 		// when / then
-		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId))
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_END_DATE_PASSED);
 	}
@@ -178,7 +194,7 @@ class TableGroupServiceImplTest {
 				.thenReturn(tableGroup);
 		
 		// when / then
-		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId))
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.MAX_PARTICIPANT_LIMIT);
 	}
@@ -199,7 +215,7 @@ class TableGroupServiceImplTest {
 				.thenReturn(tableGroup);
 		
 		// when / then
-		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId))
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.ALREADY_PARTICIPANT);
 	}
@@ -412,6 +428,8 @@ class TableGroupServiceImplTest {
 						UUID.randomUUID(),
 						ownerId,
 						null,
+						null,
+						null,
 						"Some Venue",
 						3,
 						request.genderPrefs(),
@@ -523,6 +541,8 @@ class TableGroupServiceImplTest {
 		TableGroupResponseDto dto = new TableGroupResponseDto(
 				tableGroupId,
 				ownerId,
+				null,
+				null,
 				null,
 				"Venue",
 				3,
@@ -656,8 +676,8 @@ class TableGroupServiceImplTest {
 		// type ve payload doğru mu?
 		events.forEach(event -> {
 			assertThat(event.type()).isEqualTo(NotificationType.TABLE_EXPIRED);
-			assertThat(event.payload().get("tableGroupId")).isEqualTo(group.getId());
-			assertThat(event.payload().get("ownerId")).isEqualTo(ownerId);
+			assertThat(event.payload().get("tableGroupId")).isEqualTo(group.getId().toString());
+			assertThat(event.payload().get("ownerId")).isEqualTo(ownerId.toString());
 		});
 	}
 	

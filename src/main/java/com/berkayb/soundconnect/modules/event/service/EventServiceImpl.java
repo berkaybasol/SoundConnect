@@ -5,10 +5,17 @@ import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.mapper.EventMapper;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
+import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
@@ -19,6 +26,8 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -35,6 +44,8 @@ public class EventServiceImpl implements EventService{
 	private final MusicianProfileService musicianProfileService;
 	private final BandService bandService;
 	private final EventMapper eventMapper;
+	private final MediaAssetRepository mediaAssetRepository;
+	private final VenueProfileRepository venueProfileRepository;
 	
 	@Override
 	public List<EventResponseDto> getWeeklyEventsByVenue(UUID venueId, LocalDate startDate, LocalDate endDate) {
@@ -66,6 +77,7 @@ public class EventServiceImpl implements EventService{
 	}
 	
 	@Override
+	@Transactional
 	public EventResponseDto createEvent(UUID createdByUserId, EventCreateRequestDto dto) {
 		log.info("[EVENT] Yeni etkinlik oluşturma isteği alındı. title={}", dto.title());
 		
@@ -88,6 +100,7 @@ public class EventServiceImpl implements EventService{
 			         venue.getId(), venue.getStatus());
 			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		}
+		String normalizedPosterImage = normalizeAndValidatePosterReference(dto.posterImage(), venue);
 		
 		// Performer dogrulamasi
 		boolean musicianProvided = dto.musicianProfileId() != null;
@@ -127,7 +140,7 @@ public class EventServiceImpl implements EventService{
 				.eventDate(dto.eventDate())
 				.startTime(dto.startTime())
 				.endTime(dto.endTime())
-				.posterImage(dto.posterImage())
+				.posterImage(normalizedPosterImage)
 				.venue(venue)
 				.musicianProfile(musician)
 				.band(band)
@@ -140,6 +153,43 @@ public class EventServiceImpl implements EventService{
 		
 		return eventMapper.toDto(saved);
 		
+	}
+
+	private String normalizeAndValidatePosterReference(String posterImage, Venue venue) {
+		if (!StringUtils.hasText(posterImage)) {
+			return posterImage;
+		}
+		final UUID assetId;
+		try {
+			assetId = UUID.fromString(posterImage.trim());
+		} catch (IllegalArgumentException legacyUrlOrPath) {
+			// Event posters historically accepted a direct URL/path. Only UUID-backed
+			// posters participate in the MediaAsset lifecycle fence.
+			return posterImage;
+		}
+
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(assetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		UUID venueProfileId = venueProfileRepository.findByVenueId(venue.getId())
+				.map(profile -> profile.getId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_OWNER_MISMATCH));
+		if (asset.getKind() != MediaKind.IMAGE) {
+			throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
+		}
+		if (asset.getStatus() != MediaStatus.READY) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getVisibility() != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_PUBLIC);
+		}
+		if (asset.getOwnerType() != MediaOwnerType.VENUE_PROFILE
+				|| !venueProfileId.equals(asset.getOwnerId())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_OWNER_MISMATCH);
+		}
+		if (!StringUtils.hasText(asset.getPlaybackUrl()) && !StringUtils.hasText(asset.getSourceUrl())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+		}
+		return assetId.toString();
 	}
 	
 	@Override

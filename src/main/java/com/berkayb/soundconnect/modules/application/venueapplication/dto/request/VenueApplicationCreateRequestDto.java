@@ -21,6 +21,7 @@ public record VenueApplicationCreateRequestDto(
 		
 		@NotBlank(message = "District ID is required")
 		String districtId,
-		
-		String neighborhoodId // Optional olabilir
+
+		@NotBlank(message = "Neighborhood ID is required")
+		String neighborhoodId
 ) {}

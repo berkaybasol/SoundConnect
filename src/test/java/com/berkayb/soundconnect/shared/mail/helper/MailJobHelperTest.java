@@ -72,6 +72,31 @@ class MailJobHelperTest {
 		assertThat(helper.redeliveryCount(headers)).isEqualTo(4);
 		assertThat(helper.redeliveryCount(Collections.emptyMap())).isZero();
 	}
+
+	@Test
+	@DisplayName("retryAttempt: explicit header is authoritative and legacy marker starts at one")
+	void retryAttempt_readsPersistedAttempt() {
+		assertThat(helper.retryAttempt(Map.of(MailJobHelper.RETRY_ATTEMPT_HEADER, 3))).isEqualTo(3);
+		assertThat(helper.retryAttempt(Map.of(MailJobHelper.RETRY_ATTEMPT_HEADER, "4"))).isEqualTo(4);
+		assertThat(helper.retryAttempt(Map.of(MailJobHelper.RETRY_MARKER_HEADER, true))).isEqualTo(1);
+		assertThat(helper.retryAttempt(Collections.emptyMap())).isZero();
+	}
+
+	@Test
+	@DisplayName("safeBody: provider response content is never exposed")
+	void safeBody_redactsProviderPayload() {
+		var exception = HttpClientErrorException.create(
+				HttpStatus.BAD_REQUEST,
+				"bad request",
+				new HttpHeaders(),
+				"secret-provider-payload".getBytes(StandardCharsets.UTF_8),
+				StandardCharsets.UTF_8
+		);
+
+		assertThat(helper.safeBody(exception))
+				.startsWith("<redacted:")
+				.doesNotContain("secret-provider-payload");
+	}
 	
 	@Test
 	@DisplayName("isTransient: ResourceAccessException → geçici")
@@ -88,9 +113,12 @@ class MailJobHelperTest {
 				HttpStatus.BAD_GATEWAY, "bad gw", h, null, null);
 		var ex4xx = HttpClientErrorException.create(
 				HttpStatus.BAD_REQUEST, "bad req", h, null, StandardCharsets.UTF_8);
+		var ex429 = HttpClientErrorException.create(
+				HttpStatus.TOO_MANY_REQUESTS, "rate limited", h, null, StandardCharsets.UTF_8);
 		
 		assertThat(helper.isTransient(ex5xx)).isTrue();
 		assertThat(helper.isTransient(ex4xx)).isFalse();
+		assertThat(helper.isTransient(ex429)).isTrue();
 	}
 	
 	@Test
@@ -135,6 +163,13 @@ class MailJobHelperTest {
 		
 		long d429 = helper.chooseDelayMs(ex429, 0, defaults, true);
 		assertThat(d429).isEqualTo(5000L);
+
+		HttpHeaders excessiveRetryAfter = new HttpHeaders();
+		excessiveRetryAfter.add(HttpHeaders.RETRY_AFTER, "999999999");
+		var excessive429 = HttpClientErrorException.create(
+				HttpStatus.TOO_MANY_REQUESTS, "rate", excessiveRetryAfter, null, null);
+		assertThat(helper.chooseDelayMs(excessive429, 0, defaults, true))
+				.isEqualTo(86_400_000L);
 	}
 	
 	@Test

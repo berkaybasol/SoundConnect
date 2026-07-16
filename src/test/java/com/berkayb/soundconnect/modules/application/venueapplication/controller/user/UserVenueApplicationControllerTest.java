@@ -198,4 +198,22 @@ class UserVenueApplicationControllerTest {
 		       .andExpect(jsonPath("$.message", containsString("already")))
 		       .andExpect(jsonPath("$.message", containsString("application")));
 	}
+
+	@Test
+	void createVenueApplication_withoutNeighborhood_shouldReturnBadRequest() throws Exception {
+		String body = """
+{
+  "venueName": "Cool Venue",
+  "venueAddress": "Some Address 123",
+  "phone": "+905551112233",
+  "cityId": "%s",
+  "districtId": "%s"
+}
+""".formatted(city.getId(), district.getId());
+
+		mockMvc.perform(post("/api/v1/user/venue-applications/create")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(body))
+		       .andExpect(status().isBadRequest());
+	}
 }

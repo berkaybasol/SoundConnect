@@ -138,7 +138,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	private String resolveMediaUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("Profile search image resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;

@@ -17,7 +17,13 @@ import java.util.UUID;
  */
 
 @Entity
-@Table(name = "tbl_tracks")
+@Table(
+		name = "tbl_tracks",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_tracks_owner_media_asset",
+				columnNames = {"owner_type", "owner_id", "media_asset_id"}
+		)
+)
 @Getter
 @Setter
 @NoArgsConstructor

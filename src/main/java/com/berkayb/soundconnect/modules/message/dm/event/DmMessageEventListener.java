@@ -1,7 +1,6 @@
 package com.berkayb.soundconnect.modules.message.dm.event;
 
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageResponseDto;
-import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
@@ -13,12 +12,14 @@ import com.berkayb.soundconnect.shared.messaging.events.notification.Notificatio
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Dm mesaj event'lerini dinleyip, WebSocket/STOMP uzerinden anlik push yapan subscriber.
@@ -31,13 +32,12 @@ public class DmMessageEventListener {
 	private final SimpMessagingTemplate messagingTemplate;
 	private final DMMessageMapper messageMapper;
 	private final DMMessageRepository messageRepository;
-	private final DmBadgeCacheHelper badgeCacheHelper;
 	private final NotificationProducer notificationProducer;
 	private final UserRepository userRepository;
 	private final PublicProfileResolverService publicProfileResolverService;
 	
-	@EventListener
-	public void onDmMessaggeSent (DmMessageSentEvent event) {
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void onDmMessageSent(DmMessageSentEvent event) {
 		try {
 			// eventteki bilgiden DMMessage entity'sini DB'den cek (responseDto icin)
 			var msg = messageRepository.findById(event.getMessageId())
@@ -58,21 +58,29 @@ public class DmMessageEventListener {
 			messagingTemplate.convertAndSend(senderDestination, dto);
 			log.debug("DM mesajı WS push: senderId={}, dest={}", event.getSenderId(), senderDestination);
 		} catch (Exception e) {
-			log.error("DM mesajı WS push FAILED! event={}, err={}", event, e.toString());
+			log.error("DM message WS push failed messageId={} conversationId={} exceptionType={}",
+			          event.getMessageId(), event.getConversationId(), e.getClass().getSimpleName());
 		}
-		long unread = messageRepository.findByConversationIdAndRecipientIdAndReadAtIsNull(
-				event.getConversationId(), event.getRecipientId()
-		).size(); // veya tek query ile recipient'in tum okunmamis DM'lerini sayabiliriz.
-		
-		badgeCacheHelper.setUnread(event.getRecipientId(), unread);
-		
-		// WS ile badge push
-		Long cacheUnread = badgeCacheHelper.getCacheUnread(event.getRecipientId());
-		String badgeDestination = WebSocketChannels.dmBadge(event.getRecipientId());
-		messagingTemplate.convertAndSend(badgeDestination, cacheUnread != null ? cacheUnread : 0L);
-		log.debug("DM unread badge WS push: userId={}, badge={}", event.getRecipientId(), cacheUnread);
+		refreshUnreadBadge(event.getRecipientId());
 
 		publishNotification(event);
+	}
+
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void onDmMessageRead(DmMessageReadEvent event) {
+		refreshUnreadBadge(event.readerId());
+	}
+
+	private void refreshUnreadBadge(UUID userId) {
+		try {
+			long unread = messageRepository.countByRecipientIdAndReadAtIsNull(userId);
+			String badgeDestination = WebSocketChannels.dmBadge(userId);
+			messagingTemplate.convertAndSend(badgeDestination, unread);
+			log.debug("DM unread badge WS push: userId={}, badge={}", userId, unread);
+		} catch (Exception exception) {
+			log.warn("DM unread badge refresh failed userId={} exceptionType={}",
+			         userId, exception.getClass().getSimpleName());
+		}
 	}
 
 	private void publishNotification(DmMessageSentEvent event) {
@@ -101,8 +109,8 @@ public class DmMessageEventListener {
 					                        .build()
 			);
 		} catch (Exception e) {
-			log.warn("DM notification publish failed. messageId={}, recipientId={}, err={}",
-			         event.getMessageId(), event.getRecipientId(), e.toString());
+			log.warn("DM notification publish failed. messageId={}, recipientId={}, exceptionType={}",
+			         event.getMessageId(), event.getRecipientId(), e.getClass().getSimpleName());
 		}
 	}
 
@@ -136,8 +144,8 @@ public class DmMessageEventListener {
 			               .findFirst()
 			               .orElseGet(() -> profiles.stream().findFirst().orElse(null));
 		} catch (Exception e) {
-			log.warn("DM notification sender profile resolve failed. senderId={}, err={}",
-			         event.getSenderId(), e.toString());
+			log.warn("DM notification sender profile resolve failed. senderId={}, exceptionType={}",
+			         event.getSenderId(), e.getClass().getSimpleName());
 			return null;
 		}
 	}

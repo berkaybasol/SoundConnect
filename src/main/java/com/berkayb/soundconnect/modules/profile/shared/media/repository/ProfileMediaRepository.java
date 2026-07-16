@@ -19,4 +19,16 @@ public interface ProfileMediaRepository extends JpaRepository<ProfileMedia, UUID
 	
 	// Profile;a ait tum medyalar (admin icin)
 	List<ProfileMedia> findByProfileTypeAndProfileId(ProfileType profileType, UUID profileId);
+
+	/**
+	 * The attachment identity used by retrying clients. Keeping this lookup exact
+	 * makes a lost successful response safe to replay without creating a second
+	 * profile row or depending on the media asset's later lifecycle state.
+	 */
+	Optional<ProfileMedia> findByProfileTypeAndProfileIdAndMediaAssetIdAndRole(
+			ProfileType profileType,
+			UUID profileId,
+			UUID mediaAssetId,
+			ProfileMediaRole role
+	);
 }

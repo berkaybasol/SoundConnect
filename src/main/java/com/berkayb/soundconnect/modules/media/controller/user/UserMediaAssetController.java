@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.media.controller.user;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.media.dto.request.CompleteUploadRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.request.UploadInitRequestDto;
+import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
@@ -19,6 +20,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -107,6 +110,25 @@ public class UserMediaAssetController {
 		                   .message("Media list by kind fetched.")
 		                   .data(page)
 		                   .build();
+	}
+
+	@GetMapping(ACCESS_URL)
+	public ResponseEntity<BaseResponse<MediaAccessUrlResponseDto>> createOwnerAccessUrl(
+			@PathVariable UUID assetId,
+			@AuthenticationPrincipal UserDetailsImpl userDetails
+	) {
+		MediaAccessUrlResponseDto accessUrl = mediaAssetService.createOwnerAccessUrl(
+				currentUserId(userDetails), assetId
+		);
+		BaseResponse<MediaAccessUrlResponseDto> response = BaseResponse.<MediaAccessUrlResponseDto>builder()
+				.success(true)
+				.code(200)
+				.message("Temporary media access granted")
+				.data(accessUrl)
+				.build();
+		return ResponseEntity.ok()
+				.cacheControl(CacheControl.noStore())
+				.body(response);
 	}
 	
 	@DeleteMapping(DELETE)

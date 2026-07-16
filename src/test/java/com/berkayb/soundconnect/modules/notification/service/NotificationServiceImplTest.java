@@ -15,6 +15,8 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.data.domain.*;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.*;
 
@@ -196,7 +198,7 @@ class NotificationServiceImplTest {
 		
 		verify(notificationRepository).markAsRead(notifId, userId);
 		verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
-		verify(badgeCacheHelper).decrementUnreadSafely(userId, 1, 3L);
+		verify(badgeCacheHelper).setUnread(userId, 3L);
 	}
 	
 	// ---------- markAllAsRead ----------
@@ -220,6 +222,29 @@ class NotificationServiceImplTest {
 		
 		assertThat(updated).isEqualTo(5);
 		verify(badgeCacheHelper).setUnread(userId, 0);
+	}
+
+	@Test
+	@DisplayName("markDmConversationAsRead: cache projection runs only after commit")
+	void markDmConversationAsRead_cacheAfterCommit() {
+		UUID conversationId = UUID.randomUUID();
+		when(notificationRepository.markUnreadDmNotificationsAsReadByConversation(
+				userId, conversationId.toString())).thenReturn(2);
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(4L);
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			int updated = service.markDmConversationAsRead(userId, conversationId);
+
+			assertThat(updated).isEqualTo(2);
+			verify(badgeCacheHelper, never()).setUnread(any(), anyLong());
+			List<TransactionSynchronization> synchronizations =
+					TransactionSynchronizationManager.getSynchronizations();
+			assertThat(synchronizations).hasSize(1);
+			synchronizations.getFirst().afterCommit();
+			verify(badgeCacheHelper).setUnread(userId, 4L);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
 	}
 	
 	// ---------- deleteById ----------
@@ -246,7 +271,7 @@ class NotificationServiceImplTest {
 		assertThat(ok).isTrue();
 		verify(notificationRepository).delete(n);
 		verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
-		verify(badgeCacheHelper).decrementUnreadSafely(userId, 1, 4L);
+		verify(badgeCacheHelper).setUnread(userId, 4L);
 	}
 	
 	@Test

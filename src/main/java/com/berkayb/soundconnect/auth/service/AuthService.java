@@ -8,7 +8,8 @@ import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
-import com.berkayb.soundconnect.auth.otp.service.OtpMailService; // <-- yeni eklendi!
+import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
+import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
@@ -27,10 +28,6 @@ import com.berkayb.soundconnect.shared.util.EmailUtils;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -42,16 +39,20 @@ import java.util.Set;
 @Slf4j
 public class AuthService {
 	
-	private final AuthenticationManager authenticationManager;
+	// Bilinmeyen kullanicilarda da BCrypt calistirarak username timing farkini azaltir.
+	// Bu hash herhangi bir gercek hesaba ait degildir ve yalniz dummy karsilastirma icindir.
+	private static final String DUMMY_PASSWORD_HASH =
+			"$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
 	private final JwtTokenProvider jwtTokenProvider;
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
 	private final ProfileFactory profileFactory;
 	private final OtpService otpService;
-	private final OtpMailService otpMailService; // <-- yeni eklendi!
-	private final EmailUtils emailUtils;
+	private final OtpMailService otpMailService;
 	private final VenueApplicationService venueApplicationService;
+	private final AuthAccountRateLimitGuard accountRateLimitGuard;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
 	private static final Set<RoleEnum> REGISTER_ALLOWED_ROLES = Set.of(
@@ -65,27 +66,39 @@ public class AuthService {
 	);
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
-		// kullanici db'den bul
-		User user = userRepository.findByUsername(request.username()).
-				orElseThrow(() -> new SoundConnectException(ErrorType.INVALID_CREDENTIALS));
+		accountRateLimitGuard.checkLogin(request.username());
+		// Hesap durumunu ancak parola dogrulandiktan sonra acikla. Bu sira,
+		// pending/unverified kullanici adlarinin yanlis parolayla enumerate
+		// edilmesini engeller. Bilinmeyen kullanicida da ayni BCrypt maliyeti var.
+		User user = userRepository.findByUsername(request.username()).orElse(null);
+		if (user == null) {
+			passwordEncoder.matches(request.password(), DUMMY_PASSWORD_HASH);
+			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
+		}
+		if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
+		}
+
+		// Beklemedeki mekan basvurulari, admin onayi tamamlanmadan uygulamaya giremez.
+		// Bu kontrol parola dogrulamasindan sonra yapilir; boylece hesap durumu
+		// yanlis parola kullanan bir istemciye sizdirilmaz.
+		if (user.getStatus() == UserStatus.PENDING_VENUE_REQUEST) {
+			throw new SoundConnectException(
+					ErrorType.FORBIDDEN_ACCESS,
+					List.of("Mekan basvurunuz henuz onaylanmadi.")
+			);
+		}
 		
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzu kontrol edin."));
 		}
 		
-		// Spring Security authentication ile kullaniciyi dogrula.
-		Authentication authentication;
-		try {
-			authentication = authenticationManager.authenticate(
-					new UsernamePasswordAuthenticationToken(request.username(), request.password())
-			);
-		} catch (AuthenticationException e) {
-			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
+		if (user.getStatus() != UserStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
 		}
-		
-		// dogrulanmis kullaniciyi al (UserDetailsImpl tipine downcast ederek)
-		UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+
+		UserDetailsImpl userDetails = UserDetailsImpl.fromUser(user);
 		
 		// token uret
 		String token = jwtTokenProvider.generateToken(userDetails);
@@ -95,14 +108,15 @@ public class AuthService {
 		                   .success(true)
 		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(new LoginResponse(token, user.getStatus()))
+		                   .data(LoginResponse.fromUser(token, user))
 		                   .build();
 	}
 	
 	@Transactional
 	public BaseResponse<RegisterResponseDto> register(RegisterRequestDto dto) {
+		accountRateLimitGuard.checkRegister(dto.email());
 		// normalize maili ekle
-		final String normalizedEmail = emailUtils.normalize(dto.email());
+		final String normalizedEmail = EmailUtils.normalize(dto.email());
 		
 		// kullanici adi daha once alinmis mi bak alinmissa hata firlat.
 		if (userRepository.existsByUsername(dto.username())){
@@ -136,7 +150,8 @@ public class AuthService {
 					|| dto.venueAddress() == null || dto.venueAddress().isBlank()
 					|| dto.phone() == null || dto.phone().isBlank()
 					|| dto.cityId() == null || dto.cityId().isBlank()
-					|| dto.districtId() == null || dto.districtId().isBlank()) {
+					|| dto.districtId() == null || dto.districtId().isBlank()
+					|| dto.neighborhoodId() == null || dto.neighborhoodId().isBlank()) {
 				
 				throw new SoundConnectException(
 						ErrorType.VALIDATION_ERROR,
@@ -168,14 +183,14 @@ public class AuthService {
 			);
 			
 			// OTP üret ve mail gönder
-			String otpCode = otpService.generateAndCacheOtp(user.getEmail());
-			
-			
-			try {
-				otpMailService.sendVerificationMail(user.getEmail(), otpCode);
-				mailQueued = true;
-			} catch (Exception e) {
-				log.error("Verification mail send error for email={} code={}", user.getEmail(), otpCode, e);
+			OtpService.OtpIssueClaim initialOtpClaim = otpService.acquireInitialOtp(user.getEmail());
+			if (initialOtpClaim.acquired()) {
+				try {
+					otpMailService.sendVerificationMail(user.getEmail(), initialOtpClaim.code());
+					mailQueued = true;
+				} catch (Exception e) {
+					log.error("Verification mail could not be queued for email={}", EmailUtils.maskForLog(user.getEmail()), e);
+				}
 			}
 			
 			long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
@@ -218,12 +233,14 @@ public class AuthService {
 		}
 		
 		// OTP kodu uret ve mail ile gonder
-		String otpCode = otpService.generateAndCacheOtp(user.getEmail());
-		try {
-			otpMailService.sendVerificationMail(user.getEmail(), otpCode); // ARTIK BURADA!
-			mailQueued = true;
-		} catch (Exception e) {
-			log.error("Verification mail send error for email={} code={}", user.getEmail(), otpCode, e);
+		OtpService.OtpIssueClaim initialOtpClaim = otpService.acquireInitialOtp(user.getEmail());
+		if (initialOtpClaim.acquired()) {
+			try {
+				otpMailService.sendVerificationMail(user.getEmail(), initialOtpClaim.code());
+				mailQueued = true;
+			} catch (Exception e) {
+				log.error("Verification mail could not be queued for email={}", EmailUtils.maskForLog(user.getEmail()), e);
+			}
 		}
 		
 		long ttl = otpService.getOtpTimeLeftSeconds(user.getEmail());
@@ -237,25 +254,17 @@ public class AuthService {
 		                   .build();
 	}
 	
+	@Transactional
 	public BaseResponse<Void> verifyCode(VerifyCodeRequestDto dto){
-		// kullaniciyi email ile bul
-		final String email = emailUtils.normalize(dto.email());
-		User user = userRepository.findByEmail(email)
-		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
-		
-		// kullanici zaten dogrulanmissa response don
-		if (Boolean.TRUE.equals(user.getEmailVerified())) {
-			return BaseResponse.<Void>builder()
-			                   .success(true)
-			                   .code(200)
-			                   .message("zaten dogrulanmis")
-			                   .data(null)
-			                   .build();
-		}
-		// otp kodunu kontrol et (sure, brute-force vs.)
+		accountRateLimitGuard.checkOtpVerify(dto.email());
+		final String email = EmailUtils.normalize(dto.email());
+		// Redis verification is deliberately performed before branching on account
+		// state. Unknown, already-verified and wrong-code requests therefore share
+		// the same public error contract instead of becoming an account oracle.
 		boolean valid = otpService.verifyOtp(email, dto.code());
-		if (!valid) {
-			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		User user = userRepository.findByEmail(email).orElse(null);
+		if (!valid || user == null || Boolean.TRUE.equals(user.getEmailVerified())) {
+			throw invalidOtp();
 		}
 		
 		// kullanici dogrula
@@ -271,60 +280,65 @@ public class AuthService {
 		return BaseResponse.<Void>builder()
 		                   .success(true)
 		                   .code(200)
-		                   .message("mail basariyla dogrulandi")
+		                   .message("Dogrulama istegi basariyla islendi.")
 		                   .build();
 	}
 	
-	@Transactional
 	public BaseResponse<ResendCodeResponseDto> resendCode (ResendCodeRequestDto dto) {
-		final String email = emailUtils.normalize(dto.email());
+		accountRateLimitGuard.checkOtpResend(dto.email());
+		final String email = EmailUtils.normalize(dto.email());
+		User user = userRepository.findByEmail(email).orElse(null);
+		boolean eligibleForDelivery = user != null && !Boolean.TRUE.equals(user.getEmailVerified());
 		
-		User user = userRepository.findByEmail(email)
-		                          .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
-		
-		// zaten dogrulanmis ise idempotent (kac kere denerse denesin ayi sonuc) 200 don.
-		if (Boolean.TRUE.equals(user.getEmailVerified())) {
-			return BaseResponse.<ResendCodeResponseDto>builder()
-			                   .success(true)
-			                   .code(200)
-			                   .message("hesabin zaten dogrulanmis. yeni kod gondermedik")
-			                   .data(new ResendCodeResponseDto(0, false, 0))
-			                   .build();
-		}
-		
-		// cooldown kontrolu
-		long cooldownLeft = otpService.getResendCooldownLeftSeconds(email);
-		if (cooldownLeft > 0) {
-			long currentOtpTtl = otpService.getOtpTimeLeftSeconds(email);
+		// This isolated public claim alone drives status, TTL and cooldown for every
+		// address. Internal registration/OTP state can therefore never change the
+		// observable resend contract.
+		OtpService.OtpIssueClaim publicClaim = otpService.acquireDecoyResendOtp(email);
+		if (!publicClaim.acquired()) {
+			long currentOtpTtl = otpService.getDecoyOtpTimeLeftSeconds(email);
 			return BaseResponse.<ResendCodeResponseDto>builder()
 			                   .success(false)
-			                   .code(429) // Too Many Requests semantigi (HTTP 200 donecek olsa da kod alani 429)
+			                   .code(429)
 			                   .message("cok sik istek: lutfen biraz bekleyip tekrar deneyin..")
-			                   .data(new ResendCodeResponseDto(currentOtpTtl, false, cooldownLeft))
+			                   .data(new ResendCodeResponseDto(
+					                   currentOtpTtl,
+					                   false,
+					                   publicClaim.cooldownSeconds()
+			                   ))
 			                   .build();
 		}
 		
-		// yeni OTP uret ve mail at
-		String otpCode = otpService.generateAndCacheOtp(email);
-		boolean mailQueued = false;
-		
-		try {
-			otpMailService.sendVerificationMail(email, otpCode);
-			mailQueued = true;
-		} catch (Exception e) {
-			log.error("Verification mail send error (resend) for email={} code={}", email, otpCode, e);
+		// Mail is sent only for an eligible account, while the public response stays
+		// identical. Provider failures are intentionally not exposed because doing so
+		// would reintroduce enumeration through the status code.
+		OtpService.OtpIssueClaim deliveryClaim = eligibleForDelivery
+				? otpService.acquireResendOtp(email)
+				: null;
+		if (deliveryClaim != null && deliveryClaim.acquired()) {
+			try {
+				otpMailService.sendVerificationMail(email, deliveryClaim.code());
+			} catch (Exception e) {
+				log.error("Verification mail resend could not be queued for email={}",
+						EmailUtils.maskForLog(email), e);
+			}
 		}
 		
-		// cooldown'i baslat
-		otpService.startResendCooldown(email);
-		
-		long ttl = otpService.getOtpTimeLeftSeconds(email);
+		long ttl = otpService.getDecoyOtpTimeLeftSeconds(email);
+		long cooldownLeft = otpService.getDecoyResendCooldownLeftSeconds(email);
 		return BaseResponse.<ResendCodeResponseDto>builder()
 		                   .success(true)
 		                   .code(200)
-		                   .message("yeni dogrulama kodu e-postana gonderildi")
-		                   .data(new ResendCodeResponseDto(ttl, mailQueued, otpService.getResendCooldownLeftSeconds(email)))
+		                   .message("Hesap uygunsa dogrulama kodu e-posta adresine gonderilecektir.")
+		                   // Delivery state is never disclosed on this public endpoint.
+		                   .data(new ResendCodeResponseDto(ttl, false, cooldownLeft))
 		                   .build();
+	}
+
+	private SoundConnectException invalidOtp() {
+		return new SoundConnectException(
+				ErrorType.VALIDATION_ERROR,
+				List.of("Dogrulama kodu gecersiz veya suresi dolmus.")
+		);
 	}
 	
 }

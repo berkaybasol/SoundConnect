@@ -306,7 +306,7 @@ class TableGroupChatServiceImplTest {
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED);
 		
-		verify(unreadHelper).resetUnread(requesterId, tableGroupId); // method basinda yine de reset deniyor
+		verify(unreadHelper, never()).resetUnread(any(), any());
 		verify(messageRepository, never()).findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(any(), any());
 	}
 }

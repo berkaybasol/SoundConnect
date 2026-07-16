@@ -23,34 +23,33 @@ public class DlqMailJobConsumer {
 	@RabbitListener(queues = "${mail.dlq}", containerFactory = "mailListenerFactory")
 	public void listenMailDlq(Object payload) {
 		if (payload instanceof MailSendRequest req) {
-			log.error("Mail DLQ — kind={}, to={}, subject={}, paramsKeys={}",
+			log.error("Mail DLQ — kind={}, to={}, paramsCount={}",
 			          req.kind(),
 			          helper.maskEmail(req.to()),
-			          req.subject(),
-			          req.params() == null ? "[]" : req.params().keySet());
+			          req.params() == null ? 0 : req.params().size());
 			return;
 		}
 		
 		if (payload instanceof Map<?, ?> map) {
 			Object toObj = map.get("to");
 			Object kind  = map.get("kind");
-			Object subj  = map.get("subject");
-			
 			String toMasked = helper.maskEmail(String.valueOf(toObj != null ? toObj : "<unknown>"));
-			log.error("Mail DLQ (map) — kind={}, to={}, subject={}, keys={}",
-			          kind != null ? kind : "<unknown>",
+			log.error("Mail DLQ (map) — kind={}, to={}, fieldCount={}",
+			          safeKind(kind),
 			          toMasked,
-			          subj != null ? subj : "<unknown>",
-			          map.keySet());
+			          map.size());
 			return;
 		}
 		
-		log.error("Mail DLQ (raw) — type={}, value={}",
-		          payload == null ? "null" : payload.getClass().getName(), payload);
+		log.error("Mail DLQ (raw) — type={}, value=<redacted>",
+		          payload == null ? "null" : payload.getClass().getName());
 		// TODO: buraya Slack/Sentry entegrasyonu gelecek
 	}
 	
-	private Object safeParamKeys(Map<String, Object> params) {
-		return (params == null) ? "[]" : params.keySet();
+	private String safeKind(Object kind) {
+		if (!(kind instanceof String value) || !value.matches("[A-Za-z_]{1,32}")) {
+			return "<unknown>";
+		}
+		return value;
 	}
 }

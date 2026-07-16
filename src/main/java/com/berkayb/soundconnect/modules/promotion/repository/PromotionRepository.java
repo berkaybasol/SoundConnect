@@ -41,5 +41,7 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
 	
 	// placement + status kombinasyonundaki kayitlari sirali sekilde getir
 	List<Promotion> findAllByPlacementAndStatusOrderByPriorityDescCreatedAtDesc(PromotionPlacement placement, PromotionStatus status);
+
+	long countByStatus(PromotionStatus status);
 	
 }

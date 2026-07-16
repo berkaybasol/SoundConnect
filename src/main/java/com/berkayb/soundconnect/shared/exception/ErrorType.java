@@ -13,43 +13,44 @@ public enum ErrorType {
 	USER_ALREADY_REGISTERED(1004,"User already registered",HttpStatus.CONFLICT, "Profil zaten tanimlanmis."),
 	
 	// AUTH (1100-1199)
-	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.CONFLICT, "Kullanıcı adı veya şifre hatalı."),
+	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.UNAUTHORIZED, "Kullanıcı adı veya şifre hatalı."),
 	UNAUTHORIZED(1101, "You are not authorized", HttpStatus.UNAUTHORIZED, "Bu işlemi yapmak için giriş yapmalısınız."),
 	FORBIDDEN_ACCESS(1102, "You don't have permission to access this resource", HttpStatus.FORBIDDEN, "Bu kaynağa erişim izniniz yok."),
 	TOKEN_EXPIRED(1103, "JWT token has expired", HttpStatus.UNAUTHORIZED, "Oturum süresi dolmuş. Lütfen tekrar giriş yapın."),
+	AUTH_RATE_LIMITED(1104, "Too many authentication requests", HttpStatus.TOO_MANY_REQUESTS, "Çok fazla kimlik doğrulama isteği gönderildi. Lütfen kısa süre sonra tekrar deneyin."),
 	
 	// FOLLOW (1200-1299)
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
 	ALREADY_FOLLOWING(1201, "You are already following this user", HttpStatus.CONFLICT, "Bu kullanıcıyı zaten takip ediyorsunuz."),
 	CANNOT_FOLLOW_SELF(1202, "You cannot follow yourself", HttpStatus.BAD_REQUEST, "Kendinizi takip edemezsiniz."),
-	BAND_ALREADY_FOLLOWED(1203, "Band already followed", HttpStatus.BAD_REQUEST, "Bu band zaten takip ediliyor."),
+	BAND_ALREADY_FOLLOWED(1203, "Band already followed", HttpStatus.CONFLICT, "Bu band zaten takip ediliyor."),
 	BAND_FOLLOW_RELATION_NOT_FOUND(1204, "Band follow relation not found", HttpStatus.NOT_FOUND, "Band takip ilişkisi bulunamadı."),
 	BAND_MEMBER_CANNOT_FOLLOW_OWN_BAND(1205, "Band member cannot follow own band", HttpStatus.BAD_REQUEST, "Band üyesi kendi grubunu takip edemez."),
 	// PROFILE (1300-1399)
-	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.BAD_REQUEST, "Bu profil zaten var."),
+	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.CONFLICT, "Bu profil zaten var."),
 	PROFILE_NOT_FOUND(1301, "Profile not found", HttpStatus.NOT_FOUND, "Profil bulunamadi."),
 	PROFILE_MEDIA_NOT_FOUND(1302, "Profile media not found", HttpStatus.NOT_FOUND, "Profil medyasi bulunamadi."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
-	INSTRUMENT_ALREADY_EXISTS(1401,"Instrument alreadyi exists", HttpStatus.BAD_REQUEST,"Bu isimde enstruman zaten var."),
+	INSTRUMENT_ALREADY_EXISTS(1401,"Instrument already exists", HttpStatus.CONFLICT,"Bu isimde enstruman zaten var."),
 	
 	// ARTISTVENUECONNECTION (1500 - 1599)
 	REQUEST_PENDING_ALREADY(1500,"Request Pending Already", HttpStatus.CONFLICT, "Basvuru zaten beklemede."),
 	REQUEST_NOT_FOUND(1501,"Request not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi."),
-	REQUEST_ALREADY_ACCEPTED(1502,"Request already accepted.", HttpStatus.BAD_REQUEST,"Basvuru zaten onaylandi."),
-	REQUEST_ALREADY_REJECTED(1503,"Request already rejected.", HttpStatus.BAD_REQUEST,"Basvuru zaten reddedildi."),
-	REQUEST_CANCEL_NOT_ALLOWED(1504,"Only pending requests can be cancelled",HttpStatus.FORBIDDEN,"Yalnızca beklemede olan istekler iptal edilebilir."),
-	CONNECTION_NOT_ACTIVE(1505,"Artist-venue connection is not active",HttpStatus.FORBIDDEN,"Sanatçı-mekan bağlantısı aktif değil."),
-	VENUE_SEARCH_QUERY_REQUIRED(1506,"Search query is required",HttpStatus.FORBIDDEN,"Arama sorgusu gereklidir."),
-	REQUEST_DISCONNECT_NOT_ALLOWED(1507,"Only accepted requests can be disconnected",HttpStatus.FORBIDDEN,"Yalnızca kabul edilen isteklerin bağlantısı kesilebilir."),
+	REQUEST_ALREADY_ACCEPTED(1502,"Request already accepted.", HttpStatus.CONFLICT,"Basvuru zaten onaylandi."),
+	REQUEST_ALREADY_REJECTED(1503,"Request already rejected.", HttpStatus.CONFLICT,"Basvuru zaten reddedildi."),
+	REQUEST_CANCEL_NOT_ALLOWED(1504,"Only pending requests can be cancelled",HttpStatus.CONFLICT,"Yalnızca beklemede olan istekler iptal edilebilir."),
+	CONNECTION_NOT_ACTIVE(1505,"Artist-venue connection is not active",HttpStatus.CONFLICT,"Sanatçı-mekan bağlantısı aktif değil."),
+	VENUE_SEARCH_QUERY_REQUIRED(1506,"Search query is required",HttpStatus.BAD_REQUEST,"Arama sorgusu gereklidir."),
+	REQUEST_DISCONNECT_NOT_ALLOWED(1507,"Only accepted requests can be disconnected",HttpStatus.CONFLICT,"Yalnızca kabul edilen isteklerin bağlantısı kesilebilir."),
 	REQUEST_BY_TYPE_REQUIRED(1508, "Request by type is required", HttpStatus.BAD_REQUEST, "İsteği başlatan taraf belirtilmelidir."
 	),
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
-	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.BAD_REQUEST, "Zaten basvuru yapilmis."),
-	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.BAD_REQUEST, "Basvuru bulunamadi"),
-	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.BAD_REQUEST, "Bu basvuruya zaten islem yapilmis"),
+	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.CONFLICT, "Zaten basvuru yapilmis."),
+	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi"),
+	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.CONFLICT, "Bu basvuruya zaten islem yapilmis"),
 	
 	// DM
 	CANNOT_DM_SELF(1603, "You cannot dm yourself", HttpStatus.BAD_REQUEST, "Kendinize mesaj atamazsiniz."),
@@ -76,7 +77,16 @@ public enum ErrorType {
 	MEDIA_INPUT_PATH_REQUIRED(1811,"Input path is required", HttpStatus.BAD_REQUEST, "Input path bos olamaz"),
 	MEDIA_NOT_IMPLEMENTED(1812,"Media not implemented", HttpStatus.BAD_REQUEST, "medya henuz implement edilmemis"),
 	MEDIA_KIND_INVALID(1813,"Media kind invalid.", HttpStatus.BAD_REQUEST,"Yanlis medya turu"),
-	MEDIA_ASSET_NOT_READY(1814,"Media asset not ready.", HttpStatus.BAD_REQUEST,"medya varligi hazir degil"),
+	MEDIA_ASSET_NOT_READY(1814,"Media asset not ready.", HttpStatus.CONFLICT,"medya varligi hazir degil"),
+	MEDIA_STORAGE_OBJECT_NOT_FOUND(1815, "Uploaded object not found", HttpStatus.CONFLICT, "Yuklenen dosya depolama alaninda bulunamadi"),
+	MEDIA_UPLOAD_METADATA_MISMATCH(1816, "Uploaded object metadata mismatch", HttpStatus.UNPROCESSABLE_ENTITY, "Yuklenen dosyanin boyutu veya icerik turu baslatilan yukleme ile uyusmuyor"),
+	MEDIA_ASSET_STATE_INVALID(1817, "Media asset state invalid", HttpStatus.CONFLICT, "Medya varligi bu islem icin uygun durumda degil"),
+	MEDIA_ASSET_OWNER_MISMATCH(1818, "Media asset owner mismatch", HttpStatus.FORBIDDEN, "Medya varligi islem yapilan profile ait degil"),
+	MEDIA_ASSET_NOT_PUBLIC(1819, "Media asset is not public", HttpStatus.CONFLICT, "Yayinlanan parca icin medya gorunurlugu PUBLIC olmalidir"),
+	MEDIA_UPLOAD_RATE_LIMITED(1820, "Media upload quota exceeded", HttpStatus.TOO_MANY_REQUESTS, "Medya yukleme kotasi asildi. Lutfen daha sonra tekrar deneyin."),
+	MEDIA_UPLOAD_CONCURRENCY_LIMITED(1821, "Too many concurrent media uploads", HttpStatus.TOO_MANY_REQUESTS, "Ayni anda cok fazla medya yuklemesi baslatildi. Devam eden yuklemeleri tamamlayin veya daha sonra tekrar deneyin."),
+	MEDIA_UPLOAD_GUARD_UNAVAILABLE(1822, "Media upload protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Medya yukleme servisi gecici olarak kullanilamiyor. Lutfen tekrar deneyin."),
+	MEDIA_ASSET_IN_USE(1823, "Media asset is in use", HttpStatus.CONFLICT, "Bu medya bir profil veya icerikte kullanildigi icin silinemez."),
 	
 	
 	// NOTIFICATION (1900 - 2000)
@@ -87,19 +97,27 @@ public enum ErrorType {
 	
 	// VALIDATION (4000-4099)
 	VALIDATION_ERROR(4000, "Validation failed", HttpStatus.BAD_REQUEST, "Alanlardan biri ya da birkaçı doğrulama hatası verdi."),
+	MISSING_REQUEST_PARAMETER(4001, "Missing request parameter", HttpStatus.BAD_REQUEST, "Zorunlu istek parametresi eksik."),
+	MALFORMED_REQUEST(4002, "Malformed request", HttpStatus.BAD_REQUEST, "İstek gövdesi eksik veya geçersiz JSON içeriyor."),
+	TYPE_MISMATCH(4003, "Invalid parameter type", HttpStatus.BAD_REQUEST, "İstek parametrelerinden biri beklenen türde değil."),
+	CONSTRAINT_VIOLATION(4004, "Constraint validation failed", HttpStatus.BAD_REQUEST, "İstek kısıt doğrulamasından geçemedi."),
+	DATA_INTEGRITY_CONFLICT(4005, "Data integrity conflict", HttpStatus.CONFLICT, "İstek mevcut verilerle çakışıyor."),
+	ENDPOINT_NOT_FOUND(4006, "Endpoint not found", HttpStatus.NOT_FOUND, "İstenen API endpoint'i bulunamadı."),
+	METHOD_NOT_ALLOWED(4007, "Method not allowed", HttpStatus.METHOD_NOT_ALLOWED, "Bu endpoint belirtilen HTTP metodunu desteklemiyor."),
+	UNSUPPORTED_MEDIA_TYPE(4008, "Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "İstek gövdesinin içerik türü desteklenmiyor."),
 	
 	// ROLE - PERMISSION (5000-5099)
 	ROLE_NOT_FOUND(5001, "Role not found", HttpStatus.NOT_FOUND, "İlgili rol sistemde bulunamadı."),
-	ROLE_ALREADY_EXISTS(5002, "Role already exists", HttpStatus.BAD_REQUEST, "Bu rol zaten mevcut."),
+	ROLE_ALREADY_EXISTS(5002, "Role already exists", HttpStatus.CONFLICT, "Bu rol zaten mevcut."),
 	PERMISSION_NOT_FOUND(5003, "Permission not found", HttpStatus.NOT_FOUND, "İzin bulunamadı."),
-	PERMISSION_ALREADY_EXISTS(5004, "Permission already exists", HttpStatus.BAD_REQUEST, "Bu izin zaten mevcut."),
+	PERMISSION_ALREADY_EXISTS(5004, "Permission already exists", HttpStatus.CONFLICT, "Bu izin zaten mevcut."),
 	
 	// LOCATION (6000-6099)
 	CITY_NOT_FOUND(6001, "City not found", HttpStatus.NOT_FOUND, "Şehir bilgisi bulunamadı."),
-	CITY_ALREADY_EXISTS(6002, "City already exists", HttpStatus.BAD_REQUEST, "Bu şehir zaten sistemde kayıtlı."),
+	CITY_ALREADY_EXISTS(6002, "City already exists", HttpStatus.CONFLICT, "Bu şehir zaten sistemde kayıtlı."),
 	DISTRICT_NOT_FOUND(6003, "District not found", HttpStatus.NOT_FOUND, "İlçe bilgisi bulunamadı."),
-	DISTRICT_ALREADY_EXISTS(6004, "District already exists", HttpStatus.BAD_REQUEST, "Bu ilçe zaten kayıtlı."),
-	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.BAD_REQUEST, "Bu mahalle zaten mevcut."),
+	DISTRICT_ALREADY_EXISTS(6004, "District already exists", HttpStatus.CONFLICT, "Bu ilçe zaten kayıtlı."),
+	NEIGHBORHOOD_ALREADY_EXISTS(6005, "Neighborhood already exists", HttpStatus.CONFLICT, "Bu mahalle zaten mevcut."),
 	NEIGHBORHOOD_NOT_FOUND(6006, "Neighborhood not found", HttpStatus.NOT_FOUND, "Mahalle bilgisi bulunamadı."),
 	INVALID_CITY_NAME(6007, "Invalid city name", HttpStatus.BAD_REQUEST, "Geçersiz şehir adı girdiniz."),
 	DISTRICT_CITY_MISMATCH(6008, "District does not belong to the selected city", HttpStatus.BAD_REQUEST, "Ilce secilen sehre ait degil"),
@@ -123,60 +141,57 @@ public enum ErrorType {
 	GENDER_AND_COUNT_MISMATCH(9103,"Gender preference and participant count mismatch", HttpStatus.BAD_REQUEST,"Cinsiyet tercihi ve kisi sayisi esit olmali"),
 	TABLE_END_DATE_PASSED(9104,"Table end date has already passed", HttpStatus.BAD_REQUEST,"Masa bitis tarihi bitmis olamaz veya masa suresi bitmis"),
 	TABLE_GROUP_NOT_FOUND(9105,"Table group not found", HttpStatus.NOT_FOUND,"Table group bulunamadi"),
-	MAX_PARTICIPANT_LIMIT(9106,"Max participant limit",HttpStatus.BAD_REQUEST,"Masa dolu."),
-	ALREADY_PARTICIPANT(9107,"Already participant",HttpStatus.BAD_REQUEST,"Zaten masadasin veya basvuru yapmissin"),
+	MAX_PARTICIPANT_LIMIT(9106,"Max participant limit",HttpStatus.CONFLICT,"Masa dolu."),
+	ALREADY_PARTICIPANT(9107,"Already participant",HttpStatus.CONFLICT,"Zaten masadasin veya basvuru yapmissin"),
 	PARTICIPANT_NOT_FOUND(9108,"Participant not found",HttpStatus.NOT_FOUND,"Basvuru bulunamadi"),
 	OWNER_CANNOT_LEAVE(9109,"Owner cannot leave",HttpStatus.BAD_REQUEST,"Masa sahibi masadan ayrilamaz"),
 	
 	// BAND (9200 - 9250)
-	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.BAD_REQUEST, "Bu band zaten mevcut."),
+	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.CONFLICT, "Bu band zaten mevcut."),
 	BAND_MEMBER_NOT_FOUND(9201,"Band member not found", HttpStatus.NOT_FOUND, "Band member bulunamadi."),
-	BAND_MEMBER_NOT_ACTIVE(9202,"Band member not active", HttpStatus.BAD_REQUEST, "Band member aktif degil."),
+	BAND_MEMBER_NOT_ACTIVE(9202,"Band member not active", HttpStatus.CONFLICT, "Band member aktif degil."),
 	BAND_NOT_FOUND(9203,"Band not found", HttpStatus.NOT_FOUND, "Band bulunamadi."),
-	BAND_INVITE_UNAUTHORIZED(9204, "You are not authorized", HttpStatus.UNAUTHORIZED, "Founder degilsin"),
+	BAND_INVITE_UNAUTHORIZED(9204, "You are not authorized", HttpStatus.FORBIDDEN, "Founder degilsin"),
 	BAND_MEMBER_ALREADY_EXISTS(9205, "Band member already exists", HttpStatus.CONFLICT, "Bu kullanıcı zaten bandde."),
 	BAND_INVITE_STATUS_INVALID(9206, "Band invite status is invalid", HttpStatus.BAD_REQUEST, "Davet durumu geçersiz."),
-	BAND_REMOVE_UNAUTHORIZED(9207, "You are not authorized to remove members", HttpStatus.UNAUTHORIZED, "Üyeleri çıkarmaya yetkin yok."),
+	BAND_REMOVE_UNAUTHORIZED(9207, "You are not authorized to remove members", HttpStatus.FORBIDDEN, "Üyeleri çıkarmaya yetkin yok."),
 	BAND_CANNOT_REMOVE_FOUNDER(9208, "Cannot remove another founder", HttpStatus.FORBIDDEN, "Başka bir founder'ı çıkaramazsın."),
 	BAND_FOUNDER_CANNOT_LEAVE(9209, "Founder cannot leave the band", HttpStatus.FORBIDDEN, "Founder gruptan ayrılamaz."),
-	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hem band hem musician secilemez aq"),
-	INVALID_PERFORMER_SELECTION_V2(9211, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Hicbir sey gonderilmedi"),
+	INVALID_PERFORMER_SELECTION(9210, "Invalid performer selection", HttpStatus.BAD_REQUEST, "Ayni anda hem grup hem muzisyen secilemez."),
+	INVALID_PERFORMER_SELECTION_V2(9211, "Performer selection is required", HttpStatus.BAD_REQUEST, "Etkinlik icin bir sanatci secilmelidir."),
 	MUSICIAN_NOT_FOUND(9212,"Musician not found", HttpStatus.NOT_FOUND, "Musician bulunamadi."),
-	BAND_CREATE_LIMIT_EXCEEDED(9213, "Band create limit exceeded", HttpStatus.BAD_REQUEST, "En fazla 3 band oluşturabilirsin."),
+	BAND_CREATE_LIMIT_EXCEEDED(9213, "Band create limit exceeded", HttpStatus.CONFLICT, "En fazla 3 band oluşturabilirsin."),
 	
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
-	INVALID_PARAMETER(9251,"INVALID PARAMETER", HttpStatus.NOT_FOUND, "PARAMETRE YANLIS"),
+	INVALID_PARAMETER(9251,"Invalid parameter", HttpStatus.BAD_REQUEST, "Parametre geçersiz."),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND_OR_NOT_OWNER(9301,"Collab not found or not owner", HttpStatus.NOT_FOUND, "Collab bulunamadi veya sahibi degil."),
 	COLLAB_EXPIRATION_REQUIRED(9302,"Collab expiration required.", HttpStatus.BAD_REQUEST, "Eskik veya hatali veri " +
 			"yolladiniz"),
 	COLLAB_NOT_FOUND(9304,"Collab not found", HttpStatus.NOT_FOUND, "Collab bulunamadi"),
-	COLLAB_NOT_OWNER(9305, "User is not the owner of the collab", HttpStatus.UNAUTHORIZED,"Bu collab'in sahibi degilsin"),
+	COLLAB_NOT_OWNER(9305, "User is not the owner of the collab", HttpStatus.FORBIDDEN,"Bu collab'in sahibi degilsin"),
 	COLLAB_EXPIRED(9306,"Collab has expired",HttpStatus.GONE,"Collab suresi dolmus"),
 	COLLAB_SLOT_NOT_REQUIRED(9307,"Instrument not required in this collab",HttpStatus.BAD_REQUEST, "Bu enstruman bu collab icin istenmiyor"),
 	COLLAB_SLOT_ALREADY_FILLED(9308,"Instrument slot already filled",HttpStatus.CONFLICT, "Bu enstruman zaten doldurulmus"),
-	COLLAB_SLOT_NOT_FILLED(9309,"Instrument slot not filled",HttpStatus.BAD_REQUEST,"Bu enstruman henuz doldurulmamis"),
+	COLLAB_SLOT_NOT_FILLED(9309,"Instrument slot not filled",HttpStatus.CONFLICT,"Bu enstruman henuz doldurulmamis"),
 	COLLAB_SLOT_ALREADY_FULL(9310,"Slot already full",HttpStatus.CONFLICT, "Zaten dolu"),
 	COLLAB_SLOT_ALREADY_EMPTY(9311,"Slot already empty",HttpStatus.CONFLICT, "Zaten bos"),
-	COLLAB_SLOT_REQUIRED(9306, "Required slot list is missing or empty", HttpStatus.BAD_REQUEST, "Gerekli enstrüman listesi boş veya eksik"),
+	COLLAB_SLOT_REQUIRED(9312, "Required slot list is missing or empty", HttpStatus.BAD_REQUEST, "Gerekli enstrüman listesi boş veya eksik"),
 	
 	// COMMENT(9350 - 9399)
 	COMMENT_NOT_FOUND(9350,"Comment not found", HttpStatus.NOT_FOUND, "Yorum bulunamadi."),
 	COMMENT_TEXT_INVALID(9351,"Comment text must not be empty or longer than MAX_COMMENT_LENGTH.",HttpStatus.BAD_REQUEST,"Yorum metni bos veya maksimum uzunlugu asamaz."),
 	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
 	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
-	COMMENT_PARENT_DELETED(9353,"Comment parent is deleted.", HttpStatus.CONFLICT,"Silinmis yoruma yanit verilemez"),
+	COMMENT_PARENT_DELETED(9355,"Comment parent is deleted.", HttpStatus.CONFLICT,"Silinmis yoruma yanit verilemez"),
 	COMMENT_REPLY_DEPTH_NOT_ALLOWED(9354,"Comment reply depth not allowed", HttpStatus.CONFLICT,"yanita yanit " +
 			"verilemez"),
 	
 	// OVERTHINKING(9400 - 9449)
 	OVERTHINKING_MULTIPLE_MUSIC_SOURCE(9400,"You cannot multiple music source",HttpStatus.BAD_REQUEST,"Birden fazla kaynak gonderemezsiniz"),
 	OVERTHINKING_POST_NOT_FOUND(9401,"Overthinking post not found",HttpStatus.NOT_FOUND,"Overthinking postu bulunamadi."),
-	OVERTHINKING_REVEAL_REQUEST_RECEIVED(9402,"Overthinking reveal request received",HttpStatus.OK,"kimlik goruntuleme istegi alindi"),
-	OVERTHINKING_REVEAL_REQUEST_APPROVED(9403,"Overthinking reveal request approved",HttpStatus.ACCEPTED,"kimlik goruntuleme istegi onaylandi"),
-	OVERTHINKING_REVEAL_REQUEST_REJECTED(9404,"Overthinking reveal request rejected",HttpStatus.OK,"kimlik goruntuleme istegi reddedildi"),
 	OVERTHINKING_POST_NOT_ANONYMOUS(9405,"Overthinking post is not anonymous",HttpStatus.BAD_REQUEST,"Bu post anonim olmadığı için profil görüntüleme isteği gönderilemez."),
 	OVERTHINKING_REVEAL_REQUEST_ALREADY_EXISTS(9406, "Reveal request already exists", HttpStatus.CONFLICT, "Bu post için daha önce profil görüntüleme isteği gönderdiniz."),
 	OVERTHINKING_REVEAL_REQUEST_SELF_NOT_ALLOWED(9407, "Author cannot request own profile reveal", HttpStatus.BAD_REQUEST, "Kendi postunuz için profil görüntüleme isteği gönderemezsiniz."),
@@ -188,7 +203,7 @@ public enum ErrorType {
 	
 	// TRACK(9450 - 9499)
 	TRACK_NOT_FOUND(9450,"Track not found", HttpStatus.NOT_FOUND, "Parca bulunamadi"),
-	TRACK_OWNER_INVALID(9450,"Track owner invalid", HttpStatus.BAD_REQUEST, "Parca sahibi dogrulanamadi"),
+	TRACK_OWNER_INVALID(9451,"Track owner invalid", HttpStatus.FORBIDDEN, "Parca sahibi dogrulanamadi"),
 	
 	// SETLIST( 9500 - 9599)
 	SETLIST_NOT_FOUND(9500,"Setlist not found", HttpStatus.NOT_FOUND, "Setlist bulunamadi"),
@@ -198,7 +213,7 @@ public enum ErrorType {
 	ROOM_NOT_FOUND(9600,"Room not found", HttpStatus.NOT_FOUND, "oda bulunamadi"),
 	
 	// SPOTIFY (9650-9699)
-	SPOTIFY_AUTH_FAILED(9650, "Spotify auth failed", HttpStatus.UNAUTHORIZED, "Spotify ile bağlantı kurulamadı. (Kimlik doğrulama hatası)"),
+	SPOTIFY_AUTH_FAILED(9650, "Spotify auth failed", HttpStatus.BAD_GATEWAY, "Spotify ile bağlantı kurulamadı. (Kimlik doğrulama hatası)"),
 	SPOTIFY_RATE_LIMITED(9651, "Spotify rate limited", HttpStatus.TOO_MANY_REQUESTS, "Spotify çok fazla istek algıladı. Lütfen kısa süre sonra tekrar dene."),
 	SPOTIFY_NOT_FOUND(9652, "Spotify resource not found", HttpStatus.NOT_FOUND, "Spotify kaynağı bulunamadı."),
 	SPOTIFY_BAD_REQUEST(9653, "Spotify bad request", HttpStatus.BAD_REQUEST, "Spotify isteği geçersiz."),
@@ -218,7 +233,7 @@ public enum ErrorType {
 	
 	
 	// GENEL (9999)
-	BAD_REQUEST(9998,"BAD REQUEST", HttpStatus.BAD_REQUEST, "YANLIS ISTEK"),
+	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	
 	private final int code;

@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.user.service;
 
-import com.berkayb.soundconnect.modules.location.repository.CityRepository;
+import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -34,13 +36,16 @@ public class UserServiceImpl implements UserService {
 	private final UserMapper userMapper;
 	private final UserEntityFinder userEntityFinder;
 	private final PasswordEncoder passwordEncoder;
-	private final CityRepository cityRepository;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
-	public Boolean updateUser(UUID id, UserUpdateRequestDto dto) {
-		// kullanici bulunamazsa hata firlatilir
-		User user = userEntityFinder.getUser(id);
+	@Transactional
+	public Boolean updateUser(UUID actingUserId, UUID id, UserUpdateRequestDto dto) {
+		LockedUsers lockedUsers = lockActorAndTarget(actingUserId, id);
+		User actor = lockedUsers.actor();
+		assertCanManageUsers(actor);
+		User user = lockedUsers.target();
+		assertCanMutateTarget(actor, user);
 		
 		boolean isUpdated = false;
 		
@@ -52,7 +57,11 @@ public class UserServiceImpl implements UserService {
 		
 		// eposta guncellenirse flag true
 		if (dto.email() != null) {
-			user.setEmail(dto.email());
+			String normalizedEmail = EmailUtils.normalize(dto.email());
+			if (userRepository.existsByEmailAndIdNot(normalizedEmail, user.getId())) {
+				throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
+			}
+			user.setEmail(normalizedEmail);
 			isUpdated = true;
 		}
 		
@@ -66,8 +75,8 @@ public class UserServiceImpl implements UserService {
 		if (dto.roleId() != null) {
 			Role role = roleRepository.findById(dto.roleId())
 			                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
-			user.getRoles().clear();
-			user.getRoles().add(role);
+			assertCanAssignRole(actor, user, role);
+			user.setRoles(new HashSet<>(Set.of(role)));
 			isUpdated = true;
 		}
 		
@@ -76,6 +85,8 @@ public class UserServiceImpl implements UserService {
 		if (isUpdated) {
 			user.setUpdatedAt(LocalDateTime.now());
 			userRepository.save(user);
+			log.info("User updated by administrator. actorId={} targetId={} roleChanged={}",
+					actingUserId, id, dto.roleId() != null);
 		}
 		
 		return isUpdated;
@@ -83,13 +94,24 @@ public class UserServiceImpl implements UserService {
 	
 	// kullaniciyi id'ye gore siler
 	@Override
-	public void deleteUserById(UUID id) {
-		User user = userEntityFinder.getUser(id);
+	@Transactional
+	public void deleteUserById(UUID actingUserId, UUID id) {
+		LockedUsers lockedUsers = lockActorAndTarget(actingUserId, id);
+		User actor = lockedUsers.actor();
+		assertCanManageUsers(actor);
+		if (actingUserId.equals(id)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+		User user = lockedUsers.target();
+		assertCanMutateTarget(actor, user);
+		assertLastOwnerIsPreserved(user, null);
 		userRepository.delete(user);
+		log.info("User deleted by administrator. actorId={} targetId={}", actingUserId, id);
 	}
 	
 	// id'ye gore kullaniciyi getirir
 	@Override
+	@Transactional(readOnly = true)
 	public UserListDto getUserById(UUID id) {
 		User user = userEntityFinder.getUser(id);
 		return userMapper.toDto(user);
@@ -106,22 +128,113 @@ public class UserServiceImpl implements UserService {
 	
 	// yeni kullanici kaydeder, varsa enstrumanlarini da ekler
 	@Override
-	public User saveUser(UserSaveRequestDto dto) {
+	@Transactional
+	public User saveUser(UUID actingUserId, UserSaveRequestDto dto) {
+		User actor = findForUpdate(actingUserId);
+		assertCanManageUsers(actor);
+		String normalizedEmail = EmailUtils.normalize(dto.email());
+		if (userRepository.existsByEmail(normalizedEmail)) {
+			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
+		}
 		// role
 		Role role = roleRepository.findById(dto.roleId())
 		                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+		assertCanAssignRole(actor, null, role);
 		
 		
 		// elle user oluştur
 		User user = User.builder()
 		                .username(dto.username())
-		                .email(dto.email())
+		                .email(normalizedEmail)
 		                .password(passwordEncoder.encode(dto.password()))
 		                .roles(Set.of(role))
 		                .status(UserStatus.ACTIVE)
+		                .emailVerified(true)
 		                .createdAt(LocalDateTime.now())
 		                .build();
-		
-		return userRepository.save(user);
+
+		User saved = userRepository.save(user);
+		log.info("User created by administrator. actorId={} targetId={} role={}",
+				actingUserId, saved.getId(), role.getName());
+		return saved;
+	}
+
+	private User findForUpdate(UUID userId) {
+		return userRepository.findByIdForUpdate(userId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+	}
+
+	private LockedUsers lockActorAndTarget(UUID actorId, UUID targetId) {
+		if (actorId.equals(targetId)) {
+			User user = findForUpdate(actorId);
+			return new LockedUsers(user, user);
+		}
+
+		UUID firstId = actorId.compareTo(targetId) <= 0 ? actorId : targetId;
+		UUID secondId = firstId.equals(actorId) ? targetId : actorId;
+		User first = findForUpdate(firstId);
+		User second = findForUpdate(secondId);
+		return firstId.equals(actorId)
+				? new LockedUsers(first, second)
+				: new LockedUsers(second, first);
+	}
+
+	private void assertCanManageUsers(User actor) {
+		if (!hasRole(actor, "ROLE_OWNER") && !hasPermission(actor, "MANAGE_USERS")) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private void assertCanMutateTarget(User actor, User target) {
+		if (hasRole(target, "ROLE_OWNER") && !hasRole(actor, "ROLE_OWNER")) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+	}
+
+	private void assertCanAssignRole(User actor, User currentTarget, Role newRole) {
+		if (!hasRole(actor, "ROLE_OWNER") && !hasPermission(actor, "MANAGE_ROLES")) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+		if ("ROLE_OWNER".equals(newRole.getName()) && !hasRole(actor, "ROLE_OWNER")) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
+		assertLastOwnerIsPreserved(currentTarget, newRole);
+	}
+
+	private void assertLastOwnerIsPreserved(User currentTarget, Role replacementRole) {
+		if (currentTarget == null || !hasRole(currentTarget, "ROLE_OWNER")) {
+			return;
+		}
+		boolean remainsOwner = replacementRole != null && "ROLE_OWNER".equals(replacementRole.getName());
+		if (!remainsOwner) {
+			// ROLE_OWNER is a stable, shared database mutex for every destructive
+			// owner transition. Acquiring it before counting serializes concurrent
+			// downgrades/deletions so two transactions cannot both observe "2".
+			roleRepository.findByNameForUpdate("ROLE_OWNER")
+			              .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
+			if (userRepository.countDistinctByRoles_Name("ROLE_OWNER") <= 1) {
+				throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+			}
+		}
+	}
+
+	private boolean hasRole(User user, String roleName) {
+		return user.getRoles() != null && user.getRoles().stream()
+				.anyMatch(role -> roleName.equals(role.getName()));
+	}
+
+	private boolean hasPermission(User user, String permissionName) {
+		boolean direct = user.getPermissions() != null && user.getPermissions().stream()
+				.map(Permission::getName)
+				.anyMatch(permissionName::equals);
+		if (direct) return true;
+		return user.getRoles() != null && user.getRoles().stream()
+				.filter(role -> role.getPermissions() != null)
+				.flatMap(role -> role.getPermissions().stream())
+				.map(Permission::getName)
+				.anyMatch(permissionName::equals);
+	}
+
+	private record LockedUsers(User actor, User target) {
 	}
 }

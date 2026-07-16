@@ -1,7 +1,11 @@
 package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.JwtUtil;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -51,35 +56,45 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			filterChain.doFilter(request, response);
 			return;
 		}
-
-		if (!jwtTokenProvider.validateToken(token)) {
-			handleUnauthenticatedRequest(request, response, filterChain);
+		
+		final UUID userId;
+		try {
+			if (!jwtTokenProvider.validateToken(token)) {
+				SecurityContextHolder.clearContext();
+				filterChain.doFilter(request, response);
+				return;
+			}
+			userId = jwtTokenProvider.getUserIdFromToken(token);
+		} catch (JwtException | IllegalArgumentException exception) {
+			// Token parsing/claim failures are authentication failures. Database and
+			// infrastructure exceptions are intentionally not caught here so the
+			// server can surface them as 5xx instead of a false 401.
+			rejectAuthentication(request, exception);
+			filterChain.doFilter(request, response);
 			return;
 		}
-		
-		try {
-			// Token gecerli mi? token'dan usernameyi aliyoruz
-			UUID userId = jwtTokenProvider.getUserIdFromToken(token);
-		
-			// SecurityContext bossa (kullanici daha tanitilmamissa)
-			if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-				// db'den kullaniciyi bulalim
-				UserDetails userDetails = userDetailsService.loadUserById(userId);
-			
-				// SecurityContext'e kimlik tanimlayalim
-				UsernamePasswordAuthenticationToken authToken =
-						new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-				
-				// web uzerinden geldigini belirtelim
-				authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-				
-				// spring security sistemi artik bu kullaniciyi tanisin
-				SecurityContextHolder.getContext().setAuthentication(authToken);
+
+		if (SecurityContextHolder.getContext().getAuthentication() == null) {
+			UserDetails userDetails;
+			try {
+				userDetails = userDetailsService.loadUserById(userId);
+			} catch (UsernameNotFoundException exception) {
+				rejectAuthentication(request, exception);
+				filterChain.doFilter(request, response);
+				return;
+			} catch (SoundConnectException exception) {
+				if (exception.getErrorType() != ErrorType.USER_NOT_FOUND) {
+					throw exception;
+				}
+				rejectAuthentication(request, exception);
+				filterChain.doFilter(request, response);
+				return;
 			}
-		} catch (RuntimeException e) {
-			log.warn("JWT authentication failed for {} {}: {}", request.getMethod(), request.getRequestURI(), e.getMessage());
-			handleUnauthenticatedRequest(request, response, filterChain);
-			return;
+			if (canAuthenticate(userDetails, request)) {
+				setAuthentication(request, userDetails);
+			} else {
+				SecurityContextHolder.clearContext();
+			}
 		}
 		
 		// filtre -> controller -> service vs zincir devam etsin
@@ -87,50 +102,49 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		
 	}
 
-	private void handleUnauthenticatedRequest(
-			HttpServletRequest request,
-			HttpServletResponse response,
-			FilterChain filterChain
-	) throws IOException, ServletException {
+	private void rejectAuthentication(HttpServletRequest request, RuntimeException exception) {
+		log.debug("JWT authentication rejected. method={}, path={}, exceptionType={}",
+				request.getMethod(), request.getRequestURI(), exception.getClass().getSimpleName());
 		SecurityContextHolder.clearContext();
-		if (isPublicRequest(request)) {
-			filterChain.doFilter(request, response);
-			return;
-		}
-		response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
 	}
 
-	private boolean isPublicRequest(HttpServletRequest request) {
-		String method = request.getMethod();
-		String path = request.getRequestURI();
-
-		if ("OPTIONS".equalsIgnoreCase(method)) {
+	private boolean canAuthenticate(UserDetails userDetails, HttpServletRequest request) {
+		if (!isAccountUsable(userDetails)) {
+			return false;
+		}
+		if (!hasNoRoles(userDetails)) {
 			return true;
 		}
-		if (path.startsWith("/api/v1/auth/")
-				|| path.startsWith("/api/v1/public/")
-				|| path.startsWith("/v3/api-docs/")
-				|| path.startsWith("/swagger-ui/")
-				|| path.startsWith("/swagger-resources/")
-				|| path.startsWith("/webjars/")
-				|| path.startsWith("/ws")
-				|| path.startsWith("/topic/")
-				|| path.startsWith("/app/")) {
-			return true;
-		}
-		if ("/api/ping".equals(path) || "/swagger-ui.html".equals(path) || "/test-ws.html".equals(path)) {
-			return true;
-		}
-		if ("GET".equalsIgnoreCase(method)) {
-			return path.startsWith("/api/v1/venues/")
-					|| path.startsWith("/api/v1/cities/")
-					|| path.startsWith("/api/v1/districts/")
-					|| path.startsWith("/api/v1/neighborhoods/")
-					|| path.startsWith("/api/v1/events/")
-					|| path.startsWith("/api/v1/promotions/displayable/")
-					|| path.equals("/api/v1/spotify/search/tracks")
-					|| path.startsWith("/api/v1/spotify/tracks/");
-		}
-		return "POST".equalsIgnoreCase(method) && path.equals("/api/v1/spotify/tracks/by-ids");
+		return isRolelessGooglePrincipal(userDetails) && isGoogleProfileCompletionRequest(request);
 	}
+
+	private void setAuthentication(HttpServletRequest request, UserDetails userDetails) {
+		UsernamePasswordAuthenticationToken authToken =
+				new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+		authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+		SecurityContextHolder.getContext().setAuthentication(authToken);
+	}
+
+	private boolean isAccountUsable(UserDetails userDetails) {
+		return userDetails.isEnabled()
+				&& userDetails.isAccountNonLocked()
+				&& userDetails.isAccountNonExpired()
+				&& userDetails.isCredentialsNonExpired();
+	}
+
+	private boolean hasNoRoles(UserDetails userDetails) {
+		return userDetails instanceof UserDetailsImpl principal
+				&& (principal.getUser().getRoles() == null || principal.getUser().getRoles().isEmpty());
+	}
+
+	private boolean isRolelessGooglePrincipal(UserDetails userDetails) {
+		return userDetails instanceof UserDetailsImpl principal
+				&& principal.getUser().getProvider() == AuthProvider.GOOGLE;
+	}
+
+	private boolean isGoogleProfileCompletionRequest(HttpServletRequest request) {
+		return "POST".equalsIgnoreCase(request.getMethod())
+				&& "/api/v1/auth/complete-google-profile".equals(request.getRequestURI());
+	}
+
 }

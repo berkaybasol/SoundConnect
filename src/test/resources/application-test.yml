@@ -61,9 +61,13 @@ spring:
 # Uygulama konfigleri (test modu)
 app:
   jwt:
-    secret: test-jwt-secret-key
+    secret: test-jwt-secret-key-at-least-32-bytes-long
     expiration: 3600000
     issuer: soundconnect-test
+
+  security:
+    auth-rate-limit:
+      enabled: false
 
   data:
     init:
@@ -95,6 +99,7 @@ cloud:
   storage:
     provider: fake          # Gerçek S3 yerine test double (kodda destekliyorsun)
     bucket: soundconnect-media-test
+    privateBucket: soundconnect-private-media-test
     region: eu-central-1
     accessKey: test-s3-access-key
     secretKey: test-s3-secret-key
@@ -102,17 +107,46 @@ cloud:
     endpoint: ""
     pathStyleAccess: false
     presign:
-      expirySeconds: 900
+      uploadExpirySeconds: 900
+      downloadExpirySeconds: 300
     aclPublicReadOnPut: false
 
 media:
+  upload-verification:
+    enabled: false
+    request-wait-timeout: PT4S
+    verification-lease: PT4M
+    attempt-hard-timeout: PT5M
+    storage-call-timeout: PT30S
+  image-variants:
+    worker:
+      enabled: false
+    backfill:
+      enabled: false
+  upload-guard:
+    enabled: false
+  upload-cleanup:
+    enabled: false
+  transcode:
+    worker:
+      enabled: false
+    dispatch:
+      enabled: false
+    lease:
+      duration: PT15M
+      heartbeat-interval: PT1M
+      heartbeat-threads: 1
+      max-attempts: 3
+      retry-backoff-base: PT1H
+      retry-backoff-max: PT4H
+    worker-threads: 1
   limits:
     imageMaxBytes: 20000000
     audioMaxBytes: 200000000
     videoMaxBytes: 4000000000
   allowedMime:
     image: [image/png, image/jpeg, image/webp]
-    audio: [audio/mpeg, audio/aac, audio/wav, audio/x-wav, audio/ogg]
+    audio: [audio/mpeg, audio/mp4, audio/x-m4a, audio/aac, audio/flac, audio/wav, audio/x-wav, audio/ogg]
     video: [video/mp4, video/quicktime, video/x-matroska]
   paths:
     root: media
@@ -146,7 +180,7 @@ rabbitmq:
     routingKeys:
       videoHlsRequest: video.hls.request
       videoHlsRequestDlq: video.hls.request.dlq
-    listenerConcurrency: 1-3
+    listenerConcurrency: 1
 
 logging:
   level:

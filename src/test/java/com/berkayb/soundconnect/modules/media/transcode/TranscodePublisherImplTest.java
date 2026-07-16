@@ -17,6 +17,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -39,6 +40,7 @@ class TranscodePublisherImplTest {
 		// @Value alanlarını set et
 		ReflectionTestUtils.setField(publisher, "exchange", "ex.media");
 		ReflectionTestUtils.setField(publisher, "videoHlsRoutingKey", "media.video.hls");
+		ReflectionTestUtils.setField(publisher, "publisherConfirmTimeout", Duration.ofSeconds(1));
 		// @PostConstruct init()
 		publisher.init();
 	}
@@ -56,6 +58,12 @@ class TranscodePublisherImplTest {
 		UUID assetId = UUID.randomUUID();
 		String sourceKey = "media/" + assetId + "/source.mp4";
 		String hlsPrefix = "media/" + assetId + "/hls";
+		doAnswer(invocation -> {
+			CorrelationData correlationData = invocation.getArgument(4);
+			correlationData.getFuture().complete(new CorrelationData.Confirm(true, null));
+			return null;
+		}).when(rabbitTemplate).convertAndSend(
+				anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
 		
 		publisher.publishVideoHls(assetId, sourceKey, hlsPrefix);
 		
@@ -85,6 +93,7 @@ class TranscodePublisherImplTest {
 		Message processed = mppCaptor.getValue().postProcessMessage(msg);
 		
 		assertThat(processed.getMessageProperties().getDeliveryMode()).isNotNull(); // PERSISTENT
+		assertThat(processed.getMessageProperties().getCorrelationId()).isEqualTo(assetId.toString());
 		assertThat(processed.getMessageProperties().getHeaders())
 				.containsEntry("eventType", "VIDEO_HLS_REQUEST")
 				.containsEntry("assetId", assetId.toString())
@@ -121,6 +130,20 @@ class TranscodePublisherImplTest {
 		                                            .convertAndSend(anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
 		
 		assertThatThrownBy(() -> publisher.publishVideoHls(assetId, sourceKey, hlsPrefix))
+				.isInstanceOf(SoundConnectException.class);
+	}
+
+	@Test
+	void publishVideoHls_whenBrokerNacks_throwsAndKeepsDispatchIntentRetryable() {
+		UUID assetId = UUID.randomUUID();
+		doAnswer(invocation -> {
+			CorrelationData correlationData = invocation.getArgument(4);
+			correlationData.getFuture().complete(new CorrelationData.Confirm(false, "broker rejected"));
+			return null;
+		}).when(rabbitTemplate).convertAndSend(
+				anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
+
+		assertThatThrownBy(() -> publisher.publishVideoHls(assetId, "media/source.mp4", "media/hls"))
 				.isInstanceOf(SoundConnectException.class);
 	}
 }

@@ -1,12 +1,16 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
-
 import com.berkayb.soundconnect.modules.media.dto.request.VideoHlsRequest;
 import com.berkayb.soundconnect.modules.media.dto.response.HlsUploadResult;
+import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
+import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 import com.berkayb.soundconnect.modules.media.transcode.ffmpeg.FfmpegService;
 import com.berkayb.soundconnect.modules.media.transcode.ffmpeg.FfprobeService;
+import com.berkayb.soundconnect.modules.media.transcode.ffmpeg.VideoProbeMetadata;
 import com.berkayb.soundconnect.modules.media.transcode.upload.HlsUploader;
+import com.berkayb.soundconnect.modules.media.transcode.validation.VideoTranscodeRejectedException;
+import com.berkayb.soundconnect.modules.media.transcode.validation.TranscodeTempBudgetManager;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -19,20 +23,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Map;
+import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 
-
-/**
- * Orchestrator:
- * -Storage'dan SOURCE indirir
- * ffprobe: meta cikar
- * FFmpeg ile hls ladder ve thumbnail uretir
- * HLS ciktisini S3'e yukler (dogru Content-Type/Cache-Control ile)
- * MediaAsset durumunu READY/FAILED yapar
- * en sonda temp dosyalari temizler
- */
-
+/** Lease-fenced HLS orchestration. The database row, not Rabbit, owns the work. */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -42,104 +37,180 @@ public class VideoHlsWorkflow {
 	private final HlsUploader uploader;
 	private final MediaAssetStatusUpdater statusUpdater;
 	private final FfprobeService ffprobe;
-	
-	/*
-	Tek giris noktasi: videHlsRequest DTO'su ile akisi yurut
-	Basariliysa READY, hata varsa FAILED + throw.
+	private final MediaPolicy mediaPolicy;
+	private final MediaTranscodeLeaseHeartbeat leaseHeartbeat;
+	private final TranscodeTempBudgetManager tempBudgetManager;
+	private final TranscodeProperties transcodeProperties;
+
+	/**
+	 * Commits durable ownership before the Rabbit delivery is acknowledged. An
+	 * empty result is a live duplicate, terminal row, or exhausted attempt budget.
 	 */
-	public void process(VideoHlsRequest req) throws Exception {
-		// param dogrulama (erken fail" kuyrugu cop mesajla mesgul etmemek icin
-		if (req == null) throw new SoundConnectException(ErrorType.INVALID_HLS_REQUEST);
-		if (req.assetId() == null || req.assetId().isBlank())
-			throw new SoundConnectException(ErrorType.ASSET_ID_REQUIRED);
-		if (req.sourceKey() == null || req.sourceKey().isBlank())
-			throw new SoundConnectException(ErrorType.SOURCE_KEY_REQUIRED);
-		if (req.hlsPrefix() == null || req.hlsPrefix().isBlank())
-			throw new SoundConnectException(ErrorType.HLS_PREFIX_REQUIRED);
-		
+	public Optional<ClaimedVideoHlsWork> claim(VideoHlsRequest req) {
+		validateRequest(req);
 		UUID assetId = UUID.fromString(req.assetId());
-		
-		// (opsiyonel) zaten PROCESSING ise idempotent, degilse PROCESSING'e al
-		statusUpdater.markProcessing(assetId);
-		
+		return statusUpdater.tryClaimQueuedTranscode(assetId)
+				.map(claim -> new ClaimedVideoHlsWork(
+						claim.assetId(),
+						claim.attemptToken(),
+						claim.sourceKey(),
+						mediaPolicy.buildHlsPrefix(assetId),
+						claim.attemptNumber()
+				));
+	}
+
+	/** Leaves an unclaimed SENT signal in the durable QUEUED dispatcher state. */
+	public boolean deferSignal(VideoHlsRequest req) {
+		validateRequest(req);
+		return statusUpdater.requeueUnclaimedTranscodeSignal(UUID.fromString(req.assetId()));
+	}
+
+	/** Returns a durable claim that could not be handed to a native worker. */
+	public boolean abandonClaimForRetry(ClaimedVideoHlsWork work) {
+		if (work == null) return false;
+		return statusUpdater.abandonClaimForRetry(
+				work.assetId(), work.attemptToken(), work.attemptNumber());
+	}
+
+	/** Compatibility entry point used outside the manual-ACK listener. */
+	public void process(VideoHlsRequest req) throws Exception {
+		Optional<ClaimedVideoHlsWork> claimed = claim(req);
+		if (claimed.isEmpty()) {
+			log.info("[workflow] duplicate, terminal, or exhausted delivery ignored assetId={}",
+					req.assetId());
+			return;
+		}
+		processClaimed(claimed.orElseThrow());
+	}
+
+	/** Executes work whose durable claim has already committed. */
+	public void processClaimed(ClaimedVideoHlsWork work) throws Exception {
+		UUID assetId = work.assetId();
 		Path workdir = null;
-		try {
-			// calisma alani olustur (OS tmp altinda guvenli bir klasor)
+		TranscodeTempBudgetManager.Reservation tempReservation = null;
+		try (TranscodeLease lease = leaseHeartbeat.start(assetId, work.attemptToken())) {
+			lease.checkpoint();
+			tempReservation = tempBudgetManager.reserveMaxWorkBudget();
+			lease.checkpoint();
 			workdir = Files.createTempDirectory("sc-hls-" + assetId + "-");
-			Path srcFile = workdir.resolve("source" + extFromKey(req.sourceKey())); // uzatntiyi key'den cikar
-			Path outDIr = workdir.resolve("out"); // HLS ciktilari buraya.. (variant klasorleri ve master.m3u8)
+			Path srcFile = workdir.resolve("source" + extFromKey(work.sourceKey()));
+			Path outDir = workdir.resolve("out");
 			Path thumb = workdir.resolve("thumbnail.jpg");
-			
-			log.info("[workflow] start assetId={} sourceKey={} out={}", assetId, req.sourceKey(), outDIr);
-			
-			// Source'u indir
-			storage.downloadToFile(req.sourceKey(), srcFile);
-			
-			// 2) ffprobe metadata (kaynak dosyadan ölçmek daha güvenilir)
-			Integer duration = null, width = null, height = null;
-			try {
-				Map<String, Integer> meta = ffprobe.probe(srcFile);
-				duration = meta.get("durationSeconds");
-				width    = meta.get("width");
-				height   = meta.get("height");
-				log.debug("[workflow] ffprobe meta assetId={} duration={}s {}x{}", assetId, duration, width, height);
-			} catch (Exception probeErr) {
-				// Meta zorunlu değil; sadece logla ve devam et
-				log.warn("[workflow] ffprobe failed assetId={} err={}", assetId, probeErr.getMessage());
-			}
-			
-			// FFmpeg: HLD ladder + thumbnail uret
-			ffmpeg.generateHlsLadder(srcFile, outDIr);
-			ffmpeg.generateThumbnail(srcFile, thumb);
-			
-			// HLS ciktisini s3'e yukle playback (master.m3u8) ve thumbnail CDN URL'lerini al
-			HlsUploadResult upload = uploader.uploadHlsTree(outDIr, req.hlsPrefix(), thumb);
-			
-			// DB'de READY (HLS) yap - metadata
-			statusUpdater.markReadyHls(assetId,
-			                           upload.playbackUrl(),
-			                           upload.thumbnailUrl(),
-			                           duration, // durationSeconds
-			                           width, // width
-			                           height // height
+
+			log.info("[workflow] start assetId={} attempt={} out={}",
+					assetId, work.attemptNumber(), outDir);
+			storage.downloadToFile(
+					work.sourceKey(),
+					srcFile,
+					Duration.ofSeconds(transcodeProperties.getSourceDownloadTimeoutSec())
 			);
-			log.info("[workflow] OK assetId={} objects={} playback={}", assetId, upload.objectCount(), upload.playbackUrl());
-		}
-		catch (Exception e) {
-			// hata: FAILED'a cek ve direkt firlat (listener NACK/DLQ karar versin)
+			lease.checkpoint();
+
+			// Strict admission: probe, metadata, output estimate and actual temp
+			// capacity must all pass before the first FFmpeg child process starts.
+			VideoProbeMetadata metadata = ffprobe.probeVideo(srcFile);
+			Integer duration = metadata.roundedDurationSeconds();
+			Integer width = metadata.width();
+			Integer height = metadata.height();
+			log.debug("[workflow] admitted video assetId={} duration={}s {}x{} fps={}",
+					assetId, duration, width, height, metadata.frameRate());
+			lease.checkpoint();
+
+			ffmpeg.generateHlsLadder(srcFile, outDir);
+			lease.checkpoint();
+			ffmpeg.generateThumbnail(srcFile, thumb);
+			lease.checkpoint();
+
+			HlsUploadResult upload = uploader.uploadHlsTree(outDir, work.hlsPrefix(), thumb);
+			lease.checkpoint();
+
+			boolean finalized = statusUpdater.tryFinalizeReadyHls(
+					assetId,
+					work.attemptToken(),
+					upload.playbackUrl(),
+					upload.thumbnailUrl(),
+					duration,
+					width,
+					height
+			);
+			if (!finalized) {
+				log.info("[workflow] late attempt fenced after upload assetId={} attempt={} prefix={}",
+						assetId, work.attemptNumber(), work.hlsPrefix());
+				return;
+			}
+			log.info("[workflow] OK assetId={} attempt={} objects={} playback={}",
+					assetId, work.attemptNumber(), upload.objectCount(), upload.playbackUrl());
+		} catch (TranscodeLeaseLostException lost) {
+			// The expired-attempt recovery state owns deterministic prefix cleanup and
+			// retry. Returning is intentional: the Rabbit signal was already ACKed.
+			log.warn("[workflow] lease lost; durable recovery owns assetId={} attempt={}",
+					assetId, work.attemptNumber());
+		} catch (Exception failure) {
 			try {
-				statusUpdater.markFailed(assetId);
+				statusUpdater.markHlsCleanupPending(
+						assetId,
+						work.attemptToken(),
+						work.attemptNumber(),
+						!hasCause(failure, VideoTranscodeRejectedException.class)
+				);
+			} catch (Exception cleanupStateFailure) {
+				failure.addSuppressed(cleanupStateFailure);
+				log.error("[workflow] HLS cleanup intent error assetId={} err={}",
+						assetId, cleanupStateFailure.getMessage(), cleanupStateFailure);
 			}
-			catch (Exception exception) {
-				log.error("[workflow] markFailed error assetId={} err={}", assetId, exception.getMessage(), exception);
-			}
-			log.error("[workflow] FAILED assetId={} err={}", assetId, e.getMessage(), e);
-			throw e;
-		}
-		finally {
+			log.error("[workflow] FAILED assetId={} attempt={} err={}",
+					assetId, work.attemptNumber(), failure.getMessage(), failure);
+			throw failure;
+		} finally {
 			if (workdir != null) {
 				try {
 					deleteRecursive(workdir);
+				} catch (Exception cleanupFailure) {
+					log.warn("[workflow] temp cleanup failed dir={} err={}",
+							workdir, cleanupFailure.getMessage());
 				}
-				catch (Exception ex) {
-					log.warn("[workflow] cleanup failed dir={} err={}", workdir, ex.getMessage());
-				}
+			}
+			if (tempReservation != null) {
+				tempReservation.close();
 			}
 		}
 	}
-	
-	// yardimci methodlar
-	// sourceKey'den guvenli bir uzanti cikarir yoksa .mp4 varsayar.
+
+	private static boolean hasCause(Throwable error, Class<? extends Throwable> type) {
+		Throwable current = error;
+		while (current != null) {
+			if (type.isInstance(current)) return true;
+			if (current.getCause() == current) break;
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	private static void validateRequest(VideoHlsRequest req) {
+		if (req == null) throw new SoundConnectException(ErrorType.INVALID_HLS_REQUEST);
+		if (req.assetId() == null || req.assetId().isBlank()) {
+			throw new SoundConnectException(ErrorType.ASSET_ID_REQUIRED);
+		}
+		if (req.sourceKey() == null || req.sourceKey().isBlank()) {
+			throw new SoundConnectException(ErrorType.SOURCE_KEY_REQUIRED);
+		}
+		if (req.hlsPrefix() == null || req.hlsPrefix().isBlank()) {
+			throw new SoundConnectException(ErrorType.HLS_PREFIX_REQUIRED);
+		}
+		try {
+			UUID.fromString(req.assetId());
+		} catch (IllegalArgumentException invalidId) {
+			throw new SoundConnectException(ErrorType.INVALID_HLS_REQUEST);
+		}
+	}
+
 	private static String extFromKey(String key) {
 		int dot = key.lastIndexOf('.');
 		if (dot < 0 || dot == key.length() - 1) return ".mp4";
-		String raw = key.substring(dot).toLowerCase(); // ".mp4"
-		// çok sert hijyen gerekmez; nokta ile başlayan kısa bir uzantı yeterli
-		if (raw.length() > 8) return ".mp4"; // garip şeyler olmasın
-		return raw;
+		String raw = key.substring(dot).toLowerCase();
+		return raw.length() > 8 ? ".mp4" : raw;
 	}
-	
-	// klasoru icindekilerle siler.
+
 	private static void deleteRecursive(Path root) throws IOException {
 		if (!Files.exists(root)) return;
 		Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -148,7 +219,7 @@ public class VideoHlsWorkflow {
 				Files.deleteIfExists(file);
 				return FileVisitResult.CONTINUE;
 			}
-			
+
 			@Override
 			public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
 				Files.deleteIfExists(dir);
@@ -156,4 +227,12 @@ public class VideoHlsWorkflow {
 			}
 		});
 	}
+
+	public record ClaimedVideoHlsWork(
+			UUID assetId,
+			UUID attemptToken,
+			String sourceKey,
+			String hlsPrefix,
+			int attemptNumber
+	) {}
 }

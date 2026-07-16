@@ -118,15 +118,7 @@ public abstract class CommentMapper {
 		if (mediaId == null) return null;
 		
 		try {
-			MediaAsset asset = mediaAssetService.getById(mediaId);
-			
-			if (asset.getSourceUrl() != null && !asset.getSourceUrl().isBlank()) {
-				return asset.getSourceUrl();
-			}
-			
-			if (asset.getPlaybackUrl() != null && !asset.getPlaybackUrl().isBlank()) {
-				return asset.getPlaybackUrl();
-			}
+			return mediaAssetService.getDisplayUrl(mediaId);
 		} catch (Exception ignored) {
 		}
 		

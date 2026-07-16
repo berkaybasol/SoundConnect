@@ -50,7 +50,10 @@ class EventUserControllerTest {
 	void getTodayEvents_shouldReturnOk() throws Exception {
 		var event1 = new EventResponseDto(
 				UUID.randomUUID(),
+				"Rock Night",
+				"poster-1.jpg",
 				"Rockers",
+				null,
 				PerformerType.BAND,
 				Set.of("Ali", "Veli"),
 				UUID.randomUUID(),
@@ -61,12 +64,16 @@ class EventUserControllerTest {
 				LocalDate.now(),
 				LocalTime.of(21, 0),
 				LocalTime.of(23, 0),
-				"desc"
+				"desc",
+				"http://localhost/events/1"
 		);
 		
 		var event2 = new EventResponseDto(
 				UUID.randomUUID(),
+				"Solo Night",
+				"poster-2.jpg",
 				"Solo Berkay",
+				UUID.randomUUID(),
 				PerformerType.MUSICIAN,
 				Set.of(),
 				UUID.randomUUID(),
@@ -77,7 +84,8 @@ class EventUserControllerTest {
 				LocalDate.now(),
 				LocalTime.of(20, 0),
 				LocalTime.of(22, 0),
-				"desc"
+				"desc",
+				"http://localhost/events/2"
 		);
 		
 		Mockito.when(eventService.getEventsByDate(LocalDate.now()))

@@ -25,6 +25,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -39,6 +40,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -137,12 +139,18 @@ class VenueApplicationAdminControllerTest {
 		                                .city(city)
 		                                .build());
 		adminDetails = new UserDetailsImpl(admin);
+		SecurityContextHolder.getContext().setAuthentication(adminAuth());
 		
 		// --- venue profile create stub ---
 		Mockito.when(venueProfileService.createProfile(
 				Mockito.any(UUID.class),
 				Mockito.any(VenueProfileSaveRequestDto.class)
 		)).thenReturn(null);
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	private UsernamePasswordAuthenticationToken adminAuth() {
@@ -211,7 +219,7 @@ class VenueApplicationAdminControllerTest {
 		mockMvc.perform(post(BASE + "/approve/{id}", app.getId())
 				                .with(authentication(adminAuth())))
 		       .andDo(print())
-		       .andExpect(status().isBadRequest())
+		       .andExpect(status().isConflict())
 		       .andExpect(jsonPath("$.message", containsString("Invalid")));
 	}
 	

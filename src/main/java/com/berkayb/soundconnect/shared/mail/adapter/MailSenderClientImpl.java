@@ -3,7 +3,6 @@ package com.berkayb.soundconnect.shared.mail.adapter;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -72,7 +71,7 @@ public class MailSenderClientImpl implements MailSenderClient {
 			                   .toBodilessEntity()
 			                   .block(Duration.ofSeconds(readTimeoutSec + 2L));
 			
-			log.debug("Mail sent via MailerSend -> to={}, subject={}", helper.maskEmail(to), subject);
+			log.debug("Mail sent via MailerSend -> to={}", helper.maskEmail(to));
 			
 		} catch (WebClientResponseException wex) {
 			int status = wex.getRawStatusCode();
@@ -97,7 +96,7 @@ public class MailSenderClientImpl implements MailSenderClient {
 						ErrorType.MAIL_QUEUE_ERROR,
 						List.of("Unexpected status",
 						        "status=" + status,
-						        "body=" + safe(wex.getResponseBodyAsString()))
+						        "providerResponse=<redacted>")
 				);
 			}
 			
@@ -111,9 +110,8 @@ public class MailSenderClientImpl implements MailSenderClient {
 			throw new SoundConnectException(
 					ErrorType.MAIL_QUEUE_ERROR,
 					List.of("MailerSend call failed",
-					        "error=" + ex.toString(),
-					        "to=" + helper.maskEmail(to),
-					        "subject=" + subject)
+					        "exceptionType=" + ex.getClass().getSimpleName(),
+					        "to=" + helper.maskEmail(to))
 			);
 		}
 	}
@@ -129,7 +127,4 @@ public class MailSenderClientImpl implements MailSenderClient {
 				|| name.contains("PrematureClose");
 	}
 	
-	private String safe(String s) {
-		return s == null ? "<no-body>" : (s.length() > 400 ? s.substring(0, 400) + "..." : s);
-	}
 }

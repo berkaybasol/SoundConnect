@@ -58,7 +58,7 @@ public class VenueProfileContributor implements PublicProfileContributor {
 	private String resolveMediaUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getPlaybackUrl(mediaAssetId);
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("[resolver] venue media lookup failed mediaAssetId={}", mediaAssetId);
 			return null;

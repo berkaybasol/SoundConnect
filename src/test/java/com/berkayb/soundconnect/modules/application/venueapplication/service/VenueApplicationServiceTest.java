@@ -23,6 +23,7 @@ import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
@@ -169,6 +170,47 @@ class VenueApplicationServiceTest {
 		assertThatThrownBy(() -> venueApplicationService.createApplication(applicant.getId(), req()))
 				.isInstanceOf(SoundConnectException.class);
 	}
+
+	@Test
+	void createApplication_withoutNeighborhood_shouldRejectBeforePersistence() {
+		VenueApplicationCreateRequestDto request = new VenueApplicationCreateRequestDto(
+				"Cool Venue",
+				"Some Address 123",
+				"05551234567",
+				city.getId().toString(),
+				district.getId().toString(),
+				null
+		);
+
+		assertThatThrownBy(() -> venueApplicationService.createApplication(applicant.getId(), request))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR));
+		assertThat(venueAppRepo.findAll()).isEmpty();
+	}
+
+	@Test
+	void createApplication_withNeighborhoodFromAnotherDistrict_shouldReject() {
+		District anotherDistrict = districtRepo.save(
+				District.builder().name("OtherDistrict").city(city).build()
+		);
+		Neighborhood anotherNeighborhood = neighborhoodRepo.save(
+				Neighborhood.builder().name("OtherNeighborhood").district(anotherDistrict).build()
+		);
+		VenueApplicationCreateRequestDto request = new VenueApplicationCreateRequestDto(
+				"Cool Venue",
+				"Some Address 123",
+				"05551234567",
+				city.getId().toString(),
+				district.getId().toString(),
+				anotherNeighborhood.getId().toString()
+		);
+
+		assertThatThrownBy(() -> venueApplicationService.createApplication(applicant.getId(), request))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.NEIGHBORHOOD_DISTRICT_MISMATCH));
+		assertThat(venueAppRepo.findAll()).isEmpty();
+	}
 	
 	@Test
 	void approveApplication_happyPath_createsVenue_assignsRole_and_updatesStatus() {
@@ -197,6 +239,7 @@ class VenueApplicationServiceTest {
 		Venue v = venues.get(0);
 		assertThat(v.getName()).isEqualTo("Cool Venue");
 		assertThat(v.getAddress()).isEqualTo("Some Address 123");
+		assertThat(v.getPhone()).isEqualTo("05551234567");
 		assertThat(v.getCity().getId()).isEqualTo(city.getId());
 		assertThat(v.getDistrict().getId()).isEqualTo(district.getId());
 		if (neighborhood.getId() != null) {

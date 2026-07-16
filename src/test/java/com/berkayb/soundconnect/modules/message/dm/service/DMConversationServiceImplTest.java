@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.message.dm.service;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPreviewResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
+import com.berkayb.soundconnect.modules.message.dm.model.DmParticipantPair;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
@@ -15,6 +16,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -164,25 +166,27 @@ class DMConversationServiceImplTest {
 	void getOrCreateConversation_createOrReturnExisting() {
 		UUID u1 = UUID.randomUUID();
 		UUID u2 = UUID.randomUUID();
+		DmParticipantPair pair = DmParticipantPair.of(u1, u2);
+		when(userRepository.existsById(u2)).thenReturn(true);
 		
 		// Case-1: Mevcut var → direkt id dön
 		DMConversation existing = DMConversation.builder()
 		                                        .id(UUID.randomUUID())
-		                                        .userAId(u1)
-		                                        .userBId(u2)
+		                                        .userAId(pair.userAId())
+		                                        .userBId(pair.userBId())
 		                                        .build();
-		when(conversationRepository.findConversationBetweenUsers(u1, u2))
+		when(conversationRepository.findConversationBetweenUsers(pair.userAId(), pair.userBId()))
 				.thenReturn(Optional.of(existing));
 		
 		UUID id1 = service.getOrCreateConversation(u1, u2);
 		assertThat(id1).isEqualTo(existing.getId());
-		verify(conversationRepository, never()).save(any());
+		verify(conversationRepository, never()).saveAndFlush(any());
 		
 		// Case-2: Yok → yeni oluştur (save sırasında id ata)
-		when(conversationRepository.findConversationBetweenUsers(u1, u2))
+		when(conversationRepository.findConversationBetweenUsers(pair.userAId(), pair.userBId()))
 				.thenReturn(Optional.empty());
 		
-		when(conversationRepository.save(any(DMConversation.class)))
+		when(conversationRepository.saveAndFlush(any(DMConversation.class)))
 				.thenAnswer(inv -> {
 					DMConversation c = inv.getArgument(0);
 					c.setId(UUID.randomUUID()); // DB'nin vereceği id'yi biz veriyoruz
@@ -194,10 +198,34 @@ class DMConversationServiceImplTest {
 		
 		// Ek kontrol: doğru userA/userB ile kaydetmiş miyiz?
 		ArgumentCaptor<DMConversation> captor = ArgumentCaptor.forClass(DMConversation.class);
-		verify(conversationRepository).save(captor.capture());
+		verify(conversationRepository).saveAndFlush(captor.capture());
 		DMConversation saved = captor.getValue();
-		assertThat(saved.getUserAId()).isEqualTo(u1);
-		assertThat(saved.getUserBId()).isEqualTo(u2);
+		assertThat(saved.getUserAId()).isEqualTo(pair.userAId());
+		assertThat(saved.getUserBId()).isEqualTo(pair.userBId());
+	}
+
+	@Test
+	@DisplayName("getOrCreateConversation: concurrent unique conflict returns the winning row")
+	void getOrCreateConversation_recoversConcurrentInsert() {
+		UUID firstUser = UUID.randomUUID();
+		UUID secondUser = UUID.randomUUID();
+		DmParticipantPair pair = DmParticipantPair.of(firstUser, secondUser);
+		DMConversation winner = DMConversation.builder()
+				.id(UUID.randomUUID())
+				.userAId(pair.userAId())
+				.userBId(pair.userBId())
+				.build();
+		when(userRepository.existsById(firstUser)).thenReturn(true);
+		when(conversationRepository.findConversationBetweenUsers(pair.userAId(), pair.userBId()))
+				.thenReturn(Optional.empty(), Optional.of(winner));
+		when(conversationRepository.saveAndFlush(any(DMConversation.class)))
+				.thenThrow(new DataIntegrityViolationException("unique conflict"));
+
+		UUID result = service.getOrCreateConversation(secondUser, firstUser);
+
+		assertThat(result).isEqualTo(winner.getId());
+		verify(conversationRepository, times(2))
+				.findConversationBetweenUsers(pair.userAId(), pair.userBId());
 	}
 	
 	@Test
@@ -206,6 +234,6 @@ class DMConversationServiceImplTest {
 		UUID u = UUID.randomUUID();
 		assertThrows(SoundConnectException.class, () -> service.getOrCreateConversation(u, u));
 		verify(conversationRepository, never()).findConversationBetweenUsers(any(), any());
-		verify(conversationRepository, never()).save(any());
+		verify(conversationRepository, never()).saveAndFlush(any());
 	}
 }

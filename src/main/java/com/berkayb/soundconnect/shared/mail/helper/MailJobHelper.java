@@ -24,6 +24,9 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class MailJobHelper {
+	public static final String RETRY_ATTEMPT_HEADER = "sc-retry-attempt";
+	public static final String RETRY_MARKER_HEADER = "sc-retry";
+
 	private final StringRedisTemplate redis;
 	
 	// ----------------- Retry Siniflandirmasi -----------------
@@ -40,6 +43,7 @@ public class MailJobHelper {
 		// HTTP durum koduna gore hata turunu ayikla
 		if (e instanceof HttpStatusCodeException httpEx) {
 			int status = httpEx.getStatusCode().value();
+			if (status == 429) return true; // provider rate limit -> Retry-After aware retry
 			if (status >= 500) return true; // 5xx -> sunucu hatasi -> gecici
 			if (status >= 400) return false; // 4xx -> istemci hatasi -> kalici (DLQ)
 		}
@@ -68,6 +72,35 @@ public class MailJobHelper {
 		} catch (Exception ignore) {}
 		return 0;
 	}
+
+	/**
+	 * Reads the explicit retry attempt persisted on delayed Rabbit messages.
+	 * Delayed re-publishing creates a new message, so x-death does not advance.
+	 * Legacy messages with only the retry marker count as attempt one.
+	 */
+	public int retryAttempt(Map<String, Object> headers) {
+		if (headers == null || headers.isEmpty()) {
+			return 0;
+		}
+		Object rawAttempt = headers.get(RETRY_ATTEMPT_HEADER);
+		if (rawAttempt instanceof Number number) {
+			long value = number.longValue();
+			return value <= 0 ? 0 : (int) Math.min(value, Integer.MAX_VALUE);
+		}
+		if (rawAttempt instanceof String text) {
+			try {
+				return Math.max(0, Integer.parseInt(text.trim()));
+			} catch (NumberFormatException ignored) {
+				// Fall through to the legacy marker below.
+			}
+		}
+		Object retryMarker = headers.get(RETRY_MARKER_HEADER);
+		if (Boolean.TRUE.equals(retryMarker)
+				|| "true".equalsIgnoreCase(Objects.toString(retryMarker, ""))) {
+			return 1;
+		}
+		return 0;
+	}
 	
 	// ----------------- Idempotency & Lock -----------------
 	
@@ -83,7 +116,8 @@ public class MailJobHelper {
 			return Boolean.TRUE.equals(ok);
 		} catch (DataAccessException ex) {
 			// redis yoksa idempotency devre disi kalsin
-			log.warn("Idempotency check FAILED (redis). key={}, err={}", key, ex.toString());
+			log.warn("Idempotency check FAILED (redis). key={}, exceptionType={}",
+			         key, ex.getClass().getSimpleName());
 			return true;
 		}
 	}
@@ -97,7 +131,8 @@ public class MailJobHelper {
 			String v = redis.opsForValue().get(sentKey);
 			return v != null;
 		} catch (DataAccessException ex) {
-			log.warn("Sent-check Failed (redis). key={}, err={}", sentKey, ex.toString());
+			log.warn("Sent-check Failed (redis). key={}, exceptionType={}",
+			         sentKey, ex.getClass().getSimpleName());
 			return false; // fail-closed: tekrar dene
 		}
 	}
@@ -109,12 +144,13 @@ public class MailJobHelper {
 	
 	// basarili gonderimden sonra "sent" isareti
 	public void markSent(String sentKey, Duration ttl) {
-	try {
-		// Debug kolayligi icin timestamp yazalim.
-		String val = "1@" + Instant.now();
-		redis.opsForValue().setIfAbsent(sentKey, val, ttl);
+		try {
+			// Debug kolayligi icin timestamp yazalim.
+			String val = "1@" + Instant.now();
+			redis.opsForValue().setIfAbsent(sentKey, val, ttl);
 		} catch (DataAccessException ex) {
-		log.warn("Mark-sent FAILED (redis). key={}, err={}", sentKey, ex.toString());
+			log.warn("Mark-sent FAILED (redis). key={}, exceptionType={}",
+			         sentKey, ex.getClass().getSimpleName());
 		}
 	}
 	
@@ -123,7 +159,8 @@ public class MailJobHelper {
 		try {
 			redis.delete(lockKey);
 		} catch (DataAccessException ex) {
-			log.warn("Release-lock FAILED (redis). key={}, err={}", lockKey, ex.toString());
+			log.warn("Release-lock FAILED (redis). key={}, exceptionType={}",
+			         lockKey, ex.getClass().getSimpleName());
 		}
 	}
 	
@@ -213,45 +250,41 @@ public class MailJobHelper {
 			// 429: Rate Limit — Retry-After bilgisini (saniye) çekmeye çalış
 			if (code == 429) {
 				Optional<Long> ra = retryAfterSeconds(httpEx);
-				log.error("Mail send FAILED (HTTP 429 RATE LIMIT) -> requeue={}, retryAfter={}s, kind={}, to={}, subject={}, body={}",
+				log.error("Mail send FAILED (HTTP 429 RATE LIMIT) -> requeue={}, retryAfter={}s, kind={}, to={}, providerResponse={}",
 				          requeue,
 				          ra.orElse(null),
 				          req.kind(),
 				          maskedTo,
-				          req.subject(),
 				          safeBody(httpEx));
 				return;
 			}
 			
 			// Diğer 4xx/5xx durumları
-			log.error("Mail send FAILED (HTTP {}) -> requeue={}, kind={}, to={}, subject={}, body={}",
+			log.error("Mail send FAILED (HTTP {}) -> requeue={}, kind={}, to={}, providerResponse={}",
 			          code,
 			          requeue,
 			          req.kind(),
 			          maskedTo,
-			          req.subject(),
 			          safeBody(httpEx));
 			return;
 		}
 		
 		// Ağ/timeout hataları
 		if (e instanceof ResourceAccessException) {
-			log.error("Mail send FAILED (timeout/network) -> requeue={}, kind={}, to={}, subject={}, err={}",
+			log.error("Mail send FAILED (timeout/network) -> requeue={}, kind={}, to={}, exceptionType={}",
 			          requeue,
 			          req.kind(),
 			          maskedTo,
-			          req.subject(),
-			          e.toString());
+			          e.getClass().getSimpleName());
 			return;
 		}
 		
 		// Bilinmeyen/kapsüllü başka hatalar
-		log.error("Mail send FAILED (unknown) -> requeue={}, kind={}, to={}, subject={}, err={}",
+		log.error("Mail send FAILED (unknown) -> requeue={}, kind={}, to={}, exceptionType={}",
 		          requeue,
 		          req.kind(),
 		          maskedTo,
-		          req.subject(),
-		          e.toString());
+		          e.getClass().getSimpleName());
 	}
 	
 	/**
@@ -261,7 +294,8 @@ public class MailJobHelper {
 	 */
 	public String safeBody(HttpStatusCodeException ex) {
 		try {
-			return ex.getResponseBodyAsString();
+			byte[] body = ex.getResponseBodyAsByteArray();
+			return body.length == 0 ? "<empty>" : "<redacted:" + body.length + " bytes>";
 		} catch (Exception ignored) {
 			return "<no-body>";
 		}
@@ -310,14 +344,21 @@ public class MailJobHelper {
 		}
 	}
 	
-	public long chooseDelayMs(Exception e, int deaths, List<Long> defaultDelaysMs, boolean useRetryAfter) {
-		// Attempt index: deaths 0->1.attempt, 1->2.attempt ...
-		int idx = Math.min(deaths, Math.max(0, defaultDelaysMs.size() - 1));
+	public long chooseDelayMs(Exception e, int retryAttempt, List<Long> defaultDelaysMs, boolean useRetryAfter) {
+		int idx = Math.min(retryAttempt, Math.max(0, defaultDelaysMs.size() - 1));
 		long base = defaultDelaysMs.isEmpty() ? 3000L : defaultDelaysMs.get(idx);
 		
 		if (useRetryAfter && isRateLimited(e) && e instanceof HttpStatusCodeException httpEx) {
-			return retryAfterSeconds(httpEx).map(s -> Math.max(base, s * 1000L)).orElse(base);
+			long selected = retryAfterSeconds(httpEx).map(s -> Math.max(base, safeMillis(s))).orElse(base);
+			return Math.min(selected, 86_400_000L);
 		}
-		return base;
+		return Math.min(base, 86_400_000L);
+	}
+
+	private long safeMillis(long seconds) {
+		if (seconds <= 0) {
+			return 0;
+		}
+		return seconds > 86_400 ? 86_400_000L : seconds * 1_000L;
 	}
 }

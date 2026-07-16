@@ -22,4 +22,7 @@ public interface DMMessageService {
 	// okundu olarak isaretler
 	void markMessageAsRead(UUID messageId, UUID readerId);
 
+	// kullanicinin tum konusmalarindaki toplam okunmamis mesaj sayisini doner
+	long getUnreadCount(UUID userId);
+
 }

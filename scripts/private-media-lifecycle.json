@@ -1,0 +1,36 @@
+{
+  "Rules": [
+    {
+      "ID": "soundconnect-expire-abandoned-quarantine",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "quarantine/"
+      },
+      "Expiration": {
+        "Days": 1
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 1
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    },
+    {
+      "ID": "soundconnect-expire-abandoned-protected-uploads",
+      "Status": "Disabled",
+      "Filter": {
+        "Prefix": "media/"
+      },
+      "Expiration": {
+        "Days": 2
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 2
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}

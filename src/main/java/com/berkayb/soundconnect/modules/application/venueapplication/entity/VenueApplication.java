@@ -57,8 +57,8 @@ public class VenueApplication extends BaseEntity {
 	@JoinColumn(name = "district_id", nullable = false)
 	private District district;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "neighborhood_id")
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "neighborhood_id", nullable = false)
 	private Neighborhood neighborhood;
 	
 }

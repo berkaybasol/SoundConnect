@@ -183,4 +183,15 @@ public class BandUserController {
 		                                     .build());
 		
 	}
+
+	@Deprecated(forRemoval = false)
+	@Operation(summary = "bandden ayril (legacy PUT)", deprecated = true)
+	@PreAuthorize("hasRole('MUSICIAN')")
+	@PutMapping(LEAVE)
+	public ResponseEntity<BaseResponse<Void>> leaveBandLegacy(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@PathVariable UUID bandId
+	) {
+		return leaveBand(userDetails, bandId);
+	}
 }

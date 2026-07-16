@@ -24,8 +24,12 @@ import java.util.UUID;
 @Entity
 @Table(
 		name = "tbl_profile_media",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_profile_media_attachment",
+				columnNames = {"profile_type", "profile_id", "media_asset_id", "role"}
+		),
 		indexes = {
-				@Index(name = "idx_profile_media_profile", columnList = "profileType,profileId"),
+				@Index(name = "idx_profile_media_profile", columnList = "profile_type,profile_id"),
 				@Index(name = "idx_profile_media_role", columnList = "role")
 		}
 )
@@ -33,24 +37,24 @@ public class ProfileMedia extends BaseEntity {
 
 	// bu medya hangi profile ait?
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 32)
+	@Column(name = "profile_type", nullable = false, length = 32)
 	private ProfileType profileType;
 	
 	// profilin id'si
-	@Column(nullable = false)
+	@Column(name = "profile_id", nullable = false)
 	private UUID profileId;
 	
 	// gosterilecek medya varligi
-	@Column(nullable = false)
+	@Column(name = "media_asset_id", nullable = false)
 	private UUID mediaAssetId;
 	
 	// Bu medya profile ekraninda ne amacla kullaniliyor? featured, intro vs
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 32)
+	@Column(name = "role", nullable = false, length = 32)
 	private ProfileMediaRole role;
 	
 	// Ayni role sahip birden fazla medya varsa UI siralamasi icin kullanilir.
-	@Column
+	@Column(name = "order_index")
 	private Integer orderIndex;
 	
 }

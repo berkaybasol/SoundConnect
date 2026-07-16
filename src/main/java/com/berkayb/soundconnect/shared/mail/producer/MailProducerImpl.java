@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
@@ -49,6 +50,13 @@ public class MailProducerImpl implements MailProducer {
 	// Broker confirm/retrun icin maks bekleme suresi
 	@Value("${mail.producer.confirmTimeoutSec:5}")
 	private long confirmTimeoutSec;
+
+	@PostConstruct
+	void validateConfiguration() {
+		if (confirmTimeoutSec < 1 || confirmTimeoutSec > 30) {
+			throw new IllegalStateException("mail.producer.confirmTimeoutSec must be between 1 and 30");
+		}
+	}
 	
 	@Override
 	public void send(MailSendRequest request) {
@@ -87,12 +95,20 @@ public class MailProducerImpl implements MailProducer {
 				);
 			}
 			// publish basarili
-			log.info("Mail job queued: kind={}, to={}, subject={}",
-			         request.kind(), helper.maskEmail(request.to()), request.subject());
+			log.info("Mail job queued: kind={}, to={}", request.kind(), helper.maskEmail(request.to()));
 			
 		} catch (SoundConnectException e) {
 			// domain hatasi aynen firlat
 			throw e;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new SoundConnectException(
+					ErrorType.MAIL_QUEUE_ERROR,
+					List.of("Publish confirmation interrupted",
+					        "exchange=" + mailExchange,
+					        "routingKey=" + mailRoutingKey,
+					        "correlationId=" + correlationId)
+			);
 		} catch (Exception e) {
 			// timeout vs. genel publish hatalari
 			throw new SoundConnectException(
@@ -100,8 +116,8 @@ public class MailProducerImpl implements MailProducer {
 					List.of("Publish failed",
 					        "exchange=" + mailExchange,
 					        "routingKey=" + mailRoutingKey,
-							"correlationId=" + correlationId,
-					        "error=" + e.getMessage())
+					        "correlationId=" + correlationId,
+					        "exceptionType=" + e.getClass().getSimpleName())
 			);
 		}
 	}

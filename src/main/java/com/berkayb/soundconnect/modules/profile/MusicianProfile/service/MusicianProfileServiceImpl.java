@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.MusicianProfileActiveVenueDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.request.MusicianProfileSaveRequestDto;
@@ -20,6 +22,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
@@ -64,12 +67,18 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
 		User user = userEntityFinder.getUser(userId);
 		
 		if (musicianProfileRepository.findByUserId(userId).isPresent()) {
 			log.warn("Kullanici zaten bir profile sahip: {}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
+		}
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.USER, userId, MediaKind.IMAGE
+			);
 		}
 		
 		Set<Instrument> instruments =
@@ -160,6 +169,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public MusicianProfileResponseDto updateProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
 		userEntityFinder.getUser(userId);
 		
@@ -171,7 +181,12 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		
 		if (dto.stageName() != null) profile.setStageName(dto.stageName());
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePicture() != null) profile.setProfilePictureMediaId(dto.profilePicture());
+		if (dto.profilePicture() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePicture(), MediaOwnerType.MUSICIAN_PROFILE, profile.getId(), MediaKind.IMAGE
+			);
+			profile.setProfilePictureMediaId(dto.profilePicture());
+		}
 		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
 		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(dto.soundcloudUrl());
@@ -273,7 +288,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("Profile picture resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;

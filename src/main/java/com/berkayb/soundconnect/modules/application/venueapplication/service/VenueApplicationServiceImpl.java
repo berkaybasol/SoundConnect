@@ -55,7 +55,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemler geri alinir.
 	@Override
 	public VenueApplicationResponseDto approveApplication(UUID applicationId, UUID adminId) {
-		VenueApplication application = venueApplicationRepository.findById(applicationId)
+		VenueApplication application = venueApplicationRepository.findByIdForUpdate(applicationId)
 		                                                         .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
 		if (application.getStatus() != ApplicationStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
@@ -90,7 +90,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		                   .district(application.getDistrict())
 		                   .neighborhood(application.getNeighborhood())
 		                   .owner(applicant)
-		                   .phone(applicant.getPhone())
+		                   .phone(application.getPhone())
 		                   .status(VenueStatus.APPROVED)
 		                   .build();
 		venueRepository.save(venue);
@@ -108,7 +108,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemler geri alinir.
 	@Override
 	public VenueApplicationResponseDto rejectApplication(UUID applicationId, UUID adminId, String reason) {
-		VenueApplication application = venueApplicationRepository.findById(applicationId)
+		VenueApplication application = venueApplicationRepository.findByIdForUpdate(applicationId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
 		if (application.getStatus() != ApplicationStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
@@ -122,10 +122,14 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		return venueApplicationMapper.toResponseDto(application);
 	}
 	
+	@Transactional
 	@Override
 	public VenueApplicationResponseDto createApplication(UUID applicantUserId, VenueApplicationCreateRequestDto dto) {
-		// kullanici var mi kontrol et
-		User applicant = userEntityFinder.getUser(applicantUserId);
+		// Applicant row is the serialization point for the "one pending application"
+		// invariant. Concurrent submissions by the same account cannot both pass the
+		// pending lookup and insert a new row.
+		User applicant = userRepository.findByIdForUpdate(applicantUserId)
+		                               .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		
 		// zaten basvurmus mu?
@@ -136,12 +140,18 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 				});
 		
 		
-		// location modululundeki entitylerin id'lerini al
-		City city = locationEntityFinder.getCity(UUID.fromString(dto.cityId()));
-		District district = locationEntityFinder.getDistrict(UUID.fromString(dto.districtId()));
-		Neighborhood neighborhood = null;
-		if (dto.neighborhoodId() != null && !dto.neighborhoodId().isBlank()) {
-			neighborhood = locationEntityFinder.getNeighborhood(UUID.fromString(dto.neighborhoodId()));
+		// Venue tablosunda neighborhood zorunludur. Web validation'i atlayan
+		// dahili cagrilar da ayni kontrata tabi olsun.
+		City city = locationEntityFinder.getCity(parseRequiredLocationId(dto.cityId(), "cityId"));
+		District district = locationEntityFinder.getDistrict(parseRequiredLocationId(dto.districtId(), "districtId"));
+		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(
+				parseRequiredLocationId(dto.neighborhoodId(), "neighborhoodId")
+		);
+		if (!district.getCity().getId().equals(city.getId())) {
+			throw new SoundConnectException(ErrorType.DISTRICT_CITY_MISMATCH);
+		}
+		if (!neighborhood.getDistrict().getId().equals(district.getId())) {
+			throw new SoundConnectException(ErrorType.NEIGHBORHOOD_DISTRICT_MISMATCH);
 		}
 		// dto -> entity mapping
 		VenueApplication application = venueApplicationMapper.toEntity(dto);
@@ -193,5 +203,16 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		VenueApplication application = venueApplicationRepository.findById(applicationId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
 		return venueApplicationMapper.toResponseDto(application);
+	}
+
+	private UUID parseRequiredLocationId(String rawId, String fieldName) {
+		if (rawId == null || rawId.isBlank()) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, fieldName + " is required");
+		}
+		try {
+			return UUID.fromString(rawId);
+		} catch (IllegalArgumentException exception) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, fieldName + " must be a valid UUID");
+		}
 	}
 }

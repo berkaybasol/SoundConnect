@@ -15,6 +15,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collection;
 import java.util.List;
@@ -117,9 +119,29 @@ public class NotificationServiceImpl implements NotificationService {
 		);
 		if (updated > 0) {
 			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			badgeCacheHelper.setUnread(userId, freshUnread);
+			runAfterCommit(() -> {
+				try {
+					badgeCacheHelper.setUnread(userId, freshUnread);
+				} catch (RuntimeException exception) {
+					log.warn("DM notification badge projection failed userId={} exceptionType={}",
+					         userId, exception.getClass().getSimpleName());
+				}
+			});
 		}
 		return updated;
+	}
+
+	private void runAfterCommit(Runnable action) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			action.run();
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				action.run();
+			}
+		});
 	}
 	
 	

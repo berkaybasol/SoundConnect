@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.OrganizerProfile.service;
 
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.request.OrganizerProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.response.OrganizerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
@@ -33,6 +34,7 @@ class OrganizerProfileServiceImplTest {
 	@Mock OrganizerProfileRepository repo;
 	@Mock UserEntityFinder userFinder;
 	@Mock OrganizerProfileMapper mapper;
+	@Mock MediaAssetService mediaAssetService;
 	
 	@InjectMocks OrganizerProfileServiceImpl service;
 	

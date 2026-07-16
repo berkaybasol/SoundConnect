@@ -12,14 +12,17 @@ import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -41,6 +44,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Set;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
@@ -161,9 +165,12 @@ class UserVenueProfileControllerTest {
 		                                                  .build());
 		
 		// SecurityContext’e principal koy
-		var principal = new UserDetailsImpl(ownerUser);
-		var auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-		SecurityContextHolder.getContext().setAuthentication(auth);
+		authenticateAsVenue(ownerUser);
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	@Test
@@ -202,7 +209,7 @@ class UserVenueProfileControllerTest {
 	}
 	
 	@Test
-	void getMyVenueProfiles_userHasNoVenue_should_404() throws Exception {
+	void getMyVenueProfiles_userHasNoVenue_shouldReturnEmptyCollection() throws Exception {
 		// login’i venue’suz kullanıcıyla değiştir
 		User noVenueUser = userRepository.save(User.builder()
 		                                           .username("empty_" + UUID.randomUUID())
@@ -212,13 +219,29 @@ class UserVenueProfileControllerTest {
 		                                           .emailVerified(true)
 		                                           .city(city)
 		                                           .build());
-		var principal = new UserDetailsImpl(noVenueUser);
-		var auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-		SecurityContextHolder.getContext().setAuthentication(auth);
+		authenticateAsVenue(noVenueUser);
 		
 		mockMvc.perform(get("/api/v1/user/venue-profiles/me"))
 		       .andDo(print())
-		       .andExpect(status().isNotFound())
-		       .andExpect(jsonPath("$.httpStatus").value("NOT_FOUND"));
+		       .andExpect(status().isOk())
+		       .andExpect(jsonPath("$.success").value(true))
+		       .andExpect(jsonPath("$.data", hasSize(0)));
+	}
+
+	private void authenticateAsVenue(User persistedUser) {
+		User securityUser = User.builder()
+		                        .id(persistedUser.getId())
+		                        .username(persistedUser.getUsername())
+		                        .email(persistedUser.getEmail())
+		                        .password(persistedUser.getPassword())
+		                        .provider(persistedUser.getProvider())
+		                        .emailVerified(true)
+		                        .status(UserStatus.ACTIVE)
+		                        .roles(Set.of(Role.builder().name("ROLE_VENUE").build()))
+		                        .build();
+		UserDetailsImpl principal = UserDetailsImpl.fromUser(securityUser);
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
+		);
 	}
 }

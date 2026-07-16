@@ -1,14 +1,17 @@
 package com.berkayb.soundconnect.modules.user.controller.admin;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,9 +32,10 @@ public class UserControllerImpl implements UserController {
 	@PreAuthorize("hasAuthority('MANAGE_USERS')")
 	@PutMapping(UPDATE) // Yani: "/update/{id}"
 	@Override
-	public ResponseEntity<BaseResponse<Boolean>> updateUser(@PathVariable UUID id,
-	                                                        @RequestBody UserUpdateRequestDto dto) {
-		boolean isUpdated = userService.updateUser(id, dto);
+	public ResponseEntity<BaseResponse<Boolean>> updateUser(@AuthenticationPrincipal UserDetailsImpl principal,
+	                                                        @PathVariable UUID id,
+	                                                        @RequestBody @Valid UserUpdateRequestDto dto) {
+		boolean isUpdated = userService.updateUser(principal.getId(), id, dto);
 		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
 		                                     .code(200)
 		                                     .data(isUpdated)
@@ -43,8 +47,11 @@ public class UserControllerImpl implements UserController {
 	@PreAuthorize("hasAuthority('MANAGE_USERS')")
 	@DeleteMapping(DELETE)
 	@Override
-	public ResponseEntity<BaseResponse<Boolean>> deleteUserById(@PathVariable UUID id) {
-		userService.deleteUserById(id);
+	public ResponseEntity<BaseResponse<Boolean>> deleteUserById(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@PathVariable UUID id
+	) {
+		userService.deleteUserById(principal.getId(), id);
 		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
 		                                     .data(true)
 				                         .code(200)
@@ -71,8 +78,11 @@ public class UserControllerImpl implements UserController {
 	@PreAuthorize("hasAuthority('MANAGE_USERS')")
 	@PostMapping(SAVE)
 	@Override
-	public ResponseEntity<BaseResponse<Boolean>> saveUser(@RequestBody UserSaveRequestDto dto) {
-		userService.saveUser(dto);
+	public ResponseEntity<BaseResponse<Boolean>> saveUser(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@RequestBody @Valid UserSaveRequestDto dto
+	) {
+		userService.saveUser(principal.getId(), dto);
 		return ResponseEntity.ok(BaseResponse.<Boolean>builder()
 				                         .code(200)
 				                         .data(true)

@@ -1,11 +1,16 @@
 package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -14,11 +19,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
@@ -52,6 +60,7 @@ class ArtistVenueConnectionRequestControllerTest {
 	UUID requestId;
 	UUID musicianProfileId;
 	UUID venueId;
+	UUID actingUserId;
 	ArtistVenueConnectionRequestResponseDto sample;
 	
 	@BeforeEach
@@ -59,6 +68,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		requestId = UUID.randomUUID();
 		musicianProfileId = UUID.randomUUID();
 		venueId = UUID.randomUUID();
+		actingUserId = UUID.randomUUID();
 		
 		sample = new ArtistVenueConnectionRequestResponseDto(
 				requestId,
@@ -74,11 +84,30 @@ class ArtistVenueConnectionRequestControllerTest {
 				RequestByType.ARTIST,
 				"2025-01-01T12:00:00Z"
 		);
+
+		User user = User.builder()
+		                .id(actingUserId)
+		                .username("musician")
+		                .password("unused")
+		                .email("musician@example.com")
+		                .emailVerified(true)
+		                .status(UserStatus.ACTIVE)
+		                .roles(Set.of(Role.builder().name("ROLE_MUSICIAN").build()))
+		                .build();
+		UserDetailsImpl principal = UserDetailsImpl.fromUser(user);
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
+		);
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	@Test
 	void createRequest_ok() throws Exception {
-		when(service.createRequest(any(), any(), eq(RequestByType.ARTIST))).thenReturn(sample);
+		when(service.createRequest(eq(actingUserId), any(), eq(RequestByType.ARTIST))).thenReturn(sample);
 		
 		var body = new ArtistVenueConnectionRequestCreateDto(musicianProfileId, null, venueId, "see you!");
 		mockMvc.perform(post(BASE + "/request")
@@ -88,7 +117,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(status().isOk())
 		       .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 		       .andExpect(jsonPath("$.success").value(true))
-		       .andExpect(jsonPath("$.message", containsString("Başvuru başarıyla oluşturuldu")))
+		       .andExpect(jsonPath("$.message").value("Basvuru basariyla olusturuldu."))
 		       .andExpect(jsonPath("$.data.id").value(requestId.toString()))
 		       .andExpect(jsonPath("$.data.musicianProfileId").value(musicianProfileId.toString()))
 		       .andExpect(jsonPath("$.data.venueId").value(venueId.toString()))
@@ -97,7 +126,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		
 		// service'e doğru argüman gitti mi?
 		ArgumentCaptor<ArtistVenueConnectionRequestCreateDto> captor = ArgumentCaptor.forClass(ArtistVenueConnectionRequestCreateDto.class);
-		verify(service).createRequest(any(), captor.capture(), eq(RequestByType.ARTIST));
+		verify(service).createRequest(eq(actingUserId), captor.capture(), eq(RequestByType.ARTIST));
 		var sent = captor.getValue();
 		// basit doğrulama
 		assert sent.musicianProfileId().equals(musicianProfileId);
@@ -110,16 +139,16 @@ class ArtistVenueConnectionRequestControllerTest {
 				requestId, musicianProfileId, null, venueId, "StageNameX", null, null, "VenueX",
 				"see you!", "ACCEPTED", RequestByType.ARTIST, "2025-01-01T12:00:00Z"
 		);
-		when(service.acceptRequest(any(), eq(requestId))).thenReturn(accepted);
+		when(service.acceptRequest(eq(actingUserId), eq(requestId))).thenReturn(accepted);
 		
 		mockMvc.perform(post(BASE + "/" + requestId + "/accept"))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
-		       .andExpect(jsonPath("$.message", containsString("onaylandı")))
+		       .andExpect(jsonPath("$.message").value("Basvuru basariyla onaylandi."))
 		       .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
 		       .andExpect(jsonPath("$.data.id").value(requestId.toString()));
 		
-		verify(service).acceptRequest(any(), eq(requestId));
+		verify(service).acceptRequest(eq(actingUserId), eq(requestId));
 	}
 	
 	@Test
@@ -128,7 +157,7 @@ class ArtistVenueConnectionRequestControllerTest {
 				requestId, musicianProfileId, null, venueId, "StageNameX", null, null, "VenueX",
 				"see you!", "REJECTED", RequestByType.ARTIST, "2025-01-01T12:00:00Z"
 		);
-		when(service.rejectRequest(any(), eq(requestId))).thenReturn(rejected);
+		when(service.rejectRequest(eq(actingUserId), eq(requestId))).thenReturn(rejected);
 		
 		mockMvc.perform(post(BASE + "/" + requestId + "/reject"))
 		       .andExpect(status().isOk())
@@ -137,7 +166,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(jsonPath("$.data.status").value("REJECTED"))
 		       .andExpect(jsonPath("$.data.id").value(requestId.toString()));
 		
-		verify(service).rejectRequest(any(), eq(requestId));
+		verify(service).rejectRequest(eq(actingUserId), eq(requestId));
 	}
 	
 	@Test
@@ -148,7 +177,7 @@ class ArtistVenueConnectionRequestControllerTest {
 				"msg", "PENDING", RequestByType.VENUE, "2025-01-02T10:00:00Z"
 		);
 		
-		when(service.getRequestByMusicianProfile(any(), eq(musicianProfileId), eq(RequestStatus.PENDING)))
+		when(service.getRequestByMusicianProfile(eq(actingUserId), eq(musicianProfileId), eq(RequestStatus.PENDING)))
 				.thenReturn(List.of(sample, other));
 		
 		mockMvc.perform(get(BASE + "/musician/" + musicianProfileId)
@@ -159,7 +188,7 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(jsonPath("$.data[0].musicianProfileId").value(musicianProfileId.toString()))
 		       .andExpect(jsonPath("$.data[1].musicianProfileId").value(musicianProfileId.toString()));
 		
-		verify(service).getRequestByMusicianProfile(any(), eq(musicianProfileId), eq(RequestStatus.PENDING));
+		verify(service).getRequestByMusicianProfile(eq(actingUserId), eq(musicianProfileId), eq(RequestStatus.PENDING));
 	}
 	
 	@Test
@@ -170,7 +199,7 @@ class ArtistVenueConnectionRequestControllerTest {
 				"msg2", "PENDING", RequestByType.ARTIST, "2025-01-03T09:00:00Z"
 		);
 		
-		when(service.getRequestsByVenue(any(), eq(venueId), eq(RequestStatus.PENDING)))
+		when(service.getRequestsByVenue(eq(actingUserId), eq(venueId), eq(RequestStatus.PENDING)))
 				.thenReturn(List.of(sample, other));
 		
 		mockMvc.perform(get(BASE + "/venue/" + venueId)
@@ -181,6 +210,6 @@ class ArtistVenueConnectionRequestControllerTest {
 		       .andExpect(jsonPath("$.data[0].venueId").value(venueId.toString()))
 		       .andExpect(jsonPath("$.data[1].venueId").value(venueId.toString()));
 		
-		verify(service).getRequestsByVenue(any(), eq(venueId), eq(RequestStatus.PENDING));
+		verify(service).getRequestsByVenue(eq(actingUserId), eq(venueId), eq(RequestStatus.PENDING));
 	}
 }

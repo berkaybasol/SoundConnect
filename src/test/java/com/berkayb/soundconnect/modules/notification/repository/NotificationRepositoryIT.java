@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Bu sürümde flakiness'i bitirmek için persist sonrası created_at'i
  * native SQL ile deterministik biçimde set ediyoruz.
  */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @TestPropertySource(properties = {
@@ -33,8 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 		"spring.jpa.properties.hibernate.jdbc.lob.non_contextual_creation=true",
 		"spring.flyway.enabled=false",
 		"spring.liquibase.enabled=false",
-		"SOUNDCONNECT_JWT_SECRETKEY=dummy",
-		"app.jwt.secret=dummy"
+		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
+		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long"
 })
 class NotificationRepositoryIT {
 	

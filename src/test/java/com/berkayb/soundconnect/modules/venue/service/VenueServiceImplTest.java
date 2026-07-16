@@ -148,7 +148,9 @@ class VenueServiceImplTest {
 			return new VenueResponseDto(
 					v.getId(),
 					v.getName(), v.getAddress(), v.getPhone(), v.getWebsite(), v.getDescription(), v.getMusicStartTime(),
-					v.getCity().getName(), v.getDistrict().getName(), v.getNeighborhood().getName(),
+					v.getCity().getId(), v.getCity().getName(),
+					v.getDistrict().getId(), v.getDistrict().getName(),
+					v.getNeighborhood().getId(), v.getNeighborhood().getName(),
 					VenueStatus.APPROVED,
 					v.getOwner().getId(), v.getOwner().getUsername(),
 					Set.of()
@@ -235,7 +237,9 @@ class VenueServiceImplTest {
 			return new VenueResponseDto(
 					v.getId(),
 					v.getName(), v.getAddress(), v.getPhone(), v.getWebsite(), v.getDescription(), v.getMusicStartTime(),
-					v.getCity().getName(), v.getDistrict().getName(), v.getNeighborhood().getName(),
+					v.getCity().getId(), v.getCity().getName(),
+					v.getDistrict().getId(), v.getDistrict().getName(),
+					v.getNeighborhood().getId(), v.getNeighborhood().getName(),
 					v.getStatus(), // status değişmiyor; service sadece alanları güncelliyor
 					v.getOwner().getId(), v.getOwner().getUsername(),
 					Set.of()
@@ -310,7 +314,9 @@ class VenueServiceImplTest {
 			return new VenueResponseDto(
 					v.getId(),
 					v.getName(), v.getAddress(), v.getPhone(), v.getWebsite(), v.getDescription(), v.getMusicStartTime(),
-					v.getCity().getName(), v.getDistrict().getName(), v.getNeighborhood().getName(),
+					v.getCity().getId(), v.getCity().getName(),
+					v.getDistrict().getId(), v.getDistrict().getName(),
+					v.getNeighborhood().getId(), v.getNeighborhood().getName(),
 					v.getStatus(),
 					v.getOwner().getId(), v.getOwner().getUsername(),
 					Set.of()
@@ -371,8 +377,11 @@ class VenueServiceImplTest {
 			java.util.List<Venue> list = (java.util.List<Venue>) inv.getArgument(0);
 			return list.stream().map(v -> new VenueResponseDto(
 					v.getId(), v.getName(), null, null, null, null, null,
+					v.getCity() != null ? v.getCity().getId() : null,
 					v.getCity() != null ? v.getCity().getName() : null,
+					v.getDistrict() != null ? v.getDistrict().getId() : null,
 					v.getDistrict() != null ? v.getDistrict().getName() : null,
+					v.getNeighborhood() != null ? v.getNeighborhood().getId() : null,
 					v.getNeighborhood() != null ? v.getNeighborhood().getName() : null,
 					null,
 					v.getOwner() != null ? v.getOwner().getId() : null,

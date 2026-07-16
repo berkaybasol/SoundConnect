@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.like.repository;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.like.entity.Like;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,6 +22,18 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 	
 	// icerigin toplam begeni sayisi
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
+
+	/**
+	 * Engagement is subordinate to its target and must not become a hard
+	 * reference that prevents the target owner from deleting their content.
+	 * The media deletion flow invokes this inside the same row-locked transaction.
+	 */
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			delete from tbl_like
+			where target_type = 'MEDIA' and target_id = :targetId
+			""", nativeQuery = true)
+	int deleteMediaTargetReferences(@Param("targetId") UUID targetId);
 	
 	@Query("""
 	select l.targetId as targetId, count(l) as count

@@ -14,6 +14,11 @@ public class EndPoints {
 		public static final String UPDATE = "/update/{id}";
 		public static final String DELETE = "/delete/{id}";
 	}
+
+	public static class AdminDashboard {
+		public static final String BASE = API + VERSION + "/admin/dashboard";
+		public static final String SUMMARY = "/summary";
+	}
 	
 	public static class TableGroup {
 		public static final String BASE = API + VERSION + "/table-groups";
@@ -334,6 +339,7 @@ public class EndPoints {
 		public static final String COMPLETE_UPLOAD = "/complete-upload";   // POST
 		public static final String LIST_BY_OWNER = "/owner/{ownerType}/{ownerId}"; // GET ?page=..&size=..
 		public static final String LIST_BY_OWNER_AND_KIND = "/owner/{ownerType}/{ownerId}/kind/{kind}"; // GET
+		public static final String ACCESS_URL = "/{assetId}/access-url";       // GET (owner-authorized, short-lived)
 		public static final String DELETE = "/{assetId}";                  // DELETE
 		
 		// public
@@ -387,6 +393,7 @@ public class EndPoints {
 	public static class StudioProfile {
 		public static final String USER_BASE = API + VERSION + "/user/studio-profiles";
 		public static final String ADMIN_BASE = API + VERSION + "/admin/studio-profiles";
+		public static final String PUBLIC_BASE = API + VERSION + "/public/studio-profiles";
 		
 		// User için
 		public static final String ME = "/me";
@@ -395,6 +402,7 @@ public class EndPoints {
 		// Admin için
 		public static final String BY_USER_ID = "/by-user/{userId}";
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
+		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}";
 	}
 	
 	public static class DM {
@@ -418,6 +426,9 @@ public class EndPoints {
 		
 		/** PATCH /api/v1/user/dm/messages/{messageId}/read */
 		public static final String MESSAGE_MARK_READ = "/messages/{messageId}/read";
+
+		/** GET /api/v1/user/dm/unread-count */
+		public static final String UNREAD_COUNT = "/unread-count";
 		
 		
 		// === ADMIN BASE ===

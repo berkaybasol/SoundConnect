@@ -2,8 +2,9 @@ package com.berkayb.soundconnect.auth.otp.service;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient; // -> eklendi
+import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailContentBuilder;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,7 +27,7 @@ public class OtpMailServiceImpl implements OtpMailService {
 	private final MailSenderClient mailSenderClient;
 	private final MailContentBuilder mailContentBuilder; // Artık builder kullanıyoruz!
 	
-	@Value("${mailersend.otp-validity-minutes:5}")
+	@Value("${otp.ttl.minutes:${mailersend.otp-validity-minutes:3}}")
 	private int otpValidityMinutes;
 	
 	/**
@@ -42,9 +43,9 @@ public class OtpMailServiceImpl implements OtpMailService {
 		try {
 			// MailSenderClient ile gönder (asenkron, provider agnostic)
 			mailSenderClient.send(to, subject, null, html);
-			log.info("Verification mail sent via MailSenderClient to email={}", to);
+			log.info("Verification mail sent via MailSenderClient to email={}", EmailUtils.maskForLog(to));
 		} catch (Exception e) {
-			log.error("Failed to send verification mail to email={}", to, e);
+			log.error("Failed to send verification mail to email={}", EmailUtils.maskForLog(to), e);
 			throw new SoundConnectException(
 					ErrorType.MAIL_QUEUE_ERROR,
 					List.of("Mail adresi: " + to, "Hata: " + e.getMessage())

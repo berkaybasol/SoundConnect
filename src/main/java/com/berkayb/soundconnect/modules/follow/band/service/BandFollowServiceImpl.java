@@ -161,7 +161,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 		}
 		
 		try {
-			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("Band profile picture resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;

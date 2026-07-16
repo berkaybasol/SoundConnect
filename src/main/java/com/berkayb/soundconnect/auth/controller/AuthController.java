@@ -8,10 +8,11 @@ import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import org.springframework.http.ResponseEntity;
 
 public interface AuthController {
-	BaseResponse<LoginResponse> login(LoginRequestDto loginRequestDto);
-	BaseResponse<RegisterResponseDto> register(RegisterRequestDto registerRequestDto);
-	BaseResponse<Void> verifyEmail(VerifyCodeRequestDto dto);
-	BaseResponse<ResendCodeResponseDto> resendCode(ResendCodeRequestDto dto);
+	ResponseEntity<BaseResponse<LoginResponse>> login(LoginRequestDto loginRequestDto);
+	ResponseEntity<BaseResponse<RegisterResponseDto>> register(RegisterRequestDto registerRequestDto);
+	ResponseEntity<BaseResponse<Void>> verifyEmail(VerifyCodeRequestDto dto);
+	ResponseEntity<BaseResponse<ResendCodeResponseDto>> resendCode(ResendCodeRequestDto dto);
 }

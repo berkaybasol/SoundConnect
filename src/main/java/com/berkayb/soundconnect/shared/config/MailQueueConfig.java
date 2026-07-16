@@ -50,6 +50,9 @@ public class MailQueueConfig {
 	
 	@Value("${mail.dlx:" + MAIL_DLQ_EXCHANGE_DEFAULT + "}")
 	private String mailDlxExchangeName;
+
+	@Value("${mail.delayed.exchange:mail.delayed}")
+	private String mailDelayedExchangeName;
 	
 	@Value("${mail.ttlMs:120000}")
 	private long mailMessageTtlMs;
@@ -165,7 +168,7 @@ public class MailQueueConfig {
 	public CustomExchange mailDelayedExchange() {
 		// x-delayed-message, internal type: direct
 		return new CustomExchange(
-				"mail.delayed",
+				mailDelayedExchangeName,
 				"x-delayed-message",
 				true,
 				false,

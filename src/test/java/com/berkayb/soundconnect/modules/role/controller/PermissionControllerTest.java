@@ -155,7 +155,7 @@ class PermissionControllerTest {
 		// 1) ilk istek: başarılı
 		createPermissionViaApi(name);
 		
-		// 2) aynı isim → 400 BAD_REQUEST + ErrorResponse
+		// 2) aynı isim -> 409 CONFLICT + ErrorResponse
 		String body = """
     { "name": "%s" }
     """.formatted(name);
@@ -164,10 +164,10 @@ class PermissionControllerTest {
 				                .contentType(APPLICATION_JSON)
 				                .content(body))
 		       .andDo(print())
-		       .andExpect(status().isBadRequest())
+		       .andExpect(status().isConflict())
 		       .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
 		       .andExpect(jsonPath("$.code").value(5004)) // ErrorType.PERMISSION_ALREADY_EXISTS kodun buysa
-		       .andExpect(jsonPath("$.httpStatus").value("BAD_REQUEST"))
+		       .andExpect(jsonPath("$.httpStatus").value("CONFLICT"))
 		       .andExpect(jsonPath("$.message").value("Permission already exists"))
 		       // Lokalize detay da dönüyor:
 		       .andExpect(jsonPath("$.details[0]").value("Bu izin zaten mevcut."));

@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.promotion.service;
 
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.promotion.dto.request.PromotionSaveRequestDto;
 import com.berkayb.soundconnect.modules.promotion.dto.request.PromotionUpdateRequestDto;
@@ -17,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -147,11 +151,24 @@ public class PromotionServiceImpl implements PromotionService{
 	
 	// promotion icin kullanilacak media kaydini id ile bulur
 	private MediaAsset findMediaAssetById(UUID mediaAssetId) {
-		return mediaAssetRepository.findById(mediaAssetId)
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(mediaAssetId)
 				.orElseThrow(() -> {
 					log.error("media kaydi bulunamadi. mediaId={}", mediaAssetId);
 					return new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 				});
+		if (asset.getKind() != MediaKind.IMAGE) {
+			throw new SoundConnectException(ErrorType.MEDIA_KIND_INVALID);
+		}
+		if (asset.getStatus() != MediaStatus.READY) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getVisibility() != MediaVisibility.PUBLIC) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_PUBLIC);
+		}
+		if (!StringUtils.hasText(asset.getPlaybackUrl()) && !StringUtils.hasText(asset.getSourceUrl())) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+		}
+		return asset;
 	}
 	
 	// promotion tarih araligini dogrular

@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPreviewResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
+import com.berkayb.soundconnect.modules.message.dm.model.DmParticipantPair;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
@@ -20,7 +21,9 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -31,6 +34,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class DMConversationServiceImpl implements DMConversationService {
+	private static final int CONCURRENT_CREATE_LOOKUP_ATTEMPTS = 3;
 
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageRepository messageRepository;
@@ -96,7 +100,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 
 	// iki kisi arasinda var olan conversation'u bulur yoksa yeni conversation olusturur ve id'sini doner
 	@Override
-	@Transactional
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	public UUID getOrCreateConversation(UUID userAId, UUID userBId) {
 		if(userAId.equals(userBId)) {
 			throw new SoundConnectException(ErrorType.CANNOT_DM_SELF);
@@ -104,16 +108,35 @@ public class DMConversationServiceImpl implements DMConversationService {
 		if (!userRepository.existsById(userBId)) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
-		return conversationRepository.findConversationBetweenUsers(userAId, userBId)
-				.map(DMConversation :: getId)
-				.orElseGet(() -> {
-					DMConversation conversation = DMConversation.builder()
-							.userAId(userAId)
-							.userBId(userBId)
-							.build();
-					conversationRepository.save(conversation);
-					return conversation.getId();
-				});
+		DmParticipantPair pair = DmParticipantPair.of(userAId, userBId);
+		Optional<DMConversation> existing = conversationRepository.findConversationBetweenUsers(
+				pair.userAId(), pair.userBId());
+		if (existing.isPresent()) {
+			return existing.get().getId();
+		}
+
+		DMConversation conversation = DMConversation.builder()
+				.userAId(pair.userAId())
+				.userBId(pair.userBId())
+				.build();
+		try {
+			return conversationRepository.saveAndFlush(conversation).getId();
+		} catch (DataIntegrityViolationException conflict) {
+			// A concurrent request may have committed the same canonical pair.
+			// saveAndFlush runs in the repository transaction because this method
+			// explicitly does not join an ambient transaction, so recovery queries
+			// are not poisoned by the failed insert transaction.
+			for (int attempt = 1; attempt <= CONCURRENT_CREATE_LOOKUP_ATTEMPTS; attempt++) {
+				Optional<DMConversation> winner = conversationRepository.findConversationBetweenUsers(
+						pair.userAId(), pair.userBId());
+				if (winner.isPresent()) {
+					log.debug("Recovered concurrent DM conversation create pair=({}, {}) attempt={}",
+					          pair.userAId(), pair.userBId(), attempt);
+					return winner.get().getId();
+				}
+			}
+			throw conflict;
+		}
 	}
 
 
@@ -184,7 +207,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 			return null;
 		}
 		try {
-			return mediaAssetService.getPlaybackUrl(mediaAssetId);
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("[DM] profile picture media not found mediaAssetId={}", mediaAssetId);
 			return null;

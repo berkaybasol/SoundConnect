@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.profile.ListenerProfile.service;
 
 import com.berkayb.soundconnect.modules.follow.service.FollowService;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileSearchItemDto;
@@ -15,6 +17,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -60,12 +63,18 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public ListenerProfileResponseDto createProfile(UUID userId, ListenerSaveRequestDto dto) {
 		User user = userEntityFinder.getUser(userId);
 		
 		if (listenerProfileRepository.findByUserId(user.getId()).isPresent()) {
 			log.warn("Listener profile already exists. userId={}", userId);
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
+		}
+		if (dto.profilePictureMediaId() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePictureMediaId(), MediaOwnerType.USER, userId, MediaKind.IMAGE
+			);
 		}
 		
 		ListenerProfile profile = ListenerProfile.builder()
@@ -94,6 +103,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	}
 	
 	@Override
+	@Transactional
 	public ListenerProfileResponseDto updateProfile(UUID userId, ListenerSaveRequestDto dto) {
 		userEntityFinder.getUser(userId);
 		
@@ -104,7 +114,12 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 		                                                   });
 		
 		if (dto.description() != null) profile.setDescription(dto.description());
-		if (dto.profilePictureMediaId() != null) profile.setProfilePictureMediaId(dto.profilePictureMediaId());
+		if (dto.profilePictureMediaId() != null) {
+			mediaAssetService.validateAssignableMedia(
+					userId, dto.profilePictureMediaId(), MediaOwnerType.LISTENER_PROFILE, profile.getId(), MediaKind.IMAGE
+			);
+			profile.setProfilePictureMediaId(dto.profilePictureMediaId());
+		}
 		
 		ListenerProfile updated = listenerProfileRepository.save(profile);
 		log.info("Listener profile updated. userId={}", userId);
@@ -134,7 +149,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	private String resolveProfilePictureUrl(UUID mediaAssetId) {
 		if (mediaAssetId == null) return null;
 		try {
-			return mediaAssetService.getById(mediaAssetId).getSourceUrl();
+			return mediaAssetService.getDisplayUrl(mediaAssetId);
 		} catch (Exception e) {
 			log.warn("Listener profile picture resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;

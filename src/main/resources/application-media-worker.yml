@@ -1,0 +1,131 @@
+spring:
+  main:
+    web-application-type: none
+    banner-mode: "off"
+    lazy-initialization: false
+  application:
+    name: soundconnect-media-worker
+  datasource:
+    url: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_URL}
+    username: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_USERNAME}
+    password: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${SOUNDCONNECT_MEDIA_WORKER_DB_POOL_SIZE:4}
+      minimum-idle: 1
+      connection-timeout: 30000
+      connection-init-sql: "SET TIME ZONE 'UTC'"
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  rabbitmq:
+    host: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_HOST}
+    port: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_PORT:5672}
+    username: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_USERNAME}
+    password: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_PASSWORD}
+    virtual-host: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_VIRTUAL_HOST:/}
+    connection-timeout: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_CONNECTION_TIMEOUT:10s}
+    ssl:
+      enabled: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_ENABLED:false}
+      key-store: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_KEY_STORE:}
+      key-store-password: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_KEY_STORE_PASSWORD:}
+      trust-store: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_TRUST_STORE:}
+      trust-store-password: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_TRUST_STORE_PASSWORD:}
+      validate-server-certificate: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_VALIDATE_SERVER_CERTIFICATE:true}
+      verify-hostname: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_SSL_VERIFY_HOSTNAME:true}
+    listener:
+      simple:
+        auto-startup: true
+
+management:
+  endpoints:
+    enabled-by-default: false
+    web:
+      exposure:
+        exclude: "*"
+    jmx:
+      exposure:
+        exclude: "*"
+  endpoint:
+    health:
+      enabled: false
+      show-details: never
+
+soundconnect:
+  runtime-role: ${SOUNDCONNECT_RUNTIME_ROLE:media-worker}
+  media-worker:
+    db-url: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_URL}
+    db-username: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_USERNAME}
+    db-password: ${SOUNDCONNECT_MEDIA_WORKER_POSTGRES_PASSWORD}
+    rabbitmq-username: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_USERNAME}
+    rabbitmq-password: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_PASSWORD}
+    rabbitmq-virtual-host: ${SOUNDCONNECT_MEDIA_WORKER_RABBITMQ_VIRTUAL_HOST:/}
+    s3-access-key: ${SOUNDCONNECT_MEDIA_WORKER_S3_ACCESS_KEY:}
+    s3-secret-key: ${SOUNDCONNECT_MEDIA_WORKER_S3_SECRET_KEY:}
+    health-file: ${SOUNDCONNECT_MEDIA_WORKER_HEALTH_FILE:/tmp/soundconnect-media-worker.ready}
+    health-file-enabled: true
+    health-initial-delay: ${SOUNDCONNECT_MEDIA_WORKER_HEALTH_INITIAL_DELAY:PT15S}
+    health-interval: ${SOUNDCONNECT_MEDIA_WORKER_HEALTH_INTERVAL:PT15S}
+    health-max-age-seconds: ${SOUNDCONNECT_MEDIA_WORKER_HEALTH_MAX_AGE_SECONDS:60}
+
+cloud:
+  storage:
+    bucket: ${SOUNDCONNECT_MEDIA_WORKER_S3_PUBLIC_BUCKET}
+    privateBucket: ${SOUNDCONNECT_MEDIA_WORKER_S3_PRIVATE_BUCKET}
+    region: ${SOUNDCONNECT_MEDIA_WORKER_AWS_REGION}
+    accessKey: ${SOUNDCONNECT_MEDIA_WORKER_S3_ACCESS_KEY:}
+    secretKey: ${SOUNDCONNECT_MEDIA_WORKER_S3_SECRET_KEY:}
+    cdnBaseUrl: ${SOUNDCONNECT_MEDIA_WORKER_CDN_BASE_URL:}
+    endpoint: ${SOUNDCONNECT_MEDIA_WORKER_S3_ENDPOINT:}
+    pathStyleAccess: ${SOUNDCONNECT_MEDIA_WORKER_S3_PATH_STYLE_ACCESS:false}
+    aclPublicReadOnPut: ${SOUNDCONNECT_MEDIA_WORKER_S3_ACL_PUBLIC_READ_ON_PUT:false}
+    cloudfront:
+      distributionId: ""
+
+media:
+  upload-verification:
+    enabled: false
+  upload-guard:
+    enabled: false
+  upload-cleanup:
+    enabled: false
+  public-promotion-recovery:
+    enabled: false
+  deletion:
+    enabled: false
+  image-variants:
+    worker:
+      enabled: true
+    backfill:
+      enabled: true
+      initial-delay: ${SOUNDCONNECT_MEDIA_WORKER_IMAGE_INITIAL_DELAY:PT15S}
+      fixed-delay: ${SOUNDCONNECT_MEDIA_WORKER_IMAGE_INTERVAL:PT1M}
+  transcode:
+    worker:
+      enabled: true
+    dispatch:
+      enabled: false
+    worker-threads: 1
+    lease:
+      heartbeat-threads: ${SOUNDCONNECT_MEDIA_WORKER_HEARTBEAT_THREADS:2}
+
+rabbitmq:
+  media:
+    queues:
+      videoHls: media.transcode.video.hls
+    listenerConcurrency: 1
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: OFF
+    org.springframework.security: OFF
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+    com.berkayb.soundconnect: INFO
+    com.berkayb.soundconnectworker: INFO

@@ -5,12 +5,12 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.event.DmMessageEventPublisher;
-import com.berkayb.soundconnect.modules.message.dm.helper.DmBadgeCacheHelper;
+import com.berkayb.soundconnect.modules.message.dm.event.DmMessageReadEvent;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,8 +40,7 @@ class DMMessageServiceImplTest {
 	@Mock DMConversationRepository conversationRepository;
 	@Mock DMMessageMapper messageMapper;
 	@Mock DmMessageEventPublisher eventPublisher;
-	@Mock DmBadgeCacheHelper badgeCacheHelper;
-	@Mock SimpMessagingTemplate messagingTemplate;
+	@Mock NotificationService notificationService;
 	
 	UUID conversationId;
 	UUID senderId;
@@ -95,7 +93,6 @@ class DMMessageServiceImplTest {
 				                                                      conv.getId().equals(conversationId) && conv.getLastMessageAt() != null && conv.getLastReadMessageId() == null
 		));
 		verify(eventPublisher, times(1)).publishMessageSentEvent(any());
-		verifyNoInteractions(badgeCacheHelper); // send tarafında badgeCache yok
 	}
 	
 	@Test
@@ -190,7 +187,7 @@ class DMMessageServiceImplTest {
 	}
 	
 	@Test
-	@DisplayName("markMessageAsRead: happy path → readAt set, lastReadMessageId güncelle, unread badge cache + WS push")
+	@DisplayName("markMessageAsRead: DB state changes and realtime refresh event is published")
 	void markMessageAsRead_ok() {
 		UUID messageId = UUID.randomUUID();
 		
@@ -206,10 +203,6 @@ class DMMessageServiceImplTest {
 		when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
 		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
 		
-		// unread sayımı (reader'ın tüm unread'leri)
-		when(messageRepository.findByRecipientIdAndReadAtIsNull(recipientId)).thenReturn(List.of());
-		when(badgeCacheHelper.getCacheUnread(recipientId)).thenReturn(0L);
-		
 		// when
 		service.markMessageAsRead(messageId, recipientId);
 		
@@ -217,12 +210,36 @@ class DMMessageServiceImplTest {
 		verify(messageRepository).save(argThat(saved -> saved.getId().equals(messageId) && saved.getReadAt() != null));
 		verify(conversationRepository).save(argThat(conv -> conv.getLastReadMessageId() != null));
 		
-		verify(badgeCacheHelper).setUnread(recipientId, 0L);
-		String dest = WebSocketChannels.dmBadge(recipientId);
-		verify(messagingTemplate).convertAndSend(eq(dest), any(Object.class));
+		verify(notificationService).markDmConversationAsRead(recipientId, conversationId);
+		verify(eventPublisher).publishMessageReadEvent(
+				new DmMessageReadEvent(conversationId, recipientId));
 		
 	}
 	
+	@Test
+	@DisplayName("markMessageAsRead: idempotent read still schedules committed badge refresh")
+	void markMessageAsRead_alreadyReadRefreshesProjection() {
+		UUID messageId = UUID.randomUUID();
+		DMMessage msg = DMMessage.builder()
+		                         .id(messageId)
+		                         .conversationId(conversationId)
+		                         .senderId(senderId)
+		                         .recipientId(recipientId)
+		                         .content("x")
+		                         .messageType("text")
+		                         .readAt(LocalDateTime.now())
+		                         .build();
+		when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
+		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+
+		service.markMessageAsRead(messageId, recipientId);
+
+		verify(messageRepository, never()).save(any());
+		verify(notificationService).markDmConversationAsRead(recipientId, conversationId);
+		verify(eventPublisher).publishMessageReadEvent(
+				new DmMessageReadEvent(conversationId, recipientId));
+	}
+
 	@Test
 	@DisplayName("markMessageAsRead: sadece recipient okuyabilir")
 	void markMessageAsRead_notRecipient() {
@@ -242,8 +259,7 @@ class DMMessageServiceImplTest {
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, senderId));
 		
 		verify(messageRepository, never()).save(any());
-		verify(badgeCacheHelper, never()).setUnread(any(), anyLong());
-		verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+		verifyNoInteractions(notificationService, eventPublisher);
 		
 	}
 	
@@ -255,6 +271,20 @@ class DMMessageServiceImplTest {
 		
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, recipientId));
 		
-		verifyNoInteractions(badgeCacheHelper, messagingTemplate);
+		verifyNoInteractions(notificationService, eventPublisher);
+	}
+
+	@Test
+	@DisplayName("getUnreadCount: every call returns the current indexed database count")
+	void getUnreadCount_alwaysQueriesDatabase() {
+		when(messageRepository.countByRecipientIdAndReadAtIsNull(recipientId))
+				.thenReturn(3L, 1L);
+
+		long first = service.getUnreadCount(recipientId);
+		long second = service.getUnreadCount(recipientId);
+
+		assertThat(first).isEqualTo(3L);
+		assertThat(second).isEqualTo(1L);
+		verify(messageRepository, times(2)).countByRecipientIdAndReadAtIsNull(recipientId);
 	}
 }

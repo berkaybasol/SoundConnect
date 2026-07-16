@@ -1,7 +1,11 @@
 package com.berkayb.soundconnect.shared.config;
 
 import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
+import com.berkayb.soundconnect.auth.ratelimit.AuthRateLimitFilter;
+import com.berkayb.soundconnect.shared.security.RestAccessDeniedHandler;
+import com.berkayb.soundconnect.shared.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -20,107 +24,97 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
-/*
-Bu sınıf, SoundConnect’in güvenlik altyapısını kurar:
-- Hangi endpoint’e kim erişebilir?
-- Sisteme giriş nasıl olur?
-- JWT ile oturum yönetimi nasıl sağlanır?
-- Şifreler nasıl saklanır?
-- CORS (cross-origin) izinleri nasıl ayarlanır?
- */
-@Configuration // Spring’e “ben bir konfigürasyon dosyasıyım, beni otomatik olarak yükle” der.
-@EnableMethodSecurity // @PreAuthorize gibi anotasyonların çalışmasını sağlar
-@EnableWebSecurity // Spring Security altyapısını projeye entegre eder.
 
+/**
+ * Stateless HTTP security policy. Public routes are deliberately method-scoped;
+ * every route not listed here requires a valid active-account JWT.
+ */
+@Configuration
+@EnableMethodSecurity
+@EnableWebSecurity
+@EnableConfigurationProperties(CorsProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
-	
+
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
-	
-	/**
-	 * Şifreleri BCrypt algoritması ile şifrelemek için PasswordEncoder bean'i tanımlıyoruz.
-	 * BCrypt, günümüzde sektör standardı kabul edilen bir şifreleme algoritmasıdır.
-	 */
+	private final AuthRateLimitFilter authRateLimitFilter;
+	private final CorsProperties corsProperties;
+	private final RestAuthenticationEntryPoint authenticationEntryPoint;
+	private final RestAccessDeniedHandler accessDeniedHandler;
+
 	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
 	}
-	
-	/**
-	 * AuthenticationManager, Kullanıcı login olduğunda, kimlik doğrulama işlemini yönetir
-	 * AuthenticationConfiguration üzerinden elde edilir.
-	 */
+
 	@Bean
 	public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
 		return configuration.getAuthenticationManager();
 	}
-	
-	/**
-	 * SecurityFilterChain, “hangi isteklere kim erişebilir, hangi filtreler devreye girer” hepsini burada belirleriz
-	 * Uygulamadaki güvenlik zincirini tanımlar:
-	 * - CSRF kapatılır
-	 * - Stateless session yapısı kurulur (JWT için)
-	 * - CORS izinleri tanımlanır
-	 * - Hangi endpointler serbest, hangileri korumalı ayarlanır
-	 * - JWT filtresi security zincirine eklenir
-	 */
+
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		http
 				.csrf(csrf -> csrf.disable())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+				.exceptionHandling(exceptions -> exceptions
+						.authenticationEntryPoint(authenticationEntryPoint)
+						.accessDeniedHandler(accessDeniedHandler)
+				)
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+						// Must precede the general /auth/** public matcher.
+						.requestMatchers(HttpMethod.POST, "/api/v1/auth/complete-google-profile").authenticated()
+
+						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/venues/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/cities/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/districts/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/neighborhoods/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/events/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/promotions/displayable/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/profiles/*/*/media").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/search/tracks").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/tracks/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/spotify/tracks/by-ids").permitAll()
+
 						.requestMatchers(
-								"/api/v1/auth/**",           // Auth işlemleri
-								"/v3/api-docs/**",            // Swagger dökümantasyonu
-								"/swagger-ui/**",             // Swagger UI
-								"/swagger-ui.html",           // Swagger ana giriş
+								"/api/v1/auth/**",
+								"/v3/api-docs/**",
+								"/swagger-ui/**",
+								"/swagger-ui.html",
 								"/swagger-resources/**",
 								"/webjars/**",
 								"/api/ping",
 								"/api/v1/public/**",
-								"/192.168.1.101:8080/actuator/health",
-								"/ws",             // EKLENDİ
-								"/ws/**",          // EKLENDİ
-								"/topic/**",       // (opsiyonel)
-								"/app/**",          // (opsiyonel)
-								"/test-ws.html"          // (opsiyonel)
-								
+								"/ws",
+								"/ws/**"
 						).permitAll()
-						.anyRequest().authenticated()     // Diğer tüm istekler yetkilendirme ister
+						.anyRequest().authenticated()
 				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-		
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class);
+
 		return http.build();
 	}
-	
-	/**
-	 * CORS yapılandırmasını tanımlar:
-	 * - Frontend'den gelen isteklere izin verir
-	 * - İzin verilen origin: http://localhost:3000
-	 * - Tüm HTTP methodlarına izin verilir
-	 * - Header kısıtlaması yapılmaz
-	 */
+
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
-		//configuration.setAllowedOrigins(List.of("http://localhost:3000"));
-		configuration.setAllowedOriginPatterns(List.of("*"));
-		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-		configuration.setAllowedHeaders(List.of("*"));
-		configuration.setAllowCredentials(true);
-		
+		configuration.setAllowedOriginPatterns(corsProperties.requireSafeAllowedOriginPatterns());
+		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+		configuration.setAllowedHeaders(List.of(
+				"Authorization",
+				"Content-Type",
+				"Accept",
+				"Origin",
+				"X-Requested-With"
+		));
+		configuration.setAllowCredentials(false);
+		configuration.setMaxAge(3600L);
+
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", configuration);
 		return source;
