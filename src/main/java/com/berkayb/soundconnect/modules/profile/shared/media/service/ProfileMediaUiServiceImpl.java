@@ -59,6 +59,7 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 		TrackOwnerType ownerType = switch (profileType) {
 			case MUSICIAN -> TrackOwnerType.MUSICIAN_PROFILE;
 			case BAND -> TrackOwnerType.BAND;
+			case STUDIO -> TrackOwnerType.STUDIO_PROFILE;
 			case PRODUCER -> TrackOwnerType.PRODUCER_PROFILE;
 			default -> null;
 		};

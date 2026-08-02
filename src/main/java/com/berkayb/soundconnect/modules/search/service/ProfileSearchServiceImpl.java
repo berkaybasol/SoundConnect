@@ -4,9 +4,11 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.search.dto.ProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -36,14 +39,15 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<ProfileSearchItemDto> searchProfiles(String query, int limit) {
-		String q = query == null ? "" : query.trim();
+		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query);
 		if (q.length() < MIN_QUERY_LENGTH) return List.of();
+		String usernameQuery = UsernameUtils.normalize(q);
 
 		int safeLimit = clampLimit(limit);
 		int perTypeLimit = Math.max(5, safeLimit);
 		List<ProfileSearchItemDto> results = new ArrayList<>();
 
-		musicianProfileRepository.searchByStageNameOrUsername(q)
+		musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery)
 		                         .stream()
 		                         .limit(perTypeLimit)
 		                         .map(profile -> new ProfileSearchItemDto(
@@ -56,7 +60,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		                         ))
 		                         .forEach(results::add);
 
-		listenerProfileRepository.searchByUsernameOrBio(q)
+		listenerProfileRepository.searchByUsernameOrBio(q, usernameQuery)
 		                         .stream()
 		                         .limit(perTypeLimit)
 		                         .map(profile -> new ProfileSearchItemDto(
@@ -82,7 +86,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		              ))
 		              .forEach(results::add);
 
-		studioProfileRepository.searchByNameUsernameOrDescription(q)
+		studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery)
 		                       .stream()
 		                       .limit(perTypeLimit)
 		                       .map(profile -> new ProfileSearchItemDto(
@@ -90,12 +94,12 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 				                       profile.getId(),
 				                       profile.getUser().getId(),
 				                       firstNotBlank(profile.getName(), profile.getUser().getUsername(), "Stüdyo"),
-				                       firstNotBlank(profile.getDescription(), "Stüdyo"),
+				                       studioLocation(profile),
 				                       resolveMediaUrl(profile.getProfilePictureMediaId())
 		                       ))
 		                       .forEach(results::add);
 
-		venueRepository.findByNameContainingIgnoreCase(q, PageRequest.of(0, perTypeLimit))
+		venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, PageRequest.of(0, perTypeLimit))
 		               .stream()
 		               .map(venue -> new ProfileSearchItemDto(
 				               "VENUE",
@@ -121,8 +125,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	}
 
 	private int rank(String value, String query) {
-		String normalized = value == null ? "" : value.trim().toLowerCase();
-		String q = query.trim().toLowerCase();
+		String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+		String q = query.trim().toLowerCase(Locale.ROOT);
 		if (normalized.equals(q)) return 0;
 		if (normalized.startsWith(q)) return 1;
 		return 2;
@@ -133,6 +137,24 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 			if (value != null && !value.isBlank()) return value.trim();
 		}
 		return "";
+	}
+
+	private String studioLocation(StudioProfile profile) {
+		List<String> parts = new ArrayList<>(3);
+		if (profile.getNeighborhood() != null) {
+			addIfNotBlank(parts, profile.getNeighborhood().getName());
+		}
+		if (profile.getDistrict() != null) {
+			addIfNotBlank(parts, profile.getDistrict().getName());
+		}
+		if (profile.getCity() != null) {
+			addIfNotBlank(parts, profile.getCity().getName());
+		}
+		return parts.isEmpty() ? "Stüdyo" : String.join(", ", parts);
+	}
+
+	private void addIfNotBlank(List<String> values, String value) {
+		if (value != null && !value.isBlank()) values.add(value.trim());
 	}
 
 	private String resolveMediaUrl(UUID mediaAssetId) {

@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
+import com.berkayb.soundconnect.modules.user.dto.request.UsernameChangeRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
@@ -13,15 +14,19 @@ import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.mapper.UserMapper;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.user.support.UsernameChangeTimeProvider;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.Lock;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -45,6 +50,9 @@ import static org.mockito.Mockito.*;
  */
 @Tag("service")
 class UserServiceImplTest {
+
+	private static final LocalDateTime FIXED_NOW =
+			LocalDateTime.of(2026, 7, 24, 12, 0);
 	
 	// ==== Bağımlılıklar (mock) ====
 	@Mock private UserRepository userRepository;     // DB'ye gitmemek için sahte repo
@@ -52,6 +60,7 @@ class UserServiceImplTest {
 	@Mock private UserMapper userMapper;             // Entity->DTO dönüşümü sahte
 	@Mock private UserEntityFinder userEntityFinder; // update'te id'den user bulma sahte
 	@Mock private PasswordEncoder passwordEncoder;   // parola hash'leme sahte
+	@Mock private UsernameChangeTimeProvider usernameChangeTimeProvider;
 	@Mock private CityRepository cityRepository;     // ctor bağımlılığı; bu testte kullanılmıyor
 	
 	// ==== Test edeceğimiz servis ====
@@ -84,9 +93,10 @@ class UserServiceImplTest {
 		// Finder default davranışı: her çağrıda aynı existingUser dönsün
 		when(userEntityFinder.getUser(userId)).thenReturn(existingUser);
 		when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(existingUser));
+		when(usernameChangeTimeProvider.now()).thenReturn(FIXED_NOW);
 		
-		// Repository.save(...) çağrıldığında, verilen argümanı aynen geri döndür (JPA davranışını taklit)
-		when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+		// Repository.saveAndFlush(...) çağrıldığında, verilen argümanı aynen geri döndür.
+		when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 	}
 	
 	// =======================
@@ -165,18 +175,173 @@ class UserServiceImplTest {
 	@Test
 	void updateUser_WhenUsernameChanged_ShouldUpdateAndSaveAndReturnTrue() {
 		// DTO'da sadece username veriyoruz, diğer alanlar null
-		UserUpdateRequestDto dto = new UserUpdateRequestDto("newName", null, null, null);
+		UserUpdateRequestDto dto = new UserUpdateRequestDto(" NewName ", null, null, null);
 		
 		// Çalıştır
 		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		// Beklenti: true + save çağrıldı + username değişti + updatedAt yazıldı
 		assertThat(updated).isTrue();
-		verify(userRepository).save(userCaptor.capture());   // kaydedilen User'ı yakala
+		verify(userRepository).saveAndFlush(userCaptor.capture());   // kaydedilen User'ı yakala
 		
 		User saved = userCaptor.getValue();
-		assertThat(saved.getUsername()).isEqualTo("newName");
+		assertThat(saved.getUsername()).isEqualTo("newname");
 		assertThat(saved.getUpdatedAt()).isNotNull();        // zaman damgası set edilmiş olmalı
+		verify(userRepository).existsByUsernameAndIdNot("newname", userId);
+	}
+
+	@Test
+	void updateUser_WhenCanonicalUsernameBelongsToAnotherUser_ShouldReject() {
+		when(userRepository.existsByUsernameAndIdNot("taken", userId)).thenReturn(true);
+
+		assertThatThrownBy(() -> userService.updateUser(
+				userId,
+				userId,
+				new UserUpdateRequestDto(" TaKeN ", null, null, null)
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.USER_ALREADY_EXISTS));
+
+		verify(userRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void updateUser_WhenDatabaseDetectsConcurrentUsernameConflict_ShouldMapFriendlyError() {
+		when(userRepository.saveAndFlush(existingUser)).thenThrow(new DataIntegrityViolationException(
+				"duplicate key value violates unique constraint ux_tbl_user_username_canonical; Key (user_name)"
+		));
+
+		assertThatThrownBy(() -> userService.updateUser(
+				userId,
+				userId,
+				new UserUpdateRequestDto(" Contested ", null, null, null)
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.USER_ALREADY_EXISTS));
+	}
+
+	@Test
+	void changeUsername_WithNoPreviousChange_AllowsFirstChangeAndSetsTimestamp() {
+		String username = userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" NewName ")
+		);
+
+		assertThat(username).isEqualTo("newname");
+		assertThat(existingUser.getUsername()).isEqualTo("newname");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(FIXED_NOW);
+		verify(userRepository).existsByUsernameAndIdNot("newname", userId);
+		verify(userRepository).saveAndFlush(existingUser);
+	}
+
+	@Test
+	void changeUsername_DuringCooldown_RejectsBeforeAvailabilityLookup() {
+		LocalDateTime lastChangedAt = FIXED_NOW.minusDays(30).plusNanos(1);
+		existingUser.setUsernameChangedAt(lastChangedAt);
+
+		assertThatThrownBy(() -> userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto("newname")
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType())
+						.isEqualTo(ErrorType.USERNAME_CHANGE_COOLDOWN_ACTIVE));
+
+		assertThat(existingUser.getUsername()).isEqualTo("oldName");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(lastChangedAt);
+		verify(userRepository, never()).existsByUsernameAndIdNot(anyString(), any());
+		verify(userRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void changeUsername_AtExactThirtyDayBoundary_AllowsChange() {
+		existingUser.setUsernameChangedAt(FIXED_NOW.minusDays(30));
+
+		String username = userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" BoundaryName ")
+		);
+
+		assertThat(username).isEqualTo("boundaryname");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(FIXED_NOW);
+		verify(userRepository).saveAndFlush(existingUser);
+	}
+
+	@Test
+	void changeUsername_SameCanonicalValueIsIdempotentAndDoesNotCheckCooldown() {
+		existingUser.setUsername("oldname");
+		LocalDateTime activeCooldown = FIXED_NOW.minusDays(1);
+		existingUser.setUsernameChangedAt(activeCooldown);
+
+		String username = userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" OLDNAME ")
+		);
+
+		assertThat(username).isEqualTo("oldname");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(activeCooldown);
+		verifyNoInteractions(usernameChangeTimeProvider);
+		verify(userRepository, never()).existsByUsernameAndIdNot(anyString(), any());
+		verify(userRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void changeUsername_SameLegacyCanonicalValueRepairsStorageWithoutConsumingCooldown() {
+		existingUser.setUsername(" OldName ");
+		LocalDateTime activeCooldown = FIXED_NOW.minusDays(1);
+		existingUser.setUsernameChangedAt(activeCooldown);
+
+		String username = userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" OLDNAME ")
+		);
+
+		assertThat(username).isEqualTo("oldname");
+		assertThat(existingUser.getUsername()).isEqualTo("oldname");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(activeCooldown);
+		verifyNoInteractions(usernameChangeTimeProvider);
+		verify(userRepository, never()).existsByUsernameAndIdNot(anyString(), any());
+		verify(userRepository).saveAndFlush(existingUser);
+	}
+
+	@Test
+	void changeUsername_WhenTaken_ShouldRejectBeforePersistence() {
+		when(userRepository.existsByUsernameAndIdNot("taken", userId)).thenReturn(true);
+
+		assertThatThrownBy(() -> userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" TaKeN ")
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.USER_ALREADY_EXISTS));
+
+		verify(userRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void changeUsername_WhenDatabaseWinsConcurrentRace_ShouldMapFriendlyConflict() {
+		when(userRepository.saveAndFlush(existingUser)).thenThrow(new DataIntegrityViolationException(
+				"duplicate key value violates unique constraint ux_tbl_user_username_canonical; Key (user_name)"
+		));
+
+		assertThatThrownBy(() -> userService.changeUsername(
+				userId,
+				new UsernameChangeRequestDto(" Contested ")
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.USER_ALREADY_EXISTS));
+	}
+
+	@Test
+	void updateUser_AdminUsernameOverrideDoesNotConsumeOrResetSelfServiceCooldown() {
+		LocalDateTime previousSelfServiceChange = FIXED_NOW.minusDays(1);
+		existingUser.setUsernameChangedAt(previousSelfServiceChange);
+
+		Boolean updated = userService.updateUser(
+				userId,
+				userId,
+				new UserUpdateRequestDto("AdminCorrection", null, null, null)
+		);
+
+		assertThat(updated).isTrue();
+		assertThat(existingUser.getUsername()).isEqualTo("admincorrection");
+		assertThat(existingUser.getUsernameChangedAt()).isEqualTo(previousSelfServiceChange);
+		verifyNoInteractions(usernameChangeTimeProvider);
 	}
 	
 	/**
@@ -193,7 +358,7 @@ class UserServiceImplTest {
 		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isTrue();
-		verify(userRepository).save(userCaptor.capture());
+		verify(userRepository).saveAndFlush(userCaptor.capture());
 		
 		User saved = userCaptor.getValue();
 		assertThat(saved.getEmail()).isEqualTo("new@example.com");
@@ -210,7 +375,7 @@ class UserServiceImplTest {
 				.isInstanceOf(SoundConnectException.class)
 				.hasMessageContaining("Email already exists");
 
-		verify(userRepository, never()).save(any());
+		verify(userRepository, never()).saveAndFlush(any());
 	}
 
 	@Test
@@ -220,12 +385,14 @@ class UserServiceImplTest {
 		when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
 		when(passwordEncoder.encode("password123")).thenReturn("encoded");
 		UserSaveRequestDto dto = new UserSaveRequestDto(
-				"listener", " Listener@Example.COM ", roleId, "password123"
+				" LiStEnEr ", " Listener@Example.COM ", roleId, "password123"
 		);
 
 		User saved = userService.saveUser(userId, dto);
 
 		assertThat(saved.getEmail()).isEqualTo("listener@example.com");
+		assertThat(saved.getUsername()).isEqualTo("listener");
+		verify(userRepository).existsByUsername("listener");
 		verify(userRepository).existsByEmail("listener@example.com");
 	}
 	
@@ -248,7 +415,7 @@ class UserServiceImplTest {
 		
 		assertThat(updated).isTrue();
 		verify(passwordEncoder).encode("plain-pass");        // gerçekten encode edildi mi?
-		verify(userRepository).save(userCaptor.capture());
+		verify(userRepository).saveAndFlush(userCaptor.capture());
 		
 		User saved = userCaptor.getValue();
 		assertThat(saved.getPassword()).isEqualTo("encoded-pass"); // düz şifre değil, hash kullanılmalı
@@ -280,7 +447,7 @@ class UserServiceImplTest {
 		
 		assertThat(updated).isTrue();
 		verify(roleRepository).findById(roleId);             // rol lookup yapıldı mı?
-		verify(userRepository).save(userCaptor.capture());
+		verify(userRepository).saveAndFlush(userCaptor.capture());
 		
 		User saved = userCaptor.getValue();
 		// Koleksiyonun tamamen değiştiğini garanti et (tek rol ve adı ROLE_ADMIN olmalı)
@@ -309,13 +476,23 @@ class UserServiceImplTest {
 		InOrder invariantOrder = inOrder(roleRepository, userRepository);
 		invariantOrder.verify(roleRepository).findByNameForUpdate("ROLE_OWNER");
 		invariantOrder.verify(userRepository).countDistinctByRoles_Name("ROLE_OWNER");
-		verify(userRepository, never()).save(any());
+		verify(userRepository, never()).saveAndFlush(any());
 	}
 
 	@Test
 	void ownerInvariantFinderDeclaresPessimisticWriteLock() throws NoSuchMethodException {
 		Lock lock = RoleRepository.class
 				.getMethod("findByNameForUpdate", String.class)
+				.getAnnotation(Lock.class);
+
+		assertThat(lock).isNotNull();
+		assertThat(lock.value()).isEqualTo(LockModeType.PESSIMISTIC_WRITE);
+	}
+
+	@Test
+	void selfServiceUsernameFinderDeclaresPessimisticWriteLock() throws NoSuchMethodException {
+		Lock lock = UserRepository.class
+				.getMethod("findByIdForUpdate", UUID.class)
 				.getAnnotation(Lock.class);
 
 		assertThat(lock).isNotNull();
@@ -363,7 +540,7 @@ class UserServiceImplTest {
 				.isInstanceOf(SoundConnectException.class);
 		
 		// Hata fırladıysa save çağrısı olmamalı
-		verify(userRepository, never()).save(any());
+		verify(userRepository, never()).saveAndFlush(any());
 	}
 	
 	/**
@@ -379,6 +556,6 @@ class UserServiceImplTest {
 		Boolean updated = userService.updateUser(userId, userId, dto);
 		
 		assertThat(updated).isFalse();                      // hiçbir alan gelmedi => false
-		verify(userRepository, never()).save(any());        // persiste gerek yok
+		verify(userRepository, never()).saveAndFlush(any());        // persiste gerek yok
 	}
 }

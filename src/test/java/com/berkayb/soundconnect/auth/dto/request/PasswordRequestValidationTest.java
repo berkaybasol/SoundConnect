@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.auth.dto.request;
 
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -57,6 +58,28 @@ class PasswordRequestValidationTest {
 		assertPasswordViolation(registerRequest("ş".repeat(37)));
 	}
 
+	@Test
+	void passwordResetReusesRegistrationPasswordPolicy() {
+		assertThat(validator.validate(resetRequest("p".repeat(8), "p".repeat(8)))).isEmpty();
+		assertThat(validator.validate(resetRequest("p".repeat(72), "p".repeat(72)))).isEmpty();
+		assertPasswordViolation(resetRequest("p".repeat(7), "p".repeat(7)));
+		assertPasswordViolation(resetRequest("ş".repeat(37), "ş".repeat(37)));
+	}
+
+	@Test
+	void passwordResetRequiresSixDigitCodeAndMatchingConfirmation() {
+		assertThat(validator.validate(resetRequest("new-password", "different-password")))
+				.extracting(violation -> violation.getPropertyPath().toString())
+				.contains("rePassword");
+		assertThat(validator.validate(new ResetPasswordRequestDto(
+				"user@example.com",
+				"12ab",
+				"new-password",
+				"new-password")))
+				.extracting(violation -> violation.getPropertyPath().toString())
+				.contains("code");
+	}
+
 	private static RegisterRequestDto registerRequest(String password) {
 		return new RegisterRequestDto(
 				"listener",
@@ -71,6 +94,17 @@ class PasswordRequestValidationTest {
 				null,
 				null
 		);
+	}
+
+	private static ResetPasswordRequestDto resetRequest(
+			String password,
+			String confirmation
+	) {
+		return new ResetPasswordRequestDto(
+				"user@example.com",
+				"123456",
+				password,
+				confirmation);
 	}
 
 	private static void assertPasswordViolation(Object request) {

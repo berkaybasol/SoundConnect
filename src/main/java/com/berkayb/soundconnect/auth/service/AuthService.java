@@ -2,8 +2,10 @@ package com.berkayb.soundconnect.auth.service;
 
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
+import com.berkayb.soundconnect.auth.dto.request.UsernameAvailabilityRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.dto.response.RegisterResponseDto;
+import com.berkayb.soundconnect.auth.dto.response.UsernameAvailabilityResponseDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
@@ -14,6 +16,8 @@ import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
+import com.berkayb.soundconnect.modules.application.studioapplication.dto.request.StudioApplicationCreateRequestDto;
+import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -24,7 +28,10 @@ import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.user.support.UserIdentityConflictMapper;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +59,7 @@ public class AuthService {
 	private final OtpService otpService;
 	private final OtpMailService otpMailService;
 	private final VenueApplicationService venueApplicationService;
+	private final StudioApplicationService studioApplicationService;
 	private final AuthAccountRateLimitGuard accountRateLimitGuard;
 	
 	// FIXME register icin izin verilen rolleri tuttugum method. (yeni profile olusturdukca burayi guncelle)
@@ -64,13 +72,33 @@ public class AuthService {
 			RoleEnum.ROLE_ORGANIZER,
 			RoleEnum.ROLE_PRODUCER
 	);
+
+	public BaseResponse<UsernameAvailabilityResponseDto> usernameAvailability(
+			UsernameAvailabilityRequestDto request
+	) {
+		String username = UsernameUtils.normalizeAndValidate(request.username());
+		accountRateLimitGuard.checkUsernameAvailability(username);
+		UsernameAvailabilityResponseDto data = new UsernameAvailabilityResponseDto(
+				username,
+				!userRepository.existsByUsername(username)
+		);
+		return BaseResponse.<UsernameAvailabilityResponseDto>builder()
+				.success(true)
+				.message(data.available()
+						? "Kullanıcı adı kullanılabilir."
+						: "Bu kullanıcı adı zaten kullanılıyor.")
+				.code(200)
+				.data(data)
+				.build();
+	}
 	
 	public BaseResponse<LoginResponse> login(LoginRequestDto request) {
-		accountRateLimitGuard.checkLogin(request.username());
+		final String normalizedUsername = UsernameUtils.normalizeAndValidate(request.username());
+		accountRateLimitGuard.checkLogin(normalizedUsername);
 		// Hesap durumunu ancak parola dogrulandiktan sonra acikla. Bu sira,
 		// pending/unverified kullanici adlarinin yanlis parolayla enumerate
 		// edilmesini engeller. Bilinmeyen kullanicida da ayni BCrypt maliyeti var.
-		User user = userRepository.findByUsername(request.username()).orElse(null);
+		User user = userRepository.findByUsername(normalizedUsername).orElse(null);
 		if (user == null) {
 			passwordEncoder.matches(request.password(), DUMMY_PASSWORD_HASH);
 			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
@@ -83,10 +111,10 @@ public class AuthService {
 		// Bu kontrol parola dogrulamasindan sonra yapilir; boylece hesap durumu
 		// yanlis parola kullanan bir istemciye sizdirilmaz.
 		if (user.getStatus() == UserStatus.PENDING_VENUE_REQUEST) {
-			throw new SoundConnectException(
-					ErrorType.FORBIDDEN_ACCESS,
-					List.of("Mekan basvurunuz henuz onaylanmadi.")
-			);
+			throw new SoundConnectException(ErrorType.PENDING_VENUE_APPROVAL);
+		}
+		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
+			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
 		}
 		
 		// email dogrulanmis mi kontrol et
@@ -117,9 +145,10 @@ public class AuthService {
 		accountRateLimitGuard.checkRegister(dto.email());
 		// normalize maili ekle
 		final String normalizedEmail = EmailUtils.normalize(dto.email());
+		final String normalizedUsername = UsernameUtils.normalizeAndValidate(dto.username());
 		
 		// kullanici adi daha once alinmis mi bak alinmissa hata firlat.
-		if (userRepository.existsByUsername(dto.username())){
+		if (userRepository.existsByUsername(normalizedUsername)){
 			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
 		}
 		
@@ -136,6 +165,7 @@ public class AuthService {
 		
 		// secilen rolu kaydet.
 		RoleEnum selectedRoleEnum = dto.role();
+		log.info("Registration requested role={}", selectedRoleEnum);
 		
 		// şifreyi hashle
 		String encodedPassword = passwordEncoder.encode(dto.password());
@@ -160,7 +190,7 @@ public class AuthService {
 			}
 			
 			User user = User.builder()
-			                .username(dto.username())
+			                .username(normalizedUsername)
 			                .email(normalizedEmail)
 			                .roles(Set.of()) // henuz bos rol
 			                .password(encodedPassword)
@@ -168,9 +198,9 @@ public class AuthService {
 			                .emailVerified(false)
 			                .build();
 			
-			userRepository.save(user);
+			saveIdentityAndFlush(user);
 			
-			venueApplicationService.createApplication(
+			var application = venueApplicationService.createApplication(
 					user.getId(),
 					new VenueApplicationCreateRequestDto(
 							dto.venueName(),
@@ -200,12 +230,66 @@ public class AuthService {
 			                   .message("Başvurun alındı. Sizinle iletisime gececegiz. o zamana kadar hesabiniz beklemede.")
 			                   .code(201)
 			                   .data(new RegisterResponseDto(
-					                   user.getEmail(),
-					                   UserStatus.PENDING_VENUE_REQUEST,
-					                   ttl,
-					                   mailQueued
-			                   ))
-			                   .build();
+						   user.getEmail(),
+						   UserStatus.PENDING_VENUE_REQUEST,
+						   ttl,
+						   mailQueued,
+						   application.id()
+				   ))
+				                   .build();
+		}
+
+		if (selectedRoleEnum == RoleEnum.ROLE_STUDIO) {
+			if (dto.studioName() == null || dto.studioName().isBlank()
+					|| dto.studioAddress() == null || dto.studioAddress().isBlank()
+					|| dto.studioPhone() == null || dto.studioPhone().isBlank()
+					|| dto.cityId() == null || dto.cityId().isBlank()
+					|| dto.districtId() == null || dto.districtId().isBlank()
+					|| dto.neighborhoodId() == null || dto.neighborhoodId().isBlank()) {
+				throw new SoundConnectException(
+						ErrorType.VALIDATION_ERROR,
+						List.of("Studyo basvurusu icin gerekli alanlar eksik.")
+				);
+			}
+
+			User user = User.builder()
+					.username(normalizedUsername)
+					.email(normalizedEmail)
+					.roles(Set.of())
+					.password(encodedPassword)
+					.status(UserStatus.PENDING_STUDIO_REQUEST)
+					.emailVerified(false)
+					.build();
+			saveIdentityAndFlush(user);
+
+			var application = studioApplicationService.createApplication(
+					user.getId(),
+					new StudioApplicationCreateRequestDto(
+							dto.studioName(), dto.studioAddress(), dto.studioPhone(),
+							dto.cityId(), dto.districtId(), dto.neighborhoodId()
+					)
+			);
+
+			OtpService.OtpIssueClaim initialOtpClaim = otpService.acquireInitialOtp(user.getEmail());
+			if (initialOtpClaim.acquired()) {
+				try {
+					otpMailService.sendVerificationMail(user.getEmail(), initialOtpClaim.code());
+					mailQueued = true;
+				} catch (Exception e) {
+					log.error("Verification mail could not be queued for email={}", EmailUtils.maskForLog(user.getEmail()), e);
+				}
+			}
+
+			return BaseResponse.<RegisterResponseDto>builder()
+					.success(true)
+					.message("Studyo basvurunuz alindi. Hesabiniz yonetici onayina kadar beklemede.")
+					.code(201)
+					.data(new RegisterResponseDto(
+							user.getEmail(), UserStatus.PENDING_STUDIO_REQUEST,
+							otpService.getOtpTimeLeftSeconds(user.getEmail()), mailQueued,
+							application.id()
+					))
+					.build();
 		}
 		
 		// burdan sonrasi tum roller..
@@ -216,7 +300,7 @@ public class AuthService {
 		
 		// yeni kullanıcıyı oluştur
 		User user = User.builder()
-		                .username(dto.username())
+		                .username(normalizedUsername)
 		                .email(normalizedEmail)
 		                .roles(Set.of(selectedRole))
 		                .password(encodedPassword)
@@ -225,10 +309,10 @@ public class AuthService {
 		                .build();
 		
 		// kullanıcıyı kaydet
-		userRepository.save(user);
+		saveIdentityAndFlush(user);
 		
 		// kullanıcının rolüne göre otomatik profil oluştur, sadece venue'da açılmaz
-		if (selectedRoleEnum != RoleEnum.ROLE_VENUE) {
+		if (selectedRoleEnum != RoleEnum.ROLE_VENUE && selectedRoleEnum != RoleEnum.ROLE_STUDIO) {
 			profileFactory.createProfileIfNeeded(user, selectedRoleEnum);
 		}
 		
@@ -271,7 +355,8 @@ public class AuthService {
 		user.setEmailVerified(true);
 		
 		// kullanici venue degilse status'u aktif yap ve kaydet
-		if (user.getStatus() != UserStatus.PENDING_VENUE_REQUEST) {
+		if (user.getStatus() != UserStatus.PENDING_VENUE_REQUEST
+				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST) {
 			user.setStatus(UserStatus.ACTIVE);
 		}
 		userRepository.save(user);
@@ -339,6 +424,14 @@ public class AuthService {
 				ErrorType.VALIDATION_ERROR,
 				List.of("Dogrulama kodu gecersiz veya suresi dolmus.")
 		);
+	}
+
+	private User saveIdentityAndFlush(User user) {
+		try {
+			return userRepository.saveAndFlush(user);
+		} catch (DataIntegrityViolationException exception) {
+			throw UserIdentityConflictMapper.map(exception);
+		}
 	}
 	
 }

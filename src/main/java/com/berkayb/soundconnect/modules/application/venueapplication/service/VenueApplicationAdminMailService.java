@@ -97,7 +97,6 @@ public class VenueApplicationAdminMailService {
 				applicant == null ? "-" : applicant.getId(),
 				applicant == null ? "-" : safe(applicant.getUsername(), "-"),
 				applicant == null ? "-" : safe(applicant.getEmail(), "-"),
-				applicant == null ? "-" : safe(applicant.getPhone(), "-"),
 				safe(application.getVenueName(), "-"),
 				safe(application.getVenueAddress(), "-"),
 				safe(application.getPhone(), "-"),
@@ -110,6 +109,7 @@ public class VenueApplicationAdminMailService {
 	private Map<String, Object> buildParams(VenueApplication application) {
 		User applicant = application.getApplicant();
 		Map<String, Object> params = new LinkedHashMap<>();
+		params.put("applicationType", "VENUE");
 		params.put("applicationId", stringValue(application.getId()));
 		params.put("status", stringValue(application.getStatus()));
 		params.put("applicationDate", stringValue(application.getApplicationDate()));

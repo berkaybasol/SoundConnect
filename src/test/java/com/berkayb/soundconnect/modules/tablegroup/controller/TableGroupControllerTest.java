@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.tablegroup.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupParticipantDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
@@ -7,12 +8,12 @@ import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
 import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -51,9 +55,6 @@ class TableGroupControllerTest {
 	@Mock
 	private TableGroupService tableGroupService;
 	
-	@Mock
-	private UserRepository userRepository;
-	
 	@InjectMocks
 	private TableGroupController controller;
 	
@@ -62,32 +63,38 @@ class TableGroupControllerTest {
 	
 	private UUID userId;
 	private String username;
+	private UsernamePasswordAuthenticationToken authentication;
 	
 	@BeforeEach
 	void setUp() {
+		userId = UUID.randomUUID();
+		username = "testuser";
+		UserDetailsImpl userDetails = new UserDetailsImpl(User.builder()
+				.id(userId)
+				.username(username)
+				.build());
+		authentication = new UsernamePasswordAuthenticationToken(userDetails, null, List.of());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+
 		mockMvc = MockMvcBuilders.standaloneSetup(controller)
-		                         .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+		                         .setCustomArgumentResolvers(
+				                         new AuthenticationPrincipalArgumentResolver(),
+				                         new PageableHandlerMethodArgumentResolver()
+		                         )
 		                         .build();
 		
 		objectMapper = new ObjectMapper();
 		objectMapper.registerModule(new JavaTimeModule());
 		objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-		
-		userId = UUID.randomUUID();
-		username = "testuser";
-		
-		User user = User.builder()
-		                .id(userId)
-		                .username(username)
-		                .build();
-		
-		// Bazı testlerde principal kullanılmıyor, o yüzden lenient
-		lenient().when(userRepository.findByUsername(username))
-		         .thenReturn(Optional.of(user));
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	private Principal principal() {
-		return () -> username;
+		return authentication;
 	}
 	
 	private TableGroupResponseDto sampleResponseDto(UUID tableGroupId) {

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.Studio
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,7 +37,7 @@ public class StudioProfileAdminController {
 	@PutMapping(ADMIN_UPDATE)
 	public ResponseEntity<BaseResponse<StudioProfileResponseDto>> updateStudioProfileByUserId(
 			@PathVariable UUID userId,
-			@RequestBody StudioProfileSaveRequestDto dto) {
+			@Valid @RequestBody StudioProfileSaveRequestDto dto) {
 		var updated = studioProfileService.updateProfile(userId, dto);
 		return ResponseEntity.ok(
 				BaseResponse.<StudioProfileResponseDto>builder()

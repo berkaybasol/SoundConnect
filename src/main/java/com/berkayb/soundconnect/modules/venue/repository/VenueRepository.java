@@ -26,4 +26,17 @@ boolean existsByOwner_Id(UUID ownerId);
 	
 	
 	Page<Venue> findByNameContainingIgnoreCase(String name, Pageable pageable);
+
+	@Query("""
+			select v
+			from Venue v
+			where lower(coalesce(v.name, '')) like lower(concat('%', :q, '%'))
+			   or (:usernameQuery <> ''
+			       and locate(:usernameQuery, coalesce(v.owner.username, '')) > 0)
+			""")
+	Page<Venue> searchByNameOrOwnerUsername(
+			@Param("q") String q,
+			@Param("usernameQuery") String usernameQuery,
+			Pageable pageable
+	);
 }

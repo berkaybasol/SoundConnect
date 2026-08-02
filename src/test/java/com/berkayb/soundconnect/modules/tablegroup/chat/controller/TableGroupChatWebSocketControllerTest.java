@@ -1,11 +1,11 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.enums.MessageType;
 import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatService;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,10 +13,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 
-import java.security.Principal;
 import java.time.LocalDateTime;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,9 +41,6 @@ class TableGroupChatWebSocketControllerTest {
 	private TableGroupChatService chatService;
 	
 	@Mock
-	private UserRepository userRepository;
-	
-	@Mock
 	private SimpMessagingTemplate messagingTemplate;
 	
 	@InjectMocks
@@ -50,23 +48,22 @@ class TableGroupChatWebSocketControllerTest {
 	
 	private UUID userId;
 	private String username;
+	private Authentication authentication;
 	
 	@BeforeEach
 	void setUp() {
 		userId = UUID.randomUUID();
 		username = "wsUser";
 		
-		User user = User.builder()
-		                .id(userId)
-		                .username(username)
-		                .build();
-		
-		when(userRepository.findByUsername(username))
-				.thenReturn(Optional.of(user));
+		UserDetailsImpl userDetails = new UserDetailsImpl(User.builder()
+				.id(userId)
+				.username(username)
+				.build());
+		authentication = new UsernamePasswordAuthenticationToken(userDetails, null, List.of());
 	}
 	
-	private Principal principal() {
-		return () -> username;
+	private Authentication principal() {
+		return authentication;
 	}
 	
 	private TableGroupMessageResponseDto sampleResponseDto(UUID messageId, UUID tableGroupId) {
@@ -105,13 +102,10 @@ class TableGroupChatWebSocketControllerTest {
 		);
 		
 		// then
-		// 1) Principal.username -> userId cozumlenmis mi?
-		verify(userRepository).findByUsername(username);
-		
-		// 2) Service dogru parametrelerle cagrilmis mi?
+		// Principal UUID dogrudan service'e aktarilmali.
 		verify(chatService).sendMessage(eq(userId), eq(tableGroupId), any(TableGroupMessageRequestDto.class));
 		
-		// 3) Controller artik messagingTemplate kullanmiyor
+		// Controller artik messagingTemplate kullanmiyor.
 		verifyNoInteractions(messagingTemplate);
 	}
 	

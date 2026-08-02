@@ -1,6 +1,5 @@
 package com.berkayb.soundconnect.modules.spotify.controller;
 
-import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
 import com.berkayb.soundconnect.modules.spotify.dto.request.SpotifyTracksByIdsRequest;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackSearchResponseDto;
@@ -10,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -27,12 +27,11 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Spotify.*;
 public class SpotifyController {
 	
 	private final SpotifyService spotifyService;
-	private final SpotifyApiClient spotifyApiClient;
 	
 	@PostMapping(TRACKS_BY_IDS)
 	public ResponseEntity<BaseResponse<List<SpotifyTrackItemDto>>> getTracksByIds(
-			@RequestBody SpotifyTracksByIdsRequest request) {
-		var data = spotifyApiClient.getTracksByIds(request.ids());
+			@Valid @RequestBody SpotifyTracksByIdsRequest request) {
+		var data = spotifyService.getTracksByIds(request.ids());
 		return ResponseEntity.ok(BaseResponse.<List<SpotifyTrackItemDto>>builder()
 		                                     .success(true).message("Spotify tracks fetched").code(200).data(data).build());
 	}

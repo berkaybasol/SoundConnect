@@ -141,6 +141,18 @@ app:
       otp-resend:
         limit: ${AUTH_RATE_LIMIT_OTP_RESEND_LIMIT:3}
         window: ${AUTH_RATE_LIMIT_OTP_RESEND_WINDOW:5m}
+      username-availability:
+        limit: ${AUTH_RATE_LIMIT_USERNAME_AVAILABILITY_LIMIT:30}
+        window: ${AUTH_RATE_LIMIT_USERNAME_AVAILABILITY_WINDOW:1m}
+      password-reset-lookup:
+        limit: ${AUTH_RATE_LIMIT_PASSWORD_RESET_LOOKUP_LIMIT:10}
+        window: ${AUTH_RATE_LIMIT_PASSWORD_RESET_LOOKUP_WINDOW:5m}
+      password-reset-request:
+        limit: ${AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_LIMIT:3}
+        window: ${AUTH_RATE_LIMIT_PASSWORD_RESET_REQUEST_WINDOW:5m}
+      password-reset-confirm:
+        limit: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_LIMIT:10}
+        window: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_WINDOW:5m}
   notification:
     retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
     cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
@@ -159,6 +171,10 @@ app:
   location:
     seed:
       enabled: ${SOUNDCONNECT_LOCATION_SEED_ENABLED:true}
+  backline:
+    catalog:
+      seed:
+        enabled: ${SOUNDCONNECT_BACKLINE_CATALOG_SEED_ENABLED:true}
   messaging:
     notification:
       exchange: notification.exchange
@@ -424,6 +440,7 @@ pulse:
 soundconnect:
   admin-notifications:
     venue-application-emails: ${SOUNDCONNECT_VENUE_APPLICATION_NOTIFY_TO:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}
+    studio-application-emails: ${SOUNDCONNECT_STUDIO_APPLICATION_NOTIFY_TO:${SOUNDCONNECT_VENUE_APPLICATION_NOTIFY_TO:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}}
   spotify:
     client-id: ${SPOTIFY_CLIENT_ID}
     client-secret: ${SPOTIFY_CLIENT_SECRET}

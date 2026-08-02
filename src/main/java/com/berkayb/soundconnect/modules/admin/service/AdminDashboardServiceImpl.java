@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.admin.service;
 import com.berkayb.soundconnect.modules.admin.dto.AdminDashboardSummaryDto;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 import com.berkayb.soundconnect.modules.application.venueapplication.repository.VenueApplicationRepository;
+import com.berkayb.soundconnect.modules.application.studioapplication.repository.StudioApplicationRepository;
 import com.berkayb.soundconnect.modules.promotion.enums.PromotionStatus;
 import com.berkayb.soundconnect.modules.promotion.repository.PromotionRepository;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 public class AdminDashboardServiceImpl implements AdminDashboardService {
 	private final UserRepository userRepository;
 	private final VenueApplicationRepository venueApplicationRepository;
+	private final StudioApplicationRepository studioApplicationRepository;
 	private final PromotionRepository promotionRepository;
 
 	@Override
@@ -23,6 +25,9 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 				venueApplicationRepository.countByStatus(ApplicationStatus.PENDING),
 				venueApplicationRepository.countByStatus(ApplicationStatus.APPROVED),
 				venueApplicationRepository.countByStatus(ApplicationStatus.REJECTED),
+				studioApplicationRepository.countByStatus(ApplicationStatus.PENDING),
+				studioApplicationRepository.countByStatus(ApplicationStatus.APPROVED),
+				studioApplicationRepository.countByStatus(ApplicationStatus.REJECTED),
 				promotionRepository.countByStatus(PromotionStatus.ACTIVE)
 		);
 	}

@@ -1,16 +1,17 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.enums.MessageType;
 import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatService;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +21,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -40,9 +44,6 @@ class TableGroupChatControllerTest {
 	@Mock
 	private TableGroupChatService chatService;
 	
-	@Mock
-	private UserRepository userRepository;
-	
 	@InjectMocks
 	private TableGroupChatController controller;
 	
@@ -51,32 +52,40 @@ class TableGroupChatControllerTest {
 	
 	private UUID userId;
 	private String username;
+	private UserDetailsImpl userDetails;
+	private UsernamePasswordAuthenticationToken authentication;
 	
 	@BeforeEach
 	void setUp() {
+		userId = UUID.randomUUID();
+		username = "chatUser";
+		userDetails = new UserDetailsImpl(User.builder()
+				.id(userId)
+				.username(username)
+				.build());
+		authentication = new UsernamePasswordAuthenticationToken(userDetails, null, List.of());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+
 		mockMvc = MockMvcBuilders.standaloneSetup(controller)
-		                         .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+		                         .setCustomArgumentResolvers(
+				                         new AuthenticationPrincipalArgumentResolver(),
+				                         new PageableHandlerMethodArgumentResolver()
+		                         )
 		                         .build();
 		
 		objectMapper = new ObjectMapper();
 		objectMapper.registerModule(new JavaTimeModule());
 		objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		
-		userId = UUID.randomUUID();
-		username = "chatUser";
-		
-		User user = User.builder()
-		                .id(userId)
-		                .username(username)
-		                .build();
-		
-		// bazı testler principal kullanmıyor, lenient en rahatı
-		lenient().when(userRepository.findByUsername(username))
-		         .thenReturn(Optional.of(user));
+	}
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
 	}
 	
 	private Principal principal() {
-		return () -> username;
+		return authentication;
 	}
 	
 	private TableGroupMessageResponseDto sampleMessageDto(UUID messageId, UUID tableGroupId, UUID senderId) {
@@ -112,7 +121,7 @@ class TableGroupChatControllerTest {
 		
 		// when: MockMvc değil, direkt controller çağrısı
 		ResponseEntity<BaseResponse<Page<TableGroupMessageResponseDto>>> response =
-				controller.getMessages(principal(), tableGroupId, pageable);
+				controller.getMessages(userDetails, tableGroupId, pageable);
 		
 		// then
 		assertThat(response.getStatusCode().value()).isEqualTo(200);

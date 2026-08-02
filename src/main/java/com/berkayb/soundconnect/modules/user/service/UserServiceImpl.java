@@ -5,17 +5,22 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
+import com.berkayb.soundconnect.modules.user.dto.request.UsernameChangeRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.mapper.UserMapper;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.user.support.UserIdentityConflictMapper;
+import com.berkayb.soundconnect.modules.user.support.UsernameChangeTimeProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,12 +35,15 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
+
+	private static final int USERNAME_CHANGE_COOLDOWN_DAYS = 30;
 	
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final UserMapper userMapper;
 	private final UserEntityFinder userEntityFinder;
 	private final PasswordEncoder passwordEncoder;
+	private final UsernameChangeTimeProvider usernameChangeTimeProvider;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -51,7 +59,11 @@ public class UserServiceImpl implements UserService {
 		
 		// kullanici adi guncellenirse flag true yapilir
 		if (dto.username() != null) {
-			user.setUsername(dto.username());
+			String normalizedUsername = UsernameUtils.normalizeAndValidate(dto.username());
+			if (userRepository.existsByUsernameAndIdNot(normalizedUsername, user.getId())) {
+				throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
+			}
+			user.setUsername(normalizedUsername);
 			isUpdated = true;
 		}
 		
@@ -84,12 +96,43 @@ public class UserServiceImpl implements UserService {
 		// herhangi bir alan guncellenmisse updatedAt set edilir ve kaydedilir
 		if (isUpdated) {
 			user.setUpdatedAt(LocalDateTime.now());
-			userRepository.save(user);
+			saveIdentityAndFlush(user);
 			log.info("User updated by administrator. actorId={} targetId={} roleChanged={}",
 					actingUserId, id, dto.roleId() != null);
 		}
 		
 		return isUpdated;
+	}
+
+	@Override
+	@Transactional
+	public String changeUsername(UUID userId, UsernameChangeRequestDto dto) {
+		User user = findForUpdate(userId);
+		String normalizedUsername = UsernameUtils.normalizeAndValidate(dto.username());
+		String currentCanonicalUsername = UsernameUtils.normalize(user.getUsername());
+
+		if (normalizedUsername.equals(currentCanonicalUsername)) {
+			if (!normalizedUsername.equals(user.getUsername())) {
+				user.setUsername(normalizedUsername);
+				saveIdentityAndFlush(user);
+			}
+			return normalizedUsername;
+		}
+
+		LocalDateTime now = usernameChangeTimeProvider.now();
+		LocalDateTime lastChangedAt = user.getUsernameChangedAt();
+		if (lastChangedAt != null
+				&& now.isBefore(lastChangedAt.plusDays(USERNAME_CHANGE_COOLDOWN_DAYS))) {
+			throw new SoundConnectException(ErrorType.USERNAME_CHANGE_COOLDOWN_ACTIVE);
+		}
+
+		if (userRepository.existsByUsernameAndIdNot(normalizedUsername, userId)) {
+			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
+		}
+
+		user.setUsername(normalizedUsername);
+		user.setUsernameChangedAt(now);
+		return saveIdentityAndFlush(user).getUsername();
 	}
 	
 	// kullaniciyi id'ye gore siler
@@ -133,6 +176,10 @@ public class UserServiceImpl implements UserService {
 		User actor = findForUpdate(actingUserId);
 		assertCanManageUsers(actor);
 		String normalizedEmail = EmailUtils.normalize(dto.email());
+		String normalizedUsername = UsernameUtils.normalizeAndValidate(dto.username());
+		if (userRepository.existsByUsername(normalizedUsername)) {
+			throw new SoundConnectException(ErrorType.USER_ALREADY_EXISTS);
+		}
 		if (userRepository.existsByEmail(normalizedEmail)) {
 			throw new SoundConnectException(ErrorType.EMAIL_ALREADY_EXISTS);
 		}
@@ -144,7 +191,7 @@ public class UserServiceImpl implements UserService {
 		
 		// elle user oluştur
 		User user = User.builder()
-		                .username(dto.username())
+		                .username(normalizedUsername)
 		                .email(normalizedEmail)
 		                .password(passwordEncoder.encode(dto.password()))
 		                .roles(Set.of(role))
@@ -153,10 +200,18 @@ public class UserServiceImpl implements UserService {
 		                .createdAt(LocalDateTime.now())
 		                .build();
 
-		User saved = userRepository.save(user);
+		User saved = saveIdentityAndFlush(user);
 		log.info("User created by administrator. actorId={} targetId={} role={}",
 				actingUserId, saved.getId(), role.getName());
 		return saved;
+	}
+
+	private User saveIdentityAndFlush(User user) {
+		try {
+			return userRepository.saveAndFlush(user);
+		} catch (DataIntegrityViolationException exception) {
+			throw UserIdentityConflictMapper.map(exception);
+		}
 	}
 
 	private User findForUpdate(UUID userId) {

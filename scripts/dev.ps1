@@ -14,6 +14,7 @@ $EnvFile = Join-Path $ProjectRoot ".env.local"
 $EnvTemplate = Join-Path $ProjectRoot ".env.example"
 $WorkerDbEnvFile = Join-Path $ProjectRoot ".env.worker-db.local"
 $WorkerRabbitEnvFile = Join-Path $ProjectRoot ".env.worker-rabbit.local"
+$StudioSchemaPath = Join-Path $ProjectRoot "scripts\db\2026-07-21-studio-domain.sql"
 
 function Assert-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -195,6 +196,63 @@ function Invoke-Compose([string[]]$Arguments) {
     }
 }
 
+function Get-LocalPostgresConnection {
+    $Values = Read-DotEnvMap $EnvFile
+    return @{
+        Username = if ($Values["SOUNDCONNECT_POSTGRES_USERNAME"]) { $Values["SOUNDCONNECT_POSTGRES_USERNAME"] } else { "soundconnect" }
+        Database = if ($Values["SOUNDCONNECT_POSTGRES_DB"]) { $Values["SOUNDCONNECT_POSTGRES_DB"] } else { "soundconnect" }
+    }
+}
+
+function Test-LocalBaseSchemaReady {
+    $Connection = Get-LocalPostgresConnection
+    $Query = "SELECT to_regclass('public.tbl_user') IS NOT NULL AND to_regclass('public.tbl_studio_profile') IS NOT NULL AND to_regclass('public.tbl_media_asset') IS NOT NULL AND to_regclass('public.tbl_role') IS NOT NULL AND to_regclass('public.tbl_permissions') IS NOT NULL;"
+    $Output = & docker compose `
+        --project-directory $ProjectRoot `
+        --env-file $EnvFile `
+        exec -T postgres psql `
+        -X -qAt `
+        -U $Connection.Username `
+        -d $Connection.Database `
+        -c $Query 2>$null
+    return $LASTEXITCODE -eq 0 -and (($Output -join "").Trim() -eq "t")
+}
+
+function Wait-LocalBaseSchema([int]$TimeoutSeconds = 120) {
+    $Deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $Deadline) {
+        if (Test-LocalBaseSchemaReady) {
+            return
+        }
+        Start-Sleep -Seconds 2
+    }
+    throw "Local Hibernate bootstrap did not create the base PostgreSQL schema within ${TimeoutSeconds}s."
+}
+
+function Sync-LocalStudioSchema {
+    if (-not (Test-Path -LiteralPath $StudioSchemaPath)) {
+        throw "Local Studio schema source is missing: $StudioSchemaPath"
+    }
+    if (-not (Test-LocalBaseSchemaReady)) {
+        return $false
+    }
+
+    $Connection = Get-LocalPostgresConnection
+    Write-Host "Synchronizing local Studio schema..." -ForegroundColor Cyan
+    Get-Content -Raw -LiteralPath $StudioSchemaPath | & docker compose `
+        --project-directory $ProjectRoot `
+        --env-file $EnvFile `
+        exec -T postgres psql `
+        -X -v ON_ERROR_STOP=1 `
+        -U $Connection.Username `
+        -d $Connection.Database
+    if ($LASTEXITCODE -ne 0) {
+        throw "Local Studio schema synchronization failed with exit code $LASTEXITCODE."
+    }
+    Write-Host "Local Studio schema is ready." -ForegroundColor Green
+    return $true
+}
+
 function Import-DotEnv([string]$Path) {
     foreach ($Line in Get-Content -LiteralPath $Path) {
         $Trimmed = $Line.Trim()
@@ -233,6 +291,7 @@ try {
             Assert-NoPlaceholders
             Invoke-Compose @("up", "--detach", "postgres", "rabbitmq", "redis")
             Invoke-Compose @("stop", "backend", "media-worker")
+            [void](Sync-LocalStudioSchema)
             Write-Host "Infrastructure is ready. Compose API/native worker are stopped; start SoundConnectApplication from IntelliJ." -ForegroundColor Green
         }
         "infra" {
@@ -274,6 +333,10 @@ try {
 
             Assert-NoPlaceholders
             Invoke-Compose @("down", "--volumes", "--remove-orphans")
+            Invoke-Compose @("up", "--build", "--detach", "postgres", "rabbitmq", "redis", "backend")
+            Wait-LocalBaseSchema
+            Invoke-Compose @("stop", "backend")
+            [void](Sync-LocalStudioSchema)
             Invoke-Compose @("up", "--build", "--detach")
             Invoke-Compose @("ps")
         }

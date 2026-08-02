@@ -100,8 +100,9 @@ public class UserDetailsImpl implements UserDetails {
 	
 	@Override
 	public boolean isAccountNonLocked() {
-		// Pending venue hesaplari onaylanana kadar kimlik dogrulayamaz.
-		return user.getStatus() != UserStatus.PENDING_VENUE_REQUEST;
+		// Kurumsal hesaplar admin onayi tamamlanana kadar kimlik dogrulayamaz.
+		return user.getStatus() != UserStatus.PENDING_VENUE_REQUEST
+				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST;
 	}
 	
 	@Override

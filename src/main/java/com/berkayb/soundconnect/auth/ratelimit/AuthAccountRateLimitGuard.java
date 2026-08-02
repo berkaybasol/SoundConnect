@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.auth.ratelimit;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +19,7 @@ public class AuthAccountRateLimitGuard {
 	private final AuthRateLimitProperties properties;
 
 	public void checkLogin(String username) {
-		check("login", normalizeUsername(username), properties.getLogin());
+		check("login", UsernameUtils.normalize(username), properties.getLogin());
 	}
 
 	public void checkRegister(String email) {
@@ -31,6 +32,34 @@ public class AuthAccountRateLimitGuard {
 
 	public void checkOtpResend(String email) {
 		check("otp-resend", EmailUtils.normalize(email), properties.getOtpResend());
+	}
+
+	public void checkUsernameAvailability(String username) {
+		check(
+				"username-availability",
+				UsernameUtils.normalize(username),
+				properties.getUsernameAvailability());
+	}
+
+	public void checkPasswordResetLookup(String identifier) {
+		check(
+				"password-reset-lookup",
+				identifier,
+				properties.getPasswordResetLookup());
+	}
+
+	public void checkPasswordResetRequest(String email) {
+		check(
+				"password-reset-request",
+				EmailUtils.normalize(email),
+				properties.getPasswordResetRequest());
+	}
+
+	public void checkPasswordResetConfirm(String email) {
+		check(
+				"password-reset-confirm",
+				EmailUtils.normalize(email),
+				properties.getPasswordResetConfirm());
 	}
 
 	public void checkGoogleLogin(String providerSubject) {
@@ -48,7 +77,4 @@ public class AuthAccountRateLimitGuard {
 		}
 	}
 
-	private String normalizeUsername(String username) {
-		return username == null ? "" : username.trim();
-	}
 }

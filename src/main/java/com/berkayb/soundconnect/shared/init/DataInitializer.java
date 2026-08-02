@@ -12,6 +12,7 @@ import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -95,11 +96,13 @@ public class DataInitializer implements ApplicationRunner {
 				DELETE_LOCATION,
 				MANAGE_LOCATIONS,
 				MANAGE_VENUE_APPLICATIONS,
+				MANAGE_STUDIO_APPLICATIONS,
 				MANAGE_VENUES,
 				MANAGE_PROMOTIONS,
 				MANAGE_INSTRUMENTS,
 				MANAGE_PROFILES,
 				MANAGE_DM,
+				MANAGE_BACKLINE_CATALOG,
 				DELETE_COMMENT
 		));
 		Role venueRole = upsertRole(ROLE_VENUE.name(), permissions(
@@ -128,6 +131,11 @@ public class DataInitializer implements ApplicationRunner {
 		requireConfigured("email", ownerEmail);
 		requireConfigured("phone", ownerPhone);
 		requireConfigured("city", ownerCity);
+		String normalizedOwnerUsername = UsernameUtils.normalize(ownerUsername);
+		if (!UsernameUtils.hasValidCanonicalLength(normalizedOwnerUsername)) {
+			throw new IllegalStateException("Owner bootstrap username must contain between "
+					+ UsernameUtils.MIN_LENGTH + " and " + UsernameUtils.MAX_LENGTH + " characters");
+		}
 		if (ownerMinimumPasswordLength < 10 || ownerMinimumPasswordLength > 128) {
 			throw new IllegalStateException("Owner bootstrap minimum password length must be between 10 and 128");
 		}
@@ -138,14 +146,14 @@ public class DataInitializer implements ApplicationRunner {
 
 		Role ownerRole = roleRepository.findByName(ROLE_OWNER.name())
 		                               .orElseThrow(() -> new IllegalStateException("ROLE_OWNER bulunamadi"));
-		Optional<User> existing = userRepository.findByUsername(ownerUsername);
+		Optional<User> existing = userRepository.findByUsername(normalizedOwnerUsername);
 		if (existing.isPresent()) {
 			boolean alreadyOwner = existing.get().getRoles().stream()
 			                               .anyMatch(role -> ROLE_OWNER.name().equals(role.getName()));
 			if (!alreadyOwner) {
 				throw new IllegalStateException("Configured owner bootstrap username belongs to a non-owner account");
 			}
-			log.info("owner bootstrap account already exists username={}", ownerUsername);
+			log.info("owner bootstrap account already exists username={}", normalizedOwnerUsername);
 			return;
 		}
 		String normalizedOwnerEmail = EmailUtils.normalize(ownerEmail);
@@ -155,7 +163,7 @@ public class DataInitializer implements ApplicationRunner {
 
 		City cityEntity = locationEntityFinder.getCityByName(ownerCity);
 		User owner = User.builder()
-		                 .username(ownerUsername)
+		                 .username(normalizedOwnerUsername)
 		                 .password(passwordEncoder.encode(ownerPassword))
 		                 .email(normalizedOwnerEmail)
 		                 .phone(ownerPhone)

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.message.dm.controller.user;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.message.dm.dto.request.DMMessageRequestDto;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
@@ -7,10 +8,10 @@ import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepo
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -19,12 +20,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.annotation.Resource;
 
-import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -57,13 +59,26 @@ class DMMessageUserControllerTest {
 	DMMessageService messageService;
 	@MockitoBean DMConversationRepository conversationRepository;
 	@MockitoBean NotificationService notificationService;
-	@MockitoBean UserRepository userRepository;
 	
 	@MockitoBean
 	com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter jwtAuthenticationFilter;
 	
 	@MockitoBean
 	com.berkayb.soundconnect.auth.security.JwtTokenProvider jwtTokenProvider;
+
+	@AfterEach
+	void clearSecurityContext() {
+		SecurityContextHolder.clearContext();
+	}
+
+	private UsernamePasswordAuthenticationToken authentication(UUID userId, String username) {
+		User user = User.builder().id(userId).username(username).build();
+		UserDetailsImpl principal = new UserDetailsImpl(user);
+		UsernamePasswordAuthenticationToken authentication =
+				new UsernamePasswordAuthenticationToken(principal, null, List.of());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+		return authentication;
+	}
 	
 	@Test
 	@DisplayName("GET /messages/conversation/{id} → participant doğrulaması sonrası mesaj listesi dönmeli")
@@ -73,13 +88,7 @@ class DMMessageUserControllerTest {
 		UUID otherId = UUID.randomUUID();
 		UUID conversationId = UUID.randomUUID();
 		
-		Principal p = () -> username;
-		
-		// user lookup
-		User u = new User();
-		u.setId(currentUserId);
-		u.setUsername(username);
-		when(userRepository.findByUsername(username)).thenReturn(Optional.of(u));
+		var p = authentication(currentUserId, username);
 		
 		// ensureParticipant için conv mevcut ve currentUser participant
 		DMConversation conv = DMConversation.builder()
@@ -117,12 +126,7 @@ class DMMessageUserControllerTest {
 		UUID conversationId = UUID.randomUUID();
 		UUID recipientId = UUID.randomUUID();
 		
-		Principal p = () -> username;
-		
-		User u = new User();
-		u.setId(currentUserId);
-		u.setUsername(username);
-		when(userRepository.findByUsername(username)).thenReturn(Optional.of(u));
+		var p = authentication(currentUserId, username);
 		
 		DMMessageRequestDto req = new DMMessageRequestDto(conversationId, recipientId, "hey", "text");
 		
@@ -159,12 +163,7 @@ class DMMessageUserControllerTest {
 		UUID currentUserId = UUID.randomUUID();
 		UUID messageId = UUID.randomUUID();
 		
-		Principal p = () -> username;
-		
-		User u = new User();
-		u.setId(currentUserId);
-		u.setUsername(username);
-		when(userRepository.findByUsername(username)).thenReturn(Optional.of(u));
+		var p = authentication(currentUserId, username);
 		
 		mockMvc.perform(patch(BASE + PATH_MARK, messageId).principal(p))
 		       .andExpect(status().isOk())
@@ -180,11 +179,7 @@ class DMMessageUserControllerTest {
 	void unreadCount_ok() throws Exception {
 		String username = "berkay";
 		UUID currentUserId = UUID.randomUUID();
-		Principal principal = () -> username;
-		User user = new User();
-		user.setId(currentUserId);
-		user.setUsername(username);
-		when(userRepository.findByUsername(username)).thenReturn(Optional.of(user));
+		var principal = authentication(currentUserId, username);
 		when(messageService.getUnreadCount(currentUserId)).thenReturn(7L);
 
 		mockMvc.perform(get(BASE + PATH_UNREAD_COUNT).principal(principal))

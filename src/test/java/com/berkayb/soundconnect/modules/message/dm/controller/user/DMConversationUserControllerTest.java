@@ -86,14 +86,14 @@ class DMConversationUserControllerTest {
 		userRepo.deleteAll();
 		
 		me = userRepo.save(User.builder()
-		                       .username("me_"+UUID.randomUUID())
+		                       .username("me_" + UUID.randomUUID().toString().substring(0, 12))
 		                       .email("me_"+UUID.randomUUID()+"@test.local")
 		                       .password("x")
 		                       .provider(AuthProvider.LOCAL)
 		                       .emailVerified(true)
 		                       .build());
 		other = userRepo.save(User.builder()
-		                          .username("other_"+UUID.randomUUID())
+		                          .username("other_" + UUID.randomUUID().toString().substring(0, 12))
 		                          .email("other_"+UUID.randomUUID()+"@test.local")
 		                          .password("x")
 		                          .provider(AuthProvider.LOCAL)

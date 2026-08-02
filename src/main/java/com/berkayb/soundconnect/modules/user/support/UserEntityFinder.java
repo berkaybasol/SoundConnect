@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +23,7 @@ public class UserEntityFinder {
 	
 	
 	public User getUserByUsername(String username) {
-		return userRepository.findByUsername(username)
+		return userRepository.findByUsername(UsernameUtils.normalize(username))
 		                     .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 	}
 }

@@ -68,9 +68,9 @@ class FollowRepositoryTest {
 		district = districtRepository.save(District.builder().name("D_" + UUID.randomUUID()).city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("N_" + UUID.randomUUID()).district(district).build());
 		
-		String s1 = UUID.randomUUID().toString(); // -> eklendi
-		String s2 = UUID.randomUUID().toString(); // -> eklendi
-		String s3 = UUID.randomUUID().toString(); // -> eklendi
+		String s1 = UUID.randomUUID().toString().substring(0, 12); // -> eklendi
+		String s2 = UUID.randomUUID().toString().substring(0, 12); // -> eklendi
+		String s3 = UUID.randomUUID().toString().substring(0, 12); // -> eklendi
 		
 		u1 = userRepository.save(User.builder()
 		                             .username("u1_" + s1)

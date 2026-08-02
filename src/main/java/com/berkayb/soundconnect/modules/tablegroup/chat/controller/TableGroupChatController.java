@@ -1,10 +1,9 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatService;
-import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import jakarta.validation.Valid;
@@ -13,9 +12,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.UUID;
 
 /**
@@ -33,19 +32,12 @@ import java.util.UUID;
 public class TableGroupChatController {
 	
 	private final TableGroupChatService chatService;
-	private final UserRepository userRepository;
 	
 	/**
-	 * Principal.username -> User -> UUID
-	 * Güvenilir userId elde etme helper'ı.
+	 * Authenticated principal already carries the immutable user UUID.
 	 */
-	private UUID currentUserId(Principal principal) {
-		String username = principal.getName();
-		return userRepository.findByUsername(username)
-		                     .map(User::getId)
-		                     .orElseThrow(() ->
-				                                  new IllegalStateException("Authenticated user not found: " + username)
-		                     );
+	private UUID currentUserId(UserDetailsImpl principal) {
+		return principal.getId();
 	}
 	
 	/**
@@ -56,7 +48,7 @@ public class TableGroupChatController {
 	@GetMapping(EndPoints.TableGroup.Chat.MESSAGES)
 	// @PreAuthorize("hasAuthority('READ_TABLE_GROUP_CHAT')")
 	public ResponseEntity<BaseResponse<Page<TableGroupMessageResponseDto>>> getMessages(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable("tableGroupId") UUID tableGroupId,
 			Pageable pageable
 	) {
@@ -90,7 +82,7 @@ public class TableGroupChatController {
 	@PostMapping(EndPoints.TableGroup.Chat.MESSAGES)
 	// @PreAuthorize("hasAuthority('WRITE_TABLE_GROUP_CHAT')")
 	public ResponseEntity<BaseResponse<TableGroupMessageResponseDto>> sendMessage(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable("tableGroupId") UUID tableGroupId,
 			@Valid @RequestBody TableGroupMessageRequestDto requestDto
 	) {
@@ -121,7 +113,7 @@ public class TableGroupChatController {
 	 */
 	@GetMapping(EndPoints.TableGroup.Chat.GET_UNREAD_BADGE)
 	public ResponseEntity<BaseResponse<Integer>> getUnreadBadge(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable("tableGroupId") UUID tableGroupId
 	) {
 		UUID userId = currentUserId(principal);

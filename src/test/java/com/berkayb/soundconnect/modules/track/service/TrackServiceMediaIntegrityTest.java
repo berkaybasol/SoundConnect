@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
 import com.berkayb.soundconnect.modules.track.entity.Track;
@@ -42,6 +44,7 @@ class TrackServiceMediaIntegrityTest {
 	@Mock MediaAssetRepository mediaAssetRepository;
 	@Mock MusicianProfileService musicianProfileService;
 	@Mock BandService bandService;
+	@Mock StudioProfileRepository studioProfileRepository;
 	@InjectMocks TrackServiceImpl service;
 
 	private UUID ownerId;
@@ -58,8 +61,8 @@ class TrackServiceMediaIntegrityTest {
 
 		MusicianProfile profile = mock(MusicianProfile.class);
 		User user = mock(User.class);
-		when(profile.getUser()).thenReturn(user);
-		when(user.getId()).thenReturn(userId);
+		lenient().when(profile.getUser()).thenReturn(user);
+		lenient().when(user.getId()).thenReturn(userId);
 		when(musicianProfileService.getProfileEntity(ownerId)).thenReturn(profile);
 		when(bandService.getBandEntity(ownerId)).thenThrow(new SoundConnectException(ErrorType.BAND_NOT_FOUND));
 	}
@@ -132,13 +135,50 @@ class TrackServiceMediaIntegrityTest {
 		verify(trackRepository, never()).save(any());
 	}
 
+	@Test
+	void createTrack_supportsStudioOwnedAudioWithoutRoutingItToMusician() {
+		when(musicianProfileService.getProfileEntity(ownerId))
+				.thenThrow(new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		when(studioProfileRepository.existsById(ownerId)).thenReturn(true);
+		StudioProfile studio = mock(StudioProfile.class);
+		User owner = mock(User.class);
+		when(studioProfileRepository.findById(ownerId)).thenReturn(Optional.of(studio));
+		when(studio.getUser()).thenReturn(owner);
+		when(owner.getId()).thenReturn(userId);
+
+		MediaAsset asset = asset(
+				MediaStatus.READY,
+				MediaVisibility.PUBLIC,
+				ownerId,
+				MediaOwnerType.STUDIO_PROFILE
+		);
+		when(mediaAssetRepository.findByIdForUpdate(assetId)).thenReturn(Optional.of(asset));
+		TrackResponseDto expected = new TrackResponseDto(null, assetId, "Track", "url", 180, 120);
+		when(trackMapper.toDto(any(Track.class), same(mediaAssetService))).thenReturn(expected);
+
+		assertThat(service.createTrack(ownerId, userId, request)).isSameAs(expected);
+		verify(trackRepository).findByOwnerTypeAndOwnerIdAndMediaAssetId(
+				TrackOwnerType.STUDIO_PROFILE, ownerId, assetId);
+		verify(trackRepository).save(argThat(track ->
+				track.getOwnerType() == TrackOwnerType.STUDIO_PROFILE));
+	}
+
 	private MediaAsset asset(MediaStatus status, MediaVisibility visibility, UUID mediaOwnerId) {
+		return asset(status, visibility, mediaOwnerId, MediaOwnerType.MUSICIAN_PROFILE);
+	}
+
+	private MediaAsset asset(
+			MediaStatus status,
+			MediaVisibility visibility,
+			UUID mediaOwnerId,
+			MediaOwnerType mediaOwnerType
+	) {
 		return MediaAsset.builder()
 				.id(assetId)
 				.kind(MediaKind.AUDIO)
 				.status(status)
 				.visibility(visibility)
-				.ownerType(MediaOwnerType.MUSICIAN_PROFILE)
+				.ownerType(mediaOwnerType)
 				.ownerId(mediaOwnerId)
 				.mimeType("audio/mpeg")
 				.size(100L)

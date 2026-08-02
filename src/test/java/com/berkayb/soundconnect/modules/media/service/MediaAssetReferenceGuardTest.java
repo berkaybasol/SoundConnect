@@ -60,6 +60,8 @@ class MediaAssetReferenceGuardTest {
 		verify(repository).countStudioProfilePictureReferences(assetId);
 		verify(repository).countVenueProfilePictureReferences(assetId);
 		verify(repository).countBandProfilePictureReferences(assetId);
+		verify(repository).countStudioRoomPhotoReferences(assetId);
+		verify(repository).countStudioEquipmentPhotoReferences(assetId);
 		verify(repository).countEventPosterReferences(assetId.toString());
 		verifyNoMoreInteractions(repository);
 	}

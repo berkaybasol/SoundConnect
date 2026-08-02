@@ -126,7 +126,7 @@ class VenueProfileServiceImplTest {
 		
 		// users (email eklendi)
 		ownerA = userRepository.save(User.builder()
-		                                 .username("ownerA_" + UUID.randomUUID())
+		                                 .username("ownerA_" + UUID.randomUUID().toString().substring(0, 12))
 		                                 .email("ownera_"+UUID.randomUUID()+"@t.local")
 		                                 .password("pass")
 		                                 .provider(AuthProvider.LOCAL)
@@ -135,7 +135,7 @@ class VenueProfileServiceImplTest {
 		                                 .build());
 		
 		ownerB = userRepository.save(User.builder()
-		                                 .username("ownerB_" + UUID.randomUUID())
+		                                 .username("ownerB_" + UUID.randomUUID().toString().substring(0, 12))
 		                                 .email("ownerb_"+UUID.randomUUID()+"@t.local")
 		                                 .password("pass")
 		                                 .provider(AuthProvider.LOCAL)

@@ -131,7 +131,7 @@ class VenueApplicationAdminControllerTest {
 		
 		// --- seed admin ---
 		admin = userRepository.save(User.builder()
-		                                .username("admin_" + UUID.randomUUID())
+		                                .username("admin_" + UUID.randomUUID().toString().substring(0, 12))
 		                                .email("admin_" + UUID.randomUUID() + "@test.local")
 		                                .password("x")
 		                                .provider(AuthProvider.LOCAL)
@@ -161,7 +161,7 @@ class VenueApplicationAdminControllerTest {
 	
 	private User seedApplicant() {
 		return userRepository.save(User.builder()
-		                               .username("applicant_" + UUID.randomUUID())
+		                               .username("applicant_" + UUID.randomUUID().toString().substring(0, 12))
 		                               .email("applicant_" + UUID.randomUUID() + "@test.local")
 		                               .password("x")
 		                               .provider(AuthProvider.LOCAL)

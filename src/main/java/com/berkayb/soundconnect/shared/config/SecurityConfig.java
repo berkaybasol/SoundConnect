@@ -25,6 +25,18 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.BASE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.COMPLETE_GOOGLE_PROFILE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.FORGOT_PASSWORD;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.GOOGLE_SIGN_IN;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.LOGIN;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.PASSWORD_RESET_ACCOUNT;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.REGISTER;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.RESEND_CODE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.RESET_PASSWORD;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.USERNAME_AVAILABILITY;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.VERIFY_CODE;
+
 /**
  * Stateless HTTP security policy. Public routes are deliberately method-scoped;
  * every route not listed here requires a valid active-account JWT.
@@ -65,8 +77,19 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-						// Must precede the general /auth/** public matcher.
-						.requestMatchers(HttpMethod.POST, "/api/v1/auth/complete-google-profile").authenticated()
+						.requestMatchers(HttpMethod.POST, BASE + COMPLETE_GOOGLE_PROFILE).authenticated()
+						.requestMatchers(
+								HttpMethod.POST,
+								BASE + LOGIN,
+								BASE + REGISTER,
+								BASE + VERIFY_CODE,
+								BASE + RESEND_CODE,
+								BASE + GOOGLE_SIGN_IN,
+								BASE + USERNAME_AVAILABILITY,
+								BASE + PASSWORD_RESET_ACCOUNT,
+								BASE + FORGOT_PASSWORD,
+								BASE + RESET_PASSWORD
+						).permitAll()
 
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/venues/**").permitAll()
@@ -81,7 +104,6 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/spotify/tracks/by-ids").permitAll()
 
 						.requestMatchers(
-								"/api/v1/auth/**",
 								"/v3/api-docs/**",
 								"/swagger-ui/**",
 								"/swagger-ui.html",

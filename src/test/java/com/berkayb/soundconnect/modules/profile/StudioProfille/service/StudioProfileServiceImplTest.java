@@ -6,8 +6,13 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.mapper.StudioProfileMapper;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileServiceImpl;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileTransactionExecutor;
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.studio.room.repository.StudioRoomRepository;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
+import com.berkayb.soundconnect.modules.spotify.service.SpotifyService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +36,10 @@ class StudioProfileServiceImplTest {
 	@Mock private StudioProfileRepository repository;
 	@Mock private UserEntityFinder userEntityFinder;
 	@Mock private StudioProfileMapper mapper;
+	@Mock private MediaAssetService mediaAssetService;
+	@Mock private StudioRoomRepository studioRoomRepository;
+	@Mock private SpotifyService spotifyService;
+	@Spy private StudioProfileTransactionExecutor transactionExecutor = new StudioProfileTransactionExecutor();
 	
 	@InjectMocks
 	private StudioProfileServiceImpl service;
@@ -69,7 +78,7 @@ class StudioProfileServiceImplTest {
 		var saved = new StudioProfile();
 		saved.setId(UUID.randomUUID());
 		
-		when(repository.save(any(StudioProfile.class))).thenReturn(saved);
+		when(repository.saveAndFlush(any(StudioProfile.class))).thenReturn(saved);
 		
 		var resp = new StudioProfileResponseDto(
 				saved.getId(),
@@ -90,7 +99,9 @@ class StudioProfileServiceImplTest {
 		var result = service.createProfile(userId, req);
 		
 		assertThat(result).isEqualTo(resp);
-		verify(repository).save(any(StudioProfile.class));
+		ArgumentCaptor<StudioProfile> profileCaptor = ArgumentCaptor.forClass(StudioProfile.class);
+		verify(repository, times(2)).saveAndFlush(profileCaptor.capture());
+		assertThat(profileCaptor.getAllValues().getFirst().getName()).isEqualTo("my studio");
 	}
 	
 	@Test
@@ -141,13 +152,13 @@ class StudioProfileServiceImplTest {
 		
 		var existing = new StudioProfile();
 		existing.setId(UUID.randomUUID());
-		when(repository.findByUserId(userId)).thenReturn(Optional.of(existing));
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(existing));
 		
 		var req = sampleReq();
 		
 		var saved = new StudioProfile();
 		saved.setId(existing.getId());
-		when(repository.save(any(StudioProfile.class))).thenReturn(saved);
+		when(repository.saveAndFlush(any(StudioProfile.class))).thenReturn(saved);
 		
 		var resp = new StudioProfileResponseDto(
 				saved.getId(),
@@ -162,13 +173,107 @@ class StudioProfileServiceImplTest {
 		var result = service.updateProfile(userId, req);
 		
 		assertThat(result).isEqualTo(resp);
-		verify(repository).save(any(StudioProfile.class));
+		ArgumentCaptor<StudioProfile> profileCaptor = ArgumentCaptor.forClass(StudioProfile.class);
+		verify(repository).saveAndFlush(profileCaptor.capture());
+		assertThat(profileCaptor.getValue().getName()).isEqualTo("my studio");
+	}
+
+	@Test
+	void createProfile_requiresAStudioName() {
+		var request = new StudioProfileSaveRequestDto(
+				"  ", "Description", null, "Address", "555", null,
+				Set.of(), null, null
+		);
+
+		assertThatThrownBy(() -> service.createProfile(userId, request))
+				.isInstanceOf(SoundConnectException.class)
+				.satisfies(exception -> assertThat(((SoundConnectException) exception).getErrorType())
+						.isEqualTo(ErrorType.BAD_REQUEST));
+		verify(repository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void updateProfile_rejectsProvidedWhitespaceOnlyName() {
+		StudioProfile existing = new StudioProfile();
+		existing.setId(UUID.randomUUID());
+		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(existing));
+		var request = new StudioProfileSaveRequestDto(
+				"  ", null, null, null, null, null,
+				null, null, null
+		);
+
+		assertThatThrownBy(() -> service.updateProfile(userId, request))
+				.isInstanceOf(SoundConnectException.class)
+				.satisfies(exception -> assertThat(((SoundConnectException) exception).getErrorType())
+						.isEqualTo(ErrorType.BAD_REQUEST));
+		verify(repository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void updateProfile_rejectsTimeZoneChangesAfterTheFirstRoomExists() {
+		StudioProfile existing = new StudioProfile();
+		existing.setId(UUID.randomUUID());
+		existing.setTimeZone("Europe/Istanbul");
+		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(existing));
+		when(studioRoomRepository.existsByStudioProfileId(existing.getId())).thenReturn(true);
+		var request = new StudioProfileSaveRequestDto(
+				null, null, null, null, null, null, null, null, null,
+				"UTC", null, null, null
+		);
+
+		assertThatThrownBy(() -> service.updateProfile(userId, request))
+				.isInstanceOf(SoundConnectException.class)
+				.satisfies(exception -> assertThat(((SoundConnectException) exception).getErrorType())
+						.isEqualTo(ErrorType.STUDIO_TIME_ZONE_LOCKED));
+		verify(repository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void updateProfile_ignoresClientMetadataAndStoresAuthoritativeSpotifySnapshot() {
+		String trackId = "4uLU6hMCjMI75M1A2tKUQC";
+		StudioProfile existing = new StudioProfile();
+		existing.setId(UUID.randomUUID());
+		existing.setTimeZone("Europe/Istanbul");
+		SpotifyTrackItemDto malicious = new SpotifyTrackItemDto(
+				trackId, "Fake title", 1, false, "javascript:alert(1)",
+				"https://evil.example", "Fake album", "https://evil.example/image",
+				List.of("Fake artist")
+		);
+		SpotifyTrackItemDto authoritative = new SpotifyTrackItemDto(
+				trackId, "Never Gonna Give You Up", 213_000, false, null,
+				"https://open.spotify.com/track/" + trackId, "Whenever You Need Somebody",
+				"https://i.scdn.co/image/test", List.of("Rick Astley")
+		);
+		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(existing));
+		when(spotifyService.getTracksByIds(List.of(trackId))).thenReturn(List.of(authoritative));
+		when(repository.saveAndFlush(existing)).thenReturn(existing);
+		when(mapper.toDto(existing)).thenReturn(new StudioProfileResponseDto(
+				existing.getId(), userId, "Studio", null, null, null,
+				null, null, null, Set.of(), null, null
+		));
+		var request = new StudioProfileSaveRequestDto(
+				null, null, null, null, null, null, null, null, null,
+				null, null, List.of(trackId), List.of(malicious)
+		);
+
+		service.updateProfile(userId, request);
+
+		assertThat(existing.getSpotifyTrackIds()).containsExactly(trackId);
+		assertThat(existing.getSpotifyTracks()).containsExactly(authoritative);
+		assertThat(existing.getSpotifyTracks()).doesNotContain(malicious);
+		InOrder order = inOrder(spotifyService, transactionExecutor, repository);
+		order.verify(spotifyService).getTracksByIds(List.of(trackId));
+		order.verify(transactionExecutor).execute(any());
+		order.verify(repository).findByUserIdForUpdate(userId);
 	}
 	
 	@Test
 	void updateProfile_should_throw_when_not_found() {
 		when(userEntityFinder.getUser(userId)).thenReturn(user);
-		when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
 		
 		assertThatThrownBy(() -> service.updateProfile(userId, sampleReq()))
 				.isInstanceOf(SoundConnectException.class)

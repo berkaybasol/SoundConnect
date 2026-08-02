@@ -22,6 +22,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 
 import java.util.UUID;
 import java.util.Set;
@@ -171,6 +172,28 @@ class WebSocketSecurityInterceptorTest {
 		interceptor.preSend(outbound, channel);
 
 		verify(subscriptionAuthorizer).authorize(principal, destination);
+	}
+
+	@Test
+	void brokerDeliveryDropsAndRemovesAStaleSessionWithoutFailingTheConsumer() {
+		UUID userId = UUID.randomUUID();
+		String sessionId = "session-stale-outbound";
+		sessionRegistry.register(sessionId, userId, System.currentTimeMillis() + 60_000);
+		when(userDetailsService.loadUserById(userId))
+				.thenThrow(new AuthenticationCredentialsNotFoundException("user deleted"));
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+		accessor.setSessionId(sessionId);
+		accessor.setDestination("/topic/notifications/" + userId);
+		accessor.setLeaveMutable(true);
+		Message<byte[]> outbound = MessageBuilder.createMessage(
+				new byte[0],
+				accessor.getMessageHeaders()
+		);
+
+		Message<?> result = interceptor.preSend(outbound, channel);
+
+		assertThat(result).isNull();
+		assertThat(sessionRegistry.find(sessionId)).isEmpty();
 	}
 
 	private Message<byte[]> message(StompHeaderAccessor accessor) {

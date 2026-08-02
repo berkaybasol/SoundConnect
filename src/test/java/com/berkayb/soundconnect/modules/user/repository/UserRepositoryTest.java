@@ -2,12 +2,14 @@ package com.berkayb.soundconnect.modules.user.repository;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -21,6 +23,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -69,6 +72,9 @@ class UserRepositoryTest {
 	
 	@Autowired
 	UserRepository userRepository;
+
+	@Autowired
+	TestEntityManager entityManager;
 	
 	private User newUser(String username, String email) {
 		return User.builder()
@@ -77,33 +83,42 @@ class UserRepositoryTest {
 		           .email(email)
 		           .build();
 	}
+
+	private String randomUsername(String prefix) {
+		return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+	}
 	
 	@Test @DisplayName("findByUsername → kullanıcı bulundu")
 	void findByUsername_found() {
-		var u = userRepository.save(newUser("user_" + UUID.randomUUID(), "a@test.com"));
-		var found = userRepository.findByUsername(u.getUsername());
+		String supplied = "\u00A0UsEr_" + randomUsername("") + "\u2003";
+		var u = userRepository.saveAndFlush(newUser(supplied, "a@test.com"));
+		assertThat(u.getUsername()).isEqualTo(UsernameUtils.normalize(supplied));
+		assertThat(userRepository.findByUsername(u.getUsername().toUpperCase(java.util.Locale.ROOT)))
+				.isEmpty();
+		var found = userRepository.findByUsername(UsernameUtils.normalize(supplied));
 		assertThat(found).isPresent();
 		assertThat(found.get().getId()).isEqualTo(u.getId());
+		assertThat(userRepository.existsByUsernameAndIdNot(u.getUsername(), u.getId())).isFalse();
 	}
 	
 	@Test @DisplayName("findByUsername → kullanıcı yok")
 	void findByUsername_notFound() {
-		var found = userRepository.findByUsername("nope-" + UUID.randomUUID());
+		var found = userRepository.findByUsername(randomUsername("nope-"));
 		assertThat(found).isEmpty();
 	}
 	
 	@Test @DisplayName("existsByUsername → true/false")
 	void existsByUsername_works() {
-		var name = "exists_" + UUID.randomUUID();
+		var name = randomUsername("exists_");
 		userRepository.save(newUser(name, "x@test.com"));
-		assertThat(userRepository.existsByUsername(name)).isTrue();
-		assertThat(userRepository.existsByUsername("other_" + UUID.randomUUID())).isFalse();
+		assertThat(userRepository.existsByUsername(UsernameUtils.normalize(name.toUpperCase(java.util.Locale.ROOT)))).isTrue();
+		assertThat(userRepository.existsByUsername(randomUsername("other_"))).isFalse();
 	}
 	
 	@Test @DisplayName("existsByEmail → true/false")
 	void existsByEmail_works() {
 		var email = "e" + UUID.randomUUID() + "@test.com";
-		userRepository.save(newUser("u_" + UUID.randomUUID(), email));
+		userRepository.save(newUser(randomUsername("u_"), email));
 		assertThat(userRepository.existsByEmail(email)).isTrue();
 		assertThat(userRepository.existsByEmail("none@test.com")).isFalse();
 	}
@@ -111,14 +126,14 @@ class UserRepositoryTest {
 	@Test @DisplayName("findByEmail → bulundu/bulunamadı")
 	void findByEmail_works() {
 		var email = "f" + UUID.randomUUID() + "@test.com";
-		userRepository.save(newUser("u_" + UUID.randomUUID(), email));
+		userRepository.save(newUser(randomUsername("u_"), email));
 		assertThat(userRepository.findByEmail(email)).isPresent();
 		assertThat(userRepository.findByEmail("missing@test.com")).isEmpty();
 	}
 	
 	@Test @DisplayName("findByEmailVerificationToken → bulundu/bulunamadı")
 	void findByEmailVerificationToken_works() {
-		var u = newUser("u_" + UUID.randomUUID(), "tok@test.com");
+		var u = newUser(randomUsername("u_"), "tok@test.com");
 		u.setEmailVerificationToken("tok-" + UUID.randomUUID());
 		userRepository.save(u);
 		
@@ -128,10 +143,10 @@ class UserRepositoryTest {
 	
 	@Test @DisplayName("duplicate username → unique constraint ile patlamalı")
 	void save_shouldFail_onDuplicateUsername() {
-		var username = "dup_" + UUID.randomUUID();
+		var username = randomUsername("dup_");
 		userRepository.save(newUser(username, "a@test.com"));
 		
-		var duplicate = newUser(username, "b@test.com");
+		var duplicate = newUser(" " + username.toUpperCase(java.util.Locale.ROOT) + " ", "b@test.com");
 		assertThatThrownBy(() -> userRepository.saveAndFlush(duplicate))
 				.isInstanceOf(DataIntegrityViolationException.class);
 	}
@@ -139,7 +154,7 @@ class UserRepositoryTest {
 	@Test
 	void googleProviderSubjectIsQueryableAndUniqueWithinProvider() {
 		String subject = "google-" + UUID.randomUUID();
-		User first = newUser("g_" + UUID.randomUUID(), "google-a@test.com");
+		User first = newUser(randomUsername("g_"), "google-a@test.com");
 		first.setProvider(AuthProvider.GOOGLE);
 		first.setProviderSubject(subject);
 		userRepository.saveAndFlush(first);
@@ -147,10 +162,25 @@ class UserRepositoryTest {
 		assertThat(userRepository.findByProviderAndProviderSubject(AuthProvider.GOOGLE, subject))
 				.contains(first);
 
-		User duplicate = newUser("g_" + UUID.randomUUID(), "google-b@test.com");
+		User duplicate = newUser(randomUsername("g_"), "google-b@test.com");
 		duplicate.setProvider(AuthProvider.GOOGLE);
 		duplicate.setProviderSubject(subject);
 		assertThatThrownBy(() -> userRepository.saveAndFlush(duplicate))
 				.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void usernameChangedAtRoundTripsAsNullablePersistentUtcWallClock() {
+		LocalDateTime changedAt = LocalDateTime.of(2026, 7, 24, 12, 34, 56);
+		User user = newUser(randomUsername("cooldown_"), "cooldown@test.com");
+		user.setUsernameChangedAt(changedAt);
+
+		User saved = userRepository.saveAndFlush(user);
+		entityManager.clear();
+
+		assertThat(userRepository.findById(saved.getId()))
+				.get()
+				.extracting(User::getUsernameChangedAt)
+				.isEqualTo(changedAt);
 	}
 }

@@ -62,6 +62,12 @@ public interface MediaAssetService {
 	 * compatibility fallback.
 	 */
 	String getDisplayUrl(UUID mediaAssetId);
+
+	/**
+	 * Batch variant of {@link #getDisplayUrl(UUID)} for list endpoints. Assets
+	 * that are not public and READY (or have no displayable URL) are omitted.
+	 */
+	Map<UUID, String> getDisplayUrlMap(List<UUID> mediaAssetIds);
 	
 	MediaAsset getById(UUID mediaAssetId);
 

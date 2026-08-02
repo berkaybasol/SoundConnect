@@ -55,7 +55,7 @@ class ProducerProfileRepositoryTest {
 	
 	private User seedUser(String uname) {
 		return userRepo.save(User.builder()
-		                         .username(uname + "_" + UUID.randomUUID())
+		                         .username(uname + "_" + UUID.randomUUID().toString().substring(0, 12))
 		                         .email(uname + "_" + UUID.randomUUID() + "@t.local")
 		                         .password("secret")
 		                         .provider(AuthProvider.LOCAL)

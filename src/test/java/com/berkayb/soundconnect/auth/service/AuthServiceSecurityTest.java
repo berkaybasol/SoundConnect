@@ -1,11 +1,13 @@
 package com.berkayb.soundconnect.auth.service;
 
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
+import com.berkayb.soundconnect.auth.dto.request.UsernameAvailabilityRequestDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
+import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -39,8 +41,35 @@ class AuthServiceSecurityTest {
 	@Mock OtpService otpService;
 	@Mock OtpMailService otpMailService;
 	@Mock VenueApplicationService venueApplicationService;
+	@Mock StudioApplicationService studioApplicationService;
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
 	@InjectMocks AuthService authService;
+
+	@Test
+	void usernameAvailabilityNormalizesAndReportsExistingUsername() {
+		when(userRepository.existsByUsername("berkay")).thenReturn(true);
+
+		var response = authService.usernameAvailability(
+				new UsernameAvailabilityRequestDto(" BeRKay "));
+
+		assertThat(response.getData().username()).isEqualTo("berkay");
+		assertThat(response.getData().available()).isFalse();
+		assertThat(response.getMessage()).isEqualTo(
+				"Bu kullanıcı adı zaten kullanılıyor.");
+		verify(accountRateLimitGuard).checkUsernameAvailability("berkay");
+	}
+
+	@Test
+	void usernameAvailabilityReportsUnusedCanonicalUsername() {
+		when(userRepository.existsByUsername("new-user")).thenReturn(false);
+
+		var response = authService.usernameAvailability(
+				new UsernameAvailabilityRequestDto("NEW-USER"));
+
+		assertThat(response.getData().available()).isTrue();
+		assertThat(response.getMessage()).isEqualTo(
+				"Kullanıcı adı kullanılabilir.");
+	}
 
 	@Test
 	void pendingVenueCannotAuthenticateEvenAfterEmailVerification() {
@@ -59,7 +88,7 @@ class AuthServiceSecurityTest {
 				SoundConnectException.class
 		);
 
-		assertThat(exception.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS);
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.PENDING_VENUE_APPROVAL);
 		verifyNoInteractions(jwtTokenProvider);
 	}
 
@@ -85,15 +114,38 @@ class AuthServiceSecurityTest {
 	}
 
 	@Test
+	void pendingStudioCannotAuthenticateEvenAfterEmailVerification() {
+		User pendingStudio = User.builder()
+				.username("pending-studio")
+				.email("studio@example.com")
+				.password("encoded")
+				.emailVerified(true)
+				.status(UserStatus.PENDING_STUDIO_REQUEST)
+				.build();
+		when(userRepository.findByUsername("pending-studio")).thenReturn(Optional.of(pendingStudio));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("pending-studio", "secret")),
+				SoundConnectException.class
+		);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.PENDING_STUDIO_APPROVAL);
+		verifyNoInteractions(jwtTokenProvider);
+	}
+
+	@Test
 	void unknownUsernameStillPerformsDummyPasswordCheck() {
 		when(userRepository.findByUsername("missing")).thenReturn(Optional.empty());
 
 		SoundConnectException exception = catchThrowableOfType(
-				() -> authService.login(new LoginRequestDto("missing", "wrong")),
+				() -> authService.login(new LoginRequestDto(" MiSsInG ", "wrong")),
 				SoundConnectException.class
 		);
 
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_CREDENTIALS);
+		verify(accountRateLimitGuard).checkLogin("missing");
+		verify(userRepository).findByUsername("missing");
 		verify(passwordEncoder).matches(
 				"wrong",
 				"$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"

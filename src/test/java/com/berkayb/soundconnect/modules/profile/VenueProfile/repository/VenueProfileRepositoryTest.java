@@ -85,7 +85,7 @@ class VenueProfileRepositoryTest {
 		                                                       .build());
 		
 		owner = userRepository.save(User.builder()
-		                                .username("owner_" + UUID.randomUUID())
+		                                .username("owner_" + UUID.randomUUID().toString().substring(0, 12))
 		                                .email("owner_" + UUID.randomUUID() + "@t.local") // email zorunlu
 		                                .password("pass")
 		                                .provider(AuthProvider.LOCAL)

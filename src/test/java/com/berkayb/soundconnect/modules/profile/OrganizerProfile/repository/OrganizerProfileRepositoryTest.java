@@ -56,7 +56,7 @@ class OrganizerProfileRepositoryTest {
 	@Test
 	void findByUserId_should_return_profile_when_exists() {
 		User user = userRepo.save(User.builder()
-		                              .username("bob_" + UUID.randomUUID())
+		                              .username("bob_" + UUID.randomUUID().toString().substring(0, 12))
 		                              .email("bob_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
 		                              .provider(AuthProvider.LOCAL)
@@ -84,7 +84,7 @@ class OrganizerProfileRepositoryTest {
 	@Test
 	void findOrganizerProfileByName_should_work() {
 		User user = userRepo.save(User.builder()
-		                              .username("kate_" + UUID.randomUUID())
+		                              .username("kate_" + UUID.randomUUID().toString().substring(0, 12))
 		                              .email("kate_" + UUID.randomUUID() + "@t.local")
 		                              .password("pw")
 		                              .provider(AuthProvider.LOCAL)

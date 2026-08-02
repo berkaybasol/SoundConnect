@@ -10,6 +10,8 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface PasswordMatch {
 	String message() default "Şifreler uyuşmuyor.";
+	String passwordField() default "password";
+	String confirmationField() default "rePassword";
 	Class<?>[] groups() default {};
 	Class<? extends Payload>[] payload() default {};
 }

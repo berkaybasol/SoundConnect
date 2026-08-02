@@ -19,6 +19,7 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -44,10 +45,10 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	
 	@Override
 	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
-		String q = query == null ? "" : query.trim(); //eklendi
+		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query); //eklendi
 		if (q.isEmpty()) return List.of(); //eklendi
 		
-		return musicianProfileRepository.searchByStageNameOrUsername(q) //eklendi
+		return musicianProfileRepository.searchByStageNameOrUsername(q, UsernameUtils.normalize(q)) //eklendi
 		                                .stream() //eklendi
 		                                .limit(10) //eklendi
 		                                .map(profile -> new MusicianProfileSearchItemDto( //eklendi

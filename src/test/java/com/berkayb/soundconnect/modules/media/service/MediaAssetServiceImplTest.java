@@ -375,6 +375,14 @@ class MediaAssetServiceImplTest {
 				.isEqualTo("https://cdn.test/legacy/source.jpg");
 		assertThat(mediaService.getDisplayUrl(audio.getId()))
 				.isEqualTo("https://cdn.test/audio/source.mp3");
+		assertThat(mediaService.getDisplayUrlMap(List.of(
+				imageWithThumbnail.getId(), legacyImage.getId(), audio.getId(),
+				imageWithThumbnail.getId()
+		))).containsOnly(
+				entry(imageWithThumbnail.getId(), "https://cdn.test/image/thumbnail.jpg"),
+				entry(legacyImage.getId(), "https://cdn.test/legacy/source.jpg"),
+				entry(audio.getId(), "https://cdn.test/audio/source.mp3")
+		);
 	}
 	
 	// --------------------- delete ---------------------
@@ -607,7 +615,7 @@ class MediaAssetServiceImplTest {
 	}
 	
 	private User saveEngagementUser() {
-		String suffix = UUID.randomUUID().toString();
+		String suffix = UUID.randomUUID().toString().substring(0, 12);
 		return userRepository.save(User.builder()
 				.username("engagement-" + suffix)
 				.password("test-password-hash")

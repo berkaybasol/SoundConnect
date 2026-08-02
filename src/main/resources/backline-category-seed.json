@@ -1,0 +1,151 @@
+[
+  {
+    "code": "drums-cymbals",
+    "name": "Davul, Bateri & Zil",
+    "iconKey": "drum-kit",
+    "children": [
+      { "code": "acoustic-drum-sets", "name": "Davul / Bateri - Akustik Setler" },
+      { "code": "electronic-drum-sets", "name": "Davul / Bateri - Elektronik Setler" },
+      { "code": "drum-shells-individual-drums", "name": "Davul Gövdeleri & Tekil Davullar" },
+      { "code": "snare-drums", "name": "Trampetler (Snare)" },
+      { "code": "cymbals", "name": "Ziller" },
+      { "code": "drum-pedals", "name": "Davul Aksesuarları - Pedallar" },
+      { "code": "electronic-drum-pads-modules", "name": "Davul Aksesuarları - Elektronik Padler & Modüller" },
+      { "code": "drum-hardware-stands", "name": "Davul Aksesuarları - Hardware & Standlar" },
+      { "code": "drum-spares-consumables", "name": "Davul Yedek Parçaları & Teknik Aksesuarları" }
+    ]
+  },
+  {
+    "code": "guitar-amplifiers",
+    "name": "Gitar Amfileri",
+    "iconKey": "guitar-amps",
+    "children": [
+      { "code": "electric-guitar-combo-amps", "name": "Elektrik Gitar Amfileri - Combo" },
+      { "code": "electric-guitar-amp-heads", "name": "Elektrik Gitar Amfileri - Kafa" },
+      { "code": "electric-guitar-cabinets", "name": "Kabinler - Elektrik Gitar" },
+      { "code": "acoustic-guitar-amps", "name": "Akustik Gitar Amfileri" }
+    ]
+  },
+  {
+    "code": "bass-amplifiers",
+    "name": "Bas Gitar Amfileri",
+    "iconKey": "bass-amps",
+    "children": [
+      { "code": "bass-combo-amps", "name": "Bas Combo Amfileri" },
+      { "code": "bass-amp-heads", "name": "Bas Amfi Kafaları" },
+      { "code": "bass-cabinets", "name": "Bas Kabinleri" },
+      { "code": "bass-preamp-di-effects", "name": "Bas Preamp, DI & Efektler" }
+    ]
+  },
+  {
+    "code": "piano-keyboards-synths",
+    "name": "Piyano, Klavye & Synth",
+    "iconKey": "keyboards",
+    "children": [
+      { "code": "acoustic-pianos", "name": "Akustik Piyanolar" },
+      { "code": "digital-stage-pianos", "name": "Dijital & Sahne Piyanoları" },
+      { "code": "keyboards-workstations", "name": "Keyboard & Workstationlar" },
+      { "code": "synthesizers", "name": "Synthesizerlar" },
+      { "code": "organs", "name": "Orglar" },
+      { "code": "electromechanical-pianos", "name": "Elektromekanik Piyanolar (Rhodes vb.)" },
+      { "code": "midi-keyboards-controllers", "name": "MIDI Klavyeler & Controllerlar" },
+      { "code": "keyboard-amplifiers", "name": "Klavye Amfileri" },
+      { "code": "keyboard-stands-pedals-benches", "name": "Klavye Standları, Pedallar & Tabureler" }
+    ]
+  },
+  {
+    "code": "percussion",
+    "name": "Perküsyon",
+    "iconKey": "percussion",
+    "children": [
+      { "code": "congas-tumbas-quintos", "name": "Conga, Tumba & Quinto" },
+      { "code": "bongos", "name": "Bongo" },
+      { "code": "timbales", "name": "Timbales" },
+      { "code": "djembes", "name": "Djembe" },
+      { "code": "cajons", "name": "Cajon" },
+      { "code": "traditional-turkish-percussion", "name": "Darbuka, Bendir, Tef & Asma Davul" },
+      { "code": "world-percussion", "name": "Udu, Shekere & Dünya Perküsyonları" },
+      { "code": "small-hand-percussion", "name": "Shaker, Marakas, Cabasa & Küçük Perküsyonlar" },
+      { "code": "effect-percussion", "name": "Jam Block, Cowbell, Chimes & Efekt Perküsyonları" },
+      { "code": "mallet-percussion", "name": "Mallet Perküsyonları - Marimba, Vibrafon & Ksilofon" },
+      { "code": "orchestral-percussion", "name": "Orkestra Perküsyonları - Timpani & Konser Davulları" },
+      { "code": "percussion-stands-accessories", "name": "Perküsyon Masaları, Standları & Aksesuarları" }
+    ]
+  },
+  {
+    "code": "guitars-basses",
+    "name": "Gitarlar & Baslar",
+    "iconKey": "guitars-basses",
+    "children": [
+      { "code": "electric-guitars", "name": "Elektro Gitarlar" },
+      { "code": "acoustic-classical-guitars", "name": "Akustik & Klasik Gitarlar" },
+      { "code": "electric-bass-guitars", "name": "Elektro Bas Gitarlar" },
+      { "code": "acoustic-bass-guitars", "name": "Akustik Bas Gitarlar" },
+      { "code": "double-basses", "name": "Kontrbaslar" },
+      { "code": "guitar-bass-accessories", "name": "Gitar & Bas Aksesuarları" },
+      { "code": "guitar-modelers-multi-effects", "name": "Modelleyiciler & Multi-Efektler" },
+      { "code": "guitar-pedals-footswitches", "name": "Gitar Pedalları & Footswitchler" }
+    ]
+  },
+  {
+    "code": "orchestral-instruments",
+    "name": "Yaylılar & Orkestra Enstrümanları",
+    "iconKey": "orchestral-strings",
+    "children": [
+      { "code": "string-instruments", "name": "Yaylı Enstrümanlar" },
+      { "code": "woodwind-instruments", "name": "Tahta Nefesli Enstrümanlar" },
+      { "code": "brass-instruments", "name": "Bakır Üflemeli Enstrümanlar" },
+      { "code": "folk-world-instruments", "name": "Halk & Dünya Enstrümanları" },
+      { "code": "orchestra-accessories", "name": "Orkestra Aksesuarları" }
+    ]
+  },
+  {
+    "code": "dj-equipment",
+    "name": "DJ Ekipmanları",
+    "iconKey": "dj",
+    "children": [
+      { "code": "cdj-media-players", "name": "CDJ & Medya Oynatıcılar" },
+      { "code": "turntables", "name": "Turntablelar" },
+      { "code": "dj-mixers", "name": "DJ Mikserleri" },
+      { "code": "dj-controllers", "name": "DJ Controllerlar" },
+      { "code": "samplers-drum-machines", "name": "Sampler & Drum Machine" },
+      { "code": "dj-monitors-accessories", "name": "DJ Monitörleri & Aksesuarları" }
+    ]
+  },
+  {
+    "code": "pro-audio-studio",
+    "name": "Pro Audio & Stüdyo",
+    "iconKey": "pro-audio-studio",
+    "children": [
+      { "code": "dynamic-microphones", "name": "Dinamik Mikrofonlar" },
+      { "code": "condenser-ribbon-microphones", "name": "Kondansatör & Ribbon Mikrofonlar" },
+      { "code": "wireless-microphone-systems", "name": "Kablosuz Mikrofon Sistemleri" },
+      { "code": "instrument-wireless-systems", "name": "Enstrüman Kablosuz Sistemleri" },
+      { "code": "analog-digital-mixers", "name": "Analog & Dijital Mikserler" },
+      { "code": "pa-speakers-subwoofers", "name": "PA Hoparlörleri & Subwooferlar" },
+      { "code": "stage-monitors", "name": "Sahne Monitörleri" },
+      { "code": "in-ear-monitor-systems", "name": "In-Ear Monitor Sistemleri" },
+      { "code": "di-boxes-reamp-boxes", "name": "DI Box & Reamp Kutuları" },
+      { "code": "audio-interfaces-recorders", "name": "Ses Kartları & Kayıt Cihazları" },
+      { "code": "headphones-cue-distribution", "name": "Kulaklıklar & Kulaklık Dağıtım Sistemleri" },
+      { "code": "studio-monitors", "name": "Stüdyo Monitörleri" },
+      { "code": "outboard-preamps-processors", "name": "Outboard, Preamp & Sinyal İşlemciler" },
+      { "code": "power-amplifiers-system-processors", "name": "Güç Amplifikatörleri & PA Sistem İşlemcileri" }
+    ]
+  },
+  {
+    "code": "stage-backline-accessories",
+    "name": "Sahne & Backline Aksesuarları",
+    "iconKey": "backline-accessories",
+    "children": [
+      { "code": "instrument-microphone-speaker-stands", "name": "Enstrüman, Mikrofon & Hoparlör Standları" },
+      { "code": "music-stands", "name": "Nota Sehpaları" },
+      { "code": "drum-thrones-piano-benches", "name": "Davul Tabureleri & Piyano Bankları" },
+      { "code": "cables-multicores-adapters", "name": "Kablolar, Multicorelar & Adaptörler" },
+      { "code": "power-distribution-regulators-transformers", "name": "Güç Dağıtımı, Regülatörler & Trafolar" },
+      { "code": "racks-cases-transport", "name": "Rack, Case & Taşıma Çözümleri" },
+      { "code": "risers-stage-platforms", "name": "Riser & Sahne Platformları" },
+      { "code": "consumables-spare-parts", "name": "Yedek Parçalar & Teknik Aksesuarlar" }
+    ]
+  }
+]

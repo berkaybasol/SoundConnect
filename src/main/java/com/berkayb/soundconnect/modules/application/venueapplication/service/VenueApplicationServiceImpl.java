@@ -26,6 +26,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -156,6 +157,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		// dto -> entity mapping
 		VenueApplication application = venueApplicationMapper.toEntity(dto);
 		application.setApplicant(applicant);
+		application.setVenueName(normalizeBusinessName(dto.venueName(), "venueName"));
 		application.setPhone(dto.phone());
 		application.setCity(city);
 		application.setDistrict(district);
@@ -214,5 +216,15 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		} catch (IllegalArgumentException exception) {
 			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, fieldName + " must be a valid UUID");
 		}
+	}
+
+	private String normalizeBusinessName(String value, String fieldName) {
+		String normalized = UsernameUtils.normalize(value);
+		if (normalized == null || normalized.isBlank()) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					fieldName + " is required");
+		}
+		return normalized;
 	}
 }

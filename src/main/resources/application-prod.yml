@@ -58,6 +58,10 @@ app:
   location:
     seed:
       enabled: false
+  backline:
+    catalog:
+      seed:
+        enabled: ${SOUNDCONNECT_BACKLINE_CATALOG_SEED_ENABLED:false}
 
 mailersend:
   api-key: ${MAILERSEND_API_KEY}

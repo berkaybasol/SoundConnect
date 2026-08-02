@@ -1,10 +1,9 @@
 package com.berkayb.soundconnect.modules.tablegroup.chat.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.request.TableGroupMessageRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatService;
-import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,9 +12,10 @@ import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 
-import java.security.Principal;
 import java.util.UUID;
 
 /**
@@ -38,18 +38,16 @@ import java.util.UUID;
 public class TableGroupChatWebSocketController {
 	
 	private final TableGroupChatService chatService;
-	private final UserRepository userRepository;
 	private final SimpMessagingTemplate messagingTemplate;
 	
 	/**
-	 * Principal.username -> User -> UUID
-	 * (Aynısını REST controller'da da yapıyoruz.)
+	 * The WebSocket authentication principal carries the immutable user UUID.
 	 */
-	private UUID getCurrentUserId(Principal principal) {
-		String username = principal.getName();
-		return userRepository.findByUsername(username)
-		                     .map(User::getId)
-		                     .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + username));
+	private UUID getCurrentUserId(Authentication authentication) {
+		if (authentication != null && authentication.getPrincipal() instanceof UserDetailsImpl principal) {
+			return principal.getId();
+		}
+		throw new AuthenticationCredentialsNotFoundException("Authenticated WebSocket user required");
 	}
 	
 	/**
@@ -73,7 +71,7 @@ public class TableGroupChatWebSocketController {
 	 */
 	@MessageMapping("/table-group/{tableGroupId}/chat")
 	public void handleMessage(
-			Principal principal,
+			Authentication principal,
 			@Payload @Valid TableGroupMessageRequestDto requestDto,
 			@DestinationVariable("tableGroupId") UUID tableGroupId
 	) {

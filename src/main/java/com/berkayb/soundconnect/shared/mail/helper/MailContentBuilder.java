@@ -29,6 +29,11 @@ public class MailContentBuilder {
 		// "mail/verification.html" -> resources/templates/mail/verification.html
 		return templateEngine.process("mail/verification.html", context);
 	}
-	
-	//FIXME baska template'ler icin burada ek method acilcakk
+
+	public String buildPasswordResetMail(String code, int validityMinutes) {
+		Context context = new Context();
+		context.setVariable("code", code);
+		context.setVariable("validityMinutes", validityMinutes);
+		return templateEngine.process("mail/password-reset.html", context);
+	}
 }

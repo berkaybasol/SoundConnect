@@ -130,6 +130,8 @@ Bu komut yalnızca Docker'daki yerel geliştirme verilerini kalıcı olarak sile
 
 Ardından bütün stack'i yeniden oluşturup başlatır. `.env.local`, kaynak kod, S3 dosyaları ve eski Windows PostgreSQL etkilenmez.
 
+Reset akışı, Hibernate temiz temel şemayı oluşturduktan sonra Studio şemasını da otomatik olarak senkronize eder. Ayrı bir SQL veya migration komutu çalıştırman gerekmez. IntelliJ için kullanılan `dev.cmd idea` komutu da mevcut yerel şemayı idempotent biçimde hazırlar.
+
 ## Durum ve loglar
 
 Servislerin durumunu göster:

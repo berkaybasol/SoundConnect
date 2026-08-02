@@ -69,6 +69,18 @@ public class OtpService {
 			Long.class
 	);
 
+	private static final DefaultRedisScript<Long> CANCEL_OTP_ISSUE_ATOMIC = new DefaultRedisScript<>(
+			"local value = redis.call('GET', KEYS[1]); "
+					+ "if not value then return 0; end; "
+					+ "local separator = string.find(value, ':', 1, true); "
+					+ "if not separator then return 0; end; "
+					+ "local cachedCode = string.sub(value, 1, separator - 1); "
+					+ "if cachedCode ~= ARGV[1] then return 0; end; "
+					+ "redis.call('DEL', KEYS[1], KEYS[2]); "
+					+ "return 1;",
+			Long.class
+	);
+
 	private final RedisTemplate<String, String> redisTemplate;
 
 	@Value("${otp.ttl.minutes:${mailersend.otp-validity-minutes:3}}")
@@ -96,7 +108,7 @@ public class OtpService {
 	 * the code while the first email is still in flight.
 	 */
 	public OtpIssueClaim acquireInitialOtp(String email) {
-		return acquireOtpIssue(email, "initial", false);
+		return acquireOtpIssue(email, "initial", OtpPurpose.REGISTRATION, false);
 	}
 
 	/**
@@ -105,8 +117,20 @@ public class OtpService {
 	 * accepted by at most one concurrent request.
 	 */
 	public boolean verifyOtp(String email, String code) {
+		return verifyOtp(email, code, OtpPurpose.REGISTRATION);
+	}
+
+	/**
+	 * Atomically consumes a password-reset OTP. Password-reset codes use their
+	 * own namespace and can never be accepted by the registration flow.
+	 */
+	public boolean verifyPasswordResetOtp(String email, String code) {
+		return verifyOtp(email, code, OtpPurpose.PASSWORD_RESET);
+	}
+
+	private boolean verifyOtp(String email, String code, OtpPurpose purpose) {
 		validateConfiguration();
-		String otpKey = buildOtpKey(normalize(email));
+		String otpKey = buildOtpKey(normalize(email), purpose, false);
 		Long result = redisTemplate.execute(
 				VERIFY_OTP_ATOMIC,
 				List.of(otpKey),
@@ -118,19 +142,22 @@ public class OtpService {
 		}
 
 		if (result == VERIFY_SUCCESS) {
-			log.info("OTP verified successfully for {}", EmailUtils.maskForLog(email));
+			log.info("{} OTP verified successfully for {}", purpose.logLabel, EmailUtils.maskForLog(email));
 			return true;
 		}
 		if (result == 0L) {
-			log.warn("OTP verify failed: no active code for {}", EmailUtils.maskForLog(email));
+			log.warn("{} OTP verify failed: no active code for {}",
+					purpose.logLabel, EmailUtils.maskForLog(email));
 			return false;
 		}
 
 		long attempts = Math.abs(result);
 		if (attempts >= maxAttempt) {
-			log.warn("OTP blocked for {} after reaching the attempt limit", EmailUtils.maskForLog(email));
+			log.warn("{} OTP blocked for {} after reaching the attempt limit",
+					purpose.logLabel, EmailUtils.maskForLog(email));
 		} else {
-			log.warn("Wrong OTP for {} (attempt {}/{})", EmailUtils.maskForLog(email), attempts, maxAttempt);
+			log.warn("Wrong {} OTP for {} (attempt {}/{})",
+					purpose.logLabel, EmailUtils.maskForLog(email), attempts, maxAttempt);
 		}
 		return false;
 	}
@@ -140,7 +167,7 @@ public class OtpService {
 	 * Exactly one concurrent caller receives the code and is allowed to queue mail.
 	 */
 	public OtpIssueClaim acquireResendOtp(String email) {
-		return acquireOtpIssue(email, "resend", false);
+		return acquireOtpIssue(email, "resend", OtpPurpose.REGISTRATION, false);
 	}
 
 	/**
@@ -150,10 +177,45 @@ public class OtpService {
 	 * cooldown.
 	 */
 	public OtpIssueClaim acquireDecoyResendOtp(String email) {
-		return acquireOtpIssue(email, "resend-decoy", true);
+		return acquireOtpIssue(email, "resend-decoy", OtpPurpose.REGISTRATION, true);
 	}
 
-	private OtpIssueClaim acquireOtpIssue(String email, String issueKind, boolean decoy) {
+	/**
+	 * Issues a password-reset code using the same atomic cooldown algorithm as
+	 * registration, but in a purpose-isolated namespace.
+	 */
+	public OtpIssueClaim acquirePasswordResetOtp(String email) {
+		return acquireOtpIssue(email, "password-reset", OtpPurpose.PASSWORD_RESET, false);
+	}
+
+	/**
+	 * Removes an issue claim only when the stored code still belongs to that
+	 * caller. This is used when bounded executor submission fails synchronously;
+	 * an already queued asynchronous delivery is never cancelled.
+	 */
+	public boolean cancelPasswordResetOtpIssue(String email, String code) {
+		validateConfiguration();
+		String normalizedEmail = normalize(email);
+		Long result = redisTemplate.execute(
+				CANCEL_OTP_ISSUE_ATOMIC,
+				List.of(
+						buildOtpKey(normalizedEmail, OtpPurpose.PASSWORD_RESET, false),
+						buildResendGuardKey(normalizedEmail, OtpPurpose.PASSWORD_RESET, false)
+				),
+				Objects.requireNonNull(code, "code must not be null")
+		);
+		if (result == null) {
+			throw new IllegalStateException("Redis returned no OTP cancellation result");
+		}
+		return result == VERIFY_SUCCESS;
+	}
+
+	private OtpIssueClaim acquireOtpIssue(
+			String email,
+			String issueKind,
+			OtpPurpose purpose,
+			boolean decoy
+	) {
 		validateConfiguration();
 		String normalizedEmail = normalize(email);
 		String otpCode = generateRandomOtpCode();
@@ -163,8 +225,8 @@ public class OtpService {
 		Long result = redisTemplate.execute(
 				ACQUIRE_OTP_ISSUE_ATOMIC,
 				List.of(
-						decoy ? buildDecoyOtpKey(normalizedEmail) : buildOtpKey(normalizedEmail),
-						decoy ? buildDecoyResendGuardKey(normalizedEmail) : buildResendGuardKey(normalizedEmail)
+						buildOtpKey(normalizedEmail, purpose, decoy),
+						buildResendGuardKey(normalizedEmail, purpose, decoy)
 				),
 				otpCode,
 				Long.toString(cooldownMillis),
@@ -183,7 +245,8 @@ public class OtpService {
 	}
 
 	public int getOtpRetryCount(String email) {
-		String value = redisTemplate.opsForValue().get(buildOtpKey(normalize(email)));
+		String value = redisTemplate.opsForValue()
+				.get(buildOtpKey(normalize(email), OtpPurpose.REGISTRATION, false));
 		if (value == null) {
 			return 0;
 		}
@@ -199,22 +262,30 @@ public class OtpService {
 	}
 
 	public long getOtpTimeLeftSeconds(String email) {
-		Long expire = redisTemplate.getExpire(buildOtpKey(normalize(email)), TimeUnit.SECONDS);
+		Long expire = redisTemplate.getExpire(
+				buildOtpKey(normalize(email), OtpPurpose.REGISTRATION, false),
+				TimeUnit.SECONDS);
 		return expire == null ? 0L : Math.max(expire, 0L);
 	}
 
 	public long getResendCooldownLeftSeconds(String email) {
-		Long expire = redisTemplate.getExpire(buildResendGuardKey(normalize(email)), TimeUnit.SECONDS);
+		Long expire = redisTemplate.getExpire(
+				buildResendGuardKey(normalize(email), OtpPurpose.REGISTRATION, false),
+				TimeUnit.SECONDS);
 		return expire == null ? 0L : Math.max(expire, 0L);
 	}
 
 	public long getDecoyOtpTimeLeftSeconds(String email) {
-		Long expire = redisTemplate.getExpire(buildDecoyOtpKey(normalize(email)), TimeUnit.SECONDS);
+		Long expire = redisTemplate.getExpire(
+				buildOtpKey(normalize(email), OtpPurpose.REGISTRATION, true),
+				TimeUnit.SECONDS);
 		return expire == null ? 0L : Math.max(expire, 0L);
 	}
 
 	public long getDecoyResendCooldownLeftSeconds(String email) {
-		Long expire = redisTemplate.getExpire(buildDecoyResendGuardKey(normalize(email)), TimeUnit.SECONDS);
+		Long expire = redisTemplate.getExpire(
+				buildResendGuardKey(normalize(email), OtpPurpose.REGISTRATION, true),
+				TimeUnit.SECONDS);
 		return expire == null ? 0L : Math.max(expire, 0L);
 	}
 
@@ -231,21 +302,17 @@ public class OtpService {
 		return EmailUtils.normalize(Objects.requireNonNull(email, "email must not be null"));
 	}
 
-	private String buildOtpKey(String email) {
-		return "soundconnect:otp:{" + hashIdentity(email) + "}:code";
+	private String buildOtpKey(String email, OtpPurpose purpose, boolean decoy) {
+		return keyPrefix(email, purpose) + (decoy ? "decoy-code" : "code");
 	}
 
-	private String buildResendGuardKey(String email) {
+	private String buildResendGuardKey(String email, OtpPurpose purpose, boolean decoy) {
 		// The matching hash tag keeps both Lua keys in one Redis Cluster slot.
-		return "soundconnect:otp:{" + hashIdentity(email) + "}:resend-guard";
+		return keyPrefix(email, purpose) + (decoy ? "decoy-resend-guard" : "resend-guard");
 	}
 
-	private String buildDecoyOtpKey(String email) {
-		return "soundconnect:otp:{" + hashIdentity(email) + "}:decoy-code";
-	}
-
-	private String buildDecoyResendGuardKey(String email) {
-		return "soundconnect:otp:{" + hashIdentity(email) + "}:decoy-resend-guard";
+	private String keyPrefix(String email, OtpPurpose purpose) {
+		return "soundconnect:otp:{" + hashIdentity(email) + "}:" + purpose.keyPrefix;
 	}
 
 	private String hashIdentity(String normalizedEmail) {
@@ -275,6 +342,19 @@ public class OtpService {
 
 	private static long toCeilingSeconds(long milliseconds) {
 		return Math.max(1L, Math.addExact(milliseconds, 999L) / 1_000L);
+	}
+
+	private enum OtpPurpose {
+		REGISTRATION("", "Registration"),
+		PASSWORD_RESET("password-reset:", "Password reset");
+
+		private final String keyPrefix;
+		private final String logLabel;
+
+		OtpPurpose(String keyPrefix, String logLabel) {
+			this.keyPrefix = keyPrefix;
+			this.logLabel = logLabel;
+		}
 	}
 
 	/**

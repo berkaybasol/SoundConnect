@@ -121,7 +121,7 @@ class UserVenueApplicationControllerTest {
 		// --- seed user ---
 		applicant = userRepository.save(
 				User.builder()
-				    .username("user_" + UUID.randomUUID())
+				    .username("user_" + UUID.randomUUID().toString().substring(0, 12))
 				    .email("user_"+UUID.randomUUID()+"@test.local") // -> eklendi
 				    .password("secret")
 				    .provider(com.berkayb.soundconnect.modules.user.enums.AuthProvider.LOCAL)
@@ -159,7 +159,7 @@ class UserVenueApplicationControllerTest {
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.code").value(201))   // body.code 201
 		       .andExpect(jsonPath("$.data.id").isNotEmpty())
-		       .andExpect(jsonPath("$.data.venueName").value("Cool Venue"))
+		       .andExpect(jsonPath("$.data.venueName").value("cool venue"))
 		       .andExpect(jsonPath("$.data.venueAddress").value("Some Address 123"))
 		       .andExpect(jsonPath("$.data.status").value("PENDING"))
 		       .andExpect(jsonPath("$.data.applicantUsername").value(applicant.getUsername()));

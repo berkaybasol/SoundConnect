@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,10 +36,10 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	
 	@Override
 	public List<ListenerProfileSearchItemDto> searchProfiles(String query) {
-		String q = query == null ? "" : query.trim();
+		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query);
 		if (q.isEmpty()) return List.of();
 		
-		return listenerProfileRepository.searchByUsernameOrBio(q)
+		return listenerProfileRepository.searchByUsernameOrBio(q, UsernameUtils.normalize(q))
 		                                .stream()
 		                                .limit(10)
 		                                .map(profile -> new ListenerProfileSearchItemDto(

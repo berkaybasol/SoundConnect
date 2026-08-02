@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.user.service;
 
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
+import com.berkayb.soundconnect.modules.user.dto.request.UsernameChangeRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.response.UserListDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 
@@ -14,5 +15,6 @@ public interface UserService {
 	UserListDto getUserById(UUID id);
 	void deleteUserById(UUID actingUserId, UUID id);
 	Boolean updateUser(UUID actingUserId, UUID id, UserUpdateRequestDto dto);
+	String changeUsername(UUID userId, UsernameChangeRequestDto dto);
 	
 }

@@ -1,11 +1,10 @@
 package com.berkayb.soundconnect.modules.tablegroup.controller;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupJoinRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
-import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,9 +15,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.UUID;
 
 @RestController
@@ -28,24 +27,19 @@ import java.util.UUID;
 public class TableGroupController {
 	
 	private final TableGroupService tableGroupService;
-	private final UserRepository userRepository;
 	
 	/**
-	 * Principal.username -> User -> UUID
-	 * Bu helper controller içinde tekrar tekrar kullanılıyor.
+	 * Authenticated principal already carries the immutable user UUID.
 	 */
-	private UUID getCurrentUserId(Principal principal) {
-		String username = principal.getName();
-		return userRepository.findByUsername(username)
-		                     .map(User::getId)
-		                     .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + username));
+	private UUID getCurrentUserId(UserDetailsImpl principal) {
+		return principal.getId();
 	}
 	
 	@Operation(summary = "Yeni masa olustur")
 	@PostMapping
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<TableGroupResponseDto>> createTableGroup(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@Valid @RequestBody TableGroupCreateRequestDto requestDto
 	) {
 		UUID ownerId = getCurrentUserId(principal);
@@ -108,7 +102,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.JOIN)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> joinTableGroup(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
 			@Valid @RequestBody(required = false) TableGroupJoinRequestDto dto
 	) {
@@ -129,7 +123,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.APPROVE)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> approveJoinRequest(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
 			@PathVariable UUID participantId
 	) {
@@ -150,7 +144,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.REJECT)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> rejectJoinRequest(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
 			@PathVariable UUID participantId
 	) {
@@ -171,7 +165,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.LEAVE)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> leaveTableGroup(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId
 	) {
 		UUID userId = getCurrentUserId(principal);
@@ -191,7 +185,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.KICK)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> removeParticipantFromTableGroup(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
 			@PathVariable UUID participantId
 	) {
@@ -212,7 +206,7 @@ public class TableGroupController {
 	@PostMapping(EndPoints.TableGroup.CANCEL)
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Void>> cancelTableGroup(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId
 	) {
 		UUID ownerId = getCurrentUserId(principal);

@@ -46,6 +46,12 @@ public interface MediaAssetReferenceRepository extends Repository<MediaAsset, UU
 	@Query("select count(b) from Band b where b.profilePictureMediaId = :assetId")
 	long countBandProfilePictureReferences(@Param("assetId") UUID assetId);
 
+	@Query("select count(p) from StudioRoomPhoto p where p.mediaAssetId = :assetId")
+	long countStudioRoomPhotoReferences(@Param("assetId") UUID assetId);
+
+	@Query("select count(p) from StudioEquipmentPhoto p where p.mediaAssetId = :assetId")
+	long countStudioEquipmentPhotoReferences(@Param("assetId") UUID assetId);
+
 	@Query("""
 			select count(e) from Event e
 			where lower(trim(e.posterImage)) = :assetIdText

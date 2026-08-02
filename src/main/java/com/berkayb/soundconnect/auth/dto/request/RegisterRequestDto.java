@@ -3,13 +3,18 @@ package com.berkayb.soundconnect.auth.dto.request;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.auth.validation.PasswordMatch;
 import com.berkayb.soundconnect.shared.validation.BcryptPasswordLength;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import jakarta.validation.constraints.*;
 
 @PasswordMatch
 public record RegisterRequestDto(
 		
 		@NotBlank(message = "kullanıcı adı boş olamaz")
-		@Size(min = 3, max = 30, message = "Kullanıcı adı 3 ile 30 karakter arasında olmalıdır.")
+		@Size(
+				min = UsernameUtils.MIN_LENGTH,
+				max = UsernameUtils.MAX_LENGTH,
+				message = "Kullanıcı adı 3 ile 30 karakter arasında olmalıdır."
+		)
 		String username,
 		
 		@Email(message = "Geçerli bir e-posta girin.")
@@ -35,5 +40,23 @@ public record RegisterRequestDto(
 		String phone,
 		String cityId,
 		String districtId,
-		String neighborhoodId
-) {}
+		String neighborhoodId,
+
+		// role studio secilirse
+		String studioName,
+		String studioAddress,
+		String studioPhone
+) {
+	public RegisterRequestDto {
+		username = UsernameUtils.normalize(username);
+	}
+
+	public RegisterRequestDto(
+			String username, String email, String password, String rePassword, RoleEnum role,
+			String venueName, String venueAddress, String phone,
+			String cityId, String districtId, String neighborhoodId
+	) {
+		this(username, email, password, rePassword, role, venueName, venueAddress, phone,
+				cityId, districtId, neighborhoodId, null, null, null);
+	}
+}

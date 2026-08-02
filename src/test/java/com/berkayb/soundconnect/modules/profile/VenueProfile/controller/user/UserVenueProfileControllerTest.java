@@ -134,7 +134,7 @@ class UserVenueProfileControllerTest {
 		
 		// User (email zorunlu)
 		ownerUser = userRepository.save(User.builder()
-		                                    .username("user_" + UUID.randomUUID())
+		                                    .username("user_" + UUID.randomUUID().toString().substring(0, 12))
 		                                    .email("user_" + UUID.randomUUID() + "@t.local")
 		                                    .password("pw")
 		                                    .provider(AuthProvider.LOCAL)
@@ -212,7 +212,7 @@ class UserVenueProfileControllerTest {
 	void getMyVenueProfiles_userHasNoVenue_shouldReturnEmptyCollection() throws Exception {
 		// login’i venue’suz kullanıcıyla değiştir
 		User noVenueUser = userRepository.save(User.builder()
-		                                           .username("empty_" + UUID.randomUUID())
+		                                           .username("empty_" + UUID.randomUUID().toString().substring(0, 12))
 		                                           .email("empty_" + UUID.randomUUID() + "@t.local")
 		                                           .password("pw")
 		                                           .provider(AuthProvider.LOCAL)

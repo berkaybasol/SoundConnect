@@ -89,23 +89,8 @@ public class JwtTokenProvider {
 				.setClaims(claims)
 				.setSubject(userDetails.getUser().getId().toString()) // kullaniciyi subject yani token sahibi olarak token icine koyar
 		/*
-		 * Subject = JWT token içindeki "kim" kısmıdır (token kime ait?).
-		 * Örneğin, JWT’nin base64 çözüldüğünde yapısı şu şekildedir:
-		 *
-		 * Header:
-		 * {
-		 *   "alg": "HS512",
-		 *   "typ": "JWT"
-		 * }
-		 *
-		 * Payload:
-		 * {
-		 *   "sub": "berkay",        // Burada sub alanını doldurmuş oluyoruz
-		 *   "roles": "ROLE_USER",
-		 *   "exp": 17112345678
-		 * }
-		 *
-		 * .setSubject(userDetails.getUsername()) çağrısı ile "sub" alanına kullanıcının username bilgisini koyarız.
+		 * Subject kalıcı kullanıcı UUID'sidir. Kullanıcı adı değiştirilebilir bir
+		 * görüntüleme/giriş alanı olduğundan token kimliği olarak kullanılmaz.
 		 */
 				.setIssuer(jwtIssuer) // token'ı hangi servis oluşturduysa onu belirtir (örneğin: "soundconnect-auth")
 		 

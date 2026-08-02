@@ -134,4 +134,78 @@ class AuthRateLimitFilterTest {
 		verify(rateLimiter).check("login", "203.0.113.10", properties.getLogin());
 		verify(filterChain).doFilter(request, response);
 	}
+
+	@Test
+	void appliesPasswordResetRequestIpPolicy() throws Exception {
+		when(request.getServletPath()).thenReturn("/api/v1/auth/forgot-password");
+		when(request.getRemoteAddr()).thenReturn("203.0.113.20");
+		when(rateLimiter.check(
+				"password-reset-request",
+				"203.0.113.20",
+				properties.getPasswordResetRequest()))
+				.thenReturn(AuthRateLimiter.Decision.permit());
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		verify(rateLimiter).check(
+				"password-reset-request",
+				"203.0.113.20",
+				properties.getPasswordResetRequest());
+		verify(filterChain).doFilter(request, response);
+	}
+
+	@Test
+	void appliesUsernameAvailabilityIpPolicy() throws Exception {
+		when(request.getServletPath()).thenReturn("/api/v1/auth/username-availability");
+		when(request.getRemoteAddr()).thenReturn("203.0.113.18");
+		when(rateLimiter.check(
+				"username-availability",
+				"203.0.113.18",
+				properties.getUsernameAvailability()))
+				.thenReturn(AuthRateLimiter.Decision.permit());
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		verify(rateLimiter).check(
+				"username-availability",
+				"203.0.113.18",
+				properties.getUsernameAvailability());
+		verify(filterChain).doFilter(request, response);
+	}
+
+	@Test
+	void appliesPasswordResetLookupIpPolicy() throws Exception {
+		when(request.getServletPath()).thenReturn("/api/v1/auth/password-reset/account");
+		when(request.getRemoteAddr()).thenReturn("203.0.113.19");
+		when(rateLimiter.check(
+				"password-reset-lookup",
+				"203.0.113.19",
+				properties.getPasswordResetLookup()))
+				.thenReturn(AuthRateLimiter.Decision.permit());
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		verify(rateLimiter).check(
+				"password-reset-lookup",
+				"203.0.113.19",
+				properties.getPasswordResetLookup());
+		verify(filterChain).doFilter(request, response);
+	}
+
+	@Test
+	void appliesPasswordResetConfirmIpPolicy() throws Exception {
+		when(request.getServletPath()).thenReturn("/api/v1/auth/reset-password");
+		when(request.getRemoteAddr()).thenReturn("203.0.113.21");
+		when(rateLimiter.check(
+				"password-reset-confirm",
+				"203.0.113.21",
+				properties.getPasswordResetConfirm()))
+				.thenReturn(AuthRateLimiter.Decision.block(19L));
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		verify(response).setHeader("Retry-After", "19");
+		verify(responseWriter).write(request, response, ErrorType.AUTH_RATE_LIMITED);
+		verify(filterChain, never()).doFilter(request, response);
+	}
 }

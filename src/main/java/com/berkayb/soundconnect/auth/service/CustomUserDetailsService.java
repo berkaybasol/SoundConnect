@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -37,7 +38,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 					// Roller/izinler rahatça çekilir, hata fırlamaz.
 	
 	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-		User user = userRepository.findByUsername(username)
+		User user = userRepository.findByUsername(UsernameUtils.normalize(username))
 				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		return new UserDetailsImpl(user);
 	}

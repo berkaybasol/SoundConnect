@@ -42,4 +42,13 @@ public class SpotifyServiceImpl implements SpotifyService {
 		}
 		return spotifyApiClient.getTrackById(trackId.trim());
 	}
+
+	@Override
+	public List<SpotifyTrackItemDto> getTracksByIds(List<String> trackIds) {
+		if (trackIds == null || trackIds.isEmpty() || trackIds.size() > 50
+				|| trackIds.stream().anyMatch(id -> id == null || id.isBlank() || id.strip().length() > 64)) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+		return spotifyApiClient.getTracksByIds(trackIds.stream().map(String::strip).distinct().toList());
+	}
 }

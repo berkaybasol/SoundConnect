@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.message.dm.controller.user;
 
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.message.dm.dto.request.DMMessageRequestDto;
@@ -9,8 +10,6 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
-import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +19,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.UUID;
 
 @RestController
@@ -34,16 +32,15 @@ public class DMMessageUserController {
 	private final DMMessageService messageService;
 	private final DMConversationRepository conversationRepository;
 	private final NotificationService notificationService;
-	private final UserRepository userRepository;
 	
 	@GetMapping(EndPoints.DM.MESSAGE_LIST) // /messages/conversation/{conversationId}
 	//@PreAuthorize("hasAuthority('READ_DM')")
 	public ResponseEntity<BaseResponse<Page<DMMessageResponseDto>>> listByConversation(
-			Principal principal,
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable("conversationId") UUID conversationId,
 			@ParameterObject @PageableDefault(size = 30, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
 	) {
-		UUID currentUserId = currentUserId(principal);
+		UUID currentUserId = principal.getId();
 		ensureParticipant(conversationId, currentUserId);
 		notificationService.markDmConversationAsRead(currentUserId, conversationId);
 		
@@ -58,9 +55,10 @@ public class DMMessageUserController {
 	
 	@PostMapping(EndPoints.DM.MESSAGE_SEND) // /messages
 	//@PreAuthorize("hasAuthority('WRITE_DM')")
-	public ResponseEntity<BaseResponse<DMMessageResponseDto>> send(Principal principal,
+	public ResponseEntity<BaseResponse<DMMessageResponseDto>> send(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 	                                                               @Valid @RequestBody DMMessageRequestDto request) {
-		UUID currentUserId = currentUserId(principal);
+		UUID currentUserId = principal.getId();
 		// Service zaten sender'ın participant olup olmadığını kontrol ediyor.
 		DMMessageResponseDto data = messageService.sendMessage(request, currentUserId);
 		return ResponseEntity.ok(BaseResponse.<DMMessageResponseDto>builder()
@@ -73,9 +71,10 @@ public class DMMessageUserController {
 	
 	@PatchMapping(EndPoints.DM.MESSAGE_MARK_READ) // /messages/{messageId}/read
 	//@PreAuthorize("hasAuthority('READ_DM')")
-	public ResponseEntity<BaseResponse<Void>> markRead(Principal principal,
+	public ResponseEntity<BaseResponse<Void>> markRead(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 	                                                   @PathVariable("messageId") @NotNull UUID messageId) {
-		UUID currentUserId = currentUserId(principal);
+		UUID currentUserId = principal.getId();
 		messageService.markMessageAsRead(messageId, currentUserId);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
@@ -86,8 +85,10 @@ public class DMMessageUserController {
 	}
 
 	@GetMapping(EndPoints.DM.UNREAD_COUNT)
-	public ResponseEntity<BaseResponse<DMUnreadCountResponseDto>> unreadCount(Principal principal) {
-		UUID currentUserId = currentUserId(principal);
+	public ResponseEntity<BaseResponse<DMUnreadCountResponseDto>> unreadCount(
+			@AuthenticationPrincipal UserDetailsImpl principal
+	) {
+		UUID currentUserId = principal.getId();
 		DMUnreadCountResponseDto data = new DMUnreadCountResponseDto(
 				messageService.getUnreadCount(currentUserId));
 		return ResponseEntity.ok(BaseResponse.<DMUnreadCountResponseDto>builder()
@@ -97,14 +98,6 @@ public class DMMessageUserController {
 		                                     .data(data)
 		                                     .build());
 	}
-	
-	private UUID currentUserId(Principal principal) {
-		String username = principal.getName();
-		return userRepository.findByUsername(username)
-		                     .map(User::getId)
-		                     .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + username));
-	}
-	
 	private void ensureParticipant(UUID conversationId, UUID userId) {
 		DMConversation conv = conversationRepository.findById(conversationId)
 		                                            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));

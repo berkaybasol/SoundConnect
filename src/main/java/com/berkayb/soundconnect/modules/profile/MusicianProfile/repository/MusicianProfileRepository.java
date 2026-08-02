@@ -23,7 +23,11 @@ public interface MusicianProfileRepository extends JpaRepository<MusicianProfile
 		where
 			(:q is null or trim(:q) = '')
 			or lower(coalesce(mp.stageName, '')) like lower(concat('%', :q, '%'))
-			or lower(coalesce(mp.user.username, '')) like lower(concat('%', :q, '%'))
+			or (:usernameQuery <> ''
+				and locate(:usernameQuery, coalesce(mp.user.username, '')) > 0)
 	""")
-	List<MusicianProfile> searchByStageNameOrUsername(@Param("q") String q);
+	List<MusicianProfile> searchByStageNameOrUsername(
+			@Param("q") String q,
+			@Param("usernameQuery") String usernameQuery
+	);
 }

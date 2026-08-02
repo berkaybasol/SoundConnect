@@ -31,7 +31,7 @@ public class StudioProfileCreator implements ProfileCreator {
 	@Override
 	public void createProfile(User user) {
 		StudioProfileSaveRequestDto dto = new StudioProfileSaveRequestDto(
-				null,null,null,
+				user.getUsername(), null, null,
 				null,null,null,null,
 				null,null);
 		studioProfileService.createProfile(user.getId(), dto);

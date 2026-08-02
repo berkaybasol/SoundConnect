@@ -4,6 +4,9 @@ import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ForgotPasswordRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,9 @@ class AuthControllerImplTest {
 
 	@Mock
 	AuthService authService;
+
+	@Mock
+	PasswordResetService passwordResetService;
 
 	@InjectMocks
 	AuthControllerImpl controller;
@@ -79,5 +85,41 @@ class AuthControllerImplTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getHeaders().containsKey(HttpHeaders.RETRY_AFTER)).isFalse();
 		assertThat(response.getBody()).isSameAs(serviceResponse);
+	}
+
+	@Test
+	void forgotPasswordReturnsExplicitKnownAccountSuccessContract() {
+		ForgotPasswordRequestDto request =
+				new ForgotPasswordRequestDto("user@example.com");
+		BaseResponse<Void> serviceResponse = BaseResponse.<Void>builder()
+				.success(true)
+				.code(200)
+				.message("Şifre sıfırlama kodu e-posta adresinize gönderildi.")
+				.build();
+		when(passwordResetService.requestPasswordReset(request)).thenReturn(serviceResponse);
+
+		ResponseEntity<BaseResponse<Void>> response = controller.forgotPassword(request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getBody()).isSameAs(serviceResponse);
+		verify(passwordResetService).requestPasswordReset(request);
+	}
+
+	@Test
+	void resetPasswordForwardsValidatedRequest() {
+		ResetPasswordRequestDto request = new ResetPasswordRequestDto(
+				"user@example.com", "123456", "new-password", "new-password");
+		BaseResponse<Void> serviceResponse = BaseResponse.<Void>builder()
+				.success(true)
+				.code(200)
+				.message("updated")
+				.build();
+		when(passwordResetService.resetPassword(request)).thenReturn(serviceResponse);
+
+		ResponseEntity<BaseResponse<Void>> response = controller.resetPassword(request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getBody()).isSameAs(serviceResponse);
+		verify(passwordResetService).resetPassword(request);
 	}
 }

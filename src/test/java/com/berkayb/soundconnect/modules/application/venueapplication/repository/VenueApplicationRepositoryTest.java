@@ -66,7 +66,7 @@ class VenueApplicationRepositoryTest {
 		
 		// users (email zorunlu!)
 		u1 = userRepo.save(User.builder()
-		                       .username("u1_" + UUID.randomUUID())
+		                       .username("u1_" + UUID.randomUUID().toString().substring(0, 12))
 		                       .email("u1_"+UUID.randomUUID()+"@t.local")
 		                       .password("pw")
 		                       .provider(AuthProvider.LOCAL)
@@ -74,7 +74,7 @@ class VenueApplicationRepositoryTest {
 		                       .city(city)
 		                       .build());
 		u2 = userRepo.save(User.builder()
-		                       .username("u2_" + UUID.randomUUID())
+		                       .username("u2_" + UUID.randomUUID().toString().substring(0, 12))
 		                       .email("u2_"+UUID.randomUUID()+"@t.local")
 		                       .password("pw")
 		                       .provider(AuthProvider.LOCAL)

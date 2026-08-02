@@ -2,7 +2,9 @@ package com.berkayb.soundconnect.shared.init;
 
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.PermissionEnum;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.PermissionRepository;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -17,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -80,6 +84,26 @@ class DataInitializerSecurityTest {
 	}
 
 	@Test
+	void ownerBootstrapCanonicalizesConfiguredUsernameBeforeLookupAndPersistence() {
+		String rawPassword = "a-strong-bootstrap-password";
+		configureOwner(rawPassword);
+		ReflectionTestUtils.setField(initializer, "ownerUsername", " Bootstrap-Owner ");
+		Role ownerRole = Role.builder().name(RoleEnum.ROLE_OWNER.name()).build();
+		when(roleRepository.findByName(RoleEnum.ROLE_OWNER.name())).thenReturn(Optional.of(ownerRole));
+		when(userRepository.findByUsername("bootstrap-owner")).thenReturn(Optional.empty());
+		when(userRepository.existsByEmail("owner@example.test")).thenReturn(false);
+		when(locationEntityFinder.getCityByName("Ankara")).thenReturn(City.builder().name("Ankara").build());
+		when(passwordEncoder.encode(rawPassword)).thenReturn("encoded-password");
+		when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		ReflectionTestUtils.invokeMethod(initializer, "bootstrapOwnerIfExplicitlyEnabled");
+
+		ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+		verify(userRepository).save(captor.capture());
+		assertThat(captor.getValue().getUsername()).isEqualTo("bootstrap-owner");
+	}
+
+	@Test
 	void ownerBootstrap_rejectsShortPasswordWithSecureDefault() {
 		configureOwner("short-pass");
 
@@ -108,6 +132,44 @@ class DataInitializerSecurityTest {
 		verify(userRepository).save(captor.capture());
 		assertThat(captor.getValue().getPassword()).isEqualTo("encoded-local-password");
 		assertThat(captor.getValue().getPassword()).isNotEqualTo(rawPassword);
+	}
+
+	@Test
+	void runtimeAdminRoleReceivesBacklineCatalogAuthority() {
+		List<Permission> permissions = Arrays.stream(PermissionEnum.values())
+		                                       .map(permissionEnum -> {
+			                                       Permission permission = (Permission) Permission.builder()
+			                                                                                       .name(permissionEnum.name())
+			                                                                                       .build();
+			                                       permission.setId(java.util.UUID.randomUUID());
+			                                       return permission;
+		                                       })
+		                                       .toList();
+		when(permissionRepository.findByName(anyString())).thenAnswer(invocation -> {
+			String name = invocation.getArgument(0);
+			return permissions.stream().filter(permission -> permission.getName().equals(name)).findFirst();
+		});
+		when(permissionRepository.findAll()).thenReturn(permissions);
+		when(roleRepository.findByName(anyString())).thenReturn(Optional.empty());
+		when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(roleRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		initializer.run(null);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<Iterable<Role>> roleCaptor = ArgumentCaptor.forClass(Iterable.class);
+		verify(roleRepository).saveAll(roleCaptor.capture());
+		Role admin = null;
+		for (Role role : roleCaptor.getValue()) {
+			if (RoleEnum.ROLE_ADMIN.name().equals(role.getName())) {
+				admin = role;
+				break;
+			}
+		}
+		assertThat(admin).isNotNull();
+		assertThat(admin.getPermissions())
+				.extracting(Permission::getName)
+				.contains(PermissionEnum.MANAGE_BACKLINE_CATALOG.name());
 	}
 
 	private void configureOwner(String password) {

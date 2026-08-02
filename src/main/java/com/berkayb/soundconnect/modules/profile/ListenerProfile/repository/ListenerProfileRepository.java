@@ -17,8 +17,12 @@ public interface ListenerProfileRepository extends JpaRepository<ListenerProfile
         from ListenerProfile lp
         where
             (:q is null or trim(:q) = '')
-            or lower(coalesce(lp.user.username, '')) like lower(concat('%', :q, '%'))
+            or (:usernameQuery <> ''
+                and locate(:usernameQuery, coalesce(lp.user.username, '')) > 0)
             or lower(coalesce(lp.description, '')) like lower(concat('%', :q, '%'))
     """)
-	List<ListenerProfile> searchByUsernameOrBio(@Param("q") String q);
+	List<ListenerProfile> searchByUsernameOrBio(
+			@Param("q") String q,
+			@Param("usernameQuery") String usernameQuery
+	);
 }

@@ -17,6 +17,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -39,8 +40,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 		StompHeaderAccessor accessor =
 				MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 		if (accessor == null) {
-			authorizeBrokerDelivery(message);
-			return message;
+			return authorizeBrokerDelivery(message) ? message : null;
 		}
 		if (accessor.getCommand() == null) {
 			return message;
@@ -61,14 +61,26 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 		return message;
 	}
 
-	private void authorizeBrokerDelivery(Message<?> message) {
+	private boolean authorizeBrokerDelivery(Message<?> message) {
 		if (SimpMessageHeaderAccessor.getMessageType(message.getHeaders()) != SimpMessageType.MESSAGE) {
-			return;
+			return true;
 		}
 		String sessionId = SimpMessageHeaderAccessor.getSessionId(message.getHeaders());
 		String destination = SimpMessageHeaderAccessor.getDestination(message.getHeaders());
-		UserDetailsImpl principal = requireFreshPrincipal(sessionId);
-		subscriptionAuthorizer.authorize(principal, destination);
+		if (sessionId == null || sessionId.isBlank() || destination == null) {
+			return false;
+		}
+		try {
+			UserDetailsImpl principal = requireFreshPrincipal(sessionId);
+			subscriptionAuthorizer.authorize(principal, destination);
+			return true;
+		} catch (AuthenticationException exception) {
+			// Broker deliveries can race with logout, token expiry or a
+			// development database reset. The durable notification is already
+			// persisted; silently drop only this stale socket delivery.
+			sessionRegistry.remove(sessionId);
+			return false;
+		}
 	}
 
 	private void authenticateConnect(StompHeaderAccessor accessor) {

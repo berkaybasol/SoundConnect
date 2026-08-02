@@ -13,10 +13,14 @@ import java.io.IOException;
 import java.util.Map;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.BASE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.FORGOT_PASSWORD;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.GOOGLE_SIGN_IN;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.LOGIN;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.PASSWORD_RESET_ACCOUNT;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.REGISTER;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.RESEND_CODE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.RESET_PASSWORD;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.USERNAME_AVAILABILITY;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.VERIFY_CODE;
 
 @RequiredArgsConstructor
@@ -27,13 +31,21 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 	private static final String REGISTER_BUCKET = "register";
 	private static final String OTP_VERIFY_BUCKET = "otp-verify";
 	private static final String OTP_RESEND_BUCKET = "otp-resend";
+	private static final String USERNAME_AVAILABILITY_BUCKET = "username-availability";
+	private static final String PASSWORD_RESET_LOOKUP_BUCKET = "password-reset-lookup";
+	private static final String PASSWORD_RESET_REQUEST_BUCKET = "password-reset-request";
+	private static final String PASSWORD_RESET_CONFIRM_BUCKET = "password-reset-confirm";
 
-	private static final Map<String, String> BUCKET_BY_PATH = Map.of(
-			BASE + LOGIN, LOGIN_BUCKET,
-			BASE + GOOGLE_SIGN_IN, GOOGLE_LOGIN_BUCKET,
-			BASE + REGISTER, REGISTER_BUCKET,
-			BASE + VERIFY_CODE, OTP_VERIFY_BUCKET,
-			BASE + RESEND_CODE, OTP_RESEND_BUCKET
+	private static final Map<String, String> BUCKET_BY_PATH = Map.ofEntries(
+			Map.entry(BASE + LOGIN, LOGIN_BUCKET),
+			Map.entry(BASE + GOOGLE_SIGN_IN, GOOGLE_LOGIN_BUCKET),
+			Map.entry(BASE + REGISTER, REGISTER_BUCKET),
+			Map.entry(BASE + VERIFY_CODE, OTP_VERIFY_BUCKET),
+			Map.entry(BASE + RESEND_CODE, OTP_RESEND_BUCKET),
+			Map.entry(BASE + USERNAME_AVAILABILITY, USERNAME_AVAILABILITY_BUCKET),
+			Map.entry(BASE + PASSWORD_RESET_ACCOUNT, PASSWORD_RESET_LOOKUP_BUCKET),
+			Map.entry(BASE + FORGOT_PASSWORD, PASSWORD_RESET_REQUEST_BUCKET),
+			Map.entry(BASE + RESET_PASSWORD, PASSWORD_RESET_CONFIRM_BUCKET)
 	);
 
 	private final AuthRateLimiter rateLimiter;
@@ -77,6 +89,10 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 			case REGISTER_BUCKET -> properties.getRegister();
 			case OTP_VERIFY_BUCKET -> properties.getOtpVerify();
 			case OTP_RESEND_BUCKET -> properties.getOtpResend();
+			case USERNAME_AVAILABILITY_BUCKET -> properties.getUsernameAvailability();
+			case PASSWORD_RESET_LOOKUP_BUCKET -> properties.getPasswordResetLookup();
+			case PASSWORD_RESET_REQUEST_BUCKET -> properties.getPasswordResetRequest();
+			case PASSWORD_RESET_CONFIRM_BUCKET -> properties.getPasswordResetConfirm();
 			default -> throw new IllegalArgumentException("Unknown authentication rate-limit bucket");
 		};
 	}

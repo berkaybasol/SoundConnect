@@ -2,11 +2,17 @@ package com.berkayb.soundconnect.auth.controller;
 
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.RegisterRequestDto;
+import com.berkayb.soundconnect.auth.dto.request.UsernameAvailabilityRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.dto.response.RegisterResponseDto;
+import com.berkayb.soundconnect.auth.dto.response.UsernameAvailabilityResponseDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ForgotPasswordRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.response.PasswordResetAccountResponseDto;
+import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -24,6 +30,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
 @Tag(name = "FOR USERS / Auth Controller", description = "register, login includes transactions")
 public class AuthControllerImpl implements AuthController {
 	private final AuthService authService;
+	private final PasswordResetService passwordResetService;
 	
 	
 	@PostMapping(VERIFY_CODE)
@@ -58,5 +65,37 @@ public class AuthControllerImpl implements AuthController {
 					.body(response);
 		}
 		return ResponseEntity.ok(response);
+	}
+
+	@Override
+	@PostMapping(FORGOT_PASSWORD)
+	public ResponseEntity<BaseResponse<Void>> forgotPassword(
+			@RequestBody @Valid ForgotPasswordRequestDto dto
+	) {
+		return ResponseEntity.ok(passwordResetService.requestPasswordReset(dto));
+	}
+
+	@Override
+	@PostMapping(USERNAME_AVAILABILITY)
+	public ResponseEntity<BaseResponse<UsernameAvailabilityResponseDto>> usernameAvailability(
+			@RequestBody @Valid UsernameAvailabilityRequestDto dto
+	) {
+		return ResponseEntity.ok(authService.usernameAvailability(dto));
+	}
+
+	@Override
+	@PostMapping(PASSWORD_RESET_ACCOUNT)
+	public ResponseEntity<BaseResponse<PasswordResetAccountResponseDto>> passwordResetAccount(
+			@RequestBody @Valid ForgotPasswordRequestDto dto
+	) {
+		return ResponseEntity.ok(passwordResetService.resolveAccount(dto));
+	}
+
+	@Override
+	@PostMapping(RESET_PASSWORD)
+	public ResponseEntity<BaseResponse<Void>> resetPassword(
+			@RequestBody @Valid ResetPasswordRequestDto dto
+	) {
+		return ResponseEntity.ok(passwordResetService.resetPassword(dto));
 	}
 }

@@ -63,9 +63,23 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional(readOnly = true)
 	public Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds) {
 		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
-		return mediaAssetRepository.findAllById(mediaAssetIds).stream()
+		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
 		                           .filter(this::isPubliclyPlayable)
 		                           .collect(Collectors.toMap(MediaAsset::getId, MediaAsset::getPlaybackUrl));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, String> getDisplayUrlMap(List<UUID> mediaAssetIds) {
+		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
+				.filter(asset -> asset.getStatus() == MediaStatus.READY)
+				.filter(asset -> asset.getVisibility() == MediaVisibility.PUBLIC)
+				.filter(asset -> displayUrlOrNull(asset) != null)
+				.collect(Collectors.toUnmodifiableMap(
+						MediaAsset::getId,
+						this::displayUrlOrNull
+				));
 	}
 	
 	@Override
@@ -94,14 +108,19 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		if (asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
+		String displayUrl = displayUrlOrNull(asset);
+		if (displayUrl == null) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
+		return displayUrl;
+	}
+
+	private String displayUrlOrNull(MediaAsset asset) {
 		if ((asset.getKind() == MediaKind.IMAGE || asset.getKind() == MediaKind.VIDEO)
 				&& StringUtils.hasText(asset.getThumbnailUrl())) {
 			return asset.getThumbnailUrl();
 		}
-		if (!StringUtils.hasText(asset.getPlaybackUrl())) {
-			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
-		}
-		return asset.getPlaybackUrl();
+		return StringUtils.hasText(asset.getPlaybackUrl()) ? asset.getPlaybackUrl() : null;
 	}
 
 	@Override

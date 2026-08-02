@@ -32,9 +32,12 @@ public abstract class BaseProfile extends BaseEntity {
 	
 	private String phone;
 	
+	@Column(length = 255)
 	private String website;
 	
+	@Column(length = 255)
 	private String youtubeUrl;
 	
+	@Column(length = 255)
 	private String instagramUrl;
 }

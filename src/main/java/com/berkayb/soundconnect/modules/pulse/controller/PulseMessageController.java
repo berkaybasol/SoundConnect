@@ -5,6 +5,8 @@ import com.berkayb.soundconnect.modules.pulse.dto.request.PulseMessageSendReques
 import com.berkayb.soundconnect.modules.pulse.event.PulseMessageEvent;
 import com.berkayb.soundconnect.modules.pulse.redis.PulseRedisService;
 import com.berkayb.soundconnect.modules.pulse.service.PulseRoomService;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class PulseMessageController {
 	private final SimpMessagingTemplate messagingTemplate;
 	private final PulseRedisService pulseRedisService;
 	private final PulseRoomService pulseRoomService;
+	private final UserEntityFinder userEntityFinder;
 	
 	// Pulse odasina gelen bir mesaji isler
 	@MessageMapping("/pulse/send")
@@ -55,18 +58,12 @@ public class PulseMessageController {
 			return;
 		}
 		UUID userId = userDetails.getId();
-		String username = userDetails.getUsername();
-		
-		// profil foto projedeki user yapisina gore uyarlayabilinsin
-		String profileImageUrl = null;
-		if (userDetails.getUser() != null) {
-			try {
-				profileImageUrl = userDetails.getUser().getProfilePicture();
-			} catch (Exception e) {
-				log.debug("[Pulse] Kullanici profil fotosu okunurken hata olustu id={}", userId, e);
-			}
-		}
-		
+		User currentUser = userEntityFinder.getUser(userId);
+		String username = currentUser.getUsername();
+
+		// Display data is loaded by immutable ID so an open socket observes a rename.
+		String profileImageUrl = currentUser.getProfilePicture();
+
 		// temel validasyonlar
 		if (request == null) {
 			log.warn("[Pulse] Null request ile mesaj gonderilmeye calisildi. userId{}", userId);

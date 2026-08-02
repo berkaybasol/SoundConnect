@@ -122,7 +122,7 @@ class VenueApplicationServiceTest {
 		
 		// seed user (başvuru sahibi)
 		applicant = userRepo.save(User.builder()
-		                              .username("user_" + UUID.randomUUID())
+		                              .username("user_" + UUID.randomUUID().toString().substring(0, 12))
 		                              .email("test+" + UUID.randomUUID() + "@mail.test") // -> eklendi
 		                              .password("pwd")
 		                              .provider(AuthProvider.LOCAL)
@@ -152,7 +152,7 @@ class VenueApplicationServiceTest {
 		// then
 		assertThat(dto).isNotNull();
 		assertThat(dto.status()).isEqualTo(ApplicationStatus.PENDING);
-		assertThat(dto.venueName()).isEqualTo("Cool Venue");
+		assertThat(dto.venueName()).isEqualTo("cool venue");
 		assertThat(dto.venueAddress()).isEqualTo("Some Address 123");
 		assertThat(dto.applicantUsername()).isEqualTo(applicant.getUsername());
 		
@@ -237,7 +237,7 @@ class VenueApplicationServiceTest {
 		List<Venue> venues = venueRepo.findAllByOwnerId(applicant.getId());
 		assertThat(venues).hasSize(1);
 		Venue v = venues.get(0);
-		assertThat(v.getName()).isEqualTo("Cool Venue");
+		assertThat(v.getName()).isEqualTo("cool venue");
 		assertThat(v.getAddress()).isEqualTo("Some Address 123");
 		assertThat(v.getPhone()).isEqualTo("05551234567");
 		assertThat(v.getCity().getId()).isEqualTo(city.getId());

@@ -50,6 +50,22 @@ public class AuthRateLimitProperties {
 	@NotNull
 	private Policy otpResend = new Policy(3, Duration.ofMinutes(5));
 
+	@Valid
+	@NotNull
+	private Policy usernameAvailability = new Policy(30, Duration.ofMinutes(1));
+
+	@Valid
+	@NotNull
+	private Policy passwordResetLookup = new Policy(10, Duration.ofMinutes(5));
+
+	@Valid
+	@NotNull
+	private Policy passwordResetRequest = new Policy(3, Duration.ofMinutes(5));
+
+	@Valid
+	@NotNull
+	private Policy passwordResetConfirm = new Policy(10, Duration.ofMinutes(5));
+
 	public boolean isEnabled() {
 		return enabled;
 	}
@@ -122,6 +138,38 @@ public class AuthRateLimitProperties {
 
 	public void setOtpResend(Policy otpResend) {
 		this.otpResend = otpResend;
+	}
+
+	public Policy getUsernameAvailability() {
+		return usernameAvailability;
+	}
+
+	public void setUsernameAvailability(Policy usernameAvailability) {
+		this.usernameAvailability = usernameAvailability;
+	}
+
+	public Policy getPasswordResetLookup() {
+		return passwordResetLookup;
+	}
+
+	public void setPasswordResetLookup(Policy passwordResetLookup) {
+		this.passwordResetLookup = passwordResetLookup;
+	}
+
+	public Policy getPasswordResetRequest() {
+		return passwordResetRequest;
+	}
+
+	public void setPasswordResetRequest(Policy passwordResetRequest) {
+		this.passwordResetRequest = passwordResetRequest;
+	}
+
+	public Policy getPasswordResetConfirm() {
+		return passwordResetConfirm;
+	}
+
+	public void setPasswordResetConfirm(Policy passwordResetConfirm) {
+		this.passwordResetConfirm = passwordResetConfirm;
 	}
 
 	public static class Policy {

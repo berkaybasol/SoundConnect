@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
@@ -23,7 +24,9 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 
 @Getter
@@ -40,9 +43,20 @@ import java.util.Set;
 		)
 )
 public class User extends BaseEntity {
+	@Column(name = "public_code", nullable = false, unique = true, updatable = false, length = 23)
+	private String publicCode;
 	
 	@Column(name = "user_name", unique = true, nullable = false)
 	private String username;
+
+	/**
+	 * UTC wall-clock timestamp of the last successful self-service username
+	 * change. Administrative corrections deliberately do not mutate this field.
+	 * A null value means the user has not consumed their first change yet.
+	 */
+	@Column(name = "username_changed_at")
+	@JsonIgnore
+	private LocalDateTime usernameChangedAt;
 	
 	
 	@Column(nullable = false)
@@ -140,8 +154,17 @@ public class User extends BaseEntity {
 	@PrePersist
 	@PreUpdate
 	private void canonicalizeIdentity() {
+		if (publicCode == null || publicCode.isBlank()) {
+			publicCode = "SC-" + UUID.randomUUID().toString()
+					.replace("-", "")
+					.substring(0, 20)
+					.toUpperCase(Locale.ROOT);
+		}
 		if (email != null) {
 			email = EmailUtils.normalize(email);
+		}
+		if (username != null) {
+			username = UsernameUtils.normalizeAndValidate(username);
 		}
 	}
 	

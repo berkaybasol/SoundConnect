@@ -13,6 +13,7 @@ public class EndPoints {
 		public static final String SAVE = "/save";
 		public static final String UPDATE = "/update/{id}";
 		public static final String DELETE = "/delete/{id}";
+		public static final String MY_USERNAME = "/me/username";
 	}
 
 	public static class AdminDashboard {
@@ -297,6 +298,12 @@ public class EndPoints {
 		public static final String CLEAR_ALL = "/clear-all";
 		public static final String DELETE = "/{id}";
 	}
+
+	public static class StudioTrack {
+		public static final String BASE =
+				API + VERSION + "/studio-profiles/{studioProfileId}/tracks";
+		public static final String BY_ID = "/{trackId}";
+	}
 	
 	public static class MusicianProfile {
 		public static final String USER_BASE = API + VERSION + "/user/musician-profiles";
@@ -403,6 +410,18 @@ public class EndPoints {
 		public static final String BY_USER_ID = "/by-user/{userId}";
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";
 		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}";
+	}
+
+	public static class StudioApplication {
+		public static final String USER_BASE = API + VERSION + "/user/studio-applications";
+		public static final String ADMIN_BASE = API + VERSION + "/admin/studio-applications";
+		public static final String CREATE = "/create";
+		public static final String MY_APPLICATIONS = "/my";
+		public static final String MY_PENDING = "/my/pending";
+		public static final String BY_STATUS = "/by-status";
+		public static final String GET_BY_ID = "/{id}";
+		public static final String APPROVE = "/approve/{applicationId}";
+		public static final String REJECT = "/reject/{applicationId}";
 	}
 	
 	public static class DM {
@@ -539,6 +558,10 @@ public class EndPoints {
 		public static final String GOOGLE_SIGN_IN = "/google-sign-in";
 		public static final String COMPLETE_GOOGLE_PROFILE = "/complete-google-profile";
 		public static final String RESEND_CODE = "/resend-code";
+		public static final String USERNAME_AVAILABILITY = "/username-availability";
+		public static final String PASSWORD_RESET_ACCOUNT = "/password-reset/account";
+		public static final String FORGOT_PASSWORD = "/forgot-password";
+		public static final String RESET_PASSWORD = "/reset-password";
 	}
 	
 	public static class City {

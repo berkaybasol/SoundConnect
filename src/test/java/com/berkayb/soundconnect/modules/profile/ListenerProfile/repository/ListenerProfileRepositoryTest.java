@@ -21,6 +21,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,6 +48,10 @@ class ListenerProfileRepositoryTest {
 	@Autowired NeighborhoodRepository neighborhoodRepo;
 	
 	City city;
+
+	private String randomUsername(String prefix) {
+		return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+	}
 	
 	@BeforeEach
 	void setup() {
@@ -65,7 +70,7 @@ class ListenerProfileRepositoryTest {
 	@Test
 	void findByUserId_should_return_profile_when_exists() {
 		User user = userRepo.save(User.builder()
-		                              .username("bob_" + UUID.randomUUID())
+		                              .username(randomUsername("bob_"))
 		                              .email("bob_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
 		                              .provider(AuthProvider.LOCAL)
@@ -88,5 +93,67 @@ class ListenerProfileRepositoryTest {
 	void findByUserId_should_return_empty_when_not_exists() {
 		Optional<ListenerProfile> found = listenerRepo.findByUserId(UUID.randomUUID());
 		assertThat(found).isEmpty();
+	}
+
+	@Test
+	void usernameSearchTreatsUnderscoreAndPercentAsLiteralCharacters() {
+		User literal = userRepo.save(User.builder()
+				.username("literal_user%one")
+				.email("literal_" + UUID.randomUUID() + "@t.local")
+				.password("secret")
+				.provider(AuthProvider.LOCAL)
+				.emailVerified(true)
+				.city(city)
+				.build());
+		User wildcardLookalike = userRepo.save(User.builder()
+				.username("literalxuseryone")
+				.email("lookalike_" + UUID.randomUUID() + "@t.local")
+				.password("secret")
+				.provider(AuthProvider.LOCAL)
+				.emailVerified(true)
+				.city(city)
+				.build());
+		ListenerProfile literalProfile = listenerRepo.save(ListenerProfile.builder()
+				.user(literal)
+				.description("plain")
+				.build());
+		listenerRepo.save(ListenerProfile.builder()
+				.user(wildcardLookalike)
+				.description("plain")
+				.build());
+
+		List<ListenerProfile> result =
+				listenerRepo.searchByUsernameOrBio("_user%", "_user%");
+
+		assertThat(result).extracting(ListenerProfile::getId)
+				.containsExactly(literalProfile.getId());
+	}
+
+	@Test
+	void usernameSearchStopsMatchingTheOldNameImmediatelyAfterRename() {
+		User user = userRepo.save(User.builder()
+				.username("oldname")
+				.email("rename_" + UUID.randomUUID() + "@t.local")
+				.password("secret")
+				.provider(AuthProvider.LOCAL)
+				.emailVerified(true)
+				.city(city)
+				.build());
+		ListenerProfile profile = listenerRepo.save(ListenerProfile.builder()
+				.user(user)
+				.description("plain")
+				.build());
+
+		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname"))
+				.extracting(ListenerProfile::getId)
+				.containsExactly(profile.getId());
+
+		user.setUsername("newname");
+		userRepo.saveAndFlush(user);
+
+		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname")).isEmpty();
+		assertThat(listenerRepo.searchByUsernameOrBio("newname", "newname"))
+				.extracting(ListenerProfile::getId)
+				.containsExactly(profile.getId());
 	}
 }

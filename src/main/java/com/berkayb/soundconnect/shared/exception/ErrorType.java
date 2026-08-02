@@ -11,6 +11,7 @@ public enum ErrorType {
 	USER_ALREADY_EXISTS(1002, "User already exists", HttpStatus.CONFLICT, "Bu kullanıcı zaten mevcut."),
 	EMAIL_ALREADY_EXISTS(1003, "Email already exists", HttpStatus.CONFLICT, "Bu email adresi zaten kullanılıyor."),
 	USER_ALREADY_REGISTERED(1004,"User already registered",HttpStatus.CONFLICT, "Profil zaten tanimlanmis."),
+	USERNAME_CHANGE_COOLDOWN_ACTIVE(1005, "Kullanıcı adını değiştirdikten sonra 30 gün boyunca yeniden değiştiremezsin.", HttpStatus.CONFLICT, "Kullanıcı adını değiştirdikten sonra 30 gün boyunca yeniden değiştiremezsin."),
 	
 	// AUTH (1100-1199)
 	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.UNAUTHORIZED, "Kullanıcı adı veya şifre hatalı."),
@@ -18,6 +19,13 @@ public enum ErrorType {
 	FORBIDDEN_ACCESS(1102, "You don't have permission to access this resource", HttpStatus.FORBIDDEN, "Bu kaynağa erişim izniniz yok."),
 	TOKEN_EXPIRED(1103, "JWT token has expired", HttpStatus.UNAUTHORIZED, "Oturum süresi dolmuş. Lütfen tekrar giriş yapın."),
 	AUTH_RATE_LIMITED(1104, "Too many authentication requests", HttpStatus.TOO_MANY_REQUESTS, "Çok fazla kimlik doğrulama isteği gönderildi. Lütfen kısa süre sonra tekrar deneyin."),
+	PENDING_VENUE_APPROVAL(1105, "Venue application is pending approval", HttpStatus.FORBIDDEN, "Mekan başvurunuz henüz onaylanmadı."),
+	PENDING_STUDIO_APPROVAL(1106, "Studio application is pending approval", HttpStatus.FORBIDDEN, "Stüdyo başvurunuz henüz onaylanmadı."),
+	PASSWORD_RESET_CODE_INVALID(1107, "Password reset code is invalid or expired", HttpStatus.BAD_REQUEST, "Şifre sıfırlama kodu geçersiz veya süresi dolmuş."),
+	PASSWORD_RESET_EMAIL_NOT_FOUND(1108, "Password reset email was not found", HttpStatus.NOT_FOUND, "Bu e-posta adresiyle kayıtlı bir hesap bulunamadı."),
+	PASSWORD_RESET_USERNAME_NOT_FOUND(1109, "Password reset username was not found", HttpStatus.NOT_FOUND, "Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı."),
+	PASSWORD_RESET_PROVIDER_UNSUPPORTED(1110, "Password reset is not supported for this account provider", HttpStatus.CONFLICT, "Bu hesap harici bir sağlayıcıyla giriş yapıyor. Şifre sıfırlama desteklenmiyor."),
+	PASSWORD_RESET_DELIVERY_FAILED(1111, "Password reset email could not be queued", HttpStatus.SERVICE_UNAVAILABLE, "Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin."),
 	
 	// FOLLOW (1200-1299)
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
@@ -51,6 +59,8 @@ public enum ErrorType {
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.CONFLICT, "Zaten basvuru yapilmis."),
 	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi"),
 	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.CONFLICT, "Bu basvuruya zaten islem yapilmis"),
+	STUDIO_APPLICATION_ALREADY_EXISTS(1608, "Studio application already exists", HttpStatus.CONFLICT, "Zaten bekleyen bir studyo basvurusu var."),
+	STUDIO_APPLICATION_NOT_FOUND(1609, "Studio application not found", HttpStatus.NOT_FOUND, "Studyo basvurusu bulunamadi."),
 	
 	// DM
 	CANNOT_DM_SELF(1603, "You cannot dm yourself", HttpStatus.BAD_REQUEST, "Kendinize mesaj atamazsiniz."),
@@ -232,6 +242,28 @@ public enum ErrorType {
 	PROMOTION_INVALID_PRIORITY(9753, "Promotion invalid priority", HttpStatus.BAD_REQUEST, "Promotion öncelik değeri geçersiz."),
 	
 	
+	// STUDIO MANAGEMENT (9800 - 9899)
+	STUDIO_ROOM_NOT_FOUND(9800, "Studio room not found", HttpStatus.NOT_FOUND, "Studio odasi bulunamadi."),
+	STUDIO_ROOM_LIMIT_REACHED(9801, "Studio room limit reached", HttpStatus.CONFLICT, "Bir studyoda en fazla 10 aktif oda bulunabilir."),
+	STUDIO_RESOURCE_FORBIDDEN(9802, "Studio resource forbidden", HttpStatus.FORBIDDEN, "Bu studio kaynagini yonetme yetkiniz yok."),
+	STUDIO_RESOURCE_ARCHIVED(9803, "Studio resource archived", HttpStatus.CONFLICT, "Arsivlenmis bir studio kaynaginda bu islem yapilamaz."),
+	STUDIO_STALE_UPDATE(9804, "Studio resource changed", HttpStatus.CONFLICT, "Kayit baska bir oturumda guncellendi. Lutfen yenileyip tekrar deneyin."),
+	STUDIO_MEDIA_LIMIT_EXCEEDED(9805, "Studio media limit exceeded", HttpStatus.BAD_REQUEST, "Izin verilen fotograf siniri asildi."),
+	STUDIO_TIME_ZONE_LOCKED(9806, "Studio time zone is locked", HttpStatus.CONFLICT, "Oda olusturulduktan sonra studyo saat dilimi degistirilemez."),
+	STUDIO_RESERVATION_NOT_FOUND(9810, "Studio reservation not found", HttpStatus.NOT_FOUND, "Rezervasyon bulunamadi."),
+	STUDIO_RESERVATION_CONFLICT(9811, "Studio reservation conflict", HttpStatus.CONFLICT, "Secilen saat araligi artik musait degil."),
+	STUDIO_RESERVATION_STATUS_INVALID(9812, "Studio reservation status invalid", HttpStatus.CONFLICT, "Rezervasyon bu islem icin uygun durumda degil."),
+	STUDIO_RESERVATION_SELF_NOT_ALLOWED(9813, "Studio self reservation not allowed", HttpStatus.BAD_REQUEST, "Kendi studyonuza rezervasyon olusturamazsiniz."),
+	STUDIO_RESERVATION_WINDOW_INVALID(9814, "Studio reservation window invalid", HttpStatus.BAD_REQUEST, "Rezervasyon tarih veya saat araligi gecersiz."),
+	STUDIO_BLOCK_NOT_FOUND(9815, "Studio room block not found", HttpStatus.NOT_FOUND, "Manuel doluluk kaydi bulunamadi."),
+	STUDIO_EQUIPMENT_NOT_FOUND(9820, "Studio equipment not found", HttpStatus.NOT_FOUND, "Ekipman bulunamadi."),
+	STUDIO_EQUIPMENT_ALLOCATION_INVALID(9821, "Studio equipment allocation invalid", HttpStatus.CONFLICT, "Secilen adet bu tarih araligindaki mevcut dagilimla uyumlu degil."),
+	BACKLINE_CATEGORY_NOT_FOUND(9830, "Backline category not found", HttpStatus.NOT_FOUND, "Backline kategorisi bulunamadi."),
+	BACKLINE_CATEGORY_INVALID(9831, "Backline category invalid", HttpStatus.BAD_REQUEST, "Kategori ve alt kategori secimi gecersiz."),
+	BACKLINE_CATEGORY_REQUEST_NOT_FOUND(9832, "Backline category request not found", HttpStatus.NOT_FOUND, "Kategori talebi bulunamadi."),
+	BACKLINE_CATEGORY_REQUEST_DUPLICATE(9833, "Backline category request duplicate", HttpStatus.CONFLICT, "Ayni kategori icin bekleyen bir talep zaten var."),
+	BACKLINE_CATEGORY_REQUEST_STATUS_INVALID(9834, "Backline category request status invalid", HttpStatus.CONFLICT, "Kategori talebi bu islem icin uygun durumda degil."),
+
 	// GENEL (9999)
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");

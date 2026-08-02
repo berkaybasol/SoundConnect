@@ -15,6 +15,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -66,6 +67,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 			}
 			
 			return raw.tracks.stream()
+			                 .filter(Objects::nonNull)
 			                 .map(this::toTrackItemDto)
 			                 .toList();
 			

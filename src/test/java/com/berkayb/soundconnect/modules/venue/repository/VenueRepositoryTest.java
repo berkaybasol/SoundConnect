@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -52,13 +53,13 @@ class VenueRepositoryTest {
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("Nbh").district(district).build());
 		
 		ownerA = userRepository.save(User.builder()
-		                                 .username("ownerA_" + UUID.randomUUID())
+		                                 .username("ownerA_" + UUID.randomUUID().toString().substring(0, 12))
 		                                 .password("x").email("a@test.com")
 		                                 .city(city)
 		                                 .build());
 		
 		ownerB = userRepository.save(User.builder()
-		                                 .username("ownerB_" + UUID.randomUUID())
+		                                 .username("ownerB_" + UUID.randomUUID().toString().substring(0, 12))
 		                                 .password("x").email("b@test.com")
 		                                 .city(city)
 		                                 .build());
@@ -112,5 +113,26 @@ class VenueRepositoryTest {
 		assertThat(listB).hasSize(1)
 		                 .extracting(Venue::getName)
 		                 .containsExactly("B1");
+	}
+
+	@Test
+	void ownerUsernameSearchStopsMatchingTheOldNameAfterRename() {
+		ownerA.setUsername("oldvenueuser");
+		userRepository.saveAndFlush(ownerA);
+		Venue venue = venueRepository.save(newVenue("Independent Venue", ownerA));
+
+		assertThat(venueRepository.searchByNameOrOwnerUsername(
+				"oldvenueuser", "oldvenueuser", PageRequest.of(0, 10)
+		)).extracting(Venue::getId).containsExactly(venue.getId());
+
+		ownerA.setUsername("newvenueuser");
+		userRepository.saveAndFlush(ownerA);
+
+		assertThat(venueRepository.searchByNameOrOwnerUsername(
+				"oldvenueuser", "oldvenueuser", PageRequest.of(0, 10)
+		)).isEmpty();
+		assertThat(venueRepository.searchByNameOrOwnerUsername(
+				"newvenueuser", "newvenueuser", PageRequest.of(0, 10)
+		)).extracting(Venue::getId).containsExactly(venue.getId());
 	}
 }
