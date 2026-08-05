@@ -5,12 +5,14 @@ import com.berkayb.soundconnect.modules.application.studioapplication.dto.respon
 import com.berkayb.soundconnect.modules.application.studioapplication.entity.StudioApplication;
 import com.berkayb.soundconnect.modules.application.studioapplication.mapper.StudioApplicationMapper;
 import com.berkayb.soundconnect.modules.application.studioapplication.repository.StudioApplicationRepository;
+import com.berkayb.soundconnect.modules.application.studioapplication.support.StudioApplicationTimeProvider;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileProvisioningCommand;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -28,16 +30,23 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,8 +58,10 @@ class StudioApplicationServiceImplTest {
 	@Mock UserEntityFinder userEntityFinder;
 	@Mock LocationEntityFinder locationEntityFinder;
 	@Mock RoleRepository roleRepository;
+	@Mock StudioProfileRepository studioProfileRepository;
 	@Mock StudioProfileService studioProfileService;
 	@Mock StudioApplicationAdminMailService studioApplicationAdminMailService;
+	@Mock StudioApplicationTimeProvider timeProvider;
 	@InjectMocks StudioApplicationServiceImpl service;
 
 	private UUID applicantId;
@@ -59,6 +70,7 @@ class StudioApplicationServiceImplTest {
 	private District district;
 	private Neighborhood neighborhood;
 	private User applicant;
+	private LocalDateTime now;
 
 	@BeforeEach
 	void setUp() {
@@ -76,6 +88,8 @@ class StudioApplicationServiceImplTest {
 				.status(UserStatus.PENDING_STUDIO_REQUEST)
 				.roles(new HashSet<>())
 				.build();
+		now = LocalDateTime.of(2026, 8, 3, 9, 15);
+		lenient().when(timeProvider.nowUtc()).thenReturn(now);
 	}
 
 	@Test
@@ -96,11 +110,79 @@ class StudioApplicationServiceImplTest {
 		verify(applicationRepository).save(captor.capture());
 		StudioApplication saved = captor.getValue();
 		assertThat(saved.getStudioName()).isEqualTo("devo studio");
+		assertThat(saved.getPhone()).isEqualTo("05551234567");
 		assertThat(saved.getCity()).isSameAs(city);
 		assertThat(saved.getDistrict()).isSameAs(district);
 		assertThat(saved.getNeighborhood()).isSameAs(neighborhood);
 		assertThat(saved.getStatus()).isEqualTo(ApplicationStatus.PENDING);
+		assertThat(saved.getApplicationDate()).isEqualTo(now);
 		verify(studioApplicationAdminMailService).sendNewApplicationMail(saved);
+	}
+
+	@Test
+	void createApplicationRejectsAnAccountThatAlreadyHasTheStudioRole() {
+		applicant.getRoles().add(Role.builder()
+				.id(UUID.randomUUID())
+				.name(RoleEnum.ROLE_STUDIO.name())
+				.build());
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+
+		assertThatThrownBy(() -> service.createApplication(applicantId, request(neighborhood.getId())))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS));
+
+		verify(studioProfileRepository, never()).existsByUserId(any());
+		verify(applicationRepository, never()).findByApplicantAndStatus(any(), any());
+		verify(applicationRepository, never()).save(any());
+	}
+
+	@Test
+	void createApplicationRejectsAnAccountThatAlreadyHasAStudioProfile() {
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(studioProfileRepository.existsByUserId(applicantId)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.createApplication(applicantId, request(neighborhood.getId())))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS));
+
+		verify(applicationRepository, never()).findByApplicantAndStatus(any(), any());
+		verify(applicationRepository, never()).save(any());
+	}
+
+	@Test
+	void createApplicationRejectsDatabaseOverflowBeforeLocationLookupOrInsert() {
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
+				.thenReturn(Optional.empty());
+
+		assertValidationError(new StudioApplicationCreateRequestDto(
+				"s".repeat(101), "Moda Caddesi", "05551234567",
+				city.getId().toString(), district.getId().toString(), neighborhood.getId().toString()
+		));
+		assertValidationError(new StudioApplicationCreateRequestDto(
+				"Devo Studio", "a".repeat(256), "05551234567",
+				city.getId().toString(), district.getId().toString(), neighborhood.getId().toString()
+		));
+
+		verify(locationEntityFinder, never()).getCity(any());
+		verify(applicationRepository, never()).save(any());
+	}
+
+	@Test
+	void createApplicationRejectsMalformedPhoneBeforeInsert() {
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
+				.thenReturn(Optional.empty());
+
+		assertValidationError(new StudioApplicationCreateRequestDto(
+				"Devo Studio", "Moda Caddesi", "0555-call-me",
+				city.getId().toString(), district.getId().toString(), neighborhood.getId().toString()
+		));
+
+		verify(locationEntityFinder, never()).getCity(any());
+		verify(applicationRepository, never()).save(any());
 	}
 
 	@Test
@@ -123,6 +205,55 @@ class StudioApplicationServiceImplTest {
 	}
 
 	@Test
+	void adminApplicationsUseBoundedStableStatusDateIdPagination() {
+		StudioApplication application = StudioApplication.builder()
+				.id(UUID.randomUUID())
+				.status(ApplicationStatus.PENDING)
+				.applicationDate(LocalDateTime.now())
+				.build();
+		StudioApplicationResponseDto mapped = response(ApplicationStatus.PENDING);
+		when(applicationRepository.findAllByStatus(eq(ApplicationStatus.PENDING), any(Pageable.class)))
+				.thenAnswer(invocation -> new PageImpl<>(
+						List.of(application), invocation.getArgument(1), 51));
+		when(applicationMapper.toResponseDto(application)).thenReturn(mapped);
+
+		var result = service.getApplicationsByStatus(ApplicationStatus.PENDING, 2, 25);
+
+		assertThat(result.content()).containsExactly(mapped);
+		assertThat(result.page()).isEqualTo(2);
+		assertThat(result.size()).isEqualTo(25);
+		assertThat(result.totalElements()).isEqualTo(51);
+		ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+		verify(applicationRepository).findAllByStatus(eq(ApplicationStatus.PENDING), pageable.capture());
+		assertThat(pageable.getValue().getSort().getOrderFor("applicationDate"))
+				.extracting(Sort.Order::getDirection)
+				.isEqualTo(Sort.Direction.ASC);
+		assertThat(pageable.getValue().getSort().getOrderFor("id"))
+				.extracting(Sort.Order::getDirection)
+				.isEqualTo(Sort.Direction.ASC);
+	}
+
+	@Test
+	void applicationPaginationRejectsAnUnboundedPageSize() {
+		assertThatThrownBy(() -> service.getApplicationsByStatus(
+				ApplicationStatus.PENDING, 0, 101))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.VALIDATION_ERROR));
+		verify(applicationRepository, never()).findAllByStatus(any(), any(Pageable.class));
+	}
+
+	@Test
+	void applicationPaginationRejectsADeepOffsetBeforeRepositoryAccess() {
+		assertThatThrownBy(() -> service.getApplicationsByStatus(
+				ApplicationStatus.PENDING, 1001, 20))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.VALIDATION_ERROR));
+		verify(applicationRepository, never()).findAllByStatus(any(), any(Pageable.class));
+	}
+
+	@Test
 	void approveApplicationAssignsRoleAndProvisionsLocationBoundProfileAtomically() {
 		UUID applicationId = UUID.randomUUID();
 		User admin = User.builder().id(adminId).username("admin").build();
@@ -140,6 +271,7 @@ class StudioApplicationServiceImplTest {
 				.applicationDate(LocalDateTime.now())
 				.build();
 		when(applicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(roleRepository.findByName(RoleEnum.ROLE_STUDIO.name())).thenReturn(Optional.of(studioRole));
 		when(userEntityFinder.getUser(adminId)).thenReturn(admin);
 		when(applicationRepository.save(application)).thenReturn(application);
@@ -152,10 +284,64 @@ class StudioApplicationServiceImplTest {
 		assertThat(applicant.getRoles()).contains(studioRole);
 		assertThat(application.getReviewedBy()).isSameAs(admin);
 		assertThat(application.getDecisionDate()).isNotNull();
+		assertThat(application.getDecisionDate()).isEqualTo(now);
 		ArgumentCaptor<StudioProfileProvisioningCommand> command =
 				ArgumentCaptor.forClass(StudioProfileProvisioningCommand.class);
 		verify(studioProfileService).createApprovedProfile(command.capture());
 		assertThat(command.getValue().neighborhoodId()).isEqualTo(neighborhood.getId());
+		verify(studioApplicationAdminMailService).sendApplicantDecisionMail(application);
+	}
+
+	@Test
+	void rejectApplicationClosesARegistrationAccountAndRecordsTheDecision() {
+		UUID applicationId = UUID.randomUUID();
+		User admin = User.builder().id(adminId).username("admin").build();
+		StudioApplication application = StudioApplication.builder()
+				.id(applicationId)
+				.applicant(applicant)
+				.status(ApplicationStatus.PENDING)
+				.build();
+		when(applicationRepository.findByIdForUpdate(applicationId))
+				.thenReturn(Optional.of(application));
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(userEntityFinder.getUser(adminId)).thenReturn(admin);
+		when(applicationRepository.save(application)).thenReturn(application);
+		when(applicationMapper.toResponseDto(application))
+				.thenReturn(response(ApplicationStatus.REJECTED));
+
+		StudioApplicationResponseDto result = service.rejectApplication(
+				applicationId, adminId, "  Belgeler doğrulanamadı.  ");
+
+		assertThat(result.status()).isEqualTo(ApplicationStatus.REJECTED);
+		assertThat(applicant.getStatus()).isEqualTo(UserStatus.REJECTED_STUDIO_REQUEST);
+		assertThat(application.getReviewedBy()).isSameAs(admin);
+		assertThat(application.getRejectionReason()).isEqualTo("Belgeler doğrulanamadı.");
+		verify(userRepository).save(applicant);
+		verify(studioApplicationAdminMailService).sendApplicantDecisionMail(application);
+	}
+
+	@Test
+	void rejectingAStudioApplicationDoesNotDisableAnExistingActiveAccount() {
+		UUID applicationId = UUID.randomUUID();
+		applicant.setStatus(UserStatus.ACTIVE);
+		StudioApplication application = StudioApplication.builder()
+				.id(applicationId)
+				.applicant(applicant)
+				.status(ApplicationStatus.PENDING)
+				.build();
+		when(applicationRepository.findByIdForUpdate(applicationId))
+				.thenReturn(Optional.of(application));
+		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(userEntityFinder.getUser(adminId)).thenReturn(User.builder().id(adminId).build());
+		when(applicationRepository.save(application)).thenReturn(application);
+		when(applicationMapper.toResponseDto(application))
+				.thenReturn(response(ApplicationStatus.REJECTED));
+
+		service.rejectApplication(applicationId, adminId, "Uygun bulunmadı");
+
+		assertThat(applicant.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		verify(userRepository, never()).save(applicant);
+		verify(studioApplicationAdminMailService).sendApplicantDecisionMail(application);
 	}
 
 	@Test
@@ -170,13 +356,21 @@ class StudioApplicationServiceImplTest {
 						exception -> assertThat(exception.getErrorType())
 								.isEqualTo(ErrorType.INVALID_APPLICATION_STATUS));
 		verify(studioProfileService, never()).createApprovedProfile(any());
+		verify(studioApplicationAdminMailService, never()).sendApplicantDecisionMail(any());
 	}
 
 	private StudioApplicationCreateRequestDto request(UUID neighborhoodId) {
 		return new StudioApplicationCreateRequestDto(
-				"devo studio", "Moda Caddesi", "05551234567",
+				"devo studio", "Moda Caddesi", "555 123 45 67",
 				city.getId().toString(), district.getId().toString(), neighborhoodId.toString()
 		);
+	}
+
+	private void assertValidationError(StudioApplicationCreateRequestDto request) {
+		assertThatThrownBy(() -> service.createApplication(applicantId, request))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.VALIDATION_ERROR));
 	}
 
 	private void stubLocationLookup() {
@@ -189,7 +383,8 @@ class StudioApplicationServiceImplTest {
 		return new StudioApplicationResponseDto(
 				UUID.randomUUID(), applicantId, applicant.getUsername(), "Devo Studio", "Moda Caddesi",
 				"05551234567", city.getId(), city.getName(), district.getId(), district.getName(),
-				neighborhood.getId(), neighborhood.getName(), status, LocalDateTime.now(), null, null, null
+				neighborhood.getId(), neighborhood.getName(), status,
+				LocalDateTime.now().toInstant(ZoneOffset.UTC), null, null, null
 		);
 	}
 }

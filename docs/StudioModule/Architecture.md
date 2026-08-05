@@ -15,7 +15,7 @@ Core invariants:
 - Equipment availability is daily. `available = total - busy - maintenance` is always derived.
 - An equipment quantity update and every calendar mutation serialize on the equipment row.
 - Catalog categories are global and admin controlled; Studio owners submit review requests.
-- Every owner mutation verifies aggregate ownership in the service, in addition to controller role checks.
+- Every owner read/mutation scopes the repository lookup to the authenticated Studio before any row lock. Foreign and missing aggregate IDs share the same not-found contract, in addition to controller role checks.
 - Media assets remain owned by `STUDIO_PROFILE`; room/equipment photo tables are ordered attachment references.
 - Room/equipment draft uploads use a session-fenced durable client cleanup queue. A successful aggregate mutation commits referenced IDs; cancellation, replacement, deterministic failure, or process restart retries the guarded media DELETE. The backend reference guard makes an ambiguous successful mutation safe: already-referenced assets are never deleted.
 
@@ -28,6 +28,20 @@ Core invariants:
 - `timeZone`: validated IANA zone, default `Europe/Istanbul`. It may be corrected only before the first room is created; this prevents a later profile edit from shifting already persisted UTC booking instants into a different wall-clock schedule.
 - `version`: optimistic concurrency token.
 - ordered Spotify track IDs. Client-authored track metadata is ignored; the existing Spotify service/API client hydrates the authoritative JSON cache before the short profile-write transaction is opened.
+
+### Studio membership application
+
+Studio registration creates an account without `ROLE_STUDIO` and uses the explicit account state machine:
+
+- `PENDING_STUDIO_REQUEST -> ACTIVE` after an approved application and verified email;
+- `PENDING_STUDIO_REQUEST -> REJECTED_STUDIO_REQUEST` after rejection;
+- an already-active multi-role applicant remains `ACTIVE` when a later Studio application is rejected.
+
+Application and applicant decisions take pessimistic locks in one transaction. OTP verification takes the same user lock and never promotes `REJECTED_STUDIO_REQUEST`, preventing a stale OTP transaction from overwriting an admin decision. Correct-password login for a rejected registration returns stable API error code `1112`; Flutter confines that session to the dedicated rejection/support route. Reapplication is not currently supported.
+
+Application creation also locks the applicant and rejects the request when the account already has `ROLE_STUDIO` or owns a `StudioProfile`. Both sources are checked so inconsistent legacy role/profile data fails closed instead of creating a pending application that can never be approved.
+
+Studio name/address/phone are normalized and validated again in the service before persistence, including the entity limits (100/255/canonical 11-digit Turkish phone). Admin/user history is bounded (`size <= 100`) and sorted deterministically: admin status queues use `applicationDate ASC, id ASC`; applicant history uses both fields descending. Rejection reason is a validated JSON request body and is never placed in a query string. Application/decision timestamps are stored as UTC wall-clock values and exposed as offset-bearing JSON instants.
 
 ### Room
 
@@ -53,7 +67,7 @@ Only active occupancies participate in the PostgreSQL GiST exclusion constraint 
 Reservation transitions:
 
 - create: `PENDING_APPROVAL` or `CONFIRMED`
-- `PENDING_APPROVAL -> CONFIRMED | REJECTED_BY_STUDIO | CANCELLED_BY_CUSTOMER | EXPIRED`
+- `PENDING_APPROVAL -> CONFIRMED | REJECTED_BY_STUDIO | CANCELLED_BY_CUSTOMER | CANCELLED_BY_STUDIO | EXPIRED`
 - `CONFIRMED -> CANCELLED_BY_CUSTOMER | CANCELLED_BY_STUDIO`
 - completion is derived from `endsAt <= now`; no periodic status writer is required
 - terminal states never transition back
@@ -101,12 +115,13 @@ Only `MANAGE_BACKLINE_CATALOG` may review requests. Owners can submit/list/withd
 
 - Room create/archive locks the Studio row. A partial unique active slot constraint is the final ten-room guard, and the per-Studio create-request uniqueness constraint is the idempotency backstop.
 - Room/equipment ordinary edits require the expected version.
+- Owner room, equipment, reservation, and backline-request locks include the authenticated tenant in the locking query. Public UUIDs therefore cannot be used to lock another Studio's rows before authorization. Customer cancellation similarly proves requester scope before taking the room/reservation locks.
 - Spotify track metadata is resolved before opening the short profile-write transaction; the transactional executor then locks/rechecks the profile and persists the authoritative snapshot atomically. Upstream latency therefore never holds the Studio profile row lock.
 - Reservation create serializes retries on the requester before locking the room. Approve and manual-block creation lock the owning Studio/room in deterministic order. Reservation and manual-block request-key uniqueness constraints are idempotency backstops; exact manual-block replay is resolved before active-room validation so a lost success response remains recoverable after room archive. The GiST exclusion constraint remains authoritative for overlap races and pre-checks are only for readable errors.
 - Reservation cancellation locks the reservation and occupancy and updates both atomically.
 - Equipment total/range changes lock the same equipment row. Day rows are locked in ascending date order.
 - Category decisions lock the request and rely on normalized catalog uniqueness.
-- Notification side effects must be published after commit; durable delivery requires the repository's outbox/reconciliation production gate.
+- Notification side effects are published after commit so rollback cannot emit a phantom event. They remain best effort because the current Rabbit producer has no durable outbox/reconciliation path; a broker failure after commit can permanently lose a Studio notification. Production remains blocked until the release gate is implemented and monitored.
 
 ## API surface
 
@@ -121,8 +136,11 @@ Existing Studio profile endpoints remain compatible.
 - Public catalog: `/api/v1/public/backline/categories`
 - Owner category requests: `/api/v1/user/studio-profiles/me/category-requests`
 - Admin catalog review: `/api/v1/admin/backline/category-requests/...`
+- User Studio application history: `/api/v1/user/studio-applications/my-applications?page=0&size=20`
+- Admin Studio application queue: `/api/v1/admin/studio-applications/by-status?status=PENDING&page=0&size=50`
+- Admin Studio rejection: `POST /api/v1/admin/studio-applications/reject/{id}` with JSON `{ "reason": "..." }`
 
-List endpoints use deterministic sorting and bounded paging. Public contracts never return owner-only media IDs or reservation guest PII.
+List endpoints use deterministic sorting, `page <= 1000`, and bounded page sizes. Search strings are length-bounded and `%`/`_` are treated as literal characters rather than caller-controlled SQL wildcards. Public contracts never return owner-only media IDs or reservation guest PII.
 
 ## Migration and rollout
 
@@ -131,13 +149,13 @@ The repository does not yet have an authoritative Flyway baseline. The date-name
 Safe order:
 
 1. Reconcile a schema-only dump and provision `btree_gist`.
-2. Add user public code, Studio timezone/version/Spotify collection, and catalog-review permission; grant the permission idempotently to the existing `ROLE_ADMIN` and `ROLE_OWNER` rows because production data initialization is disabled.
+2. Add user public code, `REJECTED_STUDIO_REQUEST`, Studio application/profile/timezone/version/Spotify structures, and review permissions; backfill rejected registration accounts and grant permissions idempotently to the existing `ROLE_ADMIN` and `ROLE_OWNER` rows because production data initialization is disabled.
 3. Create and seed the global catalog.
 4. Create room attachments, reservations, and occupancy with exclusion constraint.
 5. Create equipment attachments, day allocations, and command audit.
 6. Create category requests.
 7. Deploy media-reference guard support before enabling attachment writes.
-8. Deploy backend behind Studio feature flags, then move Flutter screens from mock to API one flow at a time.
+8. Provide an ingress/API rollout control, deploy the compatible backend, then move Flutter screens from mock to API one flow at a time. The repository has no built-in Studio feature flag; traffic control must be supplied and acceptance-tested by the deployment platform before rollout.
 9. Keep production Hibernate at `validate`; remove legacy typo compatibility only in a later observed release.
 
 Mock Studio data must not be backfilled into production.

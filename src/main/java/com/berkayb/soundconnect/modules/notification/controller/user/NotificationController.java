@@ -5,16 +5,16 @@ import com.berkayb.soundconnect.modules.notification.dto.response.NotificationRe
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Notification.*;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
@@ -34,24 +35,26 @@ public class NotificationController {
 	
 	// GET /api/v1/user/notifications?types=MEDIA,VENUE
 	@GetMapping(LIST)
-	public BaseResponse<Page<NotificationResponseDto>> listNotifications(
+	public BaseResponse<PageResponse<NotificationResponseDto>> listNotifications(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@RequestParam(value = "types", required = false) String typesCsv,
-			@ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+			@RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
+			@RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
 	) {
 		UUID userId = principal.getId();
-		Page<NotificationResponseDto> page;
+		Page<NotificationResponseDto> notifications;
 		if (typesCsv != null && !typesCsv.isBlank()) {
 			Set<NotificationType> types = parseTypes(typesCsv);
-			page = notificationService.getUserNotificationsByTypes(userId, types, pageable);
+			notifications = notificationService.getUserNotificationsByTypes(
+					userId, types, page, size);
 		} else {
-			page = notificationService.getUserNotifications(userId, pageable);
+			notifications = notificationService.getUserNotifications(userId, page, size);
 		}
-		return BaseResponse.<Page<NotificationResponseDto>>builder()
+		return BaseResponse.<PageResponse<NotificationResponseDto>>builder()
 		                   .success(true)
 		                   .code(200)
 		                   .message("Notifications fetched")
-		                   .data(page)
+		                   .data(PageResponse.from(notifications))
 		                   .build();
 	}
 	

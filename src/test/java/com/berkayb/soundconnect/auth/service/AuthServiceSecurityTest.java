@@ -135,6 +135,48 @@ class AuthServiceSecurityTest {
 	}
 
 	@Test
+	void rejectedStudioGetsAStableDecisionErrorOnlyAfterPasswordVerification() {
+		User rejectedStudio = User.builder()
+				.username("rejected-studio")
+				.email("studio@example.com")
+				.password("encoded")
+				.emailVerified(true)
+				.status(UserStatus.REJECTED_STUDIO_REQUEST)
+				.build();
+		when(userRepository.findByUsername("rejected-studio"))
+				.thenReturn(Optional.of(rejectedStudio));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("rejected-studio", "secret")),
+				SoundConnectException.class
+		);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.STUDIO_APPLICATION_REJECTED);
+		verifyNoInteractions(jwtTokenProvider);
+	}
+
+	@Test
+	void rejectedStudioWithWrongPasswordDoesNotRevealTheDecision() {
+		User rejectedStudio = User.builder()
+				.username("rejected-studio")
+				.password("encoded")
+				.status(UserStatus.REJECTED_STUDIO_REQUEST)
+				.build();
+		when(userRepository.findByUsername("rejected-studio"))
+				.thenReturn(Optional.of(rejectedStudio));
+		when(passwordEncoder.matches("wrong", "encoded")).thenReturn(false);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("rejected-studio", "wrong")),
+				SoundConnectException.class
+		);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_CREDENTIALS);
+		verifyNoInteractions(jwtTokenProvider);
+	}
+
+	@Test
 	void unknownUsernameStillPerformsDummyPasswordCheck() {
 		when(userRepository.findByUsername("missing")).thenReturn(Optional.empty());
 

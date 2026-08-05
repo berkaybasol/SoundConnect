@@ -30,9 +30,43 @@ public interface StudioRoomRepository extends JpaRepository<StudioRoom, UUID> {
 
     Optional<StudioRoom> findByIdAndArchivedAtIsNull(UUID roomId);
 
+    @Query("""
+            select room from StudioRoom room
+            where room.id = :roomId
+              and room.studioProfile.id = :studioProfileId
+              and room.archivedAt is null
+            """)
+    Optional<StudioRoom> findActiveByIdAndStudioProfileId(
+            @Param("roomId") UUID roomId,
+            @Param("studioProfileId") UUID studioProfileId
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select room from StudioRoom room where room.id = :roomId")
     Optional<StudioRoom> findByIdForUpdate(@Param("roomId") UUID roomId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select room from StudioRoom room
+            where room.id = :roomId
+              and room.studioProfile.id = :studioProfileId
+            """)
+    Optional<StudioRoom> findByIdAndStudioProfileIdForUpdate(
+            @Param("roomId") UUID roomId,
+            @Param("studioProfileId") UUID studioProfileId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select room from StudioRoom room
+            where room.id = :roomId
+              and room.studioProfile.id = :studioProfileId
+              and room.archivedAt is null
+            """)
+    Optional<StudioRoom> findActiveByIdAndStudioProfileIdForUpdate(
+            @Param("roomId") UUID roomId,
+            @Param("studioProfileId") UUID studioProfileId
+    );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select room from StudioRoom room where room.id = :roomId and room.archivedAt is null")

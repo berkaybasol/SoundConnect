@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioReservationCreateRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockCreateRequest;
+import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockReleaseRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioVersionRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomOccupancy;
 import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomReservation;
@@ -199,13 +200,11 @@ class StudioReservationServiceTest {
                 UUID.randomUUID(),
                 competingRequester
         );
-        when(reservationRepository.findById(approvedReservationId))
-                .thenReturn(Optional.of(approved));
         when(studioProfileRepository.findByUserIdForUpdate(ownerId))
                 .thenReturn(Optional.of(profile));
-        when(roomRepository.findActiveByIdForUpdate(roomId))
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(roomId, profile.getId()))
                 .thenReturn(Optional.of(room));
-        when(reservationRepository.findByIdForUpdate(approvedReservationId))
+        when(reservationRepository.findByIdAndRoomIdForUpdate(approvedReservationId, roomId))
                 .thenReturn(Optional.of(approved));
         when(occupancyRepository.existsActiveOverlap(
                 roomId,
@@ -267,6 +266,40 @@ class StudioReservationServiceTest {
                 .extracting(exception -> ((SoundConnectException) exception).getErrorType())
                 .isEqualTo(ErrorType.STUDIO_RESERVATION_SELF_NOT_ALLOWED);
         verify(reservationRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void rejectsOverlappingRequestFromTheSameCustomerBeforeCreatingMorePendingSpam() {
+        arrangeCreate(true);
+        Instant now = Instant.parse("2026-07-21T10:00:00Z");
+        when(reservationRepository.existsActiveRequesterOverlap(
+                requesterId,
+                roomId,
+                List.of(
+                        StudioReservationStatus.PENDING_APPROVAL,
+                        StudioReservationStatus.CONFIRMED
+                ),
+                StudioReservationStatus.PENDING_APPROVAL,
+                window.startsAt(),
+                window.endsAt(),
+                now
+        )).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(requesterId, createRequest()))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_RESERVATION_REQUESTER_OVERLAP);
+
+        verify(reservationRepository).expireStartedPendingRequests(
+                requesterId,
+                roomId,
+                StudioReservationStatus.PENDING_APPROVAL,
+                StudioReservationStatus.EXPIRED,
+                now
+        );
+        verify(reservationRepository, never()).saveAndFlush(any());
+        verify(occupancyRepository, never()).saveAndFlush(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -337,8 +370,190 @@ class StudioReservationServiceTest {
         assertThat(response.clientRequestId()).isEqualTo(clientRequestId);
         verify(occupancyRepository, never()).saveAndFlush(any());
         verify(roomRepository, never()).findActiveByIdForUpdate(any());
+        verify(roomRepository, never()).findActiveByIdAndStudioProfileIdForUpdate(any(), any());
         verify(timeProvider, never()).validateManualBlockWindow(any(), any(), any(), any(Integer.class));
     }
+
+    @Test
+    void foreignManualBlockReturnsNotFoundWithoutLockingTheForeignRoom() {
+        UUID foreignRoomId = UUID.randomUUID();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, profile.getId()
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createManualBlock(
+                ownerId,
+                foreignRoomId,
+                new StudioManualBlockCreateRequest(
+                        LocalDate.of(2026, 7, 22),
+                        LocalTime.of(13, 0),
+                        2,
+                        UUID.randomUUID()
+                )
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findActiveByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, profile.getId()
+        );
+        verify(roomRepository, never()).findActiveByIdForUpdate(any());
+        verify(timeProvider, never()).validateManualBlockWindow(any(), any(), any(), any(Integer.class));
+        verify(occupancyRepository, never()).existsActiveOverlap(any(), any(), any());
+        verify(occupancyRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void foreignOwnerApprovalReturnsNotFoundWithoutLockingRoomOrReservation() {
+        UUID foreignRoomId = UUID.randomUUID();
+        UUID foreignReservationId = UUID.randomUUID();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, profile.getId()
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.approve(
+                ownerId,
+                foreignRoomId,
+                foreignReservationId,
+                new StudioVersionRequest(0L)
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findActiveByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, profile.getId()
+        );
+        verify(roomRepository, never()).findActiveByIdForUpdate(any());
+        verify(reservationRepository, never()).findById(any());
+        verify(reservationRepository, never()).findByIdAndRoomIdForUpdate(any(), any());
+        verify(occupancyRepository, never()).existsActiveOverlap(any(), any(), any());
+    }
+
+    @Test
+    void ownedRoomWithForeignReservationNeverLocksTheForeignReservation() {
+        UUID foreignReservationId = UUID.randomUUID();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(roomId, profile.getId()))
+                .thenReturn(Optional.of(room));
+        when(reservationRepository.findByIdAndRoomIdForUpdate(foreignReservationId, roomId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.approve(
+                ownerId,
+                roomId,
+                foreignReservationId,
+                new StudioVersionRequest(0L)
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_RESERVATION_NOT_FOUND);
+
+        verify(reservationRepository).findByIdAndRoomIdForUpdate(
+                foreignReservationId, roomId
+        );
+        verify(occupancyRepository, never()).existsActiveOverlap(any(), any(), any());
+        verify(reservationRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void ownedRoomWithForeignManualBlockNeverLocksTheForeignOccupancy() {
+        UUID foreignOccupancyId = UUID.randomUUID();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(roomId, profile.getId()))
+                .thenReturn(Optional.of(room));
+        when(occupancyRepository.findByIdAndRoomIdForUpdate(foreignOccupancyId, roomId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.releaseManualBlock(
+                ownerId,
+                roomId,
+                foreignOccupancyId,
+                new StudioManualBlockReleaseRequest(0L, "test")
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_BLOCK_NOT_FOUND);
+
+        verify(occupancyRepository).findByIdAndRoomIdForUpdate(
+                foreignOccupancyId, roomId
+        );
+        verify(occupancyRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void foreignOwnerScheduleReturnsNotFoundWithoutReadingTheForeignRoom() {
+        UUID foreignRoomId = UUID.randomUUID();
+        when(studioProfileRepository.findByUserId(ownerId)).thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileId(
+                foreignRoomId, profile.getId()
+        )).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.ownerSchedule(
+                ownerId,
+                foreignRoomId,
+                LocalDate.of(2026, 7, 22),
+                LocalDate.of(2026, 7, 22),
+                0,
+                20
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findActiveByIdAndStudioProfileId(
+                foreignRoomId, profile.getId()
+        );
+        verify(roomRepository, never()).findByIdAndArchivedAtIsNull(any());
+        verify(timeProvider, never()).validateOwnerRange(any(), any(), any());
+        verify(reservationRepository, never()).findRoomReservationsInRange(
+                any(), any(), any(), any()
+        );
+    }
+
+	@Test
+    void crossCustomerCancellationReturnsNotFoundWithoutLockingVictimState() {
+		UUID foreignReservationId = UUID.randomUUID();
+		when(reservationRepository.findByIdAndRequesterId(
+				foreignReservationId, requesterId
+		)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.cancelCustomer(
+				requesterId,
+				foreignReservationId,
+				new StudioVersionRequest(0L)
+		))
+				.isInstanceOf(SoundConnectException.class)
+				.extracting(exception -> ((SoundConnectException) exception).getErrorType())
+				.isEqualTo(ErrorType.STUDIO_RESERVATION_NOT_FOUND);
+
+		verify(reservationRepository).findByIdAndRequesterId(
+				foreignReservationId, requesterId
+		);
+		verify(roomRepository, never()).findByIdForUpdate(any());
+		verify(reservationRepository, never())
+				.findByIdAndRequesterIdForUpdate(any(), any());
+		verify(reservationRepository, never()).findByIdAndRoomIdForUpdate(any(), any());
+		verify(occupancyRepository, never()).findActiveByReservationIdForUpdate(any());
+		verify(reservationRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void deepCustomerReservationPageFailsBeforeRepositoryAccess() {
+		assertThatThrownBy(() -> service.listCustomer(requesterId, 1001, 20))
+				.isInstanceOf(SoundConnectException.class)
+				.extracting(exception -> ((SoundConnectException) exception).getErrorType())
+				.isEqualTo(ErrorType.VALIDATION_ERROR);
+
+		verify(reservationRepository, never()).findByRequesterId(any(), any());
+	}
 
 	@Test
 	void customerCannotCancelAReservationThatAlreadyStarted() {
@@ -351,9 +566,11 @@ class StudioReservationServiceTest {
 				.startsAt(Instant.parse("2026-07-21T09:00:00Z"))
 				.endsAt(Instant.parse("2026-07-21T11:00:00Z"))
 				.build();
-		when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+		when(reservationRepository.findByIdAndRequesterId(reservationId, requesterId))
+				.thenReturn(Optional.of(reservation));
 		when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-		when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+		when(reservationRepository.findByIdAndRequesterIdForUpdate(reservationId, requesterId))
+				.thenReturn(Optional.of(reservation));
 
 		assertThatThrownBy(() -> service.cancelCustomer(
 				requesterId,
@@ -391,9 +608,11 @@ class StudioReservationServiceTest {
                 .active(true)
                 .createdBy(requesterId)
                 .build();
-        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
+        when(reservationRepository.findByIdAndRequesterId(reservationId, requesterId))
+                .thenReturn(Optional.of(reservation));
         when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(reservationRepository.findByIdAndRequesterIdForUpdate(reservationId, requesterId))
+                .thenReturn(Optional.of(reservation));
         when(occupancyRepository.findActiveByReservationIdForUpdate(reservationId))
                 .thenReturn(Optional.of(occupancy));
         when(occupancyRepository.saveAndFlush(occupancy)).thenReturn(occupancy);
@@ -409,9 +628,29 @@ class StudioReservationServiceTest {
         assertThat(occupancy.isActive()).isFalse();
         assertThat(occupancy.getReleasedAt()).isNotNull();
         assertThat(occupancy.getReleasedBy()).isEqualTo(requesterId);
-        InOrder persistenceOrder = inOrder(occupancyRepository, reservationRepository);
+        InOrder persistenceOrder = inOrder(
+                roomRepository,
+                occupancyRepository,
+                reservationRepository,
+                eventPublisher
+        );
+		persistenceOrder.verify(reservationRepository)
+				.findByIdAndRequesterId(reservationId, requesterId);
+		persistenceOrder.verify(roomRepository).findByIdForUpdate(roomId);
+		persistenceOrder.verify(reservationRepository)
+				.findByIdAndRequesterIdForUpdate(reservationId, requesterId);
         persistenceOrder.verify(occupancyRepository).saveAndFlush(occupancy);
         persistenceOrder.verify(reservationRepository).saveAndFlush(reservation);
+        ArgumentCaptor<StudioReservationNotificationEvent> eventCaptor =
+                ArgumentCaptor.forClass(StudioReservationNotificationEvent.class);
+        persistenceOrder.verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().recipientId()).isEqualTo(ownerId);
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(NotificationType.STUDIO_RESERVATION_CANCELLED_BY_CUSTOMER);
+        assertThat(eventCaptor.getValue().payload())
+                .containsEntry("reservationId", reservationId.toString())
+                .containsEntry("action", "CANCELLED_BY_CUSTOMER")
+                .containsEntry("status", StudioReservationStatus.CANCELLED_BY_CUSTOMER.name());
     }
 
     @Test
@@ -429,10 +668,11 @@ class StudioReservationServiceTest {
                 .clientRequestId(UUID.randomUUID())
                 .contactPhoneSnapshot("05551112233")
                 .build();
-        when(reservationRepository.findById(reservationId)).thenReturn(Optional.of(reservation));
         when(studioProfileRepository.findByUserIdForUpdate(ownerId)).thenReturn(Optional.of(profile));
-        when(roomRepository.findActiveByIdForUpdate(roomId)).thenReturn(Optional.of(room));
-        when(reservationRepository.findByIdForUpdate(reservationId)).thenReturn(Optional.of(reservation));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(roomId, profile.getId()))
+                .thenReturn(Optional.of(room));
+        when(reservationRepository.findByIdAndRoomIdForUpdate(reservationId, roomId))
+                .thenReturn(Optional.of(reservation));
         when(reservationRepository.saveAndFlush(reservation)).thenReturn(reservation);
 
         var response = service.cancelOwner(

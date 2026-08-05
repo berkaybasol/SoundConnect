@@ -11,6 +11,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
@@ -20,8 +22,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+
+import static com.berkayb.soundconnect.modules.studio.reservation.support.StudioReservationTimeProvider.MAX_DURATION_HOURS;
 
 @Entity
 @Table(
@@ -39,33 +44,33 @@ import java.util.UUID;
 public class StudioRoomReservation extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "room_id", nullable = false)
+    @JoinColumn(name = "room_id", nullable = false, updatable = false)
     private StudioRoom room;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "requester_id", nullable = false)
+    @JoinColumn(name = "requester_id", nullable = false, updatable = false)
     private User requester;
 
-    @Column(name = "starts_at", nullable = false)
+    @Column(name = "starts_at", nullable = false, updatable = false)
     private Instant startsAt;
 
-    @Column(name = "ends_at", nullable = false)
+    @Column(name = "ends_at", nullable = false, updatable = false)
     private Instant endsAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private StudioReservationStatus status;
 
-    @Column(name = "approval_required_snapshot", nullable = false)
+    @Column(name = "approval_required_snapshot", nullable = false, updatable = false)
     private boolean approvalRequiredSnapshot;
 
-    @Column(name = "hourly_price_minor_snapshot")
+    @Column(name = "hourly_price_minor_snapshot", updatable = false)
     private Long hourlyPriceMinorSnapshot;
 
-    @Column(name = "total_price_minor_snapshot")
+    @Column(name = "total_price_minor_snapshot", updatable = false)
     private Long totalPriceMinorSnapshot;
 
-    @Column(name = "currency_snapshot", nullable = false, length = 3)
+    @Column(name = "currency_snapshot", nullable = false, length = 3, updatable = false)
     private String currencySnapshot;
 
     /**
@@ -75,10 +80,10 @@ public class StudioRoomReservation extends BaseEntity {
      * Nullable at schema level for backwards compatibility with reservations
      * created before this field existed; every new request requires it.
      */
-    @Column(name = "contact_phone_snapshot", length = 16)
+    @Column(name = "contact_phone_snapshot", length = 16, updatable = false)
     private String contactPhoneSnapshot;
 
-    @Column(name = "client_request_id", nullable = false, columnDefinition = "uuid")
+    @Column(name = "client_request_id", nullable = false, updatable = false, columnDefinition = "uuid")
     private UUID clientRequestId;
 
     @Column(name = "decided_at")
@@ -96,4 +101,19 @@ public class StudioRoomReservation extends BaseEntity {
     @Version
     @Column(nullable = false)
     private long version;
+
+    @PrePersist
+    @PreUpdate
+    void validateDurationInvariant() {
+        if (startsAt == null || endsAt == null) return;
+        Duration duration = Duration.between(startsAt, endsAt);
+        if (duration.compareTo(Duration.ofHours(1)) < 0
+                || duration.compareTo(Duration.ofHours(MAX_DURATION_HOURS)) > 0
+                || !duration.equals(Duration.ofHours(duration.toHours()))) {
+            throw new IllegalStateException(
+                    "Studio reservation duration must be an exact whole hour between 1 and "
+                            + MAX_DURATION_HOURS
+            );
+        }
+    }
 }

@@ -8,6 +8,7 @@ public enum MailKind {
 	PASSWORD_RESET,
 	VENUE_APPLICATION_ADMIN,
 	STUDIO_APPLICATION_ADMIN,
+	STUDIO_APPLICATION_DECISION,
 	CAMPAIGN, // ilerde pazarlama/ kampanya promosyon icin
 	GENERIC // baska turler destek vs.
 }

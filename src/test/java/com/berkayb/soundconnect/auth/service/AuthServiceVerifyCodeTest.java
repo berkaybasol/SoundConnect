@@ -48,7 +48,7 @@ class AuthServiceVerifyCodeTest {
 	@Test
 	void unknownAndWrongCodeUseTheSameGenericPublicError() {
 		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(false);
-		when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.empty());
+		when(userRepository.findByEmailForUpdate("user@example.com")).thenReturn(Optional.empty());
 
 		SoundConnectException exception = catchThrowableOfType(
 				() -> authService.verifyCode(request), SoundConnectException.class
@@ -63,7 +63,7 @@ class AuthServiceVerifyCodeTest {
 	void alreadyVerifiedAccountDoesNotRevealItsState() {
 		User verified = User.builder().emailVerified(true).status(UserStatus.ACTIVE).build();
 		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(false);
-		when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(verified));
+		when(userRepository.findByEmailForUpdate("user@example.com")).thenReturn(Optional.of(verified));
 
 		SoundConnectException exception = catchThrowableOfType(
 				() -> authService.verifyCode(request), SoundConnectException.class
@@ -77,13 +77,30 @@ class AuthServiceVerifyCodeTest {
 	void validCodeStillActivatesAnEligibleAccount() {
 		User user = User.builder().emailVerified(false).status(UserStatus.INACTIVE).build();
 		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(true);
-		when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+		when(userRepository.findByEmailForUpdate("user@example.com")).thenReturn(Optional.of(user));
 
 		var response = authService.verifyCode(request);
 
 		assertThat(response.getCode()).isEqualTo(200);
 		assertThat(user.getEmailVerified()).isTrue();
 		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+		verify(userRepository).save(user);
+	}
+
+	@Test
+	void validCodeVerifiesButNeverReopensARejectedStudioAccount() {
+		User user = User.builder()
+				.emailVerified(false)
+				.status(UserStatus.REJECTED_STUDIO_REQUEST)
+				.build();
+		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(true);
+		when(userRepository.findByEmailForUpdate("user@example.com"))
+				.thenReturn(Optional.of(user));
+
+		authService.verifyCode(request);
+
+		assertThat(user.getEmailVerified()).isTrue();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.REJECTED_STUDIO_REQUEST);
 		verify(userRepository).save(user);
 	}
 }

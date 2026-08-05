@@ -26,6 +26,19 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 	@Query("select asset from MediaAsset asset where asset.id = :assetId")
 	Optional<MediaAsset> findByIdForUpdate(@Param("assetId") UUID assetId);
 
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+			select asset from MediaAsset asset
+			where asset.id = :assetId
+			  and asset.ownerType = :ownerType
+			  and asset.ownerId = :ownerId
+			""")
+	Optional<MediaAsset> findByIdAndOwnerForUpdate(
+			@Param("assetId") UUID assetId,
+			@Param("ownerType") MediaOwnerType ownerType,
+			@Param("ownerId") UUID ownerId
+	);
+
 	List<MediaAsset> findByStatusAndCreatedAtBeforeOrderByCreatedAtAsc(
 			MediaStatus status,
 			LocalDateTime cutoff,

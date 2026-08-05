@@ -6,10 +6,12 @@ import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentAvailabili
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentAvailabilityRangeResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentCreateRequest;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentOwnerResponse;
+import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentInventorySummaryResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentUpdateRequest;
 import com.berkayb.soundconnect.modules.studio.equipment.model.EquipmentAvailabilityBucket;
 import com.berkayb.soundconnect.modules.studio.equipment.service.StudioEquipmentService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -17,7 +19,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -56,21 +57,29 @@ public class StudioEquipmentOwnerController {
     }
 
     @GetMapping
-    public BaseResponse<Page<EquipmentOwnerResponse>> list(
+    public BaseResponse<PageResponse<EquipmentOwnerResponse>> list(
             @AuthenticationPrincipal UserDetailsImpl principal,
             @RequestParam(required = false) @Size(max = 100) String query,
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) EquipmentAvailabilityBucket availabilityBucket,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return response(
                 200,
                 "Equipment listed",
-                equipmentService.listOwner(
+                PageResponse.from(equipmentService.listOwner(
                         principal.getId(), query, categoryId, availabilityBucket, page, size
-                )
+                ))
         );
+    }
+
+    @GetMapping("/summary")
+    public BaseResponse<EquipmentInventorySummaryResponse> summary(
+            @AuthenticationPrincipal UserDetailsImpl principal
+    ) {
+        return response(200, "Equipment inventory summarized",
+                equipmentService.getOwnerInventorySummary(principal.getId()));
     }
 
     @GetMapping("/{equipmentId}")

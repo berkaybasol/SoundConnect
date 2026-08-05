@@ -6,11 +6,13 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -65,11 +67,34 @@ class NotificationServiceImplTest {
 		);
 		when(notificationMapper.toDto(n)).thenReturn(dto);
 		
-		Page<NotificationResponseDto> result = service.getUserNotifications(userId, Pageable.unpaged());
+		Page<NotificationResponseDto> result = service.getUserNotifications(userId, 0, 20);
 		
 		assertThat(result.getContent()).containsExactly(dto);
-		verify(notificationRepository).findByRecipientIdOrderByCreatedAtDesc(eq(userId), any(Pageable.class));
+		ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+		verify(notificationRepository).findByRecipientIdOrderByCreatedAtDesc(
+				eq(userId), pageableCaptor.capture());
+		assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+		assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(20);
+		assertThat(pageableCaptor.getValue().getSort().toList())
+				.extracting(Sort.Order::getProperty, Sort.Order::getDirection)
+				.containsExactly(
+						tuple("createdAt", Sort.Direction.DESC),
+						tuple("id", Sort.Direction.DESC)
+				);
 		verify(notificationMapper).toDto(n);
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: page ve size sinirlarini repository oncesi uygular")
+	void getUserNotifications_rejectsInvalidPaginationBeforeRepositoryAccess() {
+		assertThatThrownBy(() -> service.getUserNotifications(userId, 1001, 20))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR));
+		assertThatThrownBy(() -> service.getUserNotifications(userId, 0, 101))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR));
+
+		verifyNoInteractions(notificationRepository, notificationMapper);
 	}
 	
 	// ---------- getUserNotificationsByTypes ----------
@@ -106,7 +131,8 @@ class NotificationServiceImplTest {
 			return arg.getType() == NotificationType.MEDIA_TRANSCODE_READY ? d1 : d2;
 		});
 		
-		Page<NotificationResponseDto> result = service.getUserNotificationsByTypes(userId, types, Pageable.ofSize(10));
+		Page<NotificationResponseDto> result = service.getUserNotificationsByTypes(
+				userId, types, 0, 10);
 		
 		assertThat(result.getContent()).containsExactly(d1, d2);
 		verify(notificationRepository).findByRecipientIdAndTypeInOrderByCreatedAtDesc(eq(userId), eq(types), any(Pageable.class));

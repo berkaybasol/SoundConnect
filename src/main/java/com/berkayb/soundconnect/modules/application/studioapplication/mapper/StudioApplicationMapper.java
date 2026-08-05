@@ -5,6 +5,10 @@ import com.berkayb.soundconnect.modules.application.studioapplication.entity.Stu
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
 @Mapper(componentModel = "spring")
 public interface StudioApplicationMapper {
 	@Mapping(target = "applicantId", source = "applicant.id")
@@ -17,4 +21,8 @@ public interface StudioApplicationMapper {
 	@Mapping(target = "neighborhoodName", source = "neighborhood.name")
 	@Mapping(target = "reviewedById", source = "reviewedBy.id")
 	StudioApplicationResponseDto toResponseDto(StudioApplication application);
+
+	default Instant toUtcInstant(LocalDateTime value) {
+		return value == null ? null : value.toInstant(ZoneOffset.UTC);
+	}
 }

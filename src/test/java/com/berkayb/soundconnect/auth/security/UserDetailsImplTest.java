@@ -29,6 +29,15 @@ class UserDetailsImplTest {
 		assertThat(details.isEnabled()).isFalse();
 	}
 
+	@Test
+	void rejectedStudioAccountIsLockedAndDisabled() {
+		UserDetailsImpl details = new UserDetailsImpl(
+				user(UserStatus.REJECTED_STUDIO_REQUEST, true));
+
+		assertThat(details.isAccountNonLocked()).isFalse();
+		assertThat(details.isEnabled()).isFalse();
+	}
+
 	private User user(UserStatus status, boolean emailVerified) {
 		return User.builder()
 				.username("user")

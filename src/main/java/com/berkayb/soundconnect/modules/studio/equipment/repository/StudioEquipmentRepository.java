@@ -16,24 +16,68 @@ import java.util.UUID;
 
 public interface StudioEquipmentRepository extends JpaRepository<StudioEquipment, UUID> {
 
+    interface InventorySummaryProjection {
+        long getTotalQuantity();
+        long getAvailableQuantity();
+        long getBusyQuantity();
+        long getMaintenanceQuantity();
+    }
+
+    @Query("""
+            select
+                coalesce(sum(e.totalQuantity), 0) as totalQuantity,
+                coalesce(sum(e.totalQuantity - coalesce(day.busyQuantity, 0)
+                             - coalesce(day.maintenanceQuantity, 0)), 0) as availableQuantity,
+                coalesce(sum(coalesce(day.busyQuantity, 0)), 0) as busyQuantity,
+                coalesce(sum(coalesce(day.maintenanceQuantity, 0)), 0) as maintenanceQuantity
+            from StudioEquipment e
+            left join StudioEquipmentDay day
+              on day.equipment = e and day.localDate = :availabilityDate
+            where e.studioProfile.id = :studioProfileId
+              and e.archivedAt is null
+            """)
+    InventorySummaryProjection summarizeActiveInventory(
+            @Param("studioProfileId") UUID studioProfileId,
+            @Param("availabilityDate") LocalDate availabilityDate
+    );
+
+    @Query("""
+            select equipment from StudioEquipment equipment
+            where equipment.id = :equipmentId
+              and equipment.studioProfile.user.id = :ownerUserId
+              and equipment.archivedAt is null
+            """)
+    Optional<StudioEquipment> findOwnedActiveById(
+            @Param("equipmentId") UUID equipmentId,
+            @Param("ownerUserId") UUID ownerUserId
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select e from StudioEquipment e where e.id = :equipmentId")
-    Optional<StudioEquipment> findByIdForUpdate(@Param("equipmentId") UUID equipmentId);
+    @Query("""
+            select e from StudioEquipment e
+            where e.id = :equipmentId
+              and e.studioProfile.user.id = :ownerUserId
+            """)
+    Optional<StudioEquipment> findOwnedByIdForUpdate(
+            @Param("equipmentId") UUID equipmentId,
+            @Param("ownerUserId") UUID ownerUserId
+    );
 
     @EntityGraph(attributePaths = {"leafCategory", "leafCategory.parent"})
     @Query(value = """
             select e from StudioEquipment e
+            join e.leafCategory category
+            join category.parent parent
             where e.studioProfile.id = :studioProfileId
               and e.archivedAt is null
-              and (:query = ''
-                   or e.name ilike concat('%', :query, '%')
-                   or coalesce(e.brand, '') ilike concat('%', :query, '%')
-                   or coalesce(e.model, '') ilike concat('%', :query, '%')
-                   or e.leafCategory.name ilike concat('%', :query, '%')
-                   or e.leafCategory.parent.name ilike concat('%', :query, '%'))
+              and (lower(coalesce(e.name, '')) like :queryPattern escape '!'
+                   or lower(coalesce(e.brand, '')) like :queryPattern escape '!'
+                   or lower(coalesce(e.model, '')) like :queryPattern escape '!'
+                   or lower(coalesce(category.name, '')) like :queryPattern escape '!'
+                   or lower(coalesce(parent.name, '')) like :queryPattern escape '!')
               and (:categoryId is null
-                   or e.leafCategory.id = :categoryId
-                   or e.leafCategory.parent.id = :categoryId)
+                   or category.id = :categoryId
+                   or parent.id = :categoryId)
               and (
                    :availabilityBucket = 'ALL'
                    or (
@@ -73,17 +117,18 @@ public interface StudioEquipmentRepository extends JpaRepository<StudioEquipment
               )
             """, countQuery = """
             select count(e) from StudioEquipment e
+            join e.leafCategory category
+            join category.parent parent
             where e.studioProfile.id = :studioProfileId
               and e.archivedAt is null
-              and (:query = ''
-                   or e.name ilike concat('%', :query, '%')
-                   or coalesce(e.brand, '') ilike concat('%', :query, '%')
-                   or coalesce(e.model, '') ilike concat('%', :query, '%')
-                   or e.leafCategory.name ilike concat('%', :query, '%')
-                   or e.leafCategory.parent.name ilike concat('%', :query, '%'))
+              and (lower(coalesce(e.name, '')) like :queryPattern escape '!'
+                   or lower(coalesce(e.brand, '')) like :queryPattern escape '!'
+                   or lower(coalesce(e.model, '')) like :queryPattern escape '!'
+                   or lower(coalesce(category.name, '')) like :queryPattern escape '!'
+                   or lower(coalesce(parent.name, '')) like :queryPattern escape '!')
               and (:categoryId is null
-                   or e.leafCategory.id = :categoryId
-                   or e.leafCategory.parent.id = :categoryId)
+                   or category.id = :categoryId
+                   or parent.id = :categoryId)
               and (
                    :availabilityBucket = 'ALL'
                    or (
@@ -124,7 +169,7 @@ public interface StudioEquipmentRepository extends JpaRepository<StudioEquipment
             """)
     Page<StudioEquipment> findActiveByStudio(
             @Param("studioProfileId") UUID studioProfileId,
-            @Param("query") String query,
+            @Param("queryPattern") String queryPattern,
             @Param("categoryId") UUID categoryId,
             @Param("availabilityBucket") String availabilityBucket,
             @Param("availabilityDate") LocalDate availabilityDate,

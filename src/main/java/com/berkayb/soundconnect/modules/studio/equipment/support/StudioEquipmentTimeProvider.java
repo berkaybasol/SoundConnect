@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.studio.equipment.support;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -25,9 +26,15 @@ public class StudioEquipmentTimeProvider {
     }
 
     public LocalDate today(String studioTimeZone) {
-        ZoneId zone = studioTimeZone == null || studioTimeZone.isBlank()
-                ? DEFAULT_STUDIO_ZONE
-                : ZoneId.of(studioTimeZone);
+        ZoneId zone = DEFAULT_STUDIO_ZONE;
+        if (studioTimeZone != null && !studioTimeZone.isBlank()) {
+            try {
+                zone = ZoneId.of(studioTimeZone);
+            } catch (DateTimeException ignored) {
+                // Match reservation behavior for legacy/corrupt persisted data;
+                // profile writes still reject invalid IANA identifiers.
+            }
+        }
         return LocalDate.now(clock.withZone(zone));
     }
 }

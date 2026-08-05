@@ -43,8 +43,15 @@ public record RegisterRequestDto(
 		String neighborhoodId,
 
 		// role studio secilirse
+		@Size(max = 100, message = "Studyo adi en fazla 100 karakter olabilir")
 		String studioName,
+		@Size(max = 255, message = "Studyo adresi en fazla 255 karakter olabilir")
 		String studioAddress,
+		@Size(min = 10, max = 32, message = "Telefon numarasi gecersiz")
+		@Pattern(
+				regexp = "^(?:\\+)?[0-9() .-]+$",
+				message = "Telefon numarasi gecersiz"
+		)
 		String studioPhone
 ) {
 	public RegisterRequestDto {

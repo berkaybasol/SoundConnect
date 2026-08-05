@@ -164,8 +164,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_studio_application_pending_applicant
     ON tbl_studio_applications (applicant_id)
     WHERE status = 'PENDING';
 
-CREATE INDEX IF NOT EXISTS ix_studio_application_status_date
-    ON tbl_studio_applications (status, application_date);
+DROP INDEX IF EXISTS ix_studio_application_status_date;
+
+CREATE INDEX IF NOT EXISTS ix_studio_application_status_date_id
+    ON tbl_studio_applications (status, application_date, id);
+
+CREATE INDEX IF NOT EXISTS ix_studio_application_applicant_date_id
+    ON tbl_studio_applications (applicant_id, application_date DESC, id DESC);
 
 DO $$
 BEGIN
@@ -182,6 +187,46 @@ BEGIN
     END IF;
 END
 $$;
+
+-- The new rejected-registration state is one character longer than the
+-- previous longest UserStatus value. Widen only legacy bounded text columns;
+-- unbounded text/varchar columns need no change and wider columns are kept.
+DO $$
+DECLARE
+    user_status_data_type text;
+    user_status_max_length integer;
+BEGIN
+    SELECT data_type, character_maximum_length
+      INTO user_status_data_type, user_status_max_length
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'tbl_user'
+       AND column_name = 'status';
+
+    IF user_status_data_type IN ('character varying', 'character')
+       AND user_status_max_length IS NOT NULL
+       AND user_status_max_length < 32 THEN
+        ALTER TABLE tbl_user
+            ALTER COLUMN status TYPE varchar(32) USING status::text;
+    END IF;
+END
+$$;
+
+-- Close legacy registration accounts whose most recent Studio application was
+-- already rejected. Previously these users remained PENDING_STUDIO_REQUEST and
+-- every later login incorrectly claimed that review was still in progress.
+-- Active multi-role users are deliberately excluded by the status predicate.
+UPDATE tbl_user applicant
+   SET status = 'REJECTED_STUDIO_REQUEST',
+       updated_at = CURRENT_TIMESTAMP
+ WHERE applicant.status = 'PENDING_STUDIO_REQUEST'
+   AND (
+       SELECT application.status
+         FROM tbl_studio_applications application
+        WHERE application.applicant_id = applicant.id
+        ORDER BY application.application_date DESC, application.id DESC
+        LIMIT 1
+   ) = 'REJECTED';
 
 UPDATE tbl_studio_profile
    SET time_zone = 'Europe/Istanbul'
@@ -356,118 +401,157 @@ BEFORE INSERT OR UPDATE OF parent_id, level ON tbl_backline_category
 FOR EACH ROW
 EXECUTE FUNCTION soundconnect_validate_backline_category_parent();
 
--- Stable global roots. Reruns never overwrite later admin edits.
+-- Seed normalization must not depend on the database cluster locale. This is
+-- the SQL equivalent of BacklineCategoryNames: all Turkish I variants share
+-- one ASCII-i uniqueness key, while the remaining Turkish uppercase letters
+-- are lowered explicitly under the built-in C collation.
+CREATE OR REPLACE FUNCTION soundconnect_normalize_backline_name(raw_name text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+    SELECT btrim(lower(
+        translate(raw_name, 'İıÇĞÖŞÜ', 'Iiçğöşü') COLLATE "C"
+    ));
+$$;
+
+-- Canonical reference catalog from backline-category-seed.json. A local
+-- Hibernate bootstrap may have inserted these rows with generated UUIDs before
+-- this migration runs. Adopt an existing root by code or normalized name so
+-- its identity and every external reference remain untouched. Unrelated
+-- administrator-created categories are neither updated nor removed.
+WITH seed(id, code, name, icon_key, sort_order) AS (
+    VALUES
+    ('10000000-0000-0000-0000-000000000001'::uuid, 'drums-cymbals', 'Davul, Bateri & Zil', 'drum-kit', 0),
+    ('10000000-0000-0000-0000-000000000002'::uuid, 'guitar-amplifiers', 'Gitar Amfileri', 'guitar-amps', 1),
+    ('10000000-0000-0000-0000-000000000003'::uuid, 'bass-amplifiers', 'Bas Gitar Amfileri', 'bass-amps', 2),
+    ('10000000-0000-0000-0000-000000000004'::uuid, 'piano-keyboards-synths', 'Piyano, Klavye & Synth', 'keyboards', 3),
+    ('10000000-0000-0000-0000-000000000005'::uuid, 'percussion', 'Perküsyon', 'percussion', 4),
+    ('10000000-0000-0000-0000-000000000006'::uuid, 'guitars-basses', 'Gitarlar & Baslar', 'guitars-basses', 5),
+    ('10000000-0000-0000-0000-000000000007'::uuid, 'orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', 'orchestral-strings', 6),
+    ('10000000-0000-0000-0000-000000000008'::uuid, 'dj-equipment', 'DJ Ekipmanları', 'dj', 7),
+    ('10000000-0000-0000-0000-000000000009'::uuid, 'pro-audio-studio', 'Pro Audio & Stüdyo', 'pro-audio-studio', 8),
+    ('10000000-0000-0000-0000-000000000010'::uuid, 'stage-backline-accessories', 'Sahne & Backline Aksesuarları', 'backline-accessories', 9)
+)
 INSERT INTO tbl_backline_category
     (id, parent_id, code, name, normalized_name, icon_key, level, sort_order, active)
-VALUES
-    ('10000000-0000-0000-0000-000000000001', NULL, 'drums-cymbals',
-     'Davul, Bateri & Zil', lower('Davul, Bateri & Zil'), 'drum-kit', 0, 0, true),
-    ('10000000-0000-0000-0000-000000000002', NULL, 'guitar-amps',
-     'Gitar Amfileri', lower('Gitar Amfileri'), 'guitar-amp', 0, 1, true),
-    ('10000000-0000-0000-0000-000000000003', NULL, 'bass-amps',
-     'Bas Gitar Amfileri', lower('Bas Gitar Amfileri'), 'bass-amp', 0, 2, true),
-    ('10000000-0000-0000-0000-000000000004', NULL, 'keys-synth',
-     'Piyano, Klavye & Synth', lower('Piyano, Klavye & Synth'), 'keys-synth', 0, 3, true),
-    ('10000000-0000-0000-0000-000000000005', NULL, 'percussion',
-     'Perküsyon', lower('Perküsyon'), 'percussion', 0, 4, true),
-    ('10000000-0000-0000-0000-000000000006', NULL, 'guitars-basses',
-     'Gitarlar & Baslar', lower('Gitarlar & Baslar'), 'guitars-basses', 0, 5, true),
-    ('10000000-0000-0000-0000-000000000007', NULL, 'orchestral-instruments',
-     'Yaylılar & Orkestra Enstrümanları', lower('Yaylılar & Orkestra Enstrümanları'), 'orchestral', 0, 6, true),
-    ('10000000-0000-0000-0000-000000000008', NULL, 'dj-equipment',
-     'DJ Ekipmanları', lower('DJ Ekipmanları'), 'dj', 0, 7, true),
-    ('10000000-0000-0000-0000-000000000009', NULL, 'pro-audio-studio',
-     'Pro Audio & Stüdyo', lower('Pro Audio & Stüdyo'), 'pro-audio-studio', 0, 8, true),
-    ('10000000-0000-0000-0000-000000000010', NULL, 'stage-backline-accessories',
-     'Sahne & Backline Aksesuarları', lower('Sahne & Backline Aksesuarları'), 'stage-accessories', 0, 9, true)
-ON CONFLICT (code) DO NOTHING;
+SELECT seed.id,
+       NULL,
+       seed.code,
+       seed.name,
+       soundconnect_normalize_backline_name(seed.name),
+       seed.icon_key,
+       0,
+       seed.sort_order,
+       true
+  FROM seed
+ WHERE NOT EXISTS (
+           SELECT 1
+             FROM tbl_backline_category existing
+            WHERE existing.code = seed.code
+       )
+   AND NOT EXISTS (
+           SELECT 1
+             FROM tbl_backline_category existing
+            WHERE existing.parent_id IS NULL
+              AND existing.normalized_name = soundconnect_normalize_backline_name(seed.name)
+       )
+ON CONFLICT DO NOTHING;
 
--- Stable leaf catalog mirrored from the frontend taxonomy. Equipment references
--- only these leaf IDs; the parent is always derived.
-WITH seed(parent_code, id, code, name, sort_order) AS (
+-- Stable leaf IDs are used only for a genuinely missing canonical row. An
+-- existing JSON-seeded leaf is adopted by code or by normalized name under its
+-- resolved root; no category is moved, renamed, re-keyed, or reactivated.
+WITH seed(parent_code, parent_name, id, code, name, sort_order) AS (
     VALUES
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000001'::uuid, 'acoustic-drum-kits', 'Davul / Bateri - Akustik Setler', 0),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000002'::uuid, 'electronic-drum-kits', 'Davul / Bateri - Elektronik Setler', 1),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000003'::uuid, 'snare-drums', 'Trampetler (Snare)', 2),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000004'::uuid, 'cymbals', 'Ziller', 3),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000005'::uuid, 'drum-pedals', 'Davul Aksesuarları - Pedallar', 4),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000006'::uuid, 'electronic-drum-pads-modules', 'Davul Aksesuarları - Elektronik Padler & Modüller', 5),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000007'::uuid, 'drum-hardware-stands', 'Davul Aksesuarları - Hardware & Standlar', 6),
-    ('drums-cymbals', '20000000-0000-0000-0000-000000000008'::uuid, 'drum-spares-consumables', 'Davul Aksesuarları - Yedekler & Sarf Malzemeleri', 7),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000001'::uuid, 'acoustic-drum-sets', 'Davul / Bateri - Akustik Setler', 0),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000002'::uuid, 'electronic-drum-sets', 'Davul / Bateri - Elektronik Setler', 1),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000074'::uuid, 'drum-shells-individual-drums', 'Davul Gövdeleri & Tekil Davullar', 2),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000003'::uuid, 'snare-drums', 'Trampetler (Snare)', 3),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000004'::uuid, 'cymbals', 'Ziller', 4),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000005'::uuid, 'drum-pedals', 'Davul Aksesuarları - Pedallar', 5),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000006'::uuid, 'electronic-drum-pads-modules', 'Davul Aksesuarları - Elektronik Padler & Modüller', 6),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000007'::uuid, 'drum-hardware-stands', 'Davul Aksesuarları - Hardware & Standlar', 7),
+    ('drums-cymbals', 'Davul, Bateri & Zil', '20000000-0000-0000-0000-000000000008'::uuid, 'drum-spares-consumables', 'Davul Yedek Parçaları & Teknik Aksesuarları', 8),
 
-    ('guitar-amps', '20000000-0000-0000-0000-000000000009'::uuid, 'electric-guitar-combo-amps', 'Elektrik Gitar Amfileri - Combo', 0),
-    ('guitar-amps', '20000000-0000-0000-0000-000000000010'::uuid, 'electric-guitar-amp-heads', 'Elektrik Gitar Amfileri - Kafa', 1),
-    ('guitar-amps', '20000000-0000-0000-0000-000000000011'::uuid, 'electric-guitar-cabinets', 'Kabinler - Elektrik Gitar', 2),
-    ('guitar-amps', '20000000-0000-0000-0000-000000000012'::uuid, 'acoustic-guitar-amps', 'Akustik Gitar Amfileri', 3),
-    ('guitar-amps', '20000000-0000-0000-0000-000000000013'::uuid, 'guitar-modelers-multieffects', 'Modelleyiciler & Multi-Efektler', 4),
-    ('guitar-amps', '20000000-0000-0000-0000-000000000014'::uuid, 'guitar-pedals-footswitches', 'Gitar Pedalları & Footswitchler', 5),
+    ('guitar-amplifiers', 'Gitar Amfileri', '20000000-0000-0000-0000-000000000009'::uuid, 'electric-guitar-combo-amps', 'Elektrik Gitar Amfileri - Combo', 0),
+    ('guitar-amplifiers', 'Gitar Amfileri', '20000000-0000-0000-0000-000000000010'::uuid, 'electric-guitar-amp-heads', 'Elektrik Gitar Amfileri - Kafa', 1),
+    ('guitar-amplifiers', 'Gitar Amfileri', '20000000-0000-0000-0000-000000000011'::uuid, 'electric-guitar-cabinets', 'Kabinler - Elektrik Gitar', 2),
+    ('guitar-amplifiers', 'Gitar Amfileri', '20000000-0000-0000-0000-000000000012'::uuid, 'acoustic-guitar-amps', 'Akustik Gitar Amfileri', 3),
 
-    ('bass-amps', '20000000-0000-0000-0000-000000000015'::uuid, 'bass-combo-amps', 'Bas Combo Amfileri', 0),
-    ('bass-amps', '20000000-0000-0000-0000-000000000016'::uuid, 'bass-amp-heads', 'Bas Amfi Kafaları', 1),
-    ('bass-amps', '20000000-0000-0000-0000-000000000017'::uuid, 'bass-cabinets', 'Bas Kabinleri', 2),
-    ('bass-amps', '20000000-0000-0000-0000-000000000018'::uuid, 'bass-preamp-di-effects', 'Bas Preamp, DI & Efektler', 3),
+    ('bass-amplifiers', 'Bas Gitar Amfileri', '20000000-0000-0000-0000-000000000015'::uuid, 'bass-combo-amps', 'Bas Combo Amfileri', 0),
+    ('bass-amplifiers', 'Bas Gitar Amfileri', '20000000-0000-0000-0000-000000000016'::uuid, 'bass-amp-heads', 'Bas Amfi Kafaları', 1),
+    ('bass-amplifiers', 'Bas Gitar Amfileri', '20000000-0000-0000-0000-000000000017'::uuid, 'bass-cabinets', 'Bas Kabinleri', 2),
+    ('bass-amplifiers', 'Bas Gitar Amfileri', '20000000-0000-0000-0000-000000000018'::uuid, 'bass-preamp-di-effects', 'Bas Preamp, DI & Efektler', 3),
 
-    ('keys-synth', '20000000-0000-0000-0000-000000000019'::uuid, 'acoustic-pianos', 'Akustik Piyanolar', 0),
-    ('keys-synth', '20000000-0000-0000-0000-000000000020'::uuid, 'digital-stage-pianos', 'Dijital & Sahne Piyanoları', 1),
-    ('keys-synth', '20000000-0000-0000-0000-000000000021'::uuid, 'keyboards-workstations', 'Keyboard & Workstationlar', 2),
-    ('keys-synth', '20000000-0000-0000-0000-000000000022'::uuid, 'synthesizers', 'Synthesizerlar', 3),
-    ('keys-synth', '20000000-0000-0000-0000-000000000023'::uuid, 'organs', 'Orglar', 4),
-    ('keys-synth', '20000000-0000-0000-0000-000000000024'::uuid, 'electromechanical-pianos', 'Elektromekanik Piyanolar (Rhodes vb.)', 5),
-    ('keys-synth', '20000000-0000-0000-0000-000000000025'::uuid, 'midi-keyboards-controllers', 'MIDI Klavyeler & Controllerlar', 6),
-    ('keys-synth', '20000000-0000-0000-0000-000000000026'::uuid, 'keyboard-amps', 'Klavye Amfileri', 7),
-    ('keys-synth', '20000000-0000-0000-0000-000000000027'::uuid, 'keyboard-stands-pedals-benches', 'Klavye Standları, Pedallar & Tabureler', 8),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000019'::uuid, 'acoustic-pianos', 'Akustik Piyanolar', 0),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000020'::uuid, 'digital-stage-pianos', 'Dijital & Sahne Piyanoları', 1),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000021'::uuid, 'keyboards-workstations', 'Keyboard & Workstationlar', 2),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000022'::uuid, 'synthesizers', 'Synthesizerlar', 3),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000023'::uuid, 'organs', 'Orglar', 4),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000024'::uuid, 'electromechanical-pianos', 'Elektromekanik Piyanolar (Rhodes vb.)', 5),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000025'::uuid, 'midi-keyboards-controllers', 'MIDI Klavyeler & Controllerlar', 6),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000026'::uuid, 'keyboard-amplifiers', 'Klavye Amfileri', 7),
+    ('piano-keyboards-synths', 'Piyano, Klavye & Synth', '20000000-0000-0000-0000-000000000027'::uuid, 'keyboard-stands-pedals-benches', 'Klavye Standları, Pedallar & Tabureler', 8),
 
-    ('percussion', '20000000-0000-0000-0000-000000000028'::uuid, 'conga-tumba-quinto', 'Conga, Tumba & Quinto', 0),
-    ('percussion', '20000000-0000-0000-0000-000000000029'::uuid, 'bongo', 'Bongo', 1),
-    ('percussion', '20000000-0000-0000-0000-000000000030'::uuid, 'timbales', 'Timbales', 2),
-    ('percussion', '20000000-0000-0000-0000-000000000031'::uuid, 'djembe', 'Djembe', 3),
-    ('percussion', '20000000-0000-0000-0000-000000000032'::uuid, 'cajon', 'Cajon', 4),
-    ('percussion', '20000000-0000-0000-0000-000000000033'::uuid, 'turkish-percussion', 'Darbuka, Bendir, Tef & Asma Davul', 5),
-    ('percussion', '20000000-0000-0000-0000-000000000034'::uuid, 'world-percussion', 'Udu, Shekere & Dünya Perküsyonları', 6),
-    ('percussion', '20000000-0000-0000-0000-000000000035'::uuid, 'small-percussion', 'Shaker, Marakas, Cabasa & Küçük Perküsyonlar', 7),
-    ('percussion', '20000000-0000-0000-0000-000000000036'::uuid, 'effect-percussion', 'Jam Block, Cowbell, Chimes & Efekt Perküsyonları', 8),
-    ('percussion', '20000000-0000-0000-0000-000000000037'::uuid, 'percussion-stands-accessories', 'Perküsyon Masaları, Standları & Aksesuarları', 9),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000028'::uuid, 'congas-tumbas-quintos', 'Conga, Tumba & Quinto', 0),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000029'::uuid, 'bongos', 'Bongo', 1),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000030'::uuid, 'timbales', 'Timbales', 2),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000031'::uuid, 'djembes', 'Djembe', 3),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000032'::uuid, 'cajons', 'Cajon', 4),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000033'::uuid, 'traditional-turkish-percussion', 'Darbuka, Bendir, Tef & Asma Davul', 5),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000034'::uuid, 'world-percussion', 'Udu, Shekere & Dünya Perküsyonları', 6),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000035'::uuid, 'small-hand-percussion', 'Shaker, Marakas, Cabasa & Küçük Perküsyonlar', 7),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000036'::uuid, 'effect-percussion', 'Jam Block, Cowbell, Chimes & Efekt Perküsyonları', 8),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000075'::uuid, 'mallet-percussion', 'Mallet Perküsyonları - Marimba, Vibrafon & Ksilofon', 9),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000076'::uuid, 'orchestral-percussion', 'Orkestra Perküsyonları - Timpani & Konser Davulları', 10),
+    ('percussion', 'Perküsyon', '20000000-0000-0000-0000-000000000037'::uuid, 'percussion-stands-accessories', 'Perküsyon Masaları, Standları & Aksesuarları', 11),
 
-    ('guitars-basses', '20000000-0000-0000-0000-000000000038'::uuid, 'electric-guitars', 'Elektro Gitarlar', 0),
-    ('guitars-basses', '20000000-0000-0000-0000-000000000039'::uuid, 'acoustic-classical-guitars', 'Akustik & Klasik Gitarlar', 1),
-    ('guitars-basses', '20000000-0000-0000-0000-000000000040'::uuid, 'electric-bass-guitars', 'Elektro Bas Gitarlar', 2),
-    ('guitars-basses', '20000000-0000-0000-0000-000000000041'::uuid, 'acoustic-bass-guitars', 'Akustik Bas Gitarlar', 3),
-    ('guitars-basses', '20000000-0000-0000-0000-000000000042'::uuid, 'double-basses', 'Kontrbaslar', 4),
-    ('guitars-basses', '20000000-0000-0000-0000-000000000043'::uuid, 'guitar-bass-accessories', 'Gitar & Bas Aksesuarları', 5),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000038'::uuid, 'electric-guitars', 'Elektro Gitarlar', 0),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000039'::uuid, 'acoustic-classical-guitars', 'Akustik & Klasik Gitarlar', 1),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000040'::uuid, 'electric-bass-guitars', 'Elektro Bas Gitarlar', 2),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000041'::uuid, 'acoustic-bass-guitars', 'Akustik Bas Gitarlar', 3),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000042'::uuid, 'double-basses', 'Kontrbaslar', 4),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000043'::uuid, 'guitar-bass-accessories', 'Gitar & Bas Aksesuarları', 5),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000013'::uuid, 'guitar-modelers-multi-effects', 'Modelleyiciler & Multi-Efektler', 6),
+    ('guitars-basses', 'Gitarlar & Baslar', '20000000-0000-0000-0000-000000000014'::uuid, 'guitar-pedals-footswitches', 'Gitar Pedalları & Footswitchler', 7),
 
-    ('orchestral-instruments', '20000000-0000-0000-0000-000000000044'::uuid, 'string-instruments', 'Yaylı Enstrümanlar', 0),
-    ('orchestral-instruments', '20000000-0000-0000-0000-000000000045'::uuid, 'woodwind-instruments', 'Nefesli Enstrümanlar', 1),
-    ('orchestral-instruments', '20000000-0000-0000-0000-000000000046'::uuid, 'brass-instruments', 'Bakır Üflemeli Enstrümanlar', 2),
-    ('orchestral-instruments', '20000000-0000-0000-0000-000000000047'::uuid, 'folk-world-instruments', 'Halk & Dünya Enstrümanları', 3),
-    ('orchestral-instruments', '20000000-0000-0000-0000-000000000048'::uuid, 'orchestra-accessories', 'Orkestra Aksesuarları', 4),
+    ('orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', '20000000-0000-0000-0000-000000000044'::uuid, 'string-instruments', 'Yaylı Enstrümanlar', 0),
+    ('orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', '20000000-0000-0000-0000-000000000045'::uuid, 'woodwind-instruments', 'Tahta Nefesli Enstrümanlar', 1),
+    ('orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', '20000000-0000-0000-0000-000000000046'::uuid, 'brass-instruments', 'Bakır Üflemeli Enstrümanlar', 2),
+    ('orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', '20000000-0000-0000-0000-000000000047'::uuid, 'folk-world-instruments', 'Halk & Dünya Enstrümanları', 3),
+    ('orchestral-instruments', 'Yaylılar & Orkestra Enstrümanları', '20000000-0000-0000-0000-000000000048'::uuid, 'orchestra-accessories', 'Orkestra Aksesuarları', 4),
 
-    ('dj-equipment', '20000000-0000-0000-0000-000000000049'::uuid, 'cdj-media-players', 'CDJ & Medya Oynatıcılar', 0),
-    ('dj-equipment', '20000000-0000-0000-0000-000000000050'::uuid, 'turntables', 'Turntablelar', 1),
-    ('dj-equipment', '20000000-0000-0000-0000-000000000051'::uuid, 'dj-mixers', 'DJ Mikserleri', 2),
-    ('dj-equipment', '20000000-0000-0000-0000-000000000052'::uuid, 'dj-controllers', 'DJ Controllerlar', 3),
-    ('dj-equipment', '20000000-0000-0000-0000-000000000053'::uuid, 'samplers-drum-machines', 'Sampler & Drum Machine', 4),
-    ('dj-equipment', '20000000-0000-0000-0000-000000000054'::uuid, 'dj-monitors-accessories', 'DJ Monitörleri & Aksesuarları', 5),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000049'::uuid, 'cdj-media-players', 'CDJ & Medya Oynatıcılar', 0),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000050'::uuid, 'turntables', 'Turntablelar', 1),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000051'::uuid, 'dj-mixers', 'DJ Mikserleri', 2),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000052'::uuid, 'dj-controllers', 'DJ Controllerlar', 3),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000053'::uuid, 'samplers-drum-machines', 'Sampler & Drum Machine', 4),
+    ('dj-equipment', 'DJ Ekipmanları', '20000000-0000-0000-0000-000000000054'::uuid, 'dj-monitors-accessories', 'DJ Monitörleri & Aksesuarları', 5),
 
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000055'::uuid, 'dynamic-microphones', 'Dinamik Mikrofonlar', 0),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000056'::uuid, 'condenser-ribbon-microphones', 'Kondansatör & Ribbon Mikrofonlar', 1),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000057'::uuid, 'wireless-microphone-systems', 'Kablosuz Mikrofon Sistemleri', 2),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000058'::uuid, 'analog-digital-mixers', 'Analog & Dijital Mikserler', 3),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000059'::uuid, 'pa-speakers-subwoofers', 'PA Hoparlörleri & Subwooferlar', 4),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000060'::uuid, 'stage-monitors', 'Sahne Monitörleri', 5),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000061'::uuid, 'in-ear-monitor-systems', 'In-Ear Monitor Sistemleri', 6),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000062'::uuid, 'di-box-reamp', 'DI Box & Reamp Kutuları', 7),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000063'::uuid, 'audio-interfaces-recorders', 'Ses Kartları & Kayıt Cihazları', 8),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000064'::uuid, 'studio-monitors', 'Stüdyo Monitörleri', 9),
-    ('pro-audio-studio', '20000000-0000-0000-0000-000000000065'::uuid, 'outboard-preamp-processors', 'Outboard, Preamp & Sinyal İşlemciler', 10),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000055'::uuid, 'dynamic-microphones', 'Dinamik Mikrofonlar', 0),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000056'::uuid, 'condenser-ribbon-microphones', 'Kondansatör & Ribbon Mikrofonlar', 1),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000057'::uuid, 'wireless-microphone-systems', 'Kablosuz Mikrofon Sistemleri', 2),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000077'::uuid, 'instrument-wireless-systems', 'Enstrüman Kablosuz Sistemleri', 3),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000058'::uuid, 'analog-digital-mixers', 'Analog & Dijital Mikserler', 4),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000059'::uuid, 'pa-speakers-subwoofers', 'PA Hoparlörleri & Subwooferlar', 5),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000060'::uuid, 'stage-monitors', 'Sahne Monitörleri', 6),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000061'::uuid, 'in-ear-monitor-systems', 'In-Ear Monitor Sistemleri', 7),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000062'::uuid, 'di-boxes-reamp-boxes', 'DI Box & Reamp Kutuları', 8),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000063'::uuid, 'audio-interfaces-recorders', 'Ses Kartları & Kayıt Cihazları', 9),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000078'::uuid, 'headphones-cue-distribution', 'Kulaklıklar & Kulaklık Dağıtım Sistemleri', 10),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000064'::uuid, 'studio-monitors', 'Stüdyo Monitörleri', 11),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000065'::uuid, 'outboard-preamps-processors', 'Outboard, Preamp & Sinyal İşlemciler', 12),
+    ('pro-audio-studio', 'Pro Audio & Stüdyo', '20000000-0000-0000-0000-000000000079'::uuid, 'power-amplifiers-system-processors', 'Güç Amplifikatörleri & PA Sistem İşlemcileri', 13),
 
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000066'::uuid, 'instrument-mic-speaker-stands', 'Enstrüman, Mikrofon & Hoparlör Standları', 0),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000067'::uuid, 'music-stands', 'Nota Sehpaları', 1),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000068'::uuid, 'drum-thrones-piano-benches', 'Davul Tabureleri & Piyano Bankları', 2),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000069'::uuid, 'cables-multicores-adapters', 'Kablolar, Multicorelar & Adaptörler', 3),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000070'::uuid, 'power-distribution-regulators-transformers', 'Güç Dağıtımı, Regülatörler & Trafolar', 4),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000071'::uuid, 'rack-case-transport', 'Rack, Case & Taşıma Çözümleri', 5),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000072'::uuid, 'riser-stage-platforms', 'Riser & Sahne Platformları', 6),
-    ('stage-backline-accessories', '20000000-0000-0000-0000-000000000073'::uuid, 'consumables-spare-parts', 'Sarf Malzemeleri & Yedek Parçalar', 7)
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000066'::uuid, 'instrument-microphone-speaker-stands', 'Enstrüman, Mikrofon & Hoparlör Standları', 0),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000067'::uuid, 'music-stands', 'Nota Sehpaları', 1),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000068'::uuid, 'drum-thrones-piano-benches', 'Davul Tabureleri & Piyano Bankları', 2),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000069'::uuid, 'cables-multicores-adapters', 'Kablolar, Multicorelar & Adaptörler', 3),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000070'::uuid, 'power-distribution-regulators-transformers', 'Güç Dağıtımı, Regülatörler & Trafolar', 4),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000071'::uuid, 'racks-cases-transport', 'Rack, Case & Taşıma Çözümleri', 5),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000072'::uuid, 'risers-stage-platforms', 'Riser & Sahne Platformları', 6),
+    ('stage-backline-accessories', 'Sahne & Backline Aksesuarları', '20000000-0000-0000-0000-000000000073'::uuid, 'consumables-spare-parts', 'Yedek Parçalar & Teknik Aksesuarlar', 7)
 )
 INSERT INTO tbl_backline_category
     (id, parent_id, code, name, normalized_name, level, sort_order, active)
@@ -475,13 +559,35 @@ SELECT seed.id,
        parent.id,
        seed.code,
        seed.name,
-       lower(btrim(seed.name)),
+       soundconnect_normalize_backline_name(seed.name),
        1,
        seed.sort_order,
        true
   FROM seed
-  JOIN tbl_backline_category parent ON parent.code = seed.parent_code
-ON CONFLICT (code) DO NOTHING;
+  JOIN LATERAL (
+       SELECT candidate.id
+         FROM tbl_backline_category candidate
+        WHERE candidate.parent_id IS NULL
+          AND (
+              candidate.code = seed.parent_code
+              OR candidate.normalized_name = soundconnect_normalize_backline_name(seed.parent_name)
+          )
+        ORDER BY CASE WHEN candidate.code = seed.parent_code THEN 0 ELSE 1 END,
+                 candidate.id
+        LIMIT 1
+  ) parent ON true
+ WHERE NOT EXISTS (
+           SELECT 1
+             FROM tbl_backline_category existing
+            WHERE existing.code = seed.code
+       )
+   AND NOT EXISTS (
+           SELECT 1
+             FROM tbl_backline_category existing
+            WHERE existing.parent_id = parent.id
+              AND existing.normalized_name = soundconnect_normalize_backline_name(seed.name)
+       )
+ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- Rooms, ordered attachments, reservation requests and exclusive occupancy
@@ -619,7 +725,7 @@ CREATE TABLE IF NOT EXISTS tbl_studio_room_reservation (
     CONSTRAINT ck_studio_room_reservation_range CHECK (starts_at < ends_at),
     CONSTRAINT ck_studio_room_reservation_duration CHECK (
         extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 14400
-        AND mod(extract(epoch FROM (ends_at - starts_at))::bigint, 3600) = 0
+        AND mod(extract(epoch FROM (ends_at - starts_at)), 3600) = 0
     ),
     CONSTRAINT ck_studio_room_reservation_status CHECK (status IN (
         'PENDING_APPROVAL', 'CONFIRMED', 'REJECTED_BY_STUDIO',
@@ -657,7 +763,13 @@ CREATE TABLE IF NOT EXISTS tbl_studio_room_reservation (
         AND (status NOT IN ('CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_STUDIO')
             OR cancelled_at IS NOT NULL)
     ),
-    CONSTRAINT ck_studio_room_reservation_version CHECK (version >= 0)
+    CONSTRAINT ck_studio_room_reservation_version CHECK (version >= 0),
+    CONSTRAINT ex_studio_room_reservation_requester_overlap
+        EXCLUDE USING gist (
+            requester_id WITH =,
+            room_id WITH =,
+            tstzrange(starts_at, ends_at, '[)') WITH &&
+        ) WHERE (status IN ('PENDING_APPROVAL', 'CONFIRMED'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_studio_room_reservation_schedule
@@ -665,6 +777,146 @@ CREATE INDEX IF NOT EXISTS idx_studio_room_reservation_schedule
 
 CREATE INDEX IF NOT EXISTS idx_studio_room_reservation_requester
     ON tbl_studio_room_reservation (requester_id, status, starts_at DESC, id);
+
+-- Schedule and customer-history reads do not always filter by status. Keep
+-- matching indexes so PostgreSQL can range/ordered-scan instead of sorting a
+-- Studio's or requester's complete reservation history.
+CREATE INDEX IF NOT EXISTS idx_studio_room_reservation_room_time
+    ON tbl_studio_room_reservation (room_id, starts_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_studio_room_reservation_requester_time
+    ON tbl_studio_room_reservation (requester_id, starts_at DESC, id);
+
+-- Do not round fractional seconds before checking the whole-hour contract.
+-- Recreate this constraint on reruns so release-candidate schemas with the
+-- earlier bigint cast are repaired as well.
+ALTER TABLE tbl_studio_room_reservation
+    DROP CONSTRAINT IF EXISTS ck_studio_room_reservation_duration;
+ALTER TABLE tbl_studio_room_reservation
+    ADD CONSTRAINT ck_studio_room_reservation_duration CHECK (
+        extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 14400
+        AND mod(extract(epoch FROM (ends_at - starts_at)), 3600) = 0
+    );
+
+-- Different customers may submit overlapping approval requests, but one
+-- customer cannot spam the same room/time with fresh idempotency keys. The
+-- application opportunistically materializes already-started pending requests
+-- as EXPIRED before inserting a new request.
+UPDATE tbl_studio_room_reservation
+   SET status = 'EXPIRED',
+       updated_at = CURRENT_TIMESTAMP,
+       version = version + 1
+ WHERE status = 'PENDING_APPROVAL'
+   AND starts_at <= CURRENT_TIMESTAMP;
+
+-- A database upgraded from a build predating the requester-overlap invariant
+-- may already contain duplicate future requests. Preserve every confirmed
+-- booking and greedily retain pending candidates in original creation order.
+-- Each candidate is compared only with pending rows that actually survived;
+-- this matters for an A--B--C interval chain where A and C do not overlap:
+-- B is expired while both A and C remain pending. A simple self-join against
+-- every earlier row would incorrectly expire C merely because it overlaps B.
+--
+-- Pending rows that overlap a confirmed booking are always retired. Multiple
+-- conflicting confirmed rows are intentionally not rewritten: that indicates
+-- corrupt booking data requiring an operator decision, and constraint
+-- installation will fail loudly instead of silently cancelling a customer.
+-- The repair is skipped entirely once the invariant exists, keeping later
+-- migration reruns bounded to the cheap started-pending lifecycle update.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'tbl_studio_room_reservation'::regclass
+           AND conname = 'ex_studio_room_reservation_requester_overlap'
+    ) THEN
+WITH RECURSIVE pending_candidates AS (
+    SELECT reservation.id,
+           reservation.requester_id,
+           reservation.room_id,
+           tstzrange(reservation.starts_at, reservation.ends_at, '[)') AS booking_range,
+           row_number() OVER (
+               PARTITION BY reservation.requester_id, reservation.room_id
+               ORDER BY reservation.created_at, reservation.id
+           ) AS sequence_number
+      FROM tbl_studio_room_reservation reservation
+     WHERE reservation.status = 'PENDING_APPROVAL'
+       AND NOT EXISTS (
+           SELECT 1
+             FROM tbl_studio_room_reservation confirmed
+            WHERE confirmed.requester_id = reservation.requester_id
+              AND confirmed.room_id = reservation.room_id
+              AND confirmed.status = 'CONFIRMED'
+              AND tstzrange(confirmed.starts_at, confirmed.ends_at, '[)')
+                  && tstzrange(reservation.starts_at, reservation.ends_at, '[)')
+       )
+), survivor_walk AS (
+    SELECT candidate.id,
+           candidate.requester_id,
+           candidate.room_id,
+           candidate.sequence_number,
+           ARRAY[candidate.booking_range] AS kept_ranges,
+           true AS keep_candidate
+      FROM pending_candidates candidate
+     WHERE candidate.sequence_number = 1
+
+    UNION ALL
+
+    SELECT candidate.id,
+           candidate.requester_id,
+           candidate.room_id,
+           candidate.sequence_number,
+           CASE
+               WHEN candidate.booking_range && ANY (walk.kept_ranges)
+                   THEN walk.kept_ranges
+               ELSE array_append(walk.kept_ranges, candidate.booking_range)
+           END AS kept_ranges,
+           NOT (candidate.booking_range && ANY (walk.kept_ranges)) AS keep_candidate
+      FROM survivor_walk walk
+      JOIN pending_candidates candidate
+        ON candidate.requester_id = walk.requester_id
+       AND candidate.room_id = walk.room_id
+       AND candidate.sequence_number = walk.sequence_number + 1
+), pending_to_expire AS (
+    SELECT reservation.id
+      FROM tbl_studio_room_reservation reservation
+     WHERE reservation.status = 'PENDING_APPROVAL'
+       AND (
+           EXISTS (
+               SELECT 1
+                 FROM tbl_studio_room_reservation confirmed
+                WHERE confirmed.requester_id = reservation.requester_id
+                  AND confirmed.room_id = reservation.room_id
+                  AND confirmed.status = 'CONFIRMED'
+                  AND tstzrange(confirmed.starts_at, confirmed.ends_at, '[)')
+                      && tstzrange(reservation.starts_at, reservation.ends_at, '[)')
+           )
+           OR EXISTS (
+               SELECT 1
+                 FROM survivor_walk walk
+                WHERE walk.id = reservation.id
+                  AND NOT walk.keep_candidate
+           )
+       )
+)
+UPDATE tbl_studio_room_reservation reservation
+   SET status = 'EXPIRED',
+       updated_at = CURRENT_TIMESTAMP,
+       version = reservation.version + 1
+  FROM pending_to_expire expired
+ WHERE reservation.id = expired.id;
+
+        ALTER TABLE tbl_studio_room_reservation
+            ADD CONSTRAINT ex_studio_room_reservation_requester_overlap
+            EXCLUDE USING gist (
+                requester_id WITH =,
+                room_id WITH =,
+                tstzrange(starts_at, ends_at, '[)') WITH &&
+            ) WHERE (status IN ('PENDING_APPROVAL', 'CONFIRMED'));
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS tbl_studio_room_occupancy (
     id uuid NOT NULL,
@@ -699,8 +951,14 @@ CREATE TABLE IF NOT EXISTS tbl_studio_room_occupancy (
     ),
     CONSTRAINT ck_studio_room_occupancy_range CHECK (starts_at < ends_at),
     CONSTRAINT ck_studio_room_occupancy_duration CHECK (
-        extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 14400
-        AND mod(extract(epoch FROM (ends_at - starts_at))::bigint, 3600) = 0
+        mod(extract(epoch FROM (ends_at - starts_at)), 3600) = 0
+        AND (
+            (type = 'RESERVATION'
+                AND extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 14400)
+            OR
+            (type = 'MANUAL_BLOCK'
+                AND extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 50400)
+        )
     ),
     CONSTRAINT ck_studio_room_occupancy_release CHECK (
         (active AND released_at IS NULL AND released_by IS NULL)
@@ -714,12 +972,53 @@ CREATE TABLE IF NOT EXISTS tbl_studio_room_occupancy (
         ) WHERE (active)
 );
 
+-- Hibernate may have created the table before this migration was introduced.
+-- CREATE TABLE IF NOT EXISTS does not backfill constraints on such a table, so
+-- install the database-level room-overlap invariant explicitly on every legacy
+-- schema. Existing conflicting active rows are intentionally not rewritten:
+-- constraint installation must fail closed and require an operator decision.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'tbl_studio_room_occupancy'::regclass
+           AND conname = 'ex_studio_room_occupancy_no_overlap'
+    ) THEN
+        ALTER TABLE tbl_studio_room_occupancy
+            ADD CONSTRAINT ex_studio_room_occupancy_no_overlap
+            EXCLUDE USING gist (
+                room_id WITH =,
+                tstzrange(starts_at, ends_at, '[)') WITH &&
+            ) WHERE (active);
+    END IF;
+END
+$$;
+
 CREATE INDEX IF NOT EXISTS idx_studio_room_occupancy_schedule
     ON tbl_studio_room_occupancy (room_id, active, starts_at, id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_studio_occupancy_manual_client_request
     ON tbl_studio_room_occupancy (created_by, client_request_id)
     WHERE client_request_id IS NOT NULL;
+
+-- Earlier release candidates applied the customer reservation limit (four
+-- hours) to every occupancy kind. Owner-created blocks intentionally cover up
+-- to the complete 09:00..23:00 operating day, so repair that constraint on a
+-- rerun while preserving the stricter reservation limit.
+ALTER TABLE tbl_studio_room_occupancy
+    DROP CONSTRAINT IF EXISTS ck_studio_room_occupancy_duration;
+ALTER TABLE tbl_studio_room_occupancy
+    ADD CONSTRAINT ck_studio_room_occupancy_duration CHECK (
+        mod(extract(epoch FROM (ends_at - starts_at)), 3600) = 0
+        AND (
+            (type = 'RESERVATION'
+                AND extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 14400)
+            OR
+            (type = 'MANUAL_BLOCK'
+                AND extract(epoch FROM (ends_at - starts_at)) BETWEEN 3600 AND 50400)
+        )
+    );
 
 CREATE OR REPLACE FUNCTION soundconnect_validate_reservation_occupancy()
 RETURNS trigger
@@ -728,20 +1027,25 @@ AS $$
 DECLARE
     reservation_room uuid;
     reservation_status varchar(32);
+    reservation_starts_at timestamp with time zone;
+    reservation_ends_at timestamp with time zone;
 BEGIN
     IF NEW.type = 'MANUAL_BLOCK' THEN
         RETURN NEW;
     END IF;
 
-    SELECT room_id, status
-      INTO reservation_room, reservation_status
+    SELECT room_id, status, starts_at, ends_at
+      INTO reservation_room, reservation_status,
+           reservation_starts_at, reservation_ends_at
       FROM tbl_studio_room_reservation
      WHERE id = NEW.reservation_id;
 
     IF reservation_room IS NULL
        OR reservation_room <> NEW.room_id
-       OR reservation_status <> 'CONFIRMED' THEN
-        RAISE EXCEPTION 'reservation occupancy must reference a confirmed reservation in the same room'
+       OR reservation_status <> 'CONFIRMED'
+       OR reservation_starts_at <> NEW.starts_at
+       OR reservation_ends_at <> NEW.ends_at THEN
+        RAISE EXCEPTION 'reservation occupancy must match a confirmed reservation in the same room and time window'
             USING ERRCODE = '23514', CONSTRAINT = 'ck_studio_room_occupancy_reservation_match';
     END IF;
     RETURN NEW;
@@ -751,7 +1055,7 @@ $$;
 DROP TRIGGER IF EXISTS trg_studio_room_occupancy_reservation
     ON tbl_studio_room_occupancy;
 CREATE TRIGGER trg_studio_room_occupancy_reservation
-BEFORE INSERT OR UPDATE OF room_id, reservation_id, type
+BEFORE INSERT OR UPDATE OF room_id, reservation_id, type, starts_at, ends_at
 ON tbl_studio_room_occupancy
 FOR EACH ROW
 EXECUTE FUNCTION soundconnect_validate_reservation_occupancy();
@@ -1093,6 +1397,12 @@ CREATE INDEX IF NOT EXISTS idx_backline_request_studio_status
 
 CREATE INDEX IF NOT EXISTS idx_backline_request_admin_status
     ON tbl_backline_category_request (status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_backline_request_studio_created
+    ON tbl_backline_category_request (studio_profile_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_backline_request_admin_created
+    ON tbl_backline_category_request (created_at DESC, id DESC);
 
 CREATE OR REPLACE FUNCTION soundconnect_validate_backline_category_request_parent()
 RETURNS trigger

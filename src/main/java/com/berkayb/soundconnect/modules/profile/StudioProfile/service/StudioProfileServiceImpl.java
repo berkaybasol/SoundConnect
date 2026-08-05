@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.text.Normalizer;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.DateTimeException;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -37,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +47,9 @@ import java.util.UUID;
 public class StudioProfileServiceImpl implements StudioProfileService {
 	private static final String DEFAULT_TIME_ZONE = "Europe/Istanbul";
 	private static final Locale TURKISH = Locale.forLanguageTag("tr-TR");
+	private static final Pattern PHONE_CHARACTERS = Pattern.compile("^(?:\\+)?[0-9() .-]+$");
+	private static final Pattern NON_PHONE_DIGITS = Pattern.compile("\\D");
+	private static final Pattern URI_SCHEME = Pattern.compile("^[A-Za-z][A-Za-z0-9+.-]*:");
 
 	private final StudioProfileRepository studioProfileRepository;
 	private final UserEntityFinder userEntityFinder;
@@ -83,7 +89,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				.user(user)
 				.name(normalizeBusinessName(command.name()))
 				.address(normalizeNullable(command.address()))
-				.phone(normalizeNullable(command.phone()))
+				.phone(normalizePhone(command.phone()))
 				.city(city)
 				.district(district)
 				.neighborhood(neighborhood)
@@ -110,11 +116,11 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				.name(normalizeBusinessName(name))
 				.description(capitalizeFirst(normalizeNullable(dto.descpriction())))
 				.address(normalizeNullable(dto.adress()))
-				.phone(normalizeNullable(dto.phone()))
-				.website(normalizeNullable(dto.website()))
+				.phone(normalizePhone(dto.phone()))
+				.website(normalizeWebUrl(dto.website(), "website"))
 				.facilities(normalizeLabels(dto.facilities()))
-				.instagramUrl(normalizeNullable(dto.instagramUrl()))
-				.youtubeUrl(normalizeNullable(dto.youtubeUrl()))
+				.instagramUrl(normalizeWebUrl(dto.instagramUrl(), "instagramUrl"))
+				.youtubeUrl(normalizeWebUrl(dto.youtubeUrl(), "youtubeUrl"))
 				.timeZone(validateTimeZone(dto.timeZone()))
 				.spotifyTrackIds(spotifyTrackIds)
 				.spotifyTracks(spotifyTracks)
@@ -177,11 +183,15 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		if (dto.name() != null) profile.setName(normalizeBusinessName(dto.name()));
 		if (dto.descpriction() != null) profile.setDescription(capitalizeFirst(normalizeNullable(dto.descpriction())));
 		if (dto.adress() != null) profile.setAddress(normalizeNullable(dto.adress()));
-		if (dto.phone() != null) profile.setPhone(normalizeNullable(dto.phone()));
-		if (dto.website() != null) profile.setWebsite(normalizeNullable(dto.website()));
+		if (dto.phone() != null) profile.setPhone(normalizePhone(dto.phone()));
+		if (dto.website() != null) profile.setWebsite(normalizeWebUrl(dto.website(), "website"));
 		if (dto.facilities() != null) profile.setFacilities(normalizeLabels(dto.facilities()));
-		if (dto.instagramUrl() != null) profile.setInstagramUrl(normalizeNullable(dto.instagramUrl()));
-		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(normalizeNullable(dto.youtubeUrl()));
+		if (dto.instagramUrl() != null) {
+			profile.setInstagramUrl(normalizeWebUrl(dto.instagramUrl(), "instagramUrl"));
+		}
+		if (dto.youtubeUrl() != null) {
+			profile.setYoutubeUrl(normalizeWebUrl(dto.youtubeUrl(), "youtubeUrl"));
+		}
 		if (dto.timeZone() != null) {
 			String requestedTimeZone = validateTimeZone(dto.timeZone());
 			if (!requestedTimeZone.equals(profile.getTimeZone())
@@ -223,10 +233,13 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 				dto.id(), dto.userId(), dto.name(), dto.description(),
 				dto.profilePictureMediaId(), resolveProfilePictureUrl(dto.profilePictureMediaId()),
 				dto.adress(), dto.cityId(), dto.cityName(), dto.districtId(), dto.districtName(),
-				dto.neighborhoodId(), dto.neighborhoodName(), dto.phone(), dto.website(),
+				dto.neighborhoodId(), dto.neighborhoodName(),
+				safeResponsePhone(dto.phone(), profile.getId()),
+				safeResponseUrl(dto.website(), "website", profile.getId()),
 				dto.facilities() == null ? Set.of() : Set.copyOf(dto.facilities()),
-				dto.instagramUrl(), dto.youtubeUrl(),
-				profile.getTimeZone(), profile.getVersion(),
+				safeResponseUrl(dto.instagramUrl(), "instagramUrl", profile.getId()),
+				safeResponseUrl(dto.youtubeUrl(), "youtubeUrl", profile.getId()),
+				safeResponseTimeZone(profile.getTimeZone(), profile.getId()), profile.getVersion(),
 				profile.getSpotifyTrackIds() == null ? List.of() : List.copyOf(profile.getSpotifyTrackIds()),
 				profile.getSpotifyTracks() == null ? List.of() : List.copyOf(profile.getSpotifyTracks()),
 				studioProfileRepository.countActiveRooms(profile.getId()),
@@ -318,6 +331,91 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		if (value == null) return null;
 		String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
 		return normalized.isEmpty() ? null : normalized;
+	}
+
+	private String normalizePhone(String rawPhone) {
+		String normalized = normalizeNullable(rawPhone);
+		if (normalized == null) return null;
+		if (!PHONE_CHARACTERS.matcher(normalized).matches()) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, "phone is invalid");
+		}
+		String digits = NON_PHONE_DIGITS.matcher(normalized).replaceAll("");
+		if (digits.length() == 10 && digits.startsWith("5")) {
+			digits = "0" + digits;
+		} else if (digits.length() == 12 && digits.startsWith("90")) {
+			digits = "0" + digits.substring(2);
+		}
+		if (digits.length() != 11 || !digits.startsWith("0")) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					"phone must contain 11 digits and start with 0");
+		}
+		return digits;
+	}
+
+	private String normalizeWebUrl(String rawValue, String fieldName) {
+		String normalized = normalizeNullable(rawValue);
+		if (normalized == null) return null;
+		String candidate = URI_SCHEME.matcher(normalized).find()
+				? normalized
+				: "https://" + normalized;
+		try {
+			URI parsed = new URI(candidate).normalize();
+			String scheme = parsed.getScheme() == null
+					? ""
+					: parsed.getScheme().toLowerCase(Locale.ROOT);
+			if (!(scheme.equals("http") || scheme.equals("https"))
+					|| parsed.getHost() == null
+					|| parsed.getHost().isBlank()
+					|| parsed.getUserInfo() != null) {
+				throw new SoundConnectException(
+						ErrorType.VALIDATION_ERROR,
+						fieldName + " must be an absolute http(s) URL");
+			}
+			URI canonical = new URI(
+					scheme, null, parsed.getHost().toLowerCase(Locale.ROOT), parsed.getPort(),
+					parsed.getPath(), parsed.getQuery(), parsed.getFragment());
+			String result = canonical.toASCIIString();
+			if (result.length() > 255) {
+				throw new SoundConnectException(
+						ErrorType.VALIDATION_ERROR,
+						fieldName + " can be at most 255 characters after normalization");
+			}
+			return result;
+		} catch (URISyntaxException exception) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					fieldName + " must be an absolute http(s) URL");
+		}
+	}
+
+	private String safeResponsePhone(String value, UUID profileId) {
+		try {
+			return normalizePhone(value);
+		} catch (SoundConnectException exception) {
+			log.warn("Unsafe legacy Studio phone omitted profileId={}", profileId);
+			return null;
+		}
+	}
+
+	private String safeResponseUrl(String value, String fieldName, UUID profileId) {
+		try {
+			return normalizeWebUrl(value, fieldName);
+		} catch (SoundConnectException exception) {
+			log.warn("Unsafe legacy Studio URL omitted profileId={} field={}", profileId, fieldName);
+			return null;
+		}
+	}
+
+	private String safeResponseTimeZone(String value, UUID profileId) {
+		try {
+			return value == null || value.isBlank()
+					? DEFAULT_TIME_ZONE
+					: ZoneId.of(value).getId();
+		} catch (DateTimeException exception) {
+			log.warn("Invalid legacy Studio time zone replaced profileId={}", profileId);
+			return DEFAULT_TIME_ZONE;
+		}
 	}
 
 	private String normalizeRequiredName(String value) {

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.studio.migration;
 import com.berkayb.soundconnect.modules.backline.catalog.entity.BacklineCategory;
 import com.berkayb.soundconnect.modules.backline.catalog.entity.BacklineCategoryRequest;
 import com.berkayb.soundconnect.modules.backline.catalog.entity.BacklineCategoryRequestChild;
+import com.berkayb.soundconnect.modules.backline.catalog.support.BacklineCategoryNames;
 import com.berkayb.soundconnect.modules.studio.equipment.entity.StudioEquipment;
 import com.berkayb.soundconnect.modules.studio.equipment.entity.StudioEquipmentAvailabilityCommand;
 import com.berkayb.soundconnect.modules.studio.equipment.entity.StudioEquipmentDay;
@@ -13,6 +14,8 @@ import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomRese
 import com.berkayb.soundconnect.modules.studio.room.entity.StudioRoom;
 import com.berkayb.soundconnect.modules.studio.room.entity.StudioRoomFeature;
 import com.berkayb.soundconnect.modules.studio.room.entity.StudioRoomPhoto;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.JoinColumn;
@@ -32,11 +35,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -90,6 +103,7 @@ class StudioDomainMigrationPostgresTest {
 					DROP SEQUENCE IF EXISTS tbl_user_public_code_seq CASCADE;
 					DROP FUNCTION IF EXISTS soundconnect_assign_user_public_code() CASCADE;
 					DROP FUNCTION IF EXISTS soundconnect_validate_backline_category_parent() CASCADE;
+					DROP FUNCTION IF EXISTS soundconnect_normalize_backline_name(text) CASCADE;
 					DROP FUNCTION IF EXISTS soundconnect_validate_reservation_occupancy() CASCADE;
 					DROP FUNCTION IF EXISTS soundconnect_validate_studio_equipment_category() CASCADE;
 					DROP FUNCTION IF EXISTS soundconnect_validate_studio_equipment_day_capacity() CASCADE;
@@ -102,7 +116,8 @@ class StudioDomainMigrationPostgresTest {
 					CREATE TABLE tbl_user (
 					    id uuid PRIMARY KEY,
 					    created_at timestamp without time zone,
-					    updated_at timestamp without time zone
+					    updated_at timestamp without time zone,
+					    status varchar(22)
 					)
 					""");
 			statement.execute("CREATE TABLE tbl_city (id uuid PRIMARY KEY, name varchar(255) NOT NULL)");
@@ -177,6 +192,20 @@ class StudioDomainMigrationPostgresTest {
 
 		String firstPublicCode;
 		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertThat(singleInt(statement,
+					"SELECT char_length('PENDING_STUDIO_REQUEST')"))
+					.isEqualTo(22);
+			assertThat(singleInt(statement,
+					"SELECT char_length('REJECTED_STUDIO_REQUEST')"))
+					.isEqualTo(23);
+			assertThat(singleInt(statement, """
+					SELECT character_maximum_length
+					  FROM information_schema.columns
+					 WHERE table_schema = current_schema()
+					   AND table_name = 'tbl_user'
+					   AND column_name = 'status'
+					"""))
+					.isEqualTo(32);
 			firstPublicCode = singleString(statement,
 					"SELECT public_code FROM tbl_user WHERE id = '" + OWNER_ID + "'");
 			assertThat(firstPublicCode).matches("SC-[0-9A-F]{20}");
@@ -188,7 +217,7 @@ class StudioDomainMigrationPostgresTest {
 			assertThat(singleInt(statement,
 					"SELECT count(*) FROM tbl_backline_category WHERE parent_id IS NULL")).isEqualTo(10);
 			assertThat(singleInt(statement,
-					"SELECT count(*) FROM tbl_backline_category WHERE parent_id IS NOT NULL")).isEqualTo(73);
+					"SELECT count(*) FROM tbl_backline_category WHERE parent_id IS NOT NULL")).isEqualTo(79);
 			assertThat(singleInt(statement, """
 					SELECT count(*) FROM tbl_permissions
 					 WHERE name = 'MANAGE_BACKLINE_CATALOG'
@@ -211,7 +240,7 @@ class StudioDomainMigrationPostgresTest {
 					"SELECT public_code FROM tbl_user WHERE id = '" + OWNER_ID + "'"))
 					.isEqualTo(firstPublicCode);
 			assertThat(singleInt(statement,
-					"SELECT count(*) FROM tbl_backline_category")).isEqualTo(83);
+					"SELECT count(*) FROM tbl_backline_category")).isEqualTo(89);
 			assertThat(singleInt(statement, """
 					SELECT count(*)
 					  FROM role_permissions rp
@@ -260,8 +289,204 @@ class StudioDomainMigrationPostgresTest {
 	}
 
 	@Test
+	void seededBacklineNormalizationMatchesTheApplicationOnEveryDatabaseLocale() throws Exception {
+		executeMigration(migrationSql());
+		BacklineCategoryNames names = new BacklineCategoryNames();
+
+		try (Connection connection = connection()) {
+			assertRuntimeCatalogMatchesJson(connection, Map.of());
+			try (Statement statement = connection.createStatement();
+				 ResultSet result = statement.executeQuery("""
+					 SELECT name, normalized_name
+					   FROM tbl_backline_category
+					  ORDER BY code
+					 """)) {
+				int categoryCount = 0;
+				while (result.next()) {
+					String displayName = result.getString("name");
+					assertThat(result.getString("normalized_name"))
+							.as("normalized key for %s", displayName)
+							.isEqualTo(names.normalizedName(displayName));
+					categoryCount++;
+				}
+				assertThat(categoryCount).isEqualTo(89);
+			}
+		}
+	}
+
+	@Test
+	void migrationAdoptsTheHibernateSeededRuntimeCatalogAndPreservesReferencesOnRerun()
+			throws Exception {
+		Map<String, UUID> originalCategoryIds;
+		UUID adminRootId = UUID.fromString("50000000-0000-0000-0000-000000000001");
+		UUID adminLeafId = UUID.fromString("50000000-0000-0000-0000-000000000002");
+		UUID adminCanonicalRootLeafId = UUID.fromString("50000000-0000-0000-0000-000000000003");
+		try (Connection connection = connection()) {
+			createHibernateBacklineCatalogSchema(connection);
+			originalCategoryIds = seedRuntimeBacklineCatalog(connection);
+			insertCatalogRow(
+					connection,
+					adminRootId,
+					null,
+					"admin-custom-root",
+					"Yönetici Özel Kök",
+					"admin-icon",
+					0,
+					99,
+					false
+			);
+			insertCatalogRow(
+					connection,
+					adminLeafId,
+					adminRootId,
+					"admin-custom-leaf",
+					"Yönetici Özel Alt Kategori",
+					null,
+					1,
+					0,
+					false
+			);
+			insertCatalogRow(
+					connection,
+					adminCanonicalRootLeafId,
+					originalCategoryIds.get("guitar-amplifiers"),
+					"admin-custom-guitar-accessory",
+					"Yönetici Özel Gitar Aksesuarı",
+					null,
+					1,
+					90,
+					false
+			);
+		}
+
+		String migration = migrationSql();
+		// This is the production failure path: the runtime JSON catalog already
+		// owns normalized root names, but its generated UUIDs must be adopted.
+		executeMigration(migration);
+
+		UUID runtimeDynamicMicrophoneId = originalCategoryIds.get("dynamic-microphones");
+		assertThat(runtimeDynamicMicrophoneId).isNotNull();
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertRuntimeCatalogMatchesJson(connection, originalCategoryIds);
+			assertThat(singleInt(statement, """
+					SELECT count(*)
+					  FROM tbl_backline_category
+					 WHERE parent_id IS NULL
+					   AND normalized_name = soundconnect_normalize_backline_name('Gitar Amfileri')
+					""")).as("the JSON-seeded root must be adopted, not duplicated").isEqualTo(1);
+			assertThat(singleInt(statement, """
+					SELECT count(*)
+					  FROM tbl_backline_category
+					 WHERE code IN ('guitar-amps', 'bass-amps', 'keys-synth')
+					""")).as("legacy SQL aliases must not be introduced").isZero();
+			assertThat(singleInt(statement,
+					"SELECT count(*) FROM tbl_backline_category")).isEqualTo(92);
+			assertAdminCatalogRowsUnchanged(connection, adminRootId, adminLeafId, adminCanonicalRootLeafId);
+
+			statement.execute("INSERT INTO tbl_user (id) VALUES ('" + OWNER_ID + "')");
+			statement.execute("INSERT INTO tbl_studio_profile (id, user_id) VALUES ('"
+					+ STUDIO_ID + "', '" + OWNER_ID + "')");
+			statement.execute("""
+					INSERT INTO tbl_studio_equipment
+					    (id, studio_profile_id, creation_client_request_id,
+					     creation_payload_hash, category_id, name, total_quantity)
+					VALUES
+					    ('%s', '%s', '00000000-0000-0000-0000-000000000901',
+					     repeat('a', 64), '%s', 'Korunacak Mikrofon', 2)
+					""".formatted(EQUIPMENT_ID, STUDIO_ID, runtimeDynamicMicrophoneId));
+			statement.execute("""
+					INSERT INTO tbl_studio_equipment_availability_change
+					    (id, equipment_id, actor_id, start_date, end_date,
+					     source_bucket, target_bucket, quantity, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000902', '%s', '%s',
+					     DATE '2036-08-10', DATE '2036-08-10',
+					     'AVAILABLE', 'BUSY', 1,
+					     '00000000-0000-0000-0000-000000000903')
+					""".formatted(EQUIPMENT_ID, OWNER_ID));
+		}
+
+		// An uncertain deployment result may execute the complete script again.
+		executeMigration(migration);
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertRuntimeCatalogMatchesJson(connection, originalCategoryIds);
+			assertAdminCatalogRowsUnchanged(connection, adminRootId, adminLeafId, adminCanonicalRootLeafId);
+			assertThat(singleString(statement, """
+					SELECT category_id::text
+					  FROM tbl_studio_equipment
+					 WHERE id = '%s'
+					""".formatted(EQUIPMENT_ID))).isEqualTo(runtimeDynamicMicrophoneId.toString());
+			assertThat(singleInt(statement, """
+					SELECT count(*)
+					  FROM tbl_studio_equipment_availability_change
+					 WHERE equipment_id = '%s'
+					""".formatted(EQUIPMENT_ID))).isEqualTo(1);
+			assertThat(singleInt(statement,
+					"SELECT count(*) FROM tbl_backline_category")).isEqualTo(92);
+		}
+	}
+
+	@Test
+	void rerunClosesLegacyPendingAccountWhoseLatestStudioDecisionWasRejected() throws Exception {
+		executeMigration(migrationSql());
+
+		String cityId = "00000000-0000-0000-0000-000000000701";
+		String districtId = "00000000-0000-0000-0000-000000000702";
+		String neighborhoodId = "00000000-0000-0000-0000-000000000703";
+		String applicationId = "00000000-0000-0000-0000-000000000704";
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("INSERT INTO tbl_user (id, status) VALUES ('" + OWNER_ID
+					+ "', 'PENDING_STUDIO_REQUEST'), ('" + REQUESTER_ID + "', 'ACTIVE')");
+			statement.execute("INSERT INTO tbl_city (id, name) VALUES ('" + cityId + "', 'Istanbul')");
+			statement.execute("INSERT INTO tbl_district (id, name, city_id) VALUES ('"
+					+ districtId + "', 'Kadikoy', '" + cityId + "')");
+			statement.execute("INSERT INTO tbl_neighborhood (id, name, district_id) VALUES ('"
+					+ neighborhoodId + "', 'Moda', '" + districtId + "')");
+			statement.execute("""
+					INSERT INTO tbl_studio_applications
+					    (id, applicant_id, studio_name, studio_address, phone,
+					     city_id, district_id, neighborhood_id, status,
+					     application_date, decision_date, reviewed_by_id, rejection_reason)
+					VALUES
+					    ('%s', '%s', 'Studio', 'Address', '05551234567',
+					     '%s', '%s', '%s', 'REJECTED',
+					     TIMESTAMP '2026-07-20 10:00:00', TIMESTAMP '2026-07-21 10:00:00',
+					     '%s', 'Rejected after review')
+					""".formatted(
+					applicationId, OWNER_ID, cityId, districtId, neighborhoodId, REQUESTER_ID));
+		}
+
+		executeMigration(migrationSql());
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertThat(singleString(statement,
+					"SELECT status FROM tbl_user WHERE id = '" + OWNER_ID + "'"))
+					.isEqualTo("REJECTED_STUDIO_REQUEST");
+			assertThat(singleString(statement,
+					"SELECT status FROM tbl_user WHERE id = '" + REQUESTER_ID + "'"))
+					.isEqualTo("ACTIVE");
+		}
+	}
+
+	@Test
 	void activeOccupancyUsesHalfOpenRangesAndRejectsOverlap() throws Exception {
 		executeMigration(migrationSql());
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("""
+					ALTER TABLE tbl_studio_room_occupancy
+					DROP CONSTRAINT ex_studio_room_occupancy_no_overlap
+					""");
+		}
+		executeMigration(migrationSql());
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertThat(singleInt(statement, """
+					SELECT count(*)
+					  FROM pg_constraint
+					 WHERE conrelid = 'tbl_studio_room_occupancy'::regclass
+					   AND conname = 'ex_studio_room_occupancy_no_overlap'
+					""")).isEqualTo(1);
+		}
 		seedStudioAndRoom();
 
 		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
@@ -322,6 +547,299 @@ class StudioDomainMigrationPostgresTest {
 			assertThat(singleInt(statement, """
 					SELECT count(*) FROM tbl_studio_room_occupancy WHERE active
 					""")).isEqualTo(2);
+		}
+	}
+
+	@Test
+	void manualBlocksMayCoverTheFullOperatingDayWhileReservationOccupancyStaysStrict() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			// Owner blocks may span the complete 09:00..23:00 operating day.
+			statement.execute("""
+					INSERT INTO tbl_studio_room_occupancy
+					    (id, room_id, client_request_id, type, starts_at, ends_at, active,
+					     created_by, released_at, released_by)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000705', '%s',
+					     '00000000-0000-0000-0000-000000000605', 'MANUAL_BLOCK',
+					     TIMESTAMPTZ '2026-08-04 09:00:00+03', TIMESTAMPTZ '2026-08-04 23:00:00+03',
+					     false, '%s', CURRENT_TIMESTAMP, '%s')
+					""".formatted(ROOM_ID, OWNER_ID, OWNER_ID));
+
+			assertSqlState("23514", () -> statement.execute("""
+					INSERT INTO tbl_studio_room_occupancy
+					    (id, room_id, client_request_id, type, starts_at, ends_at, active,
+					     created_by, released_at, released_by)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000706', '%s',
+					     '00000000-0000-0000-0000-000000000606', 'MANUAL_BLOCK',
+					     TIMESTAMPTZ '2026-08-05 08:00:00+03', TIMESTAMPTZ '2026-08-05 23:00:00+03',
+					     false, '%s', CURRENT_TIMESTAMP, '%s')
+					""".formatted(ROOM_ID, OWNER_ID, OWNER_ID)));
+
+			assertSqlState("23514", () -> statement.execute("""
+					INSERT INTO tbl_studio_room_occupancy
+					    (id, room_id, client_request_id, type, starts_at, ends_at, active,
+					     created_by, released_at, released_by)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000707', '%s',
+					     '00000000-0000-0000-0000-000000000607', 'MANUAL_BLOCK',
+					     TIMESTAMPTZ '2026-08-06 09:00:00+03', TIMESTAMPTZ '2026-08-06 10:00:00.400+03',
+					     false, '%s', CURRENT_TIMESTAMP, '%s')
+					""".formatted(ROOM_ID, OWNER_ID, OWNER_ID)));
+
+			assertSqlState("23514", () -> statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000508', '%s', '%s',
+					     TIMESTAMPTZ '2026-08-07 09:00:00+03', TIMESTAMPTZ '2026-08-07 10:00:00.400+03',
+					     'PENDING_APPROVAL', true, 'TRY', '00000000-0000-0000-0000-000000000608')
+					""".formatted(ROOM_ID, REQUESTER_ID)));
+
+			assertThat(singleInt(statement, """
+					SELECT count(*) FROM tbl_studio_room_occupancy
+					 WHERE id = '00000000-0000-0000-0000-000000000705'
+					""")).isEqualTo(1);
+		}
+	}
+
+	@Test
+	void reservationOccupancyMustMatchTheReservationTimeWindow() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000507', '%s', '%s',
+					     TIMESTAMPTZ '2026-08-06 10:00:00+03', TIMESTAMPTZ '2026-08-06 12:00:00+03',
+					     'CONFIRMED', false, 'TRY', '00000000-0000-0000-0000-000000000607')
+					""".formatted(ROOM_ID, REQUESTER_ID));
+
+			assertSqlState("23514", () -> statement.execute("""
+					INSERT INTO tbl_studio_room_occupancy
+					    (id, room_id, reservation_id, type, starts_at, ends_at, active, created_by)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000707', '%s',
+					     '00000000-0000-0000-0000-000000000507', 'RESERVATION',
+					     TIMESTAMPTZ '2026-08-06 11:00:00+03', TIMESTAMPTZ '2026-08-06 13:00:00+03',
+					     true, '%s')
+					""".formatted(ROOM_ID, OWNER_ID)));
+		}
+	}
+
+	@Test
+	void overlappingPendingRequestsRemainAllowedAcrossCustomersButNotForTheSameRequester() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000508', '%s', '%s',
+					     TIMESTAMPTZ '2026-08-07 10:00:00+03', TIMESTAMPTZ '2026-08-07 12:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-000000000608')
+					""".formatted(ROOM_ID, REQUESTER_ID));
+
+			assertSqlState("23P01", () -> statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000509', '%s', '%s',
+					     TIMESTAMPTZ '2026-08-07 11:00:00+03', TIMESTAMPTZ '2026-08-07 13:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-000000000609')
+					""".formatted(ROOM_ID, REQUESTER_ID)));
+
+			// The Studio may still compare competing requests from different users.
+			statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id)
+					VALUES
+					    ('00000000-0000-0000-0000-00000000050a', '%s', '%s',
+					     TIMESTAMPTZ '2026-08-07 11:00:00+03', TIMESTAMPTZ '2026-08-07 13:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-00000000060a')
+					""".formatted(ROOM_ID, OWNER_ID));
+
+			assertThat(singleInt(statement, """
+					SELECT count(*) FROM tbl_studio_room_reservation
+					 WHERE room_id = '%s' AND status = 'PENDING_APPROVAL'
+					""".formatted(ROOM_ID))).isEqualTo(2);
+		}
+	}
+
+	@Test
+	void concurrentOverlappingRequestsFromOneCustomerHaveExactlyOneWinner() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		CyclicBarrier startTogether = new CyclicBarrier(2);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			Future<String> first = executor.submit(() -> insertConcurrentPendingReservation(
+					"00000000-0000-0000-0000-00000000050b",
+					"00000000-0000-0000-0000-00000000060b",
+					"2026-08-08 10:00:00+03",
+					"2026-08-08 12:00:00+03",
+					startTogether
+			));
+			Future<String> second = executor.submit(() -> insertConcurrentPendingReservation(
+					"00000000-0000-0000-0000-00000000050c",
+					"00000000-0000-0000-0000-00000000060c",
+					"2026-08-08 11:00:00+03",
+					"2026-08-08 13:00:00+03",
+					startTogether
+			));
+
+			List<String> outcomes = List.of(
+					first.get(15, TimeUnit.SECONDS),
+					second.get(15, TimeUnit.SECONDS)
+			);
+			assertThat(outcomes).contains("COMMITTED");
+			assertThat(outcomes.stream().filter("COMMITTED"::equals).count()).isEqualTo(1);
+			// PostgreSQL can surface a simultaneous GiST exclusion race either as
+			// exclusion_violation or as a retryable deadlock, depending on which
+			// speculative index tuple each transaction observes first.
+			assertThat(outcomes.stream().filter(outcome ->
+					"23P01".equals(outcome) || "40P01".equals(outcome)).count()).isEqualTo(1);
+
+			try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+				assertThat(singleInt(statement, """
+						SELECT count(*) FROM tbl_studio_room_reservation
+						 WHERE requester_id = '%s'
+						   AND room_id = '%s'
+						   AND status = 'PENDING_APPROVAL'
+						""".formatted(REQUESTER_ID, ROOM_ID))).isEqualTo(1);
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void rerunRepairsLegacyIntervalChainWithoutTransitivelyExpiringSurvivors() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("""
+					ALTER TABLE tbl_studio_room_reservation
+					DROP CONSTRAINT ex_studio_room_reservation_requester_overlap
+					""");
+			statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id, created_at)
+					VALUES
+					    ('00000000-0000-0000-0000-00000000050d', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-09 10:00:00+03', TIMESTAMPTZ '2036-08-09 12:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-00000000060d', TIMESTAMP '2036-08-01 10:00:00'),
+					    ('00000000-0000-0000-0000-00000000050e', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-09 11:00:00+03', TIMESTAMPTZ '2036-08-09 13:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-00000000060e', TIMESTAMP '2036-08-01 11:00:00'),
+					    ('00000000-0000-0000-0000-00000000050f', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-09 12:00:00+03', TIMESTAMPTZ '2036-08-09 14:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-00000000060f', TIMESTAMP '2036-08-01 12:00:00'),
+					    ('00000000-0000-0000-0000-000000000510', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-09 15:00:00+03', TIMESTAMPTZ '2036-08-09 17:00:00+03',
+					     'CONFIRMED', false, 'TRY',
+					     '00000000-0000-0000-0000-000000000610', TIMESTAMP '2036-08-01 09:00:00'),
+					    ('00000000-0000-0000-0000-000000000511', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-09 16:00:00+03', TIMESTAMPTZ '2036-08-09 18:00:00+03',
+					     'PENDING_APPROVAL', true, 'TRY',
+					     '00000000-0000-0000-0000-000000000611', TIMESTAMP '2036-08-01 13:00:00')
+					""".formatted(
+					ROOM_ID, REQUESTER_ID,
+					ROOM_ID, REQUESTER_ID,
+					ROOM_ID, REQUESTER_ID,
+					ROOM_ID, REQUESTER_ID,
+					ROOM_ID, REQUESTER_ID
+			));
+		}
+
+		executeMigration(migrationSql());
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050d", "PENDING_APPROVAL", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050e", "EXPIRED", 1);
+			// C touches A's end but overlaps only B. It must survive after B is removed.
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050f", "PENDING_APPROVAL", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000510", "CONFIRMED", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000511", "EXPIRED", 1);
+			assertThat(singleInt(statement, """
+					SELECT count(*) FROM pg_constraint
+					 WHERE conrelid = 'tbl_studio_room_reservation'::regclass
+					   AND conname = 'ex_studio_room_reservation_requester_overlap'
+					""")).isEqualTo(1);
+		}
+
+		// A true rerun must not re-expire rows, increment versions again, or
+		// replace the already-installed constraint.
+		executeMigration(migrationSql());
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050d", "PENDING_APPROVAL", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050e", "EXPIRED", 1);
+			assertReservationState(statement, "00000000-0000-0000-0000-00000000050f", "PENDING_APPROVAL", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000510", "CONFIRMED", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000511", "EXPIRED", 1);
+		}
+	}
+
+	@Test
+	void rerunRefusesConflictingLegacyConfirmedRowsWithoutSilentlyChangingThem() throws Exception {
+		executeMigration(migrationSql());
+		seedStudioAndRoom();
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			statement.execute("""
+					ALTER TABLE tbl_studio_room_reservation
+					DROP CONSTRAINT ex_studio_room_reservation_requester_overlap
+					""");
+			statement.execute("""
+					INSERT INTO tbl_studio_room_reservation
+					    (id, room_id, requester_id, starts_at, ends_at, status,
+					     approval_required_snapshot, currency_snapshot, client_request_id, created_at)
+					VALUES
+					    ('00000000-0000-0000-0000-000000000512', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-10 10:00:00+03', TIMESTAMPTZ '2036-08-10 12:00:00+03',
+					     'CONFIRMED', false, 'TRY',
+					     '00000000-0000-0000-0000-000000000612', TIMESTAMP '2036-08-01 10:00:00'),
+					    ('00000000-0000-0000-0000-000000000513', '%s', '%s',
+					     TIMESTAMPTZ '2036-08-10 11:00:00+03', TIMESTAMPTZ '2036-08-10 13:00:00+03',
+					     'CONFIRMED', false, 'TRY',
+					     '00000000-0000-0000-0000-000000000613', TIMESTAMP '2036-08-01 11:00:00')
+					""".formatted(ROOM_ID, REQUESTER_ID, ROOM_ID, REQUESTER_ID));
+		}
+
+		assertThatThrownBy(() -> executeMigration(migrationSql()))
+				.isInstanceOf(SQLException.class)
+				.satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo("23P01"));
+
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000512", "CONFIRMED", 0);
+			assertReservationState(statement, "00000000-0000-0000-0000-000000000513", "CONFIRMED", 0);
+			assertThat(singleInt(statement, """
+					SELECT count(*) FROM pg_constraint
+					 WHERE conrelid = 'tbl_studio_room_reservation'::regclass
+					   AND conname = 'ex_studio_room_reservation_requester_overlap'
+					""")).isZero();
 		}
 	}
 
@@ -636,6 +1154,271 @@ class StudioDomainMigrationPostgresTest {
 		}
 	}
 
+	private static void createHibernateBacklineCatalogSchema(Connection connection) throws SQLException {
+		try (Statement statement = connection.createStatement()) {
+			statement.execute("""
+					CREATE TABLE tbl_backline_category (
+					    id uuid NOT NULL,
+					    created_at timestamp without time zone,
+					    updated_at timestamp without time zone,
+					    parent_id uuid,
+					    code varchar(96) NOT NULL,
+					    name varchar(160) NOT NULL,
+					    normalized_name varchar(160) NOT NULL,
+					    icon_key varchar(128),
+					    level smallint NOT NULL,
+					    active boolean NOT NULL,
+					    sort_order integer NOT NULL,
+					    version bigint NOT NULL,
+					    CONSTRAINT hibernate_backline_category_pk PRIMARY KEY (id),
+					    CONSTRAINT hibernate_backline_category_parent_fk
+					        FOREIGN KEY (parent_id) REFERENCES tbl_backline_category (id),
+					    CONSTRAINT hibernate_backline_category_code_uk UNIQUE (code),
+					    CONSTRAINT uk_backline_category_parent_normalized
+					        UNIQUE (parent_id, normalized_name),
+					    CONSTRAINT hibernate_backline_category_check
+					        CHECK (level IN (0, 1) AND sort_order >= 0)
+					)
+					""");
+			statement.execute("""
+					CREATE INDEX idx_backline_category_parent_active
+					    ON tbl_backline_category (parent_id, active, sort_order)
+					""");
+			statement.execute("""
+					CREATE INDEX idx_backline_category_normalized
+					    ON tbl_backline_category (normalized_name)
+					""");
+		}
+	}
+
+	private static Map<String, UUID> seedRuntimeBacklineCatalog(Connection connection) throws Exception {
+		JsonNode roots = runtimeCatalogSeed();
+		Map<String, UUID> idsByCode = new LinkedHashMap<>();
+		int childOrdinal = 0;
+		for (int rootIndex = 0; rootIndex < roots.size(); rootIndex++) {
+			JsonNode root = roots.get(rootIndex);
+			String rootCode = root.required("code").asText();
+			UUID rootId = UUID.fromString(
+					"30000000-0000-0000-0000-%012d".formatted(rootIndex + 1)
+			);
+			idsByCode.put(rootCode, rootId);
+			insertCatalogRow(
+					connection,
+					rootId,
+					null,
+					rootCode,
+					root.required("name").asText(),
+					root.required("iconKey").asText(),
+					0,
+					rootIndex,
+					true
+			);
+
+			JsonNode children = root.required("children");
+			for (int childIndex = 0; childIndex < children.size(); childIndex++) {
+				JsonNode child = children.get(childIndex);
+				String childCode = child.required("code").asText();
+				childOrdinal++;
+				UUID childId = UUID.fromString(
+						"40000000-0000-0000-0000-%012d".formatted(childOrdinal)
+				);
+				idsByCode.put(childCode, childId);
+				insertCatalogRow(
+						connection,
+						childId,
+						rootId,
+						childCode,
+						child.required("name").asText(),
+						null,
+						1,
+						childIndex,
+						true
+				);
+			}
+		}
+
+		assertThat(idsByCode).hasSize(89);
+		return idsByCode;
+	}
+
+	private static void insertCatalogRow(
+			Connection connection,
+			UUID id,
+			UUID parentId,
+			String code,
+			String name,
+			String iconKey,
+			int level,
+			int sortOrder,
+			boolean active
+	) throws SQLException {
+		BacklineCategoryNames names = new BacklineCategoryNames();
+		try (PreparedStatement statement = connection.prepareStatement("""
+				INSERT INTO tbl_backline_category
+				    (id, parent_id, code, name, normalized_name, icon_key,
+				     level, active, sort_order, version)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+				""")) {
+			statement.setObject(1, id);
+			if (parentId == null) {
+				statement.setNull(2, java.sql.Types.OTHER);
+			} else {
+				statement.setObject(2, parentId);
+			}
+			statement.setString(3, code);
+			statement.setString(4, name);
+			statement.setString(5, names.normalizedName(name));
+			if (iconKey == null) {
+				statement.setNull(6, java.sql.Types.VARCHAR);
+			} else {
+				statement.setString(6, iconKey);
+			}
+			statement.setInt(7, level);
+			statement.setBoolean(8, active);
+			statement.setInt(9, sortOrder);
+			statement.executeUpdate();
+		}
+	}
+
+	private static void assertRuntimeCatalogMatchesJson(
+			Connection connection,
+			Map<String, UUID> expectedIds
+	) throws Exception {
+		JsonNode roots = runtimeCatalogSeed();
+		int categoryCount = 0;
+		for (int rootIndex = 0; rootIndex < roots.size(); rootIndex++) {
+			JsonNode root = roots.get(rootIndex);
+			String rootCode = root.required("code").asText();
+			assertCatalogRow(
+					connection,
+					expectedIds.get(rootCode),
+					rootCode,
+					null,
+					root.required("name").asText(),
+					root.required("iconKey").asText(),
+					0,
+					rootIndex,
+					true
+			);
+			categoryCount++;
+
+			JsonNode children = root.required("children");
+			for (int childIndex = 0; childIndex < children.size(); childIndex++) {
+				JsonNode child = children.get(childIndex);
+				String childCode = child.required("code").asText();
+				assertCatalogRow(
+						connection,
+						expectedIds.get(childCode),
+						childCode,
+						rootCode,
+						child.required("name").asText(),
+						null,
+						1,
+						childIndex,
+						true
+				);
+				categoryCount++;
+			}
+		}
+		assertThat(categoryCount).isEqualTo(89);
+	}
+
+	private static void assertAdminCatalogRowsUnchanged(
+			Connection connection,
+			UUID adminRootId,
+			UUID adminLeafId,
+			UUID adminCanonicalRootLeafId
+	) throws SQLException {
+		assertCatalogRow(
+				connection,
+				adminRootId,
+				"admin-custom-root",
+				null,
+				"Yönetici Özel Kök",
+				"admin-icon",
+				0,
+				99,
+				false
+		);
+		assertCatalogRow(
+				connection,
+				adminLeafId,
+				"admin-custom-leaf",
+				"admin-custom-root",
+				"Yönetici Özel Alt Kategori",
+				null,
+				1,
+				0,
+				false
+		);
+		assertCatalogRow(
+				connection,
+				adminCanonicalRootLeafId,
+				"admin-custom-guitar-accessory",
+				"guitar-amplifiers",
+				"Yönetici Özel Gitar Aksesuarı",
+				null,
+				1,
+				90,
+				false
+		);
+	}
+
+	private static void assertCatalogRow(
+			Connection connection,
+			UUID expectedId,
+			String code,
+			String expectedParentCode,
+			String expectedName,
+			String expectedIconKey,
+			int expectedLevel,
+			int expectedSortOrder,
+			boolean expectedActive
+	) throws SQLException {
+		BacklineCategoryNames names = new BacklineCategoryNames();
+		try (PreparedStatement statement = connection.prepareStatement("""
+				SELECT category.id,
+				       parent.code AS parent_code,
+				       category.name,
+				       category.normalized_name,
+				       category.icon_key,
+				       category.level,
+				       category.sort_order,
+				       category.active,
+				       category.version
+				  FROM tbl_backline_category category
+				  LEFT JOIN tbl_backline_category parent ON parent.id = category.parent_id
+				 WHERE category.code = ?
+				""")) {
+			statement.setString(1, code);
+			try (ResultSet result = statement.executeQuery()) {
+				assertThat(result.next()).as("catalog row %s", code).isTrue();
+				if (expectedId != null) {
+					assertThat(result.getObject("id", UUID.class))
+							.as("stable id for %s", code)
+							.isEqualTo(expectedId);
+				}
+				assertThat(result.getString("parent_code")).isEqualTo(expectedParentCode);
+				assertThat(result.getString("name")).isEqualTo(expectedName);
+				assertThat(result.getString("normalized_name"))
+						.isEqualTo(names.normalizedName(expectedName));
+				assertThat(result.getString("icon_key")).isEqualTo(expectedIconKey);
+				assertThat(result.getInt("level")).isEqualTo(expectedLevel);
+				assertThat(result.getInt("sort_order")).isEqualTo(expectedSortOrder);
+				assertThat(result.getBoolean("active")).isEqualTo(expectedActive);
+				assertThat(result.getLong("version")).isZero();
+				assertThat(result.next()).isFalse();
+			}
+		}
+	}
+
+	private static JsonNode runtimeCatalogSeed() throws Exception {
+		return new ObjectMapper().readTree(Files.readString(Path.of(
+				System.getProperty("user.dir"),
+				"src", "main", "resources", "backline-category-seed.json"
+		)));
+	}
+
 	private void seedStudioAndRoom() throws SQLException {
 		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
 			statement.execute("INSERT INTO tbl_user (id) VALUES ('" + OWNER_ID + "'), ('"
@@ -657,6 +1440,41 @@ class StudioDomainMigrationPostgresTest {
 		assertThatThrownBy(action::run)
 				.isInstanceOf(SQLException.class)
 				.satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo(expected));
+	}
+
+	private String insertConcurrentPendingReservation(
+			String reservationId,
+			String clientRequestId,
+			String startsAt,
+			String endsAt,
+			CyclicBarrier startTogether
+	) throws Exception {
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			connection.setAutoCommit(false);
+			startTogether.await(10, TimeUnit.SECONDS);
+			try {
+				statement.execute("""
+						INSERT INTO tbl_studio_room_reservation
+						    (id, room_id, requester_id, starts_at, ends_at, status,
+						     approval_required_snapshot, currency_snapshot, client_request_id)
+						VALUES
+						    ('%s', '%s', '%s', TIMESTAMPTZ '%s', TIMESTAMPTZ '%s',
+						     'PENDING_APPROVAL', true, 'TRY', '%s')
+						""".formatted(
+						reservationId,
+						ROOM_ID,
+						REQUESTER_ID,
+						startsAt,
+						endsAt,
+						clientRequestId
+				));
+				connection.commit();
+				return "COMMITTED";
+			} catch (SQLException exception) {
+				connection.rollback();
+				return exception.getSQLState();
+			}
+		}
 	}
 
 	private static Connection connection() throws SQLException {
@@ -691,6 +1509,24 @@ class StudioDomainMigrationPostgresTest {
 		try (ResultSet result = statement.executeQuery(sql)) {
 			assertThat(result.next()).isTrue();
 			return result.getString(1);
+		}
+	}
+
+	private static void assertReservationState(
+			Statement statement,
+			String reservationId,
+			String expectedStatus,
+			long expectedVersion
+	) throws SQLException {
+		try (ResultSet result = statement.executeQuery("""
+				SELECT status, version
+				  FROM tbl_studio_room_reservation
+				 WHERE id = '%s'
+				""".formatted(reservationId))) {
+			assertThat(result.next()).isTrue();
+			assertThat(result.getString("status")).isEqualTo(expectedStatus);
+			assertThat(result.getLong("version")).isEqualTo(expectedVersion);
+			assertThat(result.next()).isFalse();
 		}
 	}
 

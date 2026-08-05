@@ -9,11 +9,14 @@ import com.berkayb.soundconnect.modules.studio.room.dto.response.StudioPageRespo
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +31,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/v1/user/studio-reservations")
 @RequiredArgsConstructor
+@Validated
 @PreAuthorize("isAuthenticated()")
 @Tag(name = "FOR USERS / Studio Reservations", description = "Customer studio reservations")
 public class StudioReservationUserController {
@@ -49,8 +53,8 @@ public class StudioReservationUserController {
     @GetMapping
     public ResponseEntity<BaseResponse<StudioPageResponse<StudioReservationResponse>>> list(
             @AuthenticationPrincipal UserDetailsImpl principal,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ResponseEntity.ok(success(
                 HttpStatus.OK,
@@ -64,8 +68,8 @@ public class StudioReservationUserController {
             @AuthenticationPrincipal UserDetailsImpl principal,
             @PathVariable UUID roomId,
             @RequestParam LocalDate date,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return ResponseEntity.ok(success(
                 HttpStatus.OK,

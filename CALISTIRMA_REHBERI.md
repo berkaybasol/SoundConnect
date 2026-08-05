@@ -53,7 +53,9 @@ Servislerin healthy olmasını bekle
 Android Studio'da Flutter için yeşil Run
 ```
 
-`dev.cmd up` tekrar tekrar çalıştırılabilir. Çalışan servisleri bozmaz; eksik veya değişmiş imajları günceller.
+`dev.cmd up` tekrar tekrar ve veri silmeden çalıştırılabilir. Eksik veya değişmiş
+imajları günceller; güvenli Studio şema senkronizasyonu sırasında API ile media
+worker'ı kısa süre kontrollü durdurup yeniden açar.
 
 ## Backend kodu geliştireceğim veya debug edeceğim
 
@@ -108,7 +110,7 @@ PgAdmin'de yeni bir server connection oluştur:
 - Name: `SoundConnect Docker Local`
 - Host: `localhost`
 - Port: `5433`
-- Maintenance database: `soundconnectdb`
+- Maintenance database: `.env.local` içindeki `SOUNDCONNECT_POSTGRES_DB`
 - Username: `.env.local` içindeki `SOUNDCONNECT_POSTGRES_USERNAME`
 - Password: `.env.local` içindeki `SOUNDCONNECT_POSTGRES_PASSWORD`
 

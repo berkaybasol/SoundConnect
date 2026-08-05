@@ -15,7 +15,6 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 
 @Slf4j
 @Component
@@ -38,38 +37,26 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	@Override
 	public List<SpotifyTrackItemDto> getTracksByIds(List<String> trackIds) {
 		if (trackIds == null || trackIds.isEmpty()) return List.of();
-		
-		String ids = trackIds.stream()
-		                     .filter(id -> id != null && !id.isBlank())
-		                     .distinct()
-		                     .limit(50)
-		                     .reduce((a, b) -> a + "," + b)
-		                     .orElse("");
-		
-		if (ids.isBlank()) return List.of();
+
+		List<String> ids = trackIds.stream()
+		                            .filter(id -> id != null && !id.isBlank())
+		                            .map(String::strip)
+		                            .distinct()
+		                            .limit(50)
+		                            .toList();
+
+		if (ids.isEmpty()) return List.of();
 		
 		String token = tokenService.getAccessToken();
 		
 		try {
-			SpotifyTracksWrapper raw = spotifyApiWebClient.get()
-			                                              .uri(uriBuilder -> uriBuilder
-					                                              .path("/tracks")
-					                                              .queryParam("ids", ids)
-					                                              .queryParam("market", props.getMarket())
-					                                              .build())
-			                                              .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-			                                              .retrieve()
-			                                              .bodyToMono(SpotifyTracksWrapper.class)
-			                                              .block();
-			
-			if (raw == null || raw.tracks == null) {
-				return List.of();
-			}
-			
-			return raw.tracks.stream()
-			                 .filter(Objects::nonNull)
-			                 .map(this::toTrackItemDto)
-			                 .toList();
+			// Spotify deprecated and removed the batch GET /tracks endpoint from
+			// Development Mode in February 2026. Fetching each authoritative
+			// snapshot individually keeps client-supplied metadata untrusted while
+			// preserving the caller's requested catalog order.
+			return ids.stream()
+			          .map(id -> fetchTrackById(id, token))
+			          .toList();
 			
 		} catch (WebClientResponseException ex) {
 			handleSpotifyHttpError(ex);
@@ -124,21 +111,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 		String token = tokenService.getAccessToken();
 		
 		try {
-			SpotifyTrackRaw t = spotifyApiWebClient.get()
-			                                       .uri(uriBuilder -> uriBuilder
-					                                       .path("/tracks/{id}")
-					                                       .queryParam("market", props.getMarket())
-					                                       .build(trackId))
-			                                       .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-			                                       .retrieve()
-			                                       .bodyToMono(SpotifyTrackRaw.class)
-			                                       .block();
-			
-			if (t == null) {
-				throw new SoundConnectException(ErrorType.SPOTIFY_NOT_FOUND);
-			}
-			
-			return toTrackItemDto(t);
+			return fetchTrackById(trackId, token);
 			
 		}  catch (WebClientResponseException ex) {
 			handleSpotifyHttpError(ex);
@@ -147,6 +120,22 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 			log.error("[Spotify] Unexpected error while fetching track detail. trackId={}", trackId, ex);
 			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
 		}
+	}
+
+	private SpotifyTrackItemDto fetchTrackById(String trackId, String token) {
+		SpotifyTrackRaw track = spotifyApiWebClient.get()
+		                                           .uri(uriBuilder -> uriBuilder
+				                                           .path("/tracks/{id}")
+				                                           .queryParam("market", props.getMarket())
+				                                           .build(trackId))
+		                                           .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+		                                           .retrieve()
+		                                           .bodyToMono(SpotifyTrackRaw.class)
+		                                           .block();
+		if (track == null) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_NOT_FOUND);
+		}
+		return toTrackItemDto(track);
 	}
 	
 	
@@ -182,8 +171,6 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	}
 	
 	
-	
-	private record SpotifyTracksWrapper(List<SpotifyTrackRaw> tracks) { }
 	
 	private record SpotifySearchRawResponse(SpotifyTracksItemsWrapper tracks) { }
 	

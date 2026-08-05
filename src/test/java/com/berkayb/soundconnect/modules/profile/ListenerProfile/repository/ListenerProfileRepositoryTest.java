@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -123,7 +124,7 @@ class ListenerProfileRepositoryTest {
 				.build());
 
 		List<ListenerProfile> result =
-				listenerRepo.searchByUsernameOrBio("_user%", "_user%");
+				listenerRepo.searchByUsernameOrBio("_user%", "_user%", PageRequest.of(0, 10));
 
 		assertThat(result).extracting(ListenerProfile::getId)
 				.containsExactly(literalProfile.getId());
@@ -144,15 +145,15 @@ class ListenerProfileRepositoryTest {
 				.description("plain")
 				.build());
 
-		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname"))
+		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname", PageRequest.of(0, 10)))
 				.extracting(ListenerProfile::getId)
 				.containsExactly(profile.getId());
 
 		user.setUsername("newname");
 		userRepo.saveAndFlush(user);
 
-		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname")).isEmpty();
-		assertThat(listenerRepo.searchByUsernameOrBio("newname", "newname"))
+		assertThat(listenerRepo.searchByUsernameOrBio("oldname", "oldname", PageRequest.of(0, 10))).isEmpty();
+		assertThat(listenerRepo.searchByUsernameOrBio("newname", "newname", PageRequest.of(0, 10)))
 				.extracting(ListenerProfile::getId)
 				.containsExactly(profile.getId());
 	}

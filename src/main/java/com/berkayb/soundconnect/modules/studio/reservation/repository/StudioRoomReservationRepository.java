@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -41,9 +42,75 @@ public interface StudioRoomReservationRepository extends JpaRepository<StudioRoo
 
     Optional<StudioRoomReservation> findByRequesterIdAndClientRequestId(UUID requesterId, UUID clientRequestId);
 
+    @Query("""
+            select reservation from StudioRoomReservation reservation
+            where reservation.id = :reservationId
+              and reservation.requester.id = :requesterId
+            """)
+    Optional<StudioRoomReservation> findByIdAndRequesterId(
+            @Param("reservationId") UUID reservationId,
+            @Param("requesterId") UUID requesterId
+    );
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update StudioRoomReservation reservation
+               set reservation.status = :expiredStatus,
+                   reservation.updatedAt = CURRENT_TIMESTAMP,
+                   reservation.version = reservation.version + 1
+             where reservation.requester.id = :requesterId
+               and reservation.room.id = :roomId
+               and reservation.status = :pendingStatus
+               and reservation.startsAt <= :now
+            """)
+    int expireStartedPendingRequests(
+            @Param("requesterId") UUID requesterId,
+            @Param("roomId") UUID roomId,
+            @Param("pendingStatus") StudioReservationStatus pendingStatus,
+            @Param("expiredStatus") StudioReservationStatus expiredStatus,
+            @Param("now") Instant now
+    );
+
+    @Query("""
+            select (count(reservation) > 0) from StudioRoomReservation reservation
+            where reservation.requester.id = :requesterId
+              and reservation.room.id = :roomId
+              and reservation.status in :statuses
+              and reservation.startsAt < :endsAt
+              and reservation.endsAt > :startsAt
+              and (reservation.status <> :pendingStatus or reservation.startsAt > :now)
+            """)
+    boolean existsActiveRequesterOverlap(
+            @Param("requesterId") UUID requesterId,
+            @Param("roomId") UUID roomId,
+            @Param("statuses") Collection<StudioReservationStatus> statuses,
+            @Param("pendingStatus") StudioReservationStatus pendingStatus,
+            @Param("startsAt") Instant startsAt,
+            @Param("endsAt") Instant endsAt,
+            @Param("now") Instant now
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select reservation from StudioRoomReservation reservation where reservation.id = :reservationId")
-    Optional<StudioRoomReservation> findByIdForUpdate(@Param("reservationId") UUID reservationId);
+    @Query("""
+            select reservation from StudioRoomReservation reservation
+            where reservation.id = :reservationId
+              and reservation.room.id = :roomId
+            """)
+    Optional<StudioRoomReservation> findByIdAndRoomIdForUpdate(
+            @Param("reservationId") UUID reservationId,
+            @Param("roomId") UUID roomId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select reservation from StudioRoomReservation reservation
+            where reservation.id = :reservationId
+              and reservation.requester.id = :requesterId
+            """)
+    Optional<StudioRoomReservation> findByIdAndRequesterIdForUpdate(
+            @Param("reservationId") UUID reservationId,
+            @Param("requesterId") UUID requesterId
+    );
 
     @Query(
             value = """
@@ -153,7 +220,7 @@ public interface StudioRoomReservationRepository extends JpaRepository<StudioRoo
             select reservation from StudioRoomReservation reservation
             where reservation.room.id = :roomId
               and reservation.status in :statuses
-              and reservation.endsAt > :now
+              and reservation.startsAt > :now
             order by reservation.startsAt asc, reservation.id asc
             """)
     List<StudioRoomReservation> findFutureByRoomAndStatusesForUpdate(

@@ -5,7 +5,13 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomOccupancyRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomReservationRepository;
+import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomReservation;
+import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomOccupancy;
+import com.berkayb.soundconnect.modules.studio.reservation.enums.StudioReservationStatus;
+import com.berkayb.soundconnect.modules.studio.reservation.enums.StudioOccupancyType;
+import com.berkayb.soundconnect.modules.studio.reservation.event.StudioReservationNotificationEvent;
 import com.berkayb.soundconnect.modules.studio.reservation.support.StudioReservationTimeProvider;
+import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomArchiveRequest;
 import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomCreateRequest;
 import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomUpdateRequest;
 import com.berkayb.soundconnect.modules.studio.room.dto.response.StudioRoomOwnerResponse;
@@ -15,6 +21,9 @@ import com.berkayb.soundconnect.modules.studio.room.mapper.StudioRoomMapper;
 import com.berkayb.soundconnect.modules.studio.room.repository.StudioRoomRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.user.entity.User;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +43,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,6 +59,7 @@ class StudioRoomServiceTest {
     @Mock StudioRoomMapper roomMapper;
     @Mock StudioRoomDailyMetricsService dailyMetricsService;
     @Mock StudioReservationTimeProvider timeProvider;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks StudioRoomService service;
 
     private StudioRoomDailyMetrics emptyMetrics;
@@ -89,8 +100,8 @@ class StudioRoomServiceTest {
     void normalizesTextDefaultsCurrencyAndKeepsPhotoOrder() {
         UUID ownerId = UUID.randomUUID();
         UUID profileId = UUID.randomUUID();
-        UUID firstPhoto = UUID.randomUUID();
-        UUID secondPhoto = UUID.randomUUID();
+        UUID firstPhoto = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff");
+        UUID secondPhoto = UUID.fromString("00000000-0000-0000-0000-000000000001");
         StudioProfile profile = StudioProfile.builder().id(profileId).build();
         StudioRoomOwnerResponse mapped = new StudioRoomOwnerResponse(
                 UUID.randomUUID(), profileId, UUID.randomUUID(), 0, "Davul odasi", null, 4,
@@ -116,7 +127,14 @@ class StudioRoomServiceTest {
         assertThat(saved.getCreationPayloadHash()).matches("[0-9a-f]{64}");
         assertThat(saved.getPhotos()).extracting(photo -> photo.getMediaAssetId())
                 .containsExactly(firstPhoto, secondPhoto);
-        verify(mediaAssetService).validateAssignableMedia(
+        var photoValidationOrder = inOrder(mediaAssetService);
+        photoValidationOrder.verify(mediaAssetService).validateAssignableMedia(
+                ownerId, secondPhoto,
+                com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.STUDIO_PROFILE,
+                profileId,
+                com.berkayb.soundconnect.modules.media.enums.MediaKind.IMAGE
+        );
+        photoValidationOrder.verify(mediaAssetService).validateAssignableMedia(
                 ownerId, firstPhoto,
                 com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.STUDIO_PROFILE,
                 profileId,
@@ -204,7 +222,8 @@ class StudioRoomServiceTest {
                 .version(4)
                 .build();
         when(studioProfileRepository.findByUserIdForUpdate(ownerId)).thenReturn(Optional.of(profile));
-        when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(roomRepository.findByIdAndStudioProfileIdForUpdate(roomId, profileId))
+                .thenReturn(Optional.of(room));
 
         StudioRoomUpdateRequest request = new StudioRoomUpdateRequest(
                 3L, "oda", null, 4, null, null, false, List.of(), List.of(UUID.randomUUID())
@@ -214,6 +233,86 @@ class StudioRoomServiceTest {
                 .extracting(exception -> ((SoundConnectException) exception).getErrorType())
                 .isEqualTo(ErrorType.STUDIO_STALE_UPDATE);
         verify(mediaAssetService, never()).validateAssignableMedia(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void crossTenantUpdateReturnsUniformNotFoundWithoutLockingTheForeignRoom() {
+        UUID ownerId = UUID.randomUUID();
+        UUID ownerProfileId = UUID.randomUUID();
+        UUID foreignRoomId = UUID.randomUUID();
+        StudioProfile ownerProfile = StudioProfile.builder().id(ownerProfileId).build();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(ownerProfile));
+        when(roomRepository.findByIdAndStudioProfileIdForUpdate(foreignRoomId, ownerProfileId))
+                .thenReturn(Optional.empty());
+
+        StudioRoomUpdateRequest request = new StudioRoomUpdateRequest(
+                0L, "oda", null, 4, null, "TRY", false, List.of(), List.of()
+        );
+
+        assertThatThrownBy(() -> service.update(ownerId, foreignRoomId, request))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, ownerProfileId
+        );
+        verify(roomRepository, never()).findByIdForUpdate(any());
+        verify(roomRepository, never()).saveAndFlush(any());
+        verify(mediaAssetService, never()).validateAssignableMedia(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void crossTenantArchiveReturnsUniformNotFoundBeforeFutureActivityLocks() {
+        UUID ownerId = UUID.randomUUID();
+        UUID ownerProfileId = UUID.randomUUID();
+        UUID foreignRoomId = UUID.randomUUID();
+        StudioProfile ownerProfile = StudioProfile.builder().id(ownerProfileId).build();
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId))
+                .thenReturn(Optional.of(ownerProfile));
+        when(roomRepository.findByIdAndStudioProfileIdForUpdate(foreignRoomId, ownerProfileId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.archive(
+                ownerId, foreignRoomId, new StudioRoomArchiveRequest(0L)
+        ))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findByIdAndStudioProfileIdForUpdate(
+                foreignRoomId, ownerProfileId
+        );
+        verify(roomRepository, never()).findByIdForUpdate(any());
+        verify(reservationRepository, never()).findFutureByRoomAndStatusesForUpdate(
+                any(), any(), any()
+        );
+        verify(occupancyRepository, never()).findFutureActiveByRoomForUpdate(any(), any());
+        verify(roomRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void crossTenantOwnerReadReturnsUniformNotFoundWithoutReadingTheForeignRoom() {
+        UUID ownerId = UUID.randomUUID();
+        UUID ownerProfileId = UUID.randomUUID();
+        UUID foreignRoomId = UUID.randomUUID();
+        StudioProfile ownerProfile = StudioProfile.builder().id(ownerProfileId).build();
+        when(studioProfileRepository.findByUserId(ownerId))
+                .thenReturn(Optional.of(ownerProfile));
+        when(roomRepository.findActiveByIdAndStudioProfileId(foreignRoomId, ownerProfileId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getOwner(ownerId, foreignRoomId))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.STUDIO_ROOM_NOT_FOUND);
+
+        verify(roomRepository).findActiveByIdAndStudioProfileId(
+                foreignRoomId, ownerProfileId
+        );
+        verify(roomRepository, never()).findByIdAndArchivedAtIsNull(any());
+        verify(dailyMetricsService, never()).load(any(), any());
     }
 
     @Test
@@ -244,7 +343,8 @@ class StudioRoomServiceTest {
         when(timeProvider.now()).thenReturn(now);
         when(studioProfileRepository.findByUserIdForUpdate(ownerId))
                 .thenReturn(Optional.of(profile));
-        when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(room));
+        when(roomRepository.findByIdAndStudioProfileIdForUpdate(roomId, profileId))
+                .thenReturn(Optional.of(room));
         when(roomRepository.saveAndFlush(room)).thenReturn(room);
         when(roomMapper.toOwner(any(), any())).thenReturn(mapped);
 
@@ -265,6 +365,87 @@ class StudioRoomServiceTest {
         assertThat(room.effectiveReservationApprovalRequired(now)).isFalse();
         assertThat(room.effectiveReservationApprovalRequired(expectedEffectiveAt))
                 .isTrue();
+    }
+
+    @Test
+    void archiveCancelsOnlyRepositorySelectedFutureActivityAndNotifiesEveryCustomer() {
+        UUID ownerId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        UUID profileId = UUID.randomUUID();
+        UUID roomId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-07-21T10:00:00Z");
+        StudioProfile profile = StudioProfile.builder()
+                .id(profileId)
+                .name("Ses Stüdyosu")
+                .timeZone("Europe/Istanbul")
+                .build();
+        StudioRoom room = StudioRoom.builder()
+                .id(roomId)
+                .studioProfile(profile)
+                .name("A Odası")
+                .version(3L)
+                .build();
+        StudioRoomReservation futureReservation = StudioRoomReservation.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .requester(User.builder().id(requesterId).build())
+                .status(StudioReservationStatus.CONFIRMED)
+                .startsAt(Instant.parse("2026-07-22T10:00:00Z"))
+                .endsAt(Instant.parse("2026-07-22T12:00:00Z"))
+                .build();
+        StudioRoomOccupancy futureOccupancy = StudioRoomOccupancy.builder()
+                .id(UUID.randomUUID())
+                .room(room)
+                .type(StudioOccupancyType.RESERVATION)
+                .startsAt(futureReservation.getStartsAt())
+                .endsAt(futureReservation.getEndsAt())
+                .active(true)
+                .build();
+
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId)).thenReturn(Optional.of(profile));
+        when(roomRepository.findByIdAndStudioProfileIdForUpdate(roomId, profileId))
+                .thenReturn(Optional.of(room));
+        when(reservationRepository.findFutureByRoomAndStatusesForUpdate(
+                roomId,
+                List.of(StudioReservationStatus.PENDING_APPROVAL, StudioReservationStatus.CONFIRMED),
+                now
+        )).thenReturn(List.of(futureReservation));
+        when(occupancyRepository.findFutureActiveByRoomForUpdate(roomId, now))
+                .thenReturn(List.of(futureOccupancy));
+        when(roomRepository.saveAndFlush(room)).thenReturn(room);
+
+        service.archive(ownerId, roomId, new StudioRoomArchiveRequest(3L));
+
+        assertThat(room.getArchivedAt()).isEqualTo(now);
+        assertThat(futureReservation.getStatus())
+                .isEqualTo(StudioReservationStatus.CANCELLED_BY_STUDIO);
+        assertThat(futureReservation.getCancelledAt()).isEqualTo(now);
+        assertThat(futureReservation.getCancelledBy()).isEqualTo(ownerId);
+        assertThat(futureOccupancy.isActive()).isFalse();
+        assertThat(futureOccupancy.getReleasedAt()).isEqualTo(now);
+
+        ArgumentCaptor<StudioReservationNotificationEvent> eventCaptor =
+                ArgumentCaptor.forClass(StudioReservationNotificationEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().recipientId()).isEqualTo(requesterId);
+        assertThat(eventCaptor.getValue().type())
+                .isEqualTo(NotificationType.STUDIO_RESERVATION_CANCELLED_BY_STUDIO);
+        assertThat(eventCaptor.getValue().payload())
+                .containsEntry("reservationId", futureReservation.getId().toString())
+                .containsEntry("action", "CANCELLED_BY_STUDIO_ROOM_ARCHIVED")
+                .containsEntry("status", StudioReservationStatus.CANCELLED_BY_STUDIO.name());
+    }
+
+    @Test
+    void deepOwnerRoomPageFailsBeforeAnyRepositoryAccess() {
+        assertThatThrownBy(() -> service.listOwner(UUID.randomUUID(), 1001, 20))
+                .isInstanceOf(SoundConnectException.class)
+                .extracting(exception -> ((SoundConnectException) exception).getErrorType())
+                .isEqualTo(ErrorType.VALIDATION_ERROR);
+
+        verify(studioProfileRepository, never()).findByUserId(any());
+        verify(roomRepository, never())
+                .findByStudioProfileIdAndArchivedAtIsNull(any(), any());
     }
 
     private StudioRoomCreateRequest createRequest(List<UUID> photos) {

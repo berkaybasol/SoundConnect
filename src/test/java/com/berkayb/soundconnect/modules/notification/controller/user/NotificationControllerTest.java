@@ -17,7 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.MethodParameter;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -70,17 +70,57 @@ class NotificationControllerTest {
 		NotificationResponseDto d2 = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER, "t2","m2", true, null, Map.of());
 		Page<NotificationResponseDto> page = new PageImpl<>(List.of(d1, d2));
 		
-		when(notificationService.getUserNotifications(eq(userId), any(Pageable.class))).thenReturn(page);
+		when(notificationService.getUserNotifications(userId, 0, 20)).thenReturn(page);
 		
 		mockMvc.perform(get(BASE))
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data.content.length()").value(2))
 		       .andExpect(jsonPath("$.data.content[0].id").value(d1.id().toString()))
-		       .andExpect(jsonPath("$.data.content[1].id").value(d2.id().toString()));
+		       .andExpect(jsonPath("$.data.content[1].id").value(d2.id().toString()))
+		       .andExpect(jsonPath("$.data.page").value(0))
+		       .andExpect(jsonPath("$.data.number").value(0));
 		
-		verify(notificationService).getUserNotifications(eq(userId), any(Pageable.class));
+		verify(notificationService).getUserNotifications(userId, 0, 20);
 		verifyNoMoreInteractions(notificationService);
+	}
+
+	@Test
+	@DisplayName("GET /notifications sayfa sinirlarini uygular ve istemci sort degerini yok sayar")
+	void list_uses_bounded_stable_pagination_contract() throws Exception {
+		Page<NotificationResponseDto> result = new PageImpl<>(
+				List.of(),
+				PageRequest.of(1000, 100),
+				0
+		);
+		when(notificationService.getUserNotifications(userId, 1000, 100))
+				.thenReturn(result);
+
+		mockMvc.perform(get(BASE)
+					.param("page", "1000")
+					.param("size", "100")
+					.param("sort", "recipientId,asc"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.page").value(1000))
+				.andExpect(jsonPath("$.data.number").value(1000))
+				.andExpect(jsonPath("$.data.size").value(100));
+
+		verify(notificationService).getUserNotifications(userId, 1000, 100);
+		verifyNoMoreInteractions(notificationService);
+	}
+
+	@Test
+	@DisplayName("GET /notifications derin sayfa ve buyuk sayfa boyutunu reddeder")
+	void list_rejects_out_of_range_pagination() throws Exception {
+		mockMvc.perform(get(BASE).param("page", "1001"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value(4004));
+
+		mockMvc.perform(get(BASE).param("size", "101"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value(4004));
+
+		verifyNoInteractions(notificationService);
 	}
 	
 	@Test
@@ -90,7 +130,8 @@ class NotificationControllerTest {
 		NotificationResponseDto d2 = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER, "t2","m2", true, null, null);
 		Page<NotificationResponseDto> page = new PageImpl<>(List.of(d1, d2));
 		
-		when(notificationService.getUserNotificationsByTypes(eq(userId), anyCollection(), any(Pageable.class))).thenReturn(page);
+		when(notificationService.getUserNotificationsByTypes(
+				eq(userId), anyCollection(), eq(0), eq(20))).thenReturn(page);
 		
 		mockMvc.perform(get(BASE).param("types", "MEDIA_TRANSCODE_READY,SOCIAL_NEW_FOLLOWER"))
 		       .andExpect(status().isOk())
@@ -100,7 +141,8 @@ class NotificationControllerTest {
 		
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<Collection<NotificationType>> typeCap = ArgumentCaptor.forClass(Collection.class);
-		verify(notificationService).getUserNotificationsByTypes(eq(userId), typeCap.capture(), any(Pageable.class));
+		verify(notificationService).getUserNotificationsByTypes(
+				eq(userId), typeCap.capture(), eq(0), eq(20));
 		assertThat(typeCap.getValue())
 				.containsExactlyInAnyOrder(NotificationType.MEDIA_TRANSCODE_READY, NotificationType.SOCIAL_NEW_FOLLOWER);
 		

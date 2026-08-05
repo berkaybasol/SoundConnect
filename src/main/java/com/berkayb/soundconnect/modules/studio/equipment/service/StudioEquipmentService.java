@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentAvailabili
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentAvailabilityRangeResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentCreateRequest;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentOwnerResponse;
+import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentInventorySummaryResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentPhotoResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentPublicResponse;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentUpdateRequest;
@@ -60,6 +61,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class StudioEquipmentService {
+    private static final int MAX_PAGE = 1000;
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_RANGE_DAYS = 730;
 
@@ -181,6 +183,20 @@ public class StudioEquipmentService {
     }
 
     @Transactional(readOnly = true)
+    public EquipmentInventorySummaryResponse getOwnerInventorySummary(UUID actingUserId) {
+        StudioProfile studio = findOwnedStudio(actingUserId);
+        LocalDate today = timeProvider.today(studio.getTimeZone());
+        StudioEquipmentRepository.InventorySummaryProjection summary =
+                equipmentRepository.summarizeActiveInventory(studio.getId(), today);
+        return new EquipmentInventorySummaryResponse(
+                summary.getTotalQuantity(),
+                summary.getAvailableQuantity(),
+                summary.getBusyQuantity(),
+                summary.getMaintenanceQuantity()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Page<EquipmentOwnerResponse> listOwner(
             UUID actingUserId,
             String query,
@@ -189,6 +205,7 @@ public class StudioEquipmentService {
             int page,
             int size
     ) {
+        PageRequest pageable = equipmentPage(page, size);
         StudioProfile studio = findOwnedStudio(actingUserId);
         LocalDate today = timeProvider.today(studio.getTimeZone());
         Page<StudioEquipment> resultPage = equipmentRepository.findActiveByStudio(
@@ -197,7 +214,7 @@ public class StudioEquipmentService {
                 categoryId,
                 availabilityBucketName(availabilityBucket),
                 today,
-                equipmentPage(page, size)
+                pageable
         );
         Map<UUID, StudioEquipmentDay> todayRows = loadDayRows(resultPage.getContent(), today);
         Map<UUID, String> photoUrls = loadPhotoUrls(resultPage.getContent());
@@ -208,10 +225,8 @@ public class StudioEquipmentService {
 
     @Transactional(readOnly = true)
     public EquipmentOwnerResponse getOwner(UUID actingUserId, UUID equipmentId) {
-        StudioEquipment equipment = equipmentRepository.findById(equipmentId)
+        StudioEquipment equipment = equipmentRepository.findOwnedActiveById(equipmentId, actingUserId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
-        assertOwnership(equipment, actingUserId);
-        ensureActive(equipment);
         return toOwnerResponseWithToday(equipment);
     }
 
@@ -224,6 +239,7 @@ public class StudioEquipmentService {
             int page,
             int size
     ) {
+        PageRequest pageable = equipmentPage(page, size);
         StudioProfile studio = findStudio(studioProfileId);
         LocalDate today = timeProvider.today(studio.getTimeZone());
         Page<StudioEquipment> resultPage = equipmentRepository.findActiveByStudio(
@@ -232,7 +248,7 @@ public class StudioEquipmentService {
                 categoryId,
                 availabilityBucketName(availabilityBucket),
                 today,
-                equipmentPage(page, size)
+                pageable
         );
         Map<UUID, StudioEquipmentDay> todayRows = loadDayRows(resultPage.getContent(), today);
         Map<UUID, String> photoUrls = loadPhotoUrls(resultPage.getContent());
@@ -257,10 +273,8 @@ public class StudioEquipmentService {
             LocalDate startDate,
             LocalDate endDate
     ) {
-        StudioEquipment equipment = equipmentRepository.findById(equipmentId)
+        StudioEquipment equipment = equipmentRepository.findOwnedActiveById(equipmentId, actingUserId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
-        assertOwnership(equipment, actingUserId);
-        ensureActive(equipment);
         return readAvailability(equipment, startDate, endDate);
     }
 
@@ -415,16 +429,9 @@ public class StudioEquipmentService {
     }
 
     private StudioEquipment findOwnedEquipmentForUpdate(UUID actingUserId, UUID equipmentId) {
-        StudioEquipment equipment = equipmentRepository.findByIdForUpdate(equipmentId)
+        StudioEquipment equipment = equipmentRepository.findOwnedByIdForUpdate(equipmentId, actingUserId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
-        assertOwnership(equipment, actingUserId);
         return equipment;
-    }
-
-    private void assertOwnership(StudioEquipment equipment, UUID actingUserId) {
-        if (!equipment.getStudioProfile().getUser().getId().equals(actingUserId)) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
     }
 
     private StudioProfile findOwnedStudio(UUID actingUserId) {
@@ -753,6 +760,12 @@ public class StudioEquipmentService {
     }
 
     private PageRequest equipmentPage(int page, int size) {
+        if (page > MAX_PAGE) {
+            throw new SoundConnectException(
+                    ErrorType.VALIDATION_ERROR,
+                    "page cannot exceed " + MAX_PAGE
+            );
+        }
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
         return PageRequest.of(
@@ -764,13 +777,18 @@ public class StudioEquipmentService {
 
     private String normalizeQuery(String query) {
         if (!StringUtils.hasText(query)) {
-            return "";
+            return "%";
         }
         String normalized = collapseWhitespace(query);
         if (normalized.length() > 100) {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR, "Search query cannot exceed 100 characters");
         }
-        return normalized;
+        String escaped = normalized
+                .toLowerCase(Locale.ROOT)
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     private String availabilityBucketName(EquipmentAvailabilityBucket availabilityBucket) {

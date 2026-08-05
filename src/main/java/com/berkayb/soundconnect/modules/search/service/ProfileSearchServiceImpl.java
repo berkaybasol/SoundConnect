@@ -8,6 +8,8 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.search.dto.ProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ import java.util.UUID;
 @Slf4j
 public class ProfileSearchServiceImpl implements ProfileSearchService {
 	private static final int MIN_QUERY_LENGTH = 2;
+	private static final int MAX_QUERY_LENGTH = 100;
 	private static final int DEFAULT_LIMIT = 15;
 	private static final int MAX_LIMIT = 30;
 
@@ -41,67 +44,74 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	public List<ProfileSearchItemDto> searchProfiles(String query, int limit) {
 		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query);
 		if (q.length() < MIN_QUERY_LENGTH) return List.of();
+		if (q.length() > MAX_QUERY_LENGTH) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					"Profile search query cannot exceed " + MAX_QUERY_LENGTH + " characters"
+			);
+		}
 		String usernameQuery = UsernameUtils.normalize(q);
 
 		int safeLimit = clampLimit(limit);
 		int perTypeLimit = Math.max(5, safeLimit);
-		List<ProfileSearchItemDto> results = new ArrayList<>();
+		PageRequest perTypePage = PageRequest.of(0, perTypeLimit);
+		List<SearchCandidate> candidates = new ArrayList<>();
 
-		musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery)
+		musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery, perTypePage)
 		                         .stream()
 		                         .limit(perTypeLimit)
-		                         .map(profile -> new ProfileSearchItemDto(
+		                         .map(profile -> new SearchCandidate(
 				                         "MUSICIAN",
 				                         profile.getId(),
 				                         profile.getUser().getId(),
 				                         firstNotBlank(profile.getStageName(), profile.getUser().getUsername(), "Müzisyen"),
 				                         profile.getUser().getUsername(),
-				                         resolveMediaUrl(profile.getProfilePictureMediaId())
+				                         profile.getProfilePictureMediaId()
 		                         ))
-		                         .forEach(results::add);
+		                         .forEach(candidates::add);
 
-		listenerProfileRepository.searchByUsernameOrBio(q, usernameQuery)
+		listenerProfileRepository.searchByUsernameOrBio(q, usernameQuery, perTypePage)
 		                         .stream()
 		                         .limit(perTypeLimit)
-		                         .map(profile -> new ProfileSearchItemDto(
+		                         .map(profile -> new SearchCandidate(
 				                         "LISTENER",
 				                         profile.getId(),
 				                         profile.getUser().getId(),
 				                         firstNotBlank(profile.getName(), profile.getUser().getUsername(), "Dinleyici"),
 				                         profile.getUser().getUsername(),
-				                         resolveMediaUrl(profile.getProfilePictureMediaId())
+				                         profile.getProfilePictureMediaId()
 		                         ))
-		                         .forEach(results::add);
+		                         .forEach(candidates::add);
 
-		bandRepository.searchByName(q)
+		bandRepository.searchByName(q, perTypePage)
 		              .stream()
 		              .limit(perTypeLimit)
-		              .map(band -> new ProfileSearchItemDto(
+		              .map(band -> new SearchCandidate(
 				              "BAND",
 				              band.getId(),
 				              null,
 				              firstNotBlank(band.getName(), "Band"),
 				              "Band",
-				              resolveMediaUrl(band.getProfilePictureMediaId())
+				              band.getProfilePictureMediaId()
 		              ))
-		              .forEach(results::add);
+		              .forEach(candidates::add);
 
-		studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery)
+		studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, perTypePage)
 		                       .stream()
 		                       .limit(perTypeLimit)
-		                       .map(profile -> new ProfileSearchItemDto(
+		                       .map(profile -> new SearchCandidate(
 				                       "STUDIO",
 				                       profile.getId(),
 				                       profile.getUser().getId(),
 				                       firstNotBlank(profile.getName(), profile.getUser().getUsername(), "Stüdyo"),
 				                       studioLocation(profile),
-				                       resolveMediaUrl(profile.getProfilePictureMediaId())
+				                       profile.getProfilePictureMediaId()
 		                       ))
-		                       .forEach(results::add);
+		                       .forEach(candidates::add);
 
-		venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, PageRequest.of(0, perTypeLimit))
+		venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, perTypePage)
 		               .stream()
-		               .map(venue -> new ProfileSearchItemDto(
+		               .map(venue -> new SearchCandidate(
 				               "VENUE",
 				               venue.getId(),
 				               venue.getOwner() != null ? venue.getOwner().getId() : null,
@@ -111,11 +121,19 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 						               "Mekan"),
 				               null
 		               ))
-		               .forEach(results::add);
+		               .forEach(candidates::add);
 
-		return results.stream()
-		              .sorted(Comparator.comparingInt(item -> rank(item.title(), q)))
+		return candidates.stream()
+		              .sorted(Comparator.comparingInt(candidate -> rank(candidate.title(), q)))
 		              .limit(safeLimit)
+		              .map(candidate -> new ProfileSearchItemDto(
+			              candidate.type(),
+			              candidate.profileId(),
+			              candidate.ownerUserId(),
+			              candidate.title(),
+			              candidate.subtitle(),
+			              resolveMediaUrl(candidate.mediaAssetId())
+		              ))
 		              .toList();
 	}
 
@@ -166,4 +184,13 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 			return null;
 		}
 	}
+
+	private record SearchCandidate(
+			String type,
+			UUID profileId,
+			UUID ownerUserId,
+			String title,
+			String subtitle,
+			UUID mediaAssetId
+	) {}
 }

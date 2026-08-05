@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.studio.room.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
@@ -23,5 +24,14 @@ public record StudioPageResponse<T>(
                 source.isFirst(),
                 source.isLast()
         );
+    }
+
+    /**
+     * Keep already-released mobile clients working during the transition from
+     * Spring Data's {@code number} field to the stable {@code page} contract.
+     */
+    @JsonProperty("number")
+    public int legacyNumber() {
+        return page;
     }
 }

@@ -135,4 +135,14 @@ class VenueRepositoryTest {
 				"newvenueuser", "newvenueuser", PageRequest.of(0, 10)
 		)).extracting(Venue::getId).containsExactly(venue.getId());
 	}
+
+	@Test
+	void nameSearchTreatsPercentAndUnderscoreAsLiteralCharacters() {
+		Venue literal = venueRepository.save(newVenue("100%_Live", ownerA));
+		venueRepository.save(newVenue("100X Live", ownerB));
+
+		assertThat(venueRepository.searchByName("%_", PageRequest.of(0, 10)))
+				.extracting(Venue::getId)
+				.containsExactly(literal.getId());
+	}
 }

@@ -80,7 +80,9 @@ class MediaAssetCompletionIntegrityTest {
 				.size(128L)
 				.storageKey("quarantine/media/audio/source.m4a")
 				.build();
-		lenient().when(mediaAssetRepository.findByIdForUpdate(asset.getId())).thenReturn(Optional.of(asset));
+		lenient().when(mediaAssetRepository.findByIdAndOwnerForUpdate(
+				asset.getId(), MediaOwnerType.USER, ownerId
+		)).thenReturn(Optional.of(asset));
 		lenient().when(mediaAssetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
 	}
 
@@ -92,7 +94,49 @@ class MediaAssetCompletionIntegrityTest {
 		service.validateAssignableMedia(
 				ownerId, asset.getId(), MediaOwnerType.USER, ownerId, MediaKind.AUDIO);
 
-		verify(mediaAssetRepository).findByIdForUpdate(asset.getId());
+		verify(mediaAssetRepository).findByIdAndOwnerForUpdate(
+				asset.getId(), MediaOwnerType.USER, ownerId
+		);
+	}
+
+	@Test
+	void validateAssignableMediaNeverLocksAnotherOwnersAsset() {
+		UUID foreignAssetId = UUID.randomUUID();
+		when(mediaAssetRepository.findByIdAndOwnerForUpdate(
+				foreignAssetId, MediaOwnerType.USER, ownerId
+		)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.validateAssignableMedia(
+				ownerId, foreignAssetId, MediaOwnerType.USER, ownerId, MediaKind.IMAGE
+		))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						error -> assertThat(error.getErrorType())
+								.isEqualTo(ErrorType.MEDIA_ASSET_NOT_FOUND));
+
+		verify(mediaAssetRepository).findByIdAndOwnerForUpdate(
+				foreignAssetId, MediaOwnerType.USER, ownerId
+		);
+		verify(mediaAssetRepository, never()).findByIdForUpdate(foreignAssetId);
+	}
+
+	@Test
+	void deleteNeverLocksAnotherOwnersAsset() {
+		UUID foreignAssetId = UUID.randomUUID();
+		when(mediaAssetRepository.findByIdAndOwnerForUpdate(
+				foreignAssetId, MediaOwnerType.USER, ownerId
+		)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.delete(
+				foreignAssetId, ownerId, MediaOwnerType.USER, ownerId
+		))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						error -> assertThat(error.getErrorType())
+								.isEqualTo(ErrorType.MEDIA_ASSET_NOT_FOUND));
+
+		verify(mediaAssetRepository).findByIdAndOwnerForUpdate(
+				foreignAssetId, MediaOwnerType.USER, ownerId
+		);
+		verify(mediaAssetRepository, never()).findByIdForUpdate(foreignAssetId);
 	}
 
 	@Test

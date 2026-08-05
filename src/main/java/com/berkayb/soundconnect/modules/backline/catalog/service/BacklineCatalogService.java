@@ -47,6 +47,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class BacklineCatalogService {
+    private static final int MAX_PAGE = 1000;
     private static final int MAX_REQUEST_PAGE_SIZE = 50;
     private static final int MAX_CATALOG_PAGE_SIZE = 100;
 
@@ -60,7 +61,7 @@ public class BacklineCatalogService {
     public Page<BacklineCategoryTreeResponse> listPublicCategories(int page, int size) {
         Page<BacklineCategory> roots = categoryRepository.findByParentIsNullAndActiveTrue(
                 PageRequest.of(
-                        Math.max(page, 0),
+                        safePage(page),
                         boundedSize(size, MAX_CATALOG_PAGE_SIZE),
                         Sort.by(
                                 Sort.Order.asc("sortOrder"),
@@ -209,19 +210,19 @@ public class BacklineCatalogService {
 
     @Transactional(readOnly = true)
     public Page<BacklineCategoryRequestResponse> listOwnerRequests(UUID actingUserId, int page, int size) {
+        PageRequest pageable = requestPage(page, size);
         StudioProfile studio = studioProfileRepository.findByUserId(actingUserId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
-        return requestRepository.findByStudioProfileId(studio.getId(), requestPage(page, size))
+        return requestRepository.findByStudioProfileId(studio.getId(), pageable)
                 .map(this::toRequestResponse);
     }
 
     @Transactional
     public BacklineCategoryRequestResponse withdrawRequest(UUID actingUserId, UUID requestId) {
-        BacklineCategoryRequest request = requestRepository.findByIdForUpdate(requestId)
+        BacklineCategoryRequest request = requestRepository.findOwnedByIdForUpdate(
+                        requestId, actingUserId
+                )
                 .orElseThrow(() -> new SoundConnectException(ErrorType.BACKLINE_CATEGORY_REQUEST_NOT_FOUND));
-        if (!request.getStudioProfile().getUser().getId().equals(actingUserId)) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
         ensurePending(request);
         request.withdraw();
         return toRequestResponse(requestRepository.saveAndFlush(request));
@@ -377,6 +378,7 @@ public class BacklineCatalogService {
                 request.getId(),
                 request.getClientRequestId(),
                 request.getStudioProfile().getId(),
+                request.getStudioProfile().getName(),
                 request.getType(),
                 request.getRequestedName(),
                 request.getParentCategory() == null ? null : request.getParentCategory().getId(),
@@ -398,10 +400,20 @@ public class BacklineCatalogService {
 
     private PageRequest requestPage(int page, int size) {
         return PageRequest.of(
-                Math.max(page, 0),
+                safePage(page),
                 boundedSize(size, MAX_REQUEST_PAGE_SIZE),
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
+    }
+
+    private int safePage(int page) {
+        if (page > MAX_PAGE) {
+            throw new SoundConnectException(
+                    ErrorType.VALIDATION_ERROR,
+                    "page cannot exceed " + MAX_PAGE
+            );
+        }
+        return Math.max(page, 0);
     }
 
     private int boundedSize(int requestedSize, int maximum) {

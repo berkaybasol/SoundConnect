@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.application.studioapplication.dto.respo
 
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record StudioApplicationResponseDto(
@@ -19,8 +19,8 @@ public record StudioApplicationResponseDto(
 		UUID neighborhoodId,
 		String neighborhoodName,
 		ApplicationStatus status,
-		LocalDateTime applicationDate,
-		LocalDateTime decisionDate,
+		Instant applicationDate,
+		Instant decisionDate,
 		UUID reviewedById,
 		String rejectionReason
 ) {}

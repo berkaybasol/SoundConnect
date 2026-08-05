@@ -23,7 +23,13 @@ public class BacklineCategoryNames {
     }
 
     public String normalizedName(String displayName) {
+        // Locale-sensitive database lower() results differ for the four
+        // Turkish I variants. Collapse all of them to ASCII i before the
+        // locale-neutral case fold so idempotency and uniqueness keys remain
+        // identical on every JVM and PostgreSQL cluster locale.
         return Normalizer.normalize(displayName, Normalizer.Form.NFKC)
+                .replace('\u0130', 'I')
+                .replace('\u0131', 'i')
                 .toLowerCase(Locale.ROOT)
                 .strip();
     }

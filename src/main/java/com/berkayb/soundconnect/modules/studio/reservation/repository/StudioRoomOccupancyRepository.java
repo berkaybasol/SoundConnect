@@ -62,8 +62,15 @@ public interface StudioRoomOccupancyRepository extends JpaRepository<StudioRoomO
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select occupancy from StudioRoomOccupancy occupancy where occupancy.id = :occupancyId")
-    Optional<StudioRoomOccupancy> findByIdForUpdate(@Param("occupancyId") UUID occupancyId);
+    @Query("""
+            select occupancy from StudioRoomOccupancy occupancy
+            where occupancy.id = :occupancyId
+              and occupancy.room.id = :roomId
+            """)
+    Optional<StudioRoomOccupancy> findByIdAndRoomIdForUpdate(
+            @Param("occupancyId") UUID occupancyId,
+            @Param("roomId") UUID roomId
+    );
 
     @Query("""
             select occupancy from StudioRoomOccupancy occupancy
@@ -84,7 +91,7 @@ public interface StudioRoomOccupancyRepository extends JpaRepository<StudioRoomO
             select occupancy from StudioRoomOccupancy occupancy
             where occupancy.room.id = :roomId
               and occupancy.active = true
-              and occupancy.endsAt > :now
+              and occupancy.startsAt > :now
             order by occupancy.startsAt asc, occupancy.id asc
             """)
     List<StudioRoomOccupancy> findFutureActiveByRoomForUpdate(

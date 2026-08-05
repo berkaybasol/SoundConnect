@@ -25,6 +25,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class VenueServiceImpl implements VenueService {
+	private static final int SEARCH_QUERY_MAX_LENGTH = 100;
+	private static final int SEARCH_PAGE_MAX = 1000;
+	private static final int SEARCH_PAGE_SIZE_MAX = 100;
 	
 	private final VenueRepository venueRepository;
 	private final VenueMapper venueMapper;
@@ -52,9 +56,29 @@ public class VenueServiceImpl implements VenueService {
 		if (query.isEmpty()) {
 			throw new SoundConnectException(ErrorType.VENUE_SEARCH_QUERY_REQUIRED);
 		}
+		if (query.length() > SEARCH_QUERY_MAX_LENGTH) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					"Venue search query cannot exceed " + SEARCH_QUERY_MAX_LENGTH + " characters"
+			);
+		}
+		if (pageable == null
+				|| pageable.getPageNumber() < 0
+				|| pageable.getPageNumber() > SEARCH_PAGE_MAX
+				|| pageable.getPageSize() < 1
+				|| pageable.getPageSize() > SEARCH_PAGE_SIZE_MAX) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					"Venue search page must be between 0 and " + SEARCH_PAGE_MAX
+							+ " and size must be between 1 and " + SEARCH_PAGE_SIZE_MAX
+			);
+		}
 		
 		return venueRepository
-				.findByNameContainingIgnoreCase(query, pageable)
+				.searchByName(
+						query,
+						PageRequest.of(pageable.getPageNumber(), pageable.getPageSize())
+				)
 				.map(venueMapper::toResponse);
 	}
 	

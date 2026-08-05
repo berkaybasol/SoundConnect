@@ -116,6 +116,9 @@ public class AuthService {
 		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
 			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
 		}
+		if (user.getStatus() == UserStatus.REJECTED_STUDIO_REQUEST) {
+			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_REJECTED);
+		}
 		
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
@@ -346,7 +349,10 @@ public class AuthService {
 		// state. Unknown, already-verified and wrong-code requests therefore share
 		// the same public error contract instead of becoming an account oracle.
 		boolean valid = otpService.verifyOtp(email, dto.code());
-		User user = userRepository.findByEmail(email).orElse(null);
+		// Serialize verification with an admin Studio decision. Without the row
+		// lock, a stale OTP transaction could overwrite REJECTED_STUDIO_REQUEST
+		// (or ACTIVE after approval) after the decision commits.
+		User user = userRepository.findByEmailForUpdate(email).orElse(null);
 		if (!valid || user == null || Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw invalidOtp();
 		}
@@ -356,7 +362,8 @@ public class AuthService {
 		
 		// kullanici venue degilse status'u aktif yap ve kaydet
 		if (user.getStatus() != UserStatus.PENDING_VENUE_REQUEST
-				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST) {
+				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST
+				&& user.getStatus() != UserStatus.REJECTED_STUDIO_REQUEST) {
 			user.setStatus(UserStatus.ACTIVE);
 		}
 		userRepository.save(user);

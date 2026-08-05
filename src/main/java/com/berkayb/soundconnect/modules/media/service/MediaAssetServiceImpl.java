@@ -168,11 +168,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		// Reference writers and delete() serialize on the same row lock. When
 		// invoked from a transactional profile service, this lock is retained until
 		// the referencing row/UUID field commits.
-		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(mediaAssetId)
+		MediaAsset asset = mediaAssetRepository
+				.findByIdAndOwnerForUpdate(mediaAssetId, ownerType, ownerId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
-		if (asset.getOwnerType() != ownerType
-				|| !ownerId.equals(asset.getOwnerId())
-				|| asset.getKind() != expectedKind
+		if (asset.getKind() != expectedKind
 				|| !isPubliclyPlayable(asset)) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
@@ -339,16 +338,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional
 	public void delete(UUID assetId, UUID actingUserId, MediaOwnerType actingAsType, UUID actingAsId) {
-		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(assetId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		assertCanActForOwner(actingUserId, actingAsType, actingAsId);
-
-		boolean ownerMatch = asset.getOwnerType() == actingAsType && asset.getOwnerId().equals(actingAsId);
-
-		if (!ownerMatch) {
-			log.warn("[media] delete denied assetId={} actingAsType={} actingAsId={}", assetId, actingAsType, actingAsId);
-			throw new SoundConnectException(ErrorType.MEDIA_ASSET_DELETE_FORBIDDEN);
-		}
+		MediaAsset asset = mediaAssetRepository
+				.findByIdAndOwnerForUpdate(assetId, actingAsType, actingAsId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		// Do not remove bytes that are still part of first-party content. The check
 		// runs while the asset row is locked and before the durable deletion intent is
 		// published, so a rejected request has no storage or state side effects.

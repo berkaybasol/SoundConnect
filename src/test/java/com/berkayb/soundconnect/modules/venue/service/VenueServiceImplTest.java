@@ -21,6 +21,7 @@ import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.mapper.VenueMapper;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,10 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.HashSet;
 import java.util.Optional;
@@ -100,6 +105,32 @@ class VenueServiceImplTest {
 				"Canlı müzik",
 				"21:00"
 		);
+	}
+
+	@Test
+	void searchByNameTreatsSqlWildcardsLiterallyAndBoundsPaging() {
+		when(venueRepository.searchByName(eq("100%_"), any(Pageable.class)))
+				.thenReturn(Page.empty());
+
+		sut.searchByName(
+				" 100%_ ",
+				PageRequest.of(5, 20, Sort.by("owner.password"))
+		);
+
+		verify(venueRepository).searchByName(
+				eq("100%_"),
+				argThat(page -> page.getPageNumber() == 5
+						&& page.getPageSize() == 20
+						&& page.getSort().isUnsorted())
+		);
+	}
+
+	@Test
+	void searchByNameRejectsExcessiveOffsetBeforeRepositoryAccess() {
+		assertThatThrownBy(() -> sut.searchByName("Studio", PageRequest.of(1001, 20)))
+				.isInstanceOf(SoundConnectException.class);
+
+		verifyNoInteractions(venueRepository);
 	}
 	
 	@Test

@@ -34,6 +34,7 @@ public enum NotificationType {
 	STUDIO_RESERVATION_CONFLICTING_REQUESTS("STUDIO", "Çakışan rezervasyon talepleri", false),
 	STUDIO_RESERVATION_APPROVED("STUDIO", "Rezervasyon talebi onaylandı", false),
 	STUDIO_RESERVATION_REJECTED("STUDIO", "Rezervasyon talebi reddedildi", false),
+	STUDIO_RESERVATION_CANCELLED_BY_CUSTOMER("STUDIO", "Müşteri rezervasyonu iptal etti", false),
 	STUDIO_RESERVATION_CANCELLED_BY_STUDIO("STUDIO", "Stüdyo rezervasyonu iptal edildi", false),
 	
 	// VENUE

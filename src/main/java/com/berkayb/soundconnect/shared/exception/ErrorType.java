@@ -26,6 +26,7 @@ public enum ErrorType {
 	PASSWORD_RESET_USERNAME_NOT_FOUND(1109, "Password reset username was not found", HttpStatus.NOT_FOUND, "Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı."),
 	PASSWORD_RESET_PROVIDER_UNSUPPORTED(1110, "Password reset is not supported for this account provider", HttpStatus.CONFLICT, "Bu hesap harici bir sağlayıcıyla giriş yapıyor. Şifre sıfırlama desteklenmiyor."),
 	PASSWORD_RESET_DELIVERY_FAILED(1111, "Password reset email could not be queued", HttpStatus.SERVICE_UNAVAILABLE, "Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin."),
+	STUDIO_APPLICATION_REJECTED(1112, "Studio application was rejected", HttpStatus.FORBIDDEN, "Stüdyo başvurunuz reddedildi. İtiraz veya bilgi için destek ekibimizle iletişime geçebilirsiniz."),
 	
 	// FOLLOW (1200-1299)
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
@@ -256,6 +257,7 @@ public enum ErrorType {
 	STUDIO_RESERVATION_SELF_NOT_ALLOWED(9813, "Studio self reservation not allowed", HttpStatus.BAD_REQUEST, "Kendi studyonuza rezervasyon olusturamazsiniz."),
 	STUDIO_RESERVATION_WINDOW_INVALID(9814, "Studio reservation window invalid", HttpStatus.BAD_REQUEST, "Rezervasyon tarih veya saat araligi gecersiz."),
 	STUDIO_BLOCK_NOT_FOUND(9815, "Studio room block not found", HttpStatus.NOT_FOUND, "Manuel doluluk kaydi bulunamadi."),
+	STUDIO_RESERVATION_REQUESTER_OVERLAP(9816, "Overlapping reservation already exists", HttpStatus.CONFLICT, "Bu oda ve saat araliginda zaten aktif bir rezervasyon talebiniz var."),
 	STUDIO_EQUIPMENT_NOT_FOUND(9820, "Studio equipment not found", HttpStatus.NOT_FOUND, "Ekipman bulunamadi."),
 	STUDIO_EQUIPMENT_ALLOCATION_INVALID(9821, "Studio equipment allocation invalid", HttpStatus.CONFLICT, "Secilen adet bu tarih araligindaki mevcut dagilimla uyumlu degil."),
 	BACKLINE_CATEGORY_NOT_FOUND(9830, "Backline category not found", HttpStatus.NOT_FOUND, "Backline kategorisi bulunamadi."),

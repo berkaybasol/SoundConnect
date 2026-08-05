@@ -115,7 +115,7 @@ The service locks the equipment row, materializes/locks days in ascending order,
 | taxonomy constants | public category tree | global two-level catalog | Stable code/icon key, display order, active flag. |
 | main category request | `ROOT_CATEGORY` | request row | No parent; may include 0..10 proposed children. |
 | subcategory request | `SUBCATEGORY` | request row | Requires an active root parent; cannot contain children. |
-| request name | `requestedName` | normalized alongside display text | max 80; duplicate pending requests prevented. |
+| request name | `requestedName` | normalized alongside display text | max 160; duplicate pending requests prevented. |
 | requester note | `requesterNote` | optional text | max 300; included in the exact-idempotency payload hash. |
 | submit retry | `clientRequestId` | unique per Studio | Exact retry safe. |
 | request timestamp | prefer `createdAtUtc`; legacy `createdAt` retained | UTC audit timestamp | The explicit `Instant` prevents device-local parsing of the legacy offset-less value. |

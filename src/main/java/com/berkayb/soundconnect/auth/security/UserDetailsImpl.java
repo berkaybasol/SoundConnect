@@ -102,7 +102,8 @@ public class UserDetailsImpl implements UserDetails {
 	public boolean isAccountNonLocked() {
 		// Kurumsal hesaplar admin onayi tamamlanana kadar kimlik dogrulayamaz.
 		return user.getStatus() != UserStatus.PENDING_VENUE_REQUEST
-				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST;
+				&& user.getStatus() != UserStatus.PENDING_STUDIO_REQUEST
+				&& user.getStatus() != UserStatus.REJECTED_STUDIO_REQUEST;
 	}
 	
 	@Override

@@ -12,6 +12,7 @@ public record BacklineCategoryRequestResponse(
         UUID id,
         UUID clientRequestId,
         UUID studioProfileId,
+        String studioName,
         BacklineCategoryRequestType type,
         String requestedName,
         UUID parentCategoryId,

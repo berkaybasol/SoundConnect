@@ -218,15 +218,41 @@ function Test-LocalBaseSchemaReady {
     return $LASTEXITCODE -eq 0 -and (($Output -join "").Trim() -eq "t")
 }
 
-function Wait-LocalBaseSchema([int]$TimeoutSeconds = 120) {
+function Test-LocalComposeServiceHealthy([string]$Service) {
+    $ContainerIds = & docker compose `
+        --project-directory $ProjectRoot `
+        --env-file $EnvFile `
+        ps --quiet $Service 2>$null
+    $ComposeExitCode = $LASTEXITCODE
+    $ContainerId = @($ContainerIds | Where-Object { $_ } | Select-Object -First 1)
+    if ($ComposeExitCode -ne 0 -or $ContainerId.Count -eq 0) {
+        return $false
+    }
+
+    $HealthStatus = & docker inspect `
+        --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' `
+        $ContainerId[0] 2>$null
+    $InspectExitCode = $LASTEXITCODE
+    return $InspectExitCode -eq 0 -and (($HealthStatus -join "").Trim() -eq "healthy")
+}
+
+function Wait-LocalComposeServicesHealthy(
+    [string[]]$Services,
+    [int]$TimeoutSeconds = 420
+) {
+    Write-Host "Waiting for healthy services: $($Services -join ', ')" -ForegroundColor Cyan
     $Deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $Deadline) {
-        if (Test-LocalBaseSchemaReady) {
+        $Unhealthy = @($Services | Where-Object { -not (Test-LocalComposeServiceHealthy $_) })
+        if ($Unhealthy.Count -eq 0) {
+            Write-Host "Required services are healthy." -ForegroundColor Green
             return
         }
         Start-Sleep -Seconds 2
     }
-    throw "Local Hibernate bootstrap did not create the base PostgreSQL schema within ${TimeoutSeconds}s."
+
+    & docker compose --project-directory $ProjectRoot --env-file $EnvFile ps
+    throw "Services did not become healthy within ${TimeoutSeconds}s: $($Services -join ', ')"
 }
 
 function Sync-LocalStudioSchema {
@@ -234,7 +260,7 @@ function Sync-LocalStudioSchema {
         throw "Local Studio schema source is missing: $StudioSchemaPath"
     }
     if (-not (Test-LocalBaseSchemaReady)) {
-        return $false
+        throw "Local base schema is not ready; run '.\\dev.cmd up' once before using an IDE-only backend."
     }
 
     $Connection = Get-LocalPostgresConnection
@@ -284,7 +310,21 @@ try {
     switch ($Action) {
         "up" {
             Assert-NoPlaceholders
+            # Hibernate owns the legacy local bootstrap, while the idempotent
+            # Studio SQL owns PostgreSQL-only constraints, indexes and
+            # backfills. Quiesce the worker, wait for the API to finish its full
+            # Spring/Hibernate startup, stop request traffic, then reconcile
+            # Studio before workers and normal test traffic start.
+            Invoke-Compose @("stop", "media-worker")
+            Invoke-Compose @("up", "--build", "--detach", "postgres", "rabbitmq", "redis", "backend")
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend")
+            if (-not (Test-LocalBaseSchemaReady)) {
+                throw "The backend is healthy, but the required local base schema is incomplete."
+            }
+            Invoke-Compose @("stop", "backend")
+            [void](Sync-LocalStudioSchema)
             Invoke-Compose @("up", "--build", "--detach")
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend", "media-worker")
             Invoke-Compose @("ps")
         }
         "idea" {
@@ -334,10 +374,14 @@ try {
             Assert-NoPlaceholders
             Invoke-Compose @("down", "--volumes", "--remove-orphans")
             Invoke-Compose @("up", "--build", "--detach", "postgres", "rabbitmq", "redis", "backend")
-            Wait-LocalBaseSchema
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend")
+            if (-not (Test-LocalBaseSchemaReady)) {
+                throw "The backend is healthy, but the required local base schema is incomplete."
+            }
             Invoke-Compose @("stop", "backend")
             [void](Sync-LocalStudioSchema)
             Invoke-Compose @("up", "--build", "--detach")
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend", "media-worker")
             Invoke-Compose @("ps")
         }
     }

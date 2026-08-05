@@ -48,6 +48,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -181,6 +182,76 @@ class StudioEquipmentServiceTest {
     }
 
     @Test
+    void crossTenantOwnerMutationsReturnUniformNotFoundBeforeForeignStateIsLocked() {
+        UUID foreignEquipmentId = UUID.randomUUID();
+        EquipmentUpdateRequest updateRequest = new EquipmentUpdateRequest(
+                0L,
+                child.getId(),
+                "Shure SM58",
+                null,
+                null,
+                null,
+                1,
+                List.of(),
+                List.of()
+        );
+        EquipmentAvailabilityMoveRequest moveRequest = new EquipmentAvailabilityMoveRequest(
+                UUID.randomUUID(),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 10),
+                EquipmentAvailabilityBucket.AVAILABLE,
+                EquipmentAvailabilityBucket.BUSY,
+                1
+        );
+
+        assertThatThrownBy(() -> service.update(ownerId, foreignEquipmentId, updateRequest))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
+        assertThatThrownBy(() -> service.archive(ownerId, foreignEquipmentId, 0L))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
+        assertThatThrownBy(() -> service.moveAvailability(
+                ownerId, foreignEquipmentId, moveRequest
+        ))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
+
+        verify(equipmentRepository, times(3))
+                .findOwnedByIdForUpdate(foreignEquipmentId, ownerId);
+        verify(equipmentRepository, never()).saveAndFlush(any());
+        verify(categoryRepository, never()).findByIdAndActiveTrue(any());
+        verify(commandRepository, never()).findByEquipmentIdAndClientRequestId(any(), any());
+        verify(dayRepository, never()).findRangeForUpdate(any(), any(), any());
+        verify(mediaAssetService, never()).validateAssignableMedia(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void crossTenantOwnerReadsReturnUniformNotFoundWithoutReadingForeignEquipment() {
+        UUID foreignEquipmentId = UUID.randomUUID();
+        LocalDate date = LocalDate.of(2026, 8, 10);
+
+        assertThatThrownBy(() -> service.getOwner(ownerId, foreignEquipmentId))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
+        assertThatThrownBy(() -> service.getOwnerAvailability(
+                ownerId, foreignEquipmentId, date, date
+        ))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));
+
+        verify(equipmentRepository, times(2))
+                .findOwnedActiveById(foreignEquipmentId, ownerId);
+        verify(equipmentRepository, never()).findById(any());
+        verify(dayRepository, never()).findRange(any(), any(), any());
+        verify(timeProvider, never()).today(any());
+    }
+
+    @Test
     void updateRejectsTotalBelowCurrentOrFutureMaximumAllocation() {
         StudioEquipment equipment = equipment(4);
         LocalDate today = LocalDate.of(2026, 8, 1);
@@ -195,7 +266,8 @@ class StudioEquipmentServiceTest {
                 List.of(),
                 List.of()
         );
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
         when(dayRepository.findMaximumAllocatedQuantityFromDate(equipment.getId(), today)).thenReturn(3);
 
@@ -224,7 +296,8 @@ class StudioEquipmentServiceTest {
                 List.of(),
                 List.of()
         );
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
         when(dayRepository.findMaximumAllocatedQuantityFromDate(equipment.getId(), today)).thenReturn(2);
         when(categoryRepository.findByIdAndActiveTrue(child.getId())).thenReturn(Optional.of(child));
@@ -265,7 +338,8 @@ class StudioEquipmentServiceTest {
                 List.of()
         );
         LocalDate today = LocalDate.of(2026, 8, 1);
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
         when(categoryRepository.findByIdAndActiveTrue(child.getId())).thenReturn(Optional.of(child));
         when(equipmentRepository.saveAndFlush(equipment)).thenReturn(equipment);
@@ -274,7 +348,8 @@ class StudioEquipmentServiceTest {
 
         assertThat(response.features()).containsExactly("New feature");
         InOrder repositoryOrder = inOrder(equipmentRepository);
-        repositoryOrder.verify(equipmentRepository).findByIdForUpdate(equipment.getId());
+        repositoryOrder.verify(equipmentRepository)
+                .findOwnedByIdForUpdate(equipment.getId(), ownerId);
         repositoryOrder.verify(equipmentRepository).flush();
         repositoryOrder.verify(equipmentRepository).saveAndFlush(equipment);
     }
@@ -293,7 +368,7 @@ class StudioEquipmentServiceTest {
         when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
         when(equipmentRepository.findActiveByStudio(
                 eq(studio.getId()),
-                eq("mikrofon"),
+                eq("%mikrofon%"),
                 eq(root.getId()),
                 eq(EquipmentAvailabilityBucket.BUSY.name()),
                 eq(today),
@@ -338,7 +413,7 @@ class StudioEquipmentServiceTest {
         when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
         when(equipmentRepository.findActiveByStudio(
                 eq(studio.getId()),
-                eq(""),
+                eq("%"),
                 isNull(),
                 eq("ALL"),
                 eq(today),
@@ -350,11 +425,42 @@ class StudioEquipmentServiceTest {
         assertThat(result).isEmpty();
         verify(equipmentRepository).findActiveByStudio(
                 eq(studio.getId()),
-                eq(""),
+                eq("%"),
                 isNull(),
                 eq("ALL"),
                 eq(today),
                 any(Pageable.class)
+        );
+    }
+
+    @Test
+    void ownerListEscapesSqlWildcardCharactersBeforeRepositorySearch() {
+        LocalDate today = LocalDate.of(2026, 8, 10);
+        when(studioProfileRepository.findByUserId(ownerId)).thenReturn(Optional.of(studio));
+        when(timeProvider.today(studio.getTimeZone())).thenReturn(today);
+        when(equipmentRepository.findActiveByStudio(
+                eq(studio.getId()), eq("%!%!_!!%"), isNull(), eq("ALL"), eq(today), any()
+        )).thenReturn(Page.empty());
+
+        service.listOwner(ownerId, "%_!", null, null, 0, 20);
+
+        verify(equipmentRepository).findActiveByStudio(
+                eq(studio.getId()), eq("%!%!_!!%"), isNull(), eq("ALL"), eq(today), any()
+        );
+    }
+
+    @Test
+    void deepOwnerEquipmentPageFailsBeforeAnyRepositoryAccess() {
+        assertThatThrownBy(() -> service.listOwner(
+                ownerId, null, null, null, 1001, 20
+        ))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType())
+                                .isEqualTo(ErrorType.VALIDATION_ERROR));
+
+        verify(studioProfileRepository, never()).findByUserId(any());
+        verify(equipmentRepository, never()).findActiveByStudio(
+                any(), any(), any(), any(), any(), any()
         );
     }
 
@@ -374,7 +480,8 @@ class StudioEquipmentServiceTest {
         );
 
         when(timeProvider.today("Europe/Istanbul")).thenReturn(LocalDate.of(2026, 8, 1));
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(commandRepository.findByEquipmentIdAndClientRequestId(equipment.getId(), clientRequestId))
                 .thenReturn(Optional.empty());
         when(dayRepository.findRangeForUpdate(equipment.getId(), start, end)).thenReturn(List.of());
@@ -430,7 +537,8 @@ class StudioEquipmentServiceTest {
         );
         existing.setId(UUID.randomUUID());
 
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(commandRepository.findByEquipmentIdAndClientRequestId(equipment.getId(), clientRequestId))
                 .thenReturn(Optional.of(existing));
 
@@ -468,7 +576,8 @@ class StudioEquipmentServiceTest {
                 1
         );
         existing.setId(UUID.randomUUID());
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(commandRepository.findByEquipmentIdAndClientRequestId(equipment.getId(), clientRequestId))
                 .thenReturn(Optional.of(existing));
 
@@ -506,7 +615,8 @@ class StudioEquipmentServiceTest {
                 1
         );
         existing.setId(UUID.randomUUID());
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(commandRepository.findByEquipmentIdAndClientRequestId(equipment.getId(), clientRequestId))
                 .thenReturn(Optional.of(existing));
 
@@ -544,7 +654,8 @@ class StudioEquipmentServiceTest {
                 2
         );
 
-        when(equipmentRepository.findByIdForUpdate(equipment.getId())).thenReturn(Optional.of(equipment));
+        when(equipmentRepository.findOwnedByIdForUpdate(equipment.getId(), ownerId))
+                .thenReturn(Optional.of(equipment));
         when(commandRepository.findByEquipmentIdAndClientRequestId(equipment.getId(), clientRequestId))
                 .thenReturn(Optional.of(existing));
 

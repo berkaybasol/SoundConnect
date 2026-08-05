@@ -54,6 +54,7 @@ class StudioEquipmentRepositoryTest {
     @Autowired private UserRepository userRepository;
     @Autowired private CityRepository cityRepository;
 
+    private UUID ownerId;
     private StudioProfile studio;
     private BacklineCategory proAudio;
     private BacklineCategory microphones;
@@ -73,6 +74,7 @@ class StudioEquipmentRepositoryTest {
                 .emailVerified(true)
                 .city(city)
                 .build());
+        ownerId = owner.getId();
         studio = studioProfileRepository.save(StudioProfile.builder()
                 .user(owner)
                 .name("Repository Test Studio")
@@ -122,23 +124,49 @@ class StudioEquipmentRepositoryTest {
     }
 
     @Test
+    void inventorySummaryAggregatesAllActiveEquipmentInsteadOfOnePage() {
+        var summary = equipmentRepository.summarizeActiveInventory(studio.getId(), today);
+
+        assertThat(summary.getTotalQuantity()).isEqualTo(6);
+        assertThat(summary.getAvailableQuantity()).isEqualTo(3);
+        assertThat(summary.getBusyQuantity()).isEqualTo(2);
+        assertThat(summary.getMaintenanceQuantity()).isEqualTo(1);
+    }
+
+    @Test
+    void ownerScopedPessimisticLookupNeverReturnsAnotherStudiosEquipment() {
+        assertThat(equipmentRepository.findOwnedByIdForUpdate(
+                microphone.getId(), ownerId
+        )).contains(microphone);
+        assertThat(equipmentRepository.findOwnedByIdForUpdate(
+                microphone.getId(), UUID.randomUUID()
+        )).isEmpty();
+        assertThat(equipmentRepository.findOwnedActiveById(
+                microphone.getId(), ownerId
+        )).contains(microphone);
+        assertThat(equipmentRepository.findOwnedActiveById(
+                microphone.getId(), UUID.randomUUID()
+        )).isEmpty();
+    }
+
+    @Test
     void listSupportsCategorySearchNonExclusiveAvailabilityBucketsAndCorrectCount() {
         var rootCategoryResult = equipmentRepository.findActiveByStudio(
-                studio.getId(), "", proAudio.getId(), "ALL", today, page(20)
+                studio.getId(), "%", proAudio.getId(), "ALL", today, page(20)
         );
         assertThat(rootCategoryResult.getContent())
                 .extracting(StudioEquipment::getName)
                 .containsExactly("Sennheiser E835", "Shure SM58");
 
         var leafCategoryResult = equipmentRepository.findActiveByStudio(
-                studio.getId(), "", microphones.getId(), "ALL", today, page(20)
+                studio.getId(), "%", microphones.getId(), "ALL", today, page(20)
         );
         assertThat(leafCategoryResult.getContent())
                 .extracting(StudioEquipment::getName)
                 .containsExactly("Sennheiser E835", "Shure SM58");
 
         var categorySearchResult = equipmentRepository.findActiveByStudio(
-                studio.getId(), "PRO AUDIO", null, "ALL", today, page(1)
+                studio.getId(), "%pro audio%", null, "ALL", today, page(1)
         );
         assertThat(categorySearchResult.getTotalElements()).isEqualTo(2);
         assertThat(categorySearchResult.getContent())
@@ -146,21 +174,34 @@ class StudioEquipmentRepositoryTest {
                 .containsExactly("Sennheiser E835");
 
         var busyPage = equipmentRepository.findActiveByStudio(
-                studio.getId(), "", null, EquipmentAvailabilityBucket.BUSY.name(), today, page(1)
+                studio.getId(), "%", null, EquipmentAvailabilityBucket.BUSY.name(), today, page(1)
         );
         assertThat(busyPage.getTotalElements()).isEqualTo(2);
 
         var maintenanceResult = equipmentRepository.findActiveByStudio(
-                studio.getId(), "", null, EquipmentAvailabilityBucket.MAINTENANCE.name(), today, page(20)
+                studio.getId(), "%", null, EquipmentAvailabilityBucket.MAINTENANCE.name(), today, page(20)
         );
         assertThat(maintenanceResult.getContent()).containsExactly(microphone);
 
         var availableResult = equipmentRepository.findActiveByStudio(
-                studio.getId(), "", null, EquipmentAvailabilityBucket.AVAILABLE.name(), today, page(20)
+                studio.getId(), "%", null, EquipmentAvailabilityBucket.AVAILABLE.name(), today, page(20)
         );
         assertThat(availableResult.getContent())
                 .extracting(StudioEquipment::getName)
                 .containsExactly("Marshall DSL40", "Sennheiser E835");
+    }
+
+    @Test
+    void listTreatsPercentAndUnderscoreAsLiteralSearchCharacters() {
+        StudioEquipment literal = equipmentRepository.save(
+                equipment(microphones, "100%_Mic", 1)
+        );
+        equipmentRepository.save(equipment(microphones, "100XXMic", 1));
+
+        assertThat(equipmentRepository.findActiveByStudio(
+                studio.getId(), "%!%!_%", null, "ALL", today, page(20)
+        )).extracting(StudioEquipment::getId)
+                .containsExactly(literal.getId());
     }
 
     @Test

@@ -66,6 +66,7 @@ class BacklineCatalogServiceTest {
         owner.setId(ownerId);
         studio = new StudioProfile();
         studio.setId(UUID.randomUUID());
+        studio.setName("Stüdyo Atlas");
         studio.setUser(owner);
     }
 
@@ -98,6 +99,7 @@ class BacklineCatalogServiceTest {
         var replay = service.submitRequest(ownerId, command);
 
         assertThat(first.id()).isEqualTo(replay.id());
+        assertThat(first.studioName()).isEqualTo("Stüdyo Atlas");
         assertThat(first.requestedName()).isEqualTo("Yeni Kategori");
         assertThat(first.proposedChildren()).extracting(child -> child.name())
                 .containsExactly("Birinci Alt", "İkinci Alt");
@@ -141,6 +143,43 @@ class BacklineCatalogServiceTest {
                 .satisfies(error -> assertThat(((SoundConnectException) error).getErrorType())
                         .isEqualTo(ErrorType.DATA_INTEGRITY_CONFLICT));
 
+        verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void deepPublicCatalogPageFailsBeforeRepositoryAccess() {
+        assertThatThrownBy(() -> service.listPublicCategories(1001, 20))
+                .isInstanceOf(SoundConnectException.class)
+                .satisfies(error -> assertThat(((SoundConnectException) error).getErrorType())
+                        .isEqualTo(ErrorType.VALIDATION_ERROR));
+
+        verify(categoryRepository, never()).findByParentIsNullAndActiveTrue(any());
+    }
+
+    @Test
+    void deepOwnerRequestPageFailsBeforeProfileOrRequestRepositoryAccess() {
+        assertThatThrownBy(() -> service.listOwnerRequests(ownerId, 1001, 20))
+                .isInstanceOf(SoundConnectException.class)
+                .satisfies(error -> assertThat(((SoundConnectException) error).getErrorType())
+                        .isEqualTo(ErrorType.VALIDATION_ERROR));
+
+        verify(studioProfileRepository, never()).findByUserId(any());
+        verify(requestRepository, never()).findByStudioProfileId(any(), any());
+    }
+
+    @Test
+    void foreignRequestWithdrawalReturnsNotFoundWithoutLockingTheForeignRequest() {
+        UUID foreignRequestId = UUID.randomUUID();
+        when(requestRepository.findOwnedByIdForUpdate(foreignRequestId, ownerId))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.withdrawRequest(ownerId, foreignRequestId))
+                .isInstanceOf(SoundConnectException.class)
+                .satisfies(error -> assertThat(((SoundConnectException) error).getErrorType())
+                        .isEqualTo(ErrorType.BACKLINE_CATEGORY_REQUEST_NOT_FOUND));
+
+        verify(requestRepository).findOwnedByIdForUpdate(foreignRequestId, ownerId);
+        verify(requestRepository, never()).findByIdForUpdate(any());
         verify(requestRepository, never()).saveAndFlush(any());
     }
 

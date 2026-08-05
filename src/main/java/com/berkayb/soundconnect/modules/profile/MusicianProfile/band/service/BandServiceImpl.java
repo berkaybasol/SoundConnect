@@ -32,6 +32,7 @@ import com.berkayb.soundconnect.shared.messaging.events.notification.Notificatio
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -435,7 +436,7 @@ public class BandServiceImpl implements BandService {
 		String q = query == null ? "" : query.trim(); //eklendi
 		if (q.isEmpty()) return List.of(); //eklendi
 		
-		return bandRepository.searchByName(q) //eklendi
+		return bandRepository.searchByName(q, PageRequest.of(0, 10)) //eklendi
 		                     .stream() //eklendi
 		                     .limit(10) //eklendi
 		                     .map(band -> new BandSearchItemDto( //eklendi

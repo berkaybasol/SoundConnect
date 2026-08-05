@@ -6,12 +6,12 @@ import com.berkayb.soundconnect.modules.backline.catalog.dto.BacklineCategoryRev
 import com.berkayb.soundconnect.modules.backline.catalog.model.BacklineCategoryRequestStatus;
 import com.berkayb.soundconnect.modules.backline.catalog.service.BacklineCatalogService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -35,12 +35,15 @@ public class BacklineCatalogAdminController {
     private final BacklineCatalogService catalogService;
 
     @GetMapping
-    public BaseResponse<Page<BacklineCategoryRequestResponse>> list(
+    public BaseResponse<PageResponse<BacklineCategoryRequestResponse>> list(
             @RequestParam(required = false) BacklineCategoryRequestStatus status,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
-        return response("Category requests listed", catalogService.listAdminRequests(status, page, size));
+        return response(
+                "Category requests listed",
+                PageResponse.from(catalogService.listAdminRequests(status, page, size))
+        );
     }
 
     @PostMapping("/{requestId}/review")

@@ -38,6 +38,12 @@ credentials are never injected into the API process.
 .\dev.cmd up
 ```
 
+`up` waits for the complete Hibernate-managed API startup, briefly quiesces the
+API and media worker, and applies the idempotent Studio PostgreSQL
+reconciliation before reopening the complete stack. This keeps existing local
+volumes aligned with the Studio constraints and indexes without requiring a
+destructive reset after every schema change.
+
 Useful commands:
 
 ```powershell

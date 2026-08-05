@@ -4,7 +4,6 @@ package com.berkayb.soundconnect.modules.notification.service;
 import com.berkayb.soundconnect.modules.notification.dto.response.NotificationResponseDto;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,10 +12,15 @@ import java.util.UUID;
 public interface NotificationService {
 	
 	// kullanicinin bildirimlerini yeniden eskiye sayfali getir
-	Page<NotificationResponseDto> getUserNotifications(UUID userId, Pageable pageable);
+	Page<NotificationResponseDto> getUserNotifications(UUID userId, int page, int size);
 	
 	// bildirim tipine gore filtreleyerek listeleme
-	Page<NotificationResponseDto> getUserNotificationsByTypes(UUID userId, Collection<NotificationType> types, Pageable pageable);
+	Page<NotificationResponseDto> getUserNotificationsByTypes(
+			UUID userId,
+			Collection<NotificationType> types,
+			int page,
+			int size
+	);
 	
 	// hizli UI icin son 10 bildirim (badge/preview listesi)
 	List<NotificationResponseDto> getRecentNotifications(UUID userId);

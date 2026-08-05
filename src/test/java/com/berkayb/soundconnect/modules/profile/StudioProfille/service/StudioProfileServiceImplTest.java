@@ -60,11 +60,11 @@ class StudioProfileServiceImplTest {
 				"Great rooms",     // descpriction (DTO'da yazım böyle)
 				UUID.randomUUID(),
 				"Main Ave 42",     // adress (DTO'da yazım böyle)
-				"555-123",
-				"studio.com",
+				"05551234567",
+				"https://studio.com",
 				new HashSet<>(List.of("Piano","Drums")),
-				"insta.com/x",
-				"youtube.com/y"
+				"https://insta.com/x",
+				"https://youtube.com/y"
 		);
 	}
 	
@@ -102,6 +102,9 @@ class StudioProfileServiceImplTest {
 		ArgumentCaptor<StudioProfile> profileCaptor = ArgumentCaptor.forClass(StudioProfile.class);
 		verify(repository, times(2)).saveAndFlush(profileCaptor.capture());
 		assertThat(profileCaptor.getAllValues().getFirst().getName()).isEqualTo("my studio");
+		assertThat(profileCaptor.getAllValues().getFirst().getPhone()).isEqualTo("05551234567");
+		assertThat(profileCaptor.getAllValues().getFirst().getWebsite()).isEqualTo("https://studio.com");
+		assertThat(profileCaptor.getAllValues().getFirst().getInstagramUrl()).isEqualTo("https://insta.com/x");
 	}
 	
 	@Test
@@ -125,7 +128,8 @@ class StudioProfileServiceImplTest {
 		
 		var resp = new StudioProfileResponseDto(
 				profile.getId(), userId, "Name", "Desc", UUID.randomUUID(), null,
-				"Addr", "555", "site", Set.of("A"), "ig", "yt"
+				"Addr", "05551234567", "https://site.example", Set.of("A"),
+				"https://instagram.com/x", "https://youtube.com/y"
 		);
 		when(mapper.toDto(profile)).thenReturn(resp);
 		
@@ -179,6 +183,43 @@ class StudioProfileServiceImplTest {
 	}
 
 	@Test
+	void publicResponseOmitsUnsafeLegacyContactValuesAndNormalizesBareHosts() {
+		UUID profileId = UUID.randomUUID();
+		StudioProfile profile = new StudioProfile();
+		profile.setId(profileId);
+		when(repository.findById(profileId)).thenReturn(Optional.of(profile));
+		when(mapper.toDto(profile)).thenReturn(new StudioProfileResponseDto(
+				profileId, userId, "Studio", null, null, null,
+				null, "*#06#", "javascript:alert(1)", Set.of(),
+				"instagram.com/studio", "data:text/html,bad"
+		));
+
+		StudioProfileResponseDto result = service.getProfileByProfileId(profileId);
+
+		assertThat(result.phone()).isNull();
+		assertThat(result.website()).isNull();
+		assertThat(result.instagramUrl()).isEqualTo("https://instagram.com/studio");
+		assertThat(result.youtubeUrl()).isNull();
+	}
+
+	@Test
+	void publicResponseUsesTheSameSafeTimeZoneFallbackAsStudioScheduling() {
+		UUID profileId = UUID.randomUUID();
+		StudioProfile profile = new StudioProfile();
+		profile.setId(profileId);
+		profile.setTimeZone("Mars/Olympus");
+		when(repository.findById(profileId)).thenReturn(Optional.of(profile));
+		when(mapper.toDto(profile)).thenReturn(new StudioProfileResponseDto(
+				profileId, userId, "Studio", null, null, null,
+				null, null, null, Set.of(), null, null
+		));
+
+		StudioProfileResponseDto result = service.getProfileByProfileId(profileId);
+
+		assertThat(result.timeZone()).isEqualTo("Europe/Istanbul");
+	}
+
+	@Test
 	void createProfile_requiresAStudioName() {
 		var request = new StudioProfileSaveRequestDto(
 				"  ", "Description", null, "Address", "555", null,
@@ -227,6 +268,34 @@ class StudioProfileServiceImplTest {
 				.isInstanceOf(SoundConnectException.class)
 				.satisfies(exception -> assertThat(((SoundConnectException) exception).getErrorType())
 						.isEqualTo(ErrorType.STUDIO_TIME_ZONE_LOCKED));
+		verify(repository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void updateProfileRejectsDialerAndWebSchemeInjectionBeforePersistence() {
+		StudioProfile existing = new StudioProfile();
+		existing.setId(UUID.randomUUID());
+		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(existing));
+		var maliciousPhone = new StudioProfileSaveRequestDto(
+				null, null, null, null, "*#06#", null,
+				null, null, null
+		);
+
+		assertThatThrownBy(() -> service.updateProfile(userId, maliciousPhone))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.VALIDATION_ERROR));
+
+		var maliciousWebsite = new StudioProfileSaveRequestDto(
+				null, null, null, null, null, "javascript:alert(1)",
+				null, null, null
+		);
+		assertThatThrownBy(() -> service.updateProfile(userId, maliciousWebsite))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.VALIDATION_ERROR));
+
 		verify(repository, never()).saveAndFlush(any());
 	}
 

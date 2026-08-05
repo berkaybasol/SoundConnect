@@ -57,7 +57,12 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class StudioReservationService {
+    private static final int MAX_PAGE = 1000;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final List<StudioReservationStatus> ACTIVE_REQUEST_STATUSES = List.of(
+            StudioReservationStatus.PENDING_APPROVAL,
+            StudioReservationStatus.CONFIRMED
+    );
     private static final Pattern NON_PHONE_DIGITS = Pattern.compile("\\D");
     private static final Pattern PHONE_CHARACTERS = Pattern.compile("^0[0-9() .-]+$");
 
@@ -95,7 +100,26 @@ public class StudioReservationService {
                 request.startTime(),
                 request.durationHours()
         );
-        boolean approvalRequired = room.effectiveReservationApprovalRequired(timeProvider.now());
+        Instant now = timeProvider.now();
+        reservationRepository.expireStartedPendingRequests(
+                requesterId,
+                room.getId(),
+                StudioReservationStatus.PENDING_APPROVAL,
+                StudioReservationStatus.EXPIRED,
+                now
+        );
+        if (reservationRepository.existsActiveRequesterOverlap(
+                requesterId,
+                room.getId(),
+                ACTIVE_REQUEST_STATUSES,
+                StudioReservationStatus.PENDING_APPROVAL,
+                window.startsAt(),
+                window.endsAt(),
+                now
+        )) {
+            throw new SoundConnectException(ErrorType.STUDIO_RESERVATION_REQUESTER_OVERLAP);
+        }
+        boolean approvalRequired = room.effectiveReservationApprovalRequired(now);
         if (!approvalRequired) {
             assertNoOccupancyConflict(room.getId(), window);
         }
@@ -141,8 +165,8 @@ public class StudioReservationService {
             UUID reservationId,
             StudioVersionRequest request
     ) {
-        StudioRoom room = lockOwnedReservationRoom(ownerUserId, roomId, reservationId);
-        StudioRoomReservation reservation = lockReservation(reservationId);
+        StudioRoom room = lockOwnedRoom(ownerUserId, roomId);
+        StudioRoomReservation reservation = lockRoomReservation(roomId, reservationId);
         assertVersion(request.expectedVersion(), reservation.getVersion());
         Instant now = timeProvider.now();
         if (reservation.getStatus() != StudioReservationStatus.PENDING_APPROVAL
@@ -182,8 +206,8 @@ public class StudioReservationService {
             UUID reservationId,
             StudioVersionRequest request
     ) {
-        lockOwnedReservationRoom(ownerUserId, roomId, reservationId);
-        StudioRoomReservation reservation = lockReservation(reservationId);
+        lockOwnedRoom(ownerUserId, roomId);
+        StudioRoomReservation reservation = lockRoomReservation(roomId, reservationId);
         assertVersion(request.expectedVersion(), reservation.getVersion());
 		if (reservation.getStatus() != StudioReservationStatus.PENDING_APPROVAL
 				|| !reservation.getStartsAt().isAfter(timeProvider.now())) {
@@ -203,14 +227,12 @@ public class StudioReservationService {
             UUID reservationId,
             StudioVersionRequest request
     ) {
-        StudioRoomReservation reference = reservationRepository.findById(reservationId)
+        StudioRoomReservation reference = reservationRepository
+                .findByIdAndRequesterId(reservationId, requesterId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
         roomRepository.findByIdForUpdate(reference.getRoom().getId())
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
-        StudioRoomReservation reservation = lockReservation(reservationId);
-        if (!reservation.getRequester().getId().equals(requesterId)) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
+        StudioRoomReservation reservation = lockCustomerReservation(requesterId, reservationId);
         assertVersion(request.expectedVersion(), reservation.getVersion());
 		if ((reservation.getStatus() != StudioReservationStatus.PENDING_APPROVAL
 				&& reservation.getStatus() != StudioReservationStatus.CONFIRMED)
@@ -218,7 +240,9 @@ public class StudioReservationService {
             throw invalidStatus();
         }
         cancelReservation(reservation, StudioReservationStatus.CANCELLED_BY_CUSTOMER, requesterId);
-        return toCustomer(reservationRepository.saveAndFlush(reservation));
+        StudioRoomReservation saved = reservationRepository.saveAndFlush(reservation);
+        publishCustomerCancellationNotification(saved);
+        return toCustomer(saved);
     }
 
     @Transactional
@@ -228,8 +252,8 @@ public class StudioReservationService {
             UUID reservationId,
             StudioVersionRequest request
     ) {
-        lockOwnedReservationRoom(ownerUserId, roomId, reservationId);
-        StudioRoomReservation reservation = lockReservation(reservationId);
+        lockOwnedRoom(ownerUserId, roomId);
+        StudioRoomReservation reservation = lockRoomReservation(roomId, reservationId);
         assertVersion(request.expectedVersion(), reservation.getVersion());
 		if ((reservation.getStatus() != StudioReservationStatus.PENDING_APPROVAL
 				&& reservation.getStatus() != StudioReservationStatus.CONFIRMED)
@@ -256,10 +280,7 @@ public class StudioReservationService {
             assertIdempotentManualBlock(existing, profile, roomId, request);
             return toOwner(existing);
         }
-        StudioRoom room = lockActiveRoom(roomId);
-        if (!room.getStudioProfile().getId().equals(profile.getId())) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
+        StudioRoom room = lockOwnedRoom(profile, roomId);
         StudioBookingWindow window = timeProvider.validateManualBlockWindow(
                 room.getStudioProfile(),
                 request.date(),
@@ -290,15 +311,13 @@ public class StudioReservationService {
             UUID occupancyId,
             StudioManualBlockReleaseRequest request
     ) {
-        StudioRoomOccupancy reference = occupancyRepository.findById(occupancyId)
+        lockOwnedRoom(ownerUserId, roomId);
+        StudioRoomOccupancy occupancy = occupancyRepository
+                .findByIdAndRoomIdForUpdate(occupancyId, roomId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_BLOCK_NOT_FOUND));
-        if (!reference.getRoom().getId().equals(roomId)
-                || reference.getType() != StudioOccupancyType.MANUAL_BLOCK) {
+        if (occupancy.getType() != StudioOccupancyType.MANUAL_BLOCK) {
             throw new SoundConnectException(ErrorType.STUDIO_BLOCK_NOT_FOUND);
         }
-        lockOwnedRoom(ownerUserId, roomId);
-        StudioRoomOccupancy occupancy = occupancyRepository.findByIdForUpdate(occupancyId)
-                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_BLOCK_NOT_FOUND));
         assertVersion(request.expectedVersion(), occupancy.getVersion());
         if (!occupancy.isActive()) {
             throw invalidStatus();
@@ -326,6 +345,8 @@ public class StudioReservationService {
             int page,
             int size
     ) {
+        int boundedPage = safePage(page);
+        int boundedSize = safeSize(size);
         StudioRoom room = roomRepository.findByIdAndArchivedAtIsNull(roomId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
         StudioDateRange range = timeProvider.validatePublicRange(
@@ -339,7 +360,7 @@ public class StudioReservationService {
                         roomId,
                         range.startsAt(),
                         range.endsAt(),
-                        PageRequest.of(safePage(page), safeSize(size))
+                        PageRequest.of(boundedPage, boundedSize)
                 )
                 .map(this::toCustomer);
         return StudioPageResponse.from(result);
@@ -354,6 +375,8 @@ public class StudioReservationService {
             int page,
             int size
     ) {
+        int boundedPage = safePage(page);
+        int boundedSize = safeSize(size);
         StudioRoom room = ownedActiveRoom(ownerUserId, roomId);
         StudioDateRange range = timeProvider.validateOwnerRange(room.getStudioProfile(), from, to);
         Page<StudioReservationOwnerResponse> reservations = reservationRepository
@@ -361,7 +384,7 @@ public class StudioReservationService {
                         roomId,
                         range.startsAt(),
                         range.endsAt(),
-                        PageRequest.of(safePage(page), safeSize(size))
+                        PageRequest.of(boundedPage, boundedSize)
                 )
                 .map(this::toOwner);
         List<StudioOccupancyOwnerResponse> occupancies = occupancyRepository
@@ -434,11 +457,14 @@ public class StudioReservationService {
 
     private StudioRoom lockOwnedRoom(UUID ownerUserId, UUID roomId) {
         StudioProfile profile = lockOwnedProfile(ownerUserId);
-        StudioRoom room = lockActiveRoom(roomId);
-        if (!room.getStudioProfile().getId().equals(profile.getId())) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
-        return room;
+        return lockOwnedRoom(profile, roomId);
+    }
+
+    private StudioRoom lockOwnedRoom(StudioProfile profile, UUID roomId) {
+        return roomRepository.findActiveByIdAndStudioProfileIdForUpdate(
+                        roomId, profile.getId()
+                )
+                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
     }
 
     private StudioProfile lockOwnedProfile(UUID ownerUserId) {
@@ -446,22 +472,11 @@ public class StudioReservationService {
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
     }
 
-    private StudioRoom lockOwnedReservationRoom(UUID ownerUserId, UUID roomId, UUID reservationId) {
-        StudioRoomReservation reference = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
-        assertReservationRoom(reference, roomId);
-        return lockOwnedRoom(ownerUserId, roomId);
-    }
-
     private StudioRoom ownedActiveRoom(UUID ownerUserId, UUID roomId) {
         StudioProfile profile = studioProfileRepository.findByUserId(ownerUserId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
-        StudioRoom room = roomRepository.findByIdAndArchivedAtIsNull(roomId)
+        return roomRepository.findActiveByIdAndStudioProfileId(roomId, profile.getId())
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
-        if (!room.getStudioProfile().getId().equals(profile.getId())) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
-        return room;
     }
 
     private StudioRoom lockActiveRoom(UUID roomId) {
@@ -469,15 +484,14 @@ public class StudioReservationService {
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
     }
 
-    private StudioRoomReservation lockReservation(UUID reservationId) {
-        return reservationRepository.findByIdForUpdate(reservationId)
+    private StudioRoomReservation lockRoomReservation(UUID roomId, UUID reservationId) {
+        return reservationRepository.findByIdAndRoomIdForUpdate(reservationId, roomId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
     }
 
-    private void assertReservationRoom(StudioRoomReservation reservation, UUID roomId) {
-        if (!reservation.getRoom().getId().equals(roomId)) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND);
-        }
+    private StudioRoomReservation lockCustomerReservation(UUID requesterId, UUID reservationId) {
+        return reservationRepository.findByIdAndRequesterIdForUpdate(reservationId, requesterId)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
     }
 
     private void assertNoOccupancyConflict(UUID roomId, StudioBookingWindow window) {
@@ -781,6 +795,27 @@ public class StudioReservationService {
         ));
     }
 
+    private void publishCustomerCancellationNotification(StudioRoomReservation reservation) {
+        StudioProfile profile = reservation.getRoom().getStudioProfile();
+        String requesterName = displayName(reservation.getRequester().getUsername(), "Bir kullanıcı");
+        LocalWindow local = localWindow(
+                reservation.getStartsAt(),
+                reservation.getEndsAt(),
+                timeProvider.zoneOf(profile)
+        );
+        eventPublisher.publishEvent(new StudioReservationNotificationEvent(
+                profile.getUser().getId(),
+                NotificationType.STUDIO_RESERVATION_CANCELLED_BY_CUSTOMER,
+                "Rezervasyon müşteri tarafından iptal edildi",
+                requesterName + ", " + reservation.getRoom().getName()
+                        + " için " + local.date() + " "
+                        + local.startTime() + "–" + local.endTime()
+                        + " saatlerindeki rezervasyonunu iptal etti.",
+                reservationPayload(reservation, "CANCELLED_BY_CUSTOMER"),
+                timeProvider.now()
+        ));
+    }
+
     private Map<String, Object> reservationPayload(
             StudioRoomReservation reservation,
             String action
@@ -909,6 +944,12 @@ public class StudioReservationService {
     }
 
     private int safePage(int page) {
+        if (page > MAX_PAGE) {
+            throw new SoundConnectException(
+                    ErrorType.VALIDATION_ERROR,
+                    "page cannot exceed " + MAX_PAGE
+            );
+        }
         return Math.max(page, 0);
     }
 

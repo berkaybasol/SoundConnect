@@ -22,6 +22,7 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,7 +49,11 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query); //eklendi
 		if (q.isEmpty()) return List.of(); //eklendi
 		
-		return musicianProfileRepository.searchByStageNameOrUsername(q, UsernameUtils.normalize(q)) //eklendi
+		return musicianProfileRepository.searchByStageNameOrUsername(
+				q,
+				UsernameUtils.normalize(q),
+				PageRequest.of(0, 10)
+		) //eklendi
 		                                .stream() //eklendi
 		                                .limit(10) //eklendi
 		                                .map(profile -> new MusicianProfileSearchItemDto( //eklendi

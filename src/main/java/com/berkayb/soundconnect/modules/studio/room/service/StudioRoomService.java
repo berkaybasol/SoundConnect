@@ -6,9 +6,12 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.enums.StudioReservationStatus;
+import com.berkayb.soundconnect.modules.studio.reservation.event.StudioReservationNotificationEvent;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomOccupancyRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomReservationRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.support.StudioReservationTimeProvider;
+import com.berkayb.soundconnect.modules.studio.reservation.entity.StudioRoomReservation;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomArchiveRequest;
 import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomCreateRequest;
 import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomUpdateRequest;
@@ -22,6 +25,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -33,11 +37,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Currency;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -53,6 +59,7 @@ public class StudioRoomService {
     private static final int MAX_ACTIVE_ROOMS = 10;
     private static final int MAX_FEATURES = 8;
     private static final int MAX_PHOTOS = 10;
+    private static final int MAX_PAGE = 1000;
     private static final int MAX_PAGE_SIZE = 50;
     private static final long MAX_HOURLY_PRICE_MINOR = 100_000_000L;
     private static final Locale TURKISH = Locale.forLanguageTag("tr-TR");
@@ -65,6 +72,7 @@ public class StudioRoomService {
     private final StudioRoomMapper roomMapper;
     private final StudioRoomDailyMetricsService dailyMetricsService;
     private final StudioReservationTimeProvider timeProvider;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public StudioRoomOwnerResponse create(UUID ownerUserId, StudioRoomCreateRequest request) {
@@ -132,8 +140,7 @@ public class StudioRoomService {
     @Transactional
     public StudioRoomOwnerResponse update(UUID ownerUserId, UUID roomId, StudioRoomUpdateRequest request) {
         StudioProfile profile = lockOwnedProfile(ownerUserId);
-        StudioRoom room = lockRoom(roomId);
-        assertOwnership(profile, room);
+        StudioRoom room = lockOwnedRoom(profile.getId(), roomId);
         assertActive(room);
         assertVersion(request.expectedVersion(), room.getVersion());
 
@@ -151,7 +158,7 @@ public class StudioRoomService {
         applyReservationApprovalPolicy(room, request.reservationApprovalRequired());
         // A mappedBy attachment-only change may not dirty the parent on every
         // Hibernate strategy. Touch the audited row so @Version always advances.
-        room.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        room.setUpdatedAt(LocalDateTime.ofInstant(timeProvider.now(), ZoneOffset.UTC));
 
         try {
             // Flush orphan deletes before inserting the replacement positions.
@@ -172,12 +179,11 @@ public class StudioRoomService {
     @Transactional
     public void archive(UUID ownerUserId, UUID roomId, StudioRoomArchiveRequest request) {
         StudioProfile profile = lockOwnedProfile(ownerUserId);
-        StudioRoom room = lockRoom(roomId);
-        assertOwnership(profile, room);
+        StudioRoom room = lockOwnedRoom(profile.getId(), roomId);
         assertActive(room);
         assertVersion(request.expectedVersion(), room.getVersion());
 
-        Instant now = Instant.now();
+        Instant now = timeProvider.now();
         reservationRepository.findFutureByRoomAndStatusesForUpdate(
                 roomId,
                 List.of(StudioReservationStatus.PENDING_APPROVAL, StudioReservationStatus.CONFIRMED),
@@ -186,6 +192,7 @@ public class StudioRoomService {
             reservation.setStatus(StudioReservationStatus.CANCELLED_BY_STUDIO);
             reservation.setCancelledAt(now);
             reservation.setCancelledBy(ownerUserId);
+            publishRoomArchiveCancellation(reservation, now);
         });
         occupancyRepository.findFutureActiveByRoomForUpdate(roomId, now).forEach(occupancy -> {
             occupancy.setActive(false);
@@ -207,9 +214,10 @@ public class StudioRoomService {
 
     @Transactional(readOnly = true)
     public StudioPageResponse<StudioRoomOwnerResponse> listOwner(UUID ownerUserId, int page, int size) {
+        PageRequest pageable = roomPage(page, size);
         StudioProfile profile = ownedProfile(ownerUserId);
         Page<StudioRoom> rooms = roomRepository
-                .findByStudioProfileIdAndArchivedAtIsNull(profile.getId(), roomPage(page, size));
+                .findByStudioProfileIdAndArchivedAtIsNull(profile.getId(), pageable);
         Map<UUID, StudioRoomDailyMetrics> metrics = dailyMetricsService.load(
                 profile,
                 rooms.getContent().stream().map(StudioRoom::getId).toList()
@@ -229,17 +237,18 @@ public class StudioRoomService {
     @Transactional(readOnly = true)
     public StudioRoomOwnerResponse getOwner(UUID ownerUserId, UUID roomId) {
         StudioProfile profile = ownedProfile(ownerUserId);
-        StudioRoom room = activeRoom(roomId);
-        assertOwnership(profile, room);
+        StudioRoom room = roomRepository.findActiveByIdAndStudioProfileId(roomId, profile.getId())
+                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
         return roomMapper.toOwner(room, metricsFor(profile, roomId));
     }
 
     @Transactional(readOnly = true)
     public StudioPageResponse<StudioRoomPublicResponse> listPublic(UUID profileId, int page, int size) {
+        PageRequest pageable = roomPage(page, size);
         StudioProfile profile = studioProfileRepository.findById(profileId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
         Page<StudioRoom> rooms = roomRepository
-                .findByStudioProfileIdAndArchivedAtIsNull(profileId, roomPage(page, size));
+                .findByStudioProfileIdAndArchivedAtIsNull(profileId, pageable);
         Map<UUID, StudioRoomDailyMetrics> metrics = dailyMetricsService.load(
                 profile,
                 rooms.getContent().stream().map(StudioRoom::getId).toList()
@@ -282,20 +291,14 @@ public class StudioRoomService {
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
     }
 
-    private StudioRoom lockRoom(UUID roomId) {
-        return roomRepository.findByIdForUpdate(roomId)
+    private StudioRoom lockOwnedRoom(UUID profileId, UUID roomId) {
+        return roomRepository.findByIdAndStudioProfileIdForUpdate(roomId, profileId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
     }
 
     private StudioRoom activeRoom(UUID roomId) {
         return roomRepository.findByIdAndArchivedAtIsNull(roomId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
-    }
-
-    private void assertOwnership(StudioProfile profile, StudioRoom room) {
-        if (!room.getStudioProfile().getId().equals(profile.getId())) {
-            throw new SoundConnectException(ErrorType.STUDIO_RESOURCE_FORBIDDEN);
-        }
     }
 
     private void assertActive(StudioRoom room) {
@@ -353,7 +356,10 @@ public class StudioRoomService {
     }
 
     private void validatePhotoOwnership(UUID ownerUserId, UUID profileId, List<UUID> values) {
-        values.forEach(mediaId -> mediaAssetService.validateAssignableMedia(
+        // Preserve the client-defined display order in the aggregate, but always
+        // acquire media row locks in one global order. Opposite photo orders in
+        // concurrent requests must not be able to deadlock each other.
+        values.stream().sorted(Comparator.comparing(UUID::toString)).forEach(mediaId -> mediaAssetService.validateAssignableMedia(
                 ownerUserId,
                 mediaId,
                 MediaOwnerType.STUDIO_PROFILE,
@@ -502,6 +508,12 @@ public class StudioRoomService {
     }
 
     private PageRequest roomPage(int page, int size) {
+        if (page > MAX_PAGE) {
+            throw new SoundConnectException(
+                    ErrorType.VALIDATION_ERROR,
+                    "page cannot exceed " + MAX_PAGE
+            );
+        }
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         return PageRequest.of(safePage, safeSize, Sort.by("slotIndex").ascending().and(Sort.by("id").ascending()));
@@ -510,5 +522,45 @@ public class StudioRoomService {
     private StudioRoomDailyMetrics metricsFor(StudioProfile profile, UUID roomId) {
         StudioRoomDailyMetrics metrics = dailyMetricsService.load(profile, List.of(roomId)).get(roomId);
         return metrics == null ? dailyMetricsService.empty(profile) : metrics;
+    }
+
+    private void publishRoomArchiveCancellation(
+            StudioRoomReservation reservation,
+            Instant occurredAt
+    ) {
+        StudioProfile profile = reservation.getRoom().getStudioProfile();
+        ZoneId zone = timeProvider.zoneOf(profile);
+        ZonedDateTime localStart = reservation.getStartsAt().atZone(zone);
+        ZonedDateTime localEnd = reservation.getEndsAt().atZone(zone);
+        String studioName = profile.getName() == null || profile.getName().isBlank()
+                ? "Stüdyo"
+                : profile.getName().trim();
+
+        eventPublisher.publishEvent(new StudioReservationNotificationEvent(
+                reservation.getRequester().getId(),
+                NotificationType.STUDIO_RESERVATION_CANCELLED_BY_STUDIO,
+                "Rezervasyonunuz iptal edildi",
+                studioName + ", " + reservation.getRoom().getName()
+                        + " odası arşivlendiği için "
+                        + localStart.toLocalDate() + " "
+                        + localStart.toLocalTime() + "–" + localEnd.toLocalTime()
+                        + " saatlerindeki rezervasyonunuzu iptal etti.",
+                Map.ofEntries(
+                        Map.entry("module", "STUDIO"),
+                        Map.entry("action", "CANCELLED_BY_STUDIO_ROOM_ARCHIVED"),
+                        Map.entry("reservationId", reservation.getId().toString()),
+                        Map.entry("roomId", reservation.getRoom().getId().toString()),
+                        Map.entry("roomName", reservation.getRoom().getName()),
+                        Map.entry("studioProfileId", profile.getId().toString()),
+                        Map.entry("studioName", studioName),
+                        Map.entry("zoneId", zone.getId()),
+                        Map.entry("localDate", localStart.toLocalDate().toString()),
+                        Map.entry("requesterId", reservation.getRequester().getId().toString()),
+                        Map.entry("status", reservation.getStatus().name()),
+                        Map.entry("startsAt", reservation.getStartsAt().toString()),
+                        Map.entry("endsAt", reservation.getEndsAt().toString())
+                ),
+                occurredAt
+        ));
     }
 }

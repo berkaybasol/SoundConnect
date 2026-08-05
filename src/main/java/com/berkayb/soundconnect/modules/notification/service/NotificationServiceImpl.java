@@ -12,7 +12,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -28,6 +30,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class NotificationServiceImpl implements NotificationService {
+	private static final int MAX_PAGE = 1000;
+	private static final int MAX_PAGE_SIZE = 100;
+	private static final Sort NOTIFICATION_SORT = Sort.by(
+			Sort.Order.desc("createdAt"),
+			Sort.Order.desc("id")
+	);
 	
 	private final NotificationRepository notificationRepository;
 	private final NotificationMapper notificationMapper;
@@ -36,18 +44,38 @@ public class NotificationServiceImpl implements NotificationService {
 	
 	// kullaniciya ait tum bilgileri getir (yeniden eskiye)
 	@Override
-	public Page<NotificationResponseDto> getUserNotifications(UUID userId, Pageable pageable) {
+	public Page<NotificationResponseDto> getUserNotifications(UUID userId, int page, int size) {
 		return notificationRepository
-				.findByRecipientIdOrderByCreatedAtDesc(userId, pageable)
+				.findByRecipientIdOrderByCreatedAtDesc(userId, notificationPage(page, size))
 				.map(notificationMapper::toDto);
 	}
 	
 	// kullanicin belirli tipteki tum bildirimlerini filtreleyerek getir
 	@Override
-	public Page<NotificationResponseDto> getUserNotificationsByTypes(UUID userId, Collection<NotificationType> types, Pageable pageable) {
+	public Page<NotificationResponseDto> getUserNotificationsByTypes(
+			UUID userId,
+			Collection<NotificationType> types,
+			int page,
+			int size
+	) {
 		return notificationRepository
-				.findByRecipientIdAndTypeInOrderByCreatedAtDesc(userId, types, pageable)
+				.findByRecipientIdAndTypeInOrderByCreatedAtDesc(
+						userId,
+						types,
+						notificationPage(page, size)
+				)
 				.map(notificationMapper::toDto);
+	}
+
+	private Pageable notificationPage(int page, int size) {
+		if (page < 0 || page > MAX_PAGE || size < 1 || size > MAX_PAGE_SIZE) {
+			throw new SoundConnectException(
+					ErrorType.VALIDATION_ERROR,
+					"page must be between 0 and " + MAX_PAGE
+							+ " and size must be between 1 and " + MAX_PAGE_SIZE
+			);
+		}
+		return PageRequest.of(page, size, NOTIFICATION_SORT);
 	}
 	
 	// kullanicinin son 10 bildirimini getir (badge icin hizli erisim)
