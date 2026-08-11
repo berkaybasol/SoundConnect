@@ -171,6 +171,10 @@ app:
   location:
     seed:
       enabled: ${SOUNDCONNECT_LOCATION_SEED_ENABLED:true}
+  instrument:
+    catalog:
+      seed:
+        enabled: ${SOUNDCONNECT_INSTRUMENT_CATALOG_SEED_ENABLED:true}
   backline:
     catalog:
       seed:

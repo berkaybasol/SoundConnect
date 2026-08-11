@@ -48,9 +48,10 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 		if (type == null) return 99;
 		return switch (type) {
 			case "MUSICIAN" -> 0;
-			case "VENUE" -> 1;
-			case "LISTENER" -> 2;
+			case "BAND" -> 1;
+			case "VENUE" -> 2;
 			case "STUDIO" -> 3;
+			case "LISTENER" -> 4;
 			default -> 50;
 		};
 	}

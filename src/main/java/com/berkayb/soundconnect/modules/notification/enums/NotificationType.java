@@ -61,6 +61,17 @@ public enum NotificationType {
 	BAND_MEMBER_REMOVED("BAND","Banddan çıkarıldın",false),
 	BAND_MEMBER_LEFT("BAND","Band üyesi ayrıldı",false),
 	
+	// COLLAB
+	COLLAB_APPLICATION_RECEIVED("COLLAB", "Yeni Collab başvurusu", false),
+	COLLAB_APPLICATION_ACCEPTED("COLLAB", "Collab başvurun kabul edildi", false),
+	COLLAB_APPLICATION_REJECTED("COLLAB", "Collab başvurun reddedildi", false),
+	COLLAB_APPLICATION_WITHDRAWN("COLLAB", "Collab başvurusu geri çekildi", false),
+	COLLAB_APPLICATION_INVALIDATED("COLLAB", "Collab başvurusu geçersizleşti", false),
+	COLLAB_LISTING_EXPIRED("COLLAB", "Collab ilanının süresi doldu", false),
+	COLLAB_JOB_COMPLETION_REQUESTED("COLLAB", "Collab işi tamamlama onayı bekliyor", false),
+	COLLAB_JOB_COMPLETED("COLLAB", "Collab işi tamamlandı", false),
+	COLLAB_REVIEW_RECEIVED("COLLAB", "Yeni Collab değerlendirmesi", false),
+
 	// OVERTHINKING
 	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil görüntüleme isteği alındı",false),
 	OVERTHINKING_REVEAL_REQUEST_APPROVED("OVERTHINKING","Profil görüntüleme isteği kabul edildi",false),

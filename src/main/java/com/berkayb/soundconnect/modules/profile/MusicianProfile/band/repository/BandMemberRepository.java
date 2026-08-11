@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository
 
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -22,6 +24,21 @@ public interface BandMemberRepository extends JpaRepository<BandMember, UUID> {
 	List<BandMember> findByUserId(UUID userId);
 	
 	List<BandMember> findByUserIdAndStatus(UUID userId, BandMemberShipStatus status);
+
+	@EntityGraph(attributePaths = "band")
+	List<BandMember> findByUserIdAndStatusAndBandRole(
+			UUID userId,
+			BandMemberShipStatus status,
+			BandRole bandRole
+	);
+
+	@EntityGraph(attributePaths = "band")
+	Optional<BandMember> findByBandIdAndUserIdAndStatusAndBandRole(
+			UUID bandId,
+			UUID userId,
+			BandMemberShipStatus status,
+			BandRole bandRole
+	);
 
 	long countByUserIdAndStatus(UUID userId, BandMemberShipStatus status);
 	

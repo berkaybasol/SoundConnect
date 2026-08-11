@@ -58,6 +58,10 @@ app:
   location:
     seed:
       enabled: false
+  instrument:
+    catalog:
+      seed:
+        enabled: ${SOUNDCONNECT_INSTRUMENT_CATALOG_SEED_ENABLED:false}
   backline:
     catalog:
       seed:

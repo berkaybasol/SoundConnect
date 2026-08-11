@@ -77,6 +77,11 @@ app:
     seed:
       enabled: false
 
+  instrument:
+    catalog:
+      seed:
+        enabled: false
+
 otp:
   ttl:
     minutes: 3

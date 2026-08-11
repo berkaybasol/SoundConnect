@@ -174,20 +174,27 @@ public class EndPoints {
 	}
 	
 	public static class Collab {
-		
-		// ===== BASE ===== //
 		public static final String BASE  = API + VERSION + "/collabs";
-		
-		// Slot management
-		public static final String FILL_SLOT = "/{collabId}/slots/fill";
-		public static final String UNFILL_SLOT = "/{collabId}/slots/unfill";
-		
-		
-		public static final String CREATE = "/create";
-		public static final String UPDATE = "/{collabId}";
-		public static final String DELETE = "/{collabId}";
-		public static final String BY_ID = "/{collabId}";
-		public static final String SEARCH = "/search";
+		public static final String ACTORS_ME = "/actors/me";
+		public static final String DRAFTS = "/drafts";
+		public static final String DRAFT_BY_ID = "/drafts/{listingId}";
+		public static final String BY_ID = "/{listingId}";
+		public static final String PUBLISH = "/{listingId}/publish";
+		public static final String CLOSE = "/{listingId}/close";
+		public static final String ME_LISTINGS = "/me/listings";
+		public static final String SAVED = "/{listingId}/saved";
+		public static final String ME_SAVED = "/me/saved";
+		public static final String APPLICATIONS = "/{listingId}/applications";
+		public static final String INCOMING = "/me/listings/{listingId}/applications";
+		public static final String ME_APPLICATIONS = "/me/applications";
+		public static final String ACCEPT = "/applications/{applicationId}/accept";
+		public static final String REJECT = "/applications/{applicationId}/reject";
+		public static final String WITHDRAW = "/applications/{applicationId}/withdraw";
+		public static final String ME_JOBS = "/me/jobs";
+		public static final String CONFIRM_COMPLETION = "/jobs/{jobId}/confirm-completion";
+		public static final String JOB_REVIEWS = "/jobs/{jobId}/reviews";
+		public static final String ACTOR_REVIEWS = "/actors/{actorId}/reviews";
+		public static final String REPORTS = "/{listingId}/reports";
 	}
 	
 	public static class Comment {

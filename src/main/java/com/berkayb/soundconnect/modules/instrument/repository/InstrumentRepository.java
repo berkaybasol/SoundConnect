@@ -3,8 +3,10 @@ package com.berkayb.soundconnect.modules.instrument.repository;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface InstrumentRepository extends JpaRepository<Instrument, UUID> {
 	boolean existsByName(String name);
+	Optional<Instrument> findByNameIgnoreCase(String name);
 }

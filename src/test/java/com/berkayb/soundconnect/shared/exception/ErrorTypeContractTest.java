@@ -34,7 +34,7 @@ class ErrorTypeContractTest {
 		assertThat(ErrorType.VENUE_APPLICATION_NOT_FOUND.getHttpStatus()).isEqualTo(HttpStatus.NOT_FOUND);
 		assertThat(ErrorType.BAND_INVITE_UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.BAND_REMOVE_UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-		assertThat(ErrorType.COLLAB_NOT_OWNER.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+		assertThat(ErrorType.COLLAB_FORBIDDEN.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.VENUE_SEARCH_QUERY_REQUIRED.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(ErrorType.SPOTIFY_AUTH_FAILED.getHttpStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
 	}
@@ -63,7 +63,8 @@ class ErrorTypeContractTest {
 				ErrorType.BAND_ALREADY_EXISTS,
 				ErrorType.BAND_MEMBER_NOT_ACTIVE,
 				ErrorType.BAND_CREATE_LIMIT_EXCEEDED,
-				ErrorType.COLLAB_SLOT_NOT_FILLED
+				ErrorType.COLLAB_APPLICATION_STATUS_INVALID,
+				ErrorType.COLLAB_STALE_UPDATE
 		)).allMatch(error -> error.getHttpStatus() == HttpStatus.CONFLICT);
 	}
 

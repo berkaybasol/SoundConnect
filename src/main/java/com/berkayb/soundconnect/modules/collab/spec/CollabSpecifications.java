@@ -1,121 +1,75 @@
 package com.berkayb.soundconnect.modules.collab.spec;
 
-import com.berkayb.soundconnect.modules.collab.dto.request.CollabFilterRequestDto;
+import com.berkayb.soundconnect.modules.collab.dto.request.CollabFilterRequest;
 import com.berkayb.soundconnect.modules.collab.entity.Collab;
-import com.berkayb.soundconnect.modules.collab.entity.CollabRequiredSlot;
-import com.berkayb.soundconnect.modules.collab.enums.CollabRole;
-import jakarta.persistence.criteria.JoinType;
+import com.berkayb.soundconnect.modules.collab.enums.*;
 import org.springframework.data.jpa.domain.Specification;
 
-import java.time.LocalDateTime;
-import java.util.Set;
-import java.util.UUID;
+import java.time.*;
+import java.util.*;
 
-public class CollabSpecifications {
-	
-	public static Specification<Collab> filter(CollabFilterRequestDto f) {
-		return Specification.where(byCity(f.cityId()))
-		                    .and(byCategory(f.category()))
-		                    .and(byOwnerRole(f.ownerRole()))
-		                    .and(byTargetRoles(f.targetRoles()))
-		                    .and(byRequiredInstrument(f.requiredInstrumentId()))
-		                    .and(byDaily(f.daily()))
-		                    .and(byCreatedDateRange(f.createdAfter(), f.createdBefore()))
-		                    .and(byOpenSlots(f.hasOpenSlots()));
-	}
-	
-	private static Specification<Collab> byCity(UUID cityId) {
-		return (root, query, cb) -> {
-			if (cityId == null) return null;
-			return cb.equal(root.get("city").get("id"), cityId);
-		};
-	}
-	
-	private static Specification<Collab> byCategory(Enum<?> category) {
-		return (root, query, cb) -> {
-			if (category == null) return null;
-			return cb.equal(root.get("category"), category);
-		};
-	}
-	
-	private static Specification<Collab> byOwnerRole(Enum<?> ownerRole) {
-		return (root, query, cb) -> {
-			if (ownerRole == null) return null;
-			return cb.equal(root.get("ownerRole"), ownerRole);
-		};
-	}
-	
-	private static Specification<Collab> byTargetRoles(Set<CollabRole> targetRoles) {
-		return (root, query, cb) -> {
-			if (targetRoles == null || targetRoles.isEmpty()) return null;
-			
-			query.distinct(true);
-			var join = root.joinSet("targetRoles", JoinType.INNER);
-			return join.in(targetRoles);
-		};
-	}
-	
-	/**
-	 * İlgili enstrümanı arayan ilanlar.
-	 * Artık requiredSlots üzerinden join yapıyoruz.
-	 */
-	private static Specification<Collab> byRequiredInstrument(UUID instrumentId) {
-		return (root, query, cb) -> {
-			if (instrumentId == null) return null;
-			
-			query.distinct(true);
-			
-			var slotJoin = root.joinSet("requiredSlots", JoinType.INNER);
-			return cb.equal(slotJoin.get("instrument").get("id"), instrumentId);
-		};
-	}
-	
-	private static Specification<Collab> byDaily(Boolean daily) {
-		return (root, query, cb) -> {
-			if (daily == null) return null;
-			return cb.equal(root.get("daily"), daily);
-		};
-	}
-	
-	private static Specification<Collab> byCreatedDateRange(LocalDateTime after, LocalDateTime before) {
-		return (root, query, cb) -> {
-			if (after == null && before == null) return null;
-			
-			if (after != null && before != null)
-				return cb.between(root.get("createdAt"), after, before);
-			
-			if (after != null)
-				return cb.greaterThanOrEqualTo(root.get("createdAt"), after);
-			
-			return cb.lessThanOrEqualTo(root.get("createdAt"), before);
-		};
-	}
-	
-	/**
-	 * hasOpenSlots = true  -> toplam filledCount < toplam requiredCount
-	 * hasOpenSlots = false -> toplam filledCount == toplam requiredCount
-	 */
-	private static Specification<Collab> byOpenSlots(Boolean hasOpenSlots) {
-		return (root, query, cb) -> {
-			if (hasOpenSlots == null) return null;
-			
-			// required toplamı
-			var subRequired = query.subquery(Long.class);
-			var reqRoot = subRequired.from(CollabRequiredSlot.class);
-			subRequired.select(cb.sumAsLong(reqRoot.get("requiredCount")));
-			subRequired.where(cb.equal(reqRoot.get("collab").get("id"), root.get("id")));
-			
-			// filled toplamı
-			var subFilled = query.subquery(Long.class);
-			var fillRoot = subFilled.from(CollabRequiredSlot.class);
-			subFilled.select(cb.sumAsLong(fillRoot.get("filledCount")));
-			subFilled.where(cb.equal(fillRoot.get("collab").get("id"), root.get("id")));
-			
-			if (hasOpenSlots) {
-				return cb.lessThan(subFilled, subRequired);
-			} else {
-				return cb.equal(subFilled, subRequired);
-			}
-		};
-	}
+public final class CollabSpecifications {
+    private CollabSpecifications() {}
+
+    public static Specification<Collab> discovery(CollabFilterRequest filter, Instant now) {
+        return (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("status"), CollabListingStatus.OPEN));
+            predicates.add(cb.or(cb.isNull(root.get("expiresAt")), cb.greaterThan(root.get("expiresAt"), now)));
+            jakarta.persistence.criteria.Join<Object, Object> instrumentJoin = null;
+            if (filter != null) {
+                if (filter.cadence() != null) predicates.add(cb.equal(root.get("cadence"), filter.cadence()));
+                if (filter.cityId() != null) predicates.add(cb.equal(root.get("city").get("id"), filter.cityId()));
+                if (filter.wantedType() != null) predicates.add(cb.equal(root.get("wantedType"), filter.wantedType()));
+                boolean instruments = hasValues(filter.instrumentIds());
+                boolean branches = hasValues(filter.branches());
+                if (instruments) instrumentJoin = root.join("instrument", jakarta.persistence.criteria.JoinType.LEFT);
+                if (instruments && branches) {
+                    predicates.add(cb.or(instrumentJoin.get("id").in(filter.instrumentIds()),
+                            root.get("branch").in(filter.branches())));
+                } else if (instruments) {
+                    predicates.add(instrumentJoin.get("id").in(filter.instrumentIds()));
+                } else if (branches) {
+                    predicates.add(root.get("branch").in(filter.branches()));
+                }
+                if (hasValues(filter.publisherTypes())) predicates.add(root.get("publisherActor").get("profileType").in(filter.publisherTypes()));
+                applyPublishedWindow(predicates, root, cb, filter.publishedWindow(), now);
+                if (filter.q() != null && !filter.q().isBlank()) {
+                    if (instrumentJoin == null) instrumentJoin = root.join("instrument", jakarta.persistence.criteria.JoinType.LEFT);
+                    String pattern = "%" + escapeLike(filter.q().strip().toLowerCase(Locale.ROOT)) + "%";
+                    predicates.add(cb.or(
+                            cb.like(cb.lower(root.get("title")), pattern, '\\'),
+                            cb.like(cb.lower(root.get("description")), pattern, '\\'),
+                            cb.like(cb.lower(root.get("customSpecialty")), pattern, '\\'),
+                            cb.like(cb.lower(instrumentJoin.get("name")), pattern, '\\'),
+                            cb.like(cb.lower(root.get("publisherActor").get("displayName")), pattern, '\\'),
+                            cb.like(cb.lower(root.get("city").get("name")), pattern, '\\')));
+                }
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+    }
+
+    private static void applyPublishedWindow(List<jakarta.persistence.criteria.Predicate> out,
+                                             jakarta.persistence.criteria.Root<Collab> root,
+                                             jakarta.persistence.criteria.CriteriaBuilder cb,
+                                             CollabPublishedWindow window, Instant now) {
+        if (window == null) return;
+        Duration duration = switch (window) {
+            case LAST_24_HOURS -> Duration.ofHours(24);
+            case LAST_3_DAYS -> Duration.ofDays(3);
+            case LAST_7_DAYS -> Duration.ofDays(7);
+            case LAST_30_DAYS, OLDER_THAN_30_DAYS -> Duration.ofDays(30);
+        };
+        Instant threshold = now.minus(duration);
+        out.add(window == CollabPublishedWindow.OLDER_THAN_30_DAYS
+                ? cb.lessThan(root.get("publishedAt"), threshold)
+                : cb.greaterThanOrEqualTo(root.get("publishedAt"), threshold));
+    }
+
+    private static boolean hasValues(Collection<?> values) { return values != null && !values.isEmpty(); }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
 }

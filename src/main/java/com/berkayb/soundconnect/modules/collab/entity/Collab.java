@@ -1,7 +1,6 @@
 package com.berkayb.soundconnect.modules.collab.entity;
 
-import com.berkayb.soundconnect.modules.collab.enums.CollabCategory;
-import com.berkayb.soundconnect.modules.collab.enums.CollabRole;
+import com.berkayb.soundconnect.modules.collab.enums.*;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -9,108 +8,112 @@ import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.checkerframework.checker.units.qual.C;
 import org.hibernate.annotations.BatchSize;
 
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
-@NoArgsConstructor
-@AllArgsConstructor
-@SuperBuilder
 @Getter
 @Setter
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
-@Table(name = "tbl_collab")
+@Table(name = "tbl_collab", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_collab_create_request", columnNames = {"owner_user_id", "client_request_id"}),
+        @UniqueConstraint(name = "uk_collab_job_publisher_reference",
+                columnNames = {"id", "publisher_actor_id", "owner_user_id"})
+},
+        indexes = {
+                @Index(name = "idx_collab_discovery", columnList = "status,cadence,published_at,id"),
+                @Index(name = "idx_collab_city_discovery", columnList = "city_id,status,cadence,published_at,id"),
+                @Index(name = "idx_collab_wanted_instrument", columnList = "wanted_type,instrument_id,status,published_at"),
+                @Index(name = "idx_collab_publisher", columnList = "publisher_actor_id,status,published_at"),
+                @Index(name = "idx_collab_expiry", columnList = "status,expires_at,id")
+        })
 public class Collab extends BaseEntity {
-	
-	// ilani acan kullanici
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "owner_user_id", nullable = false)
-	private User owner;
-	
-	/*
-	ilani acan kullanicinin sistemdeki rolu.
-	bu bilgi UI da ve filtrelemede isimize cok yaricak
-	 */
-	@Enumerated(EnumType.STRING)
-	@Column(name = "owner_role", nullable = false, length = 40)
-	private CollabRole ownerRole;
-	
-	// ilanin hedefledigi roller
-	@ElementCollection(fetch = FetchType.LAZY)
-	@BatchSize(size = 20)
-	@CollectionTable(name = "collab_target_roles", joinColumns = @JoinColumn(name = "collab_id")
-	)
-	@Enumerated(EnumType.STRING)
-	@Column(name = "role", length = 40)
-	@Builder.Default
-	private Set<CollabRole> targetRoles = new HashSet<>();
-	
-	// ilanin kategorisi
-	@Enumerated(EnumType.STRING)
-	@Column(name = "category", nullable = false, length = 40)
-	private CollabCategory category;
-	
-	
-	// ilan basligi
-	@Column(nullable = false, length = 128)
-	private String title;
-	
-	// ilan aciklama
-	@Column(length = 2048)
-	private String description;
-	
-	// ucret (mekanlar vs icin opsiyonel)
-	private Integer price;
-	
-	// gunluk ilanlar. daily = true -> expirationTIme zorunl olur.
-	@Column(nullable = false)
-	@Builder.Default
-	private boolean daily = false;
-	
-	// daily ilanlar icin kapanma zamani Redis TTL entegrasyonu ile otomatik kapanma burda yonetilcek
-	private LocalDateTime expirationTime;
-	
-	// Ilan lokasyonu
-	@JoinColumn(name = "city_id")
-	@ManyToOne(fetch = FetchType.LAZY)
-	private City city;
-	
-	
-	/**
-	 * Yeni slot sistemi — 1 collab N adet slot’a sahip olabilir.
-	 * (ör: 2 gitar + 1 bas + 1 davul)
-	 */
-	@OneToMany(
-			mappedBy = "collab",
-			cascade = CascadeType.ALL,
-			orphanRemoval = true,
-			fetch = FetchType.LAZY
-	)
-	@Builder.Default
-	private Set<CollabRequiredSlot> requiredSlots = new HashSet<>();
-	
-	
-	// methodlar
-	public int getTotalRequired() {
-		return requiredSlots.stream()
-		                    .mapToInt(CollabRequiredSlot::getRequiredCount)
-		                    .sum();
-	}
-	
-	public int getTotalFilled() {
-		return requiredSlots.stream()
-		                    .mapToInt(CollabRequiredSlot::getFilledCount)
-		                    .sum();
-	}
-	
-	public boolean hasOpenSlots() {
-		return requiredSlots.stream().anyMatch(CollabRequiredSlot::hasOpenSlot);
-	}
-	
-	public int getRemainingSlotCount() {
-		return getTotalRequired() - getTotalFilled();
-	}
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_user_id", nullable = false)
+    private User owner;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "publisher_actor_id", nullable = false)
+    private CollabActor publisherActor;
+
+    @Column(name = "client_request_id", nullable = false, columnDefinition = "uuid")
+    private UUID clientRequestId;
+
+    @Column(name = "creation_payload_hash", nullable = false, length = 64, updatable = false)
+    private String creationPayloadHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private CollabCadence cadence;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "wanted_type", nullable = false, length = 16)
+    private CollabWantedType wantedType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "instrument_id")
+    private Instrument instrument;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
+    private CollabBranch branch;
+
+    @Column(name = "custom_specialty", length = 80)
+    private String customSpecialty;
+
+    @Column(nullable = false, length = 100)
+    private String title;
+
+    @Column(nullable = false, length = 500)
+    private String description;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "city_id", nullable = false)
+    private City city;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @BatchSize(size = 50)
+    @CollectionTable(name = "tbl_collab_genre", joinColumns = @JoinColumn(name = "collab_id"))
+    @OrderColumn(name = "position")
+    @Column(name = "genre", nullable = false, length = 40)
+    @Builder.Default
+    private List<String> genres = new ArrayList<>();
+
+    @Column(name = "scheduled_at")
+    private Instant scheduledAt;
+
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
+    @Column(name = "fee_amount_minor")
+    private Long feeAmountMinor;
+
+    @Column(length = 3)
+    private String currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    @Builder.Default
+    private CollabListingStatus status = CollabListingStatus.DRAFT;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "closure_reason", length = 24)
+    private CollabClosureReason closureReason;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
+
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
+    @Version
+    @Builder.Default
+    @Column(nullable = false)
+    private long version = 0;
 }
