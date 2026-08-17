@@ -196,6 +196,11 @@ public class EndPoints {
 		public static final String ACTOR_REVIEWS = "/actors/{actorId}/reviews";
 		public static final String REPORTS = "/{listingId}/reports";
 	}
+
+	public static class CollabAdmin {
+		public static final String BASE = API + VERSION + "/admin/collab/reports";
+		public static final String REVIEW = "/{reportId}/review";
+	}
 	
 	public static class Comment {
 		

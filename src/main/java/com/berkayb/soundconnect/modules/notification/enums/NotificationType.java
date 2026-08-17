@@ -71,6 +71,8 @@ public enum NotificationType {
 	COLLAB_JOB_COMPLETION_REQUESTED("COLLAB", "Collab işi tamamlama onayı bekliyor", false),
 	COLLAB_JOB_COMPLETED("COLLAB", "Collab işi tamamlandı", false),
 	COLLAB_REVIEW_RECEIVED("COLLAB", "Yeni Collab değerlendirmesi", false),
+	COLLAB_LISTING_REMOVED("COLLAB", "Collab ilanı moderasyonla kaldırıldı", false),
+	COLLAB_REPORT_RESOLVED("COLLAB", "Collab bildirimin sonuçlandırıldı", false),
 
 	// OVERTHINKING
 	OVERTHINKING_REVEAL_REQUEST_RECEIVED("OVERTHINKING","Profil görüntüleme isteği alındı",false),

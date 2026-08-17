@@ -2,12 +2,15 @@ package com.berkayb.soundconnect.modules.notification.service;
 
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,6 +23,7 @@ public class NotificationCleanupService {
 	
 	private final NotificationRepository notificationRepository;
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
+	private final NotificationWebSocketService notificationWebSocketService;
 	
 	@Value("${app.notification.retention-days:30}")
 	private long retentionDays;
@@ -40,16 +44,51 @@ public class NotificationCleanupService {
 		}
 		
 		int deleted = notificationRepository.deleteByCreatedAtBefore(cutoff);
-		for (UUID userId : affectedUsers) {
-			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			badgeCacheHelper.setUnread(userId, freshUnread);
+		List<UUID> committedUsers = List.copyOf(affectedUsers);
+		runAfterCommit(() -> {
+			committedUsers.forEach(this::projectCommittedUnread);
+			log.info(
+					"Notification cleanup deleted {} records older than {} days for {} users",
+					deleted,
+					retentionDays,
+					committedUsers.size()
+			);
+		});
+	}
+
+	private void projectCommittedUnread(UUID userId) {
+		long freshUnread;
+		try {
+			freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
+		} catch (RuntimeException exception) {
+			log.warn("Notification cleanup unread recount failed userId={} exceptionType={}",
+					userId, exception.getClass().getSimpleName());
+			return;
 		}
-		
-		log.info(
-				"Notification cleanup deleted {} records older than {} days for {} users",
-				deleted,
-				retentionDays,
-				affectedUsers.size()
-		);
+		try {
+			badgeCacheHelper.setUnread(userId, freshUnread);
+		} catch (RuntimeException exception) {
+			log.warn("Notification cleanup badge cache projection failed userId={} exceptionType={}",
+					userId, exception.getClass().getSimpleName());
+		}
+		try {
+			notificationWebSocketService.sendUnreadBadgeToUser(userId, freshUnread);
+		} catch (RuntimeException exception) {
+			log.warn("Notification cleanup badge WebSocket projection failed userId={} exceptionType={}",
+					userId, exception.getClass().getSimpleName());
+		}
+	}
+
+	private void runAfterCommit(Runnable action) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			action.run();
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				action.run();
+			}
+		});
 	}
 }

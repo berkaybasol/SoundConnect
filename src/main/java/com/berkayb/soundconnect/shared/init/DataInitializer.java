@@ -103,6 +103,7 @@ public class DataInitializer implements ApplicationRunner {
 				MANAGE_PROFILES,
 				MANAGE_DM,
 				MANAGE_BACKLINE_CATALOG,
+				MANAGE_COLLAB_REPORTS,
 				DELETE_COMMENT
 		));
 		Role venueRole = upsertRole(ROLE_VENUE.name(), permissions(

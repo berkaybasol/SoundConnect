@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.modules.location.mapper.NeighborhoodMapper;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.location.support.TurkishAlphabeticalOrder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +52,10 @@ public class NeighborhoodServiceImpl implements NeighborhoodService {
 	@Override
 	public List<NeighborhoodResponseDto> findAll() {
 		log.info("Get all neighborhoods");
-		return neighborhoodMapper.toResponseList(neighborhoodRepository.findAll());
+		List<Neighborhood> neighborhoods = neighborhoodRepository.findAll().stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(Neighborhood::getName))
+				.toList();
+		return neighborhoodMapper.toResponseList(neighborhoods);
 	}
 	
 	@Override
@@ -69,7 +73,10 @@ public class NeighborhoodServiceImpl implements NeighborhoodService {
 	@Override
 	public List<NeighborhoodResponseDto> findByDistrictId(UUID districtId) {
 		log.info("Find neighborhoods by districtId: {}", districtId);
-		return neighborhoodMapper.toResponseList(neighborhoodRepository.findAllByDistrict_Id(districtId));
+		List<Neighborhood> neighborhoods = neighborhoodRepository.findAllByDistrict_Id(districtId).stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(Neighborhood::getName))
+				.toList();
+		return neighborhoodMapper.toResponseList(neighborhoods);
 	}
 	
 	@Override

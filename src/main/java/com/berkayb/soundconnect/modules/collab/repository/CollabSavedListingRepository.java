@@ -1,15 +1,15 @@
 package com.berkayb.soundconnect.modules.collab.repository;
 
 import com.berkayb.soundconnect.modules.collab.entity.CollabSavedListing;
-import com.berkayb.soundconnect.modules.collab.enums.CollabListingStatus;
 import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
-import java.time.Instant;
 import java.util.*;
 
-public interface CollabSavedListingRepository extends JpaRepository<CollabSavedListing, UUID> {
+public interface CollabSavedListingRepository extends JpaRepository<CollabSavedListing, UUID>,
+        JpaSpecificationExecutor<CollabSavedListing> {
     long deleteByUserIdAndListingId(UUID userId, UUID listingId);
 
     @Modifying(flushAutomatically = true)
@@ -28,21 +28,7 @@ public interface CollabSavedListingRepository extends JpaRepository<CollabSavedL
     int insertIfAbsent(@Param("id") UUID id, @Param("userId") UUID userId,
                        @Param("listingId") UUID listingId);
 
+    @Override
     @EntityGraph(attributePaths = {"listing", "listing.publisherActor", "listing.city", "listing.instrument", "listing.owner"})
-    @Query(value = """
-            select s from CollabSavedListing s
-             where s.user.id = :userId
-               and s.listing.status = :status
-               and (s.listing.expiresAt is null or s.listing.expiresAt > :now)
-            """,
-            countQuery = """
-            select count(s) from CollabSavedListing s
-             where s.user.id = :userId
-               and s.listing.status = :status
-               and (s.listing.expiresAt is null or s.listing.expiresAt > :now)
-            """)
-    Page<CollabSavedListing> findVisibleByUserId(@Param("userId") UUID userId,
-                                                 @Param("status") CollabListingStatus status,
-                                                 @Param("now") Instant now,
-                                                 Pageable pageable);
+    Page<CollabSavedListing> findAll(Specification<CollabSavedListing> specification, Pageable pageable);
 }

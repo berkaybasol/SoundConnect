@@ -56,7 +56,6 @@ class MailNotificationServiceImplTest {
 		
 		// Varsayılan ortak stub'lar (DB kaydı + badge hesapları akışı kırmasın)
 		when(notificationRepository.countByRecipientIdAndReadIsFalse(any())).thenReturn(1L);
-		when(badgeCacheHelper.getCacheUnread(any())).thenReturn(1L);
 		when(notificationMapper.toDto(any())).thenAnswer(inv -> {
 			Notification n = inv.getArgument(0);
 			return new NotificationResponseDto(
@@ -64,7 +63,7 @@ class MailNotificationServiceImplTest {
 					n.getTitle(), n.getMessage(), n.isRead(), null, n.getPayload()
 			);
 		});
-		when(notificationRepository.save(any(Notification.class))).thenAnswer(inv -> {
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenAnswer(inv -> {
 			Notification n = inv.getArgument(0);
 			// id set
 			ReflectionTestUtils.setField(n, "id", UUID.randomUUID());

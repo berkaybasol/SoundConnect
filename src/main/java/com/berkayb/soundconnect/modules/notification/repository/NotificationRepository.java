@@ -18,9 +18,14 @@ import java.util.UUID;
 
 @Transactional(readOnly = true)
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
+
+	boolean existsBySourceEventId(UUID sourceEventId);
+
+	Optional<Notification> findBySourceEventId(UUID sourceEventId);
 	
-	// kullanicinin bildirimlerini yeniden eskiye sayfali getir
-	Page<Notification> findByRecipientIdOrderByCreatedAtDesc(UUID recipientId, Pageable pageable);
+	// Olay zamanina gore siralama Pageable ile uygulanir; insert/audit zamani
+	// gecikmis broker teslimlerini kullaniciya yeni bir olaymis gibi gostermemelidir.
+	Page<Notification> findByRecipientId(UUID recipientId, Pageable pageable);
 	
 	// kullanicinin tokunmamis bildirim sayisi (badge icin)
 	long countByRecipientIdAndReadIsFalse(UUID recipientId);
@@ -29,10 +34,10 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 	Optional<Notification> findByIdAndRecipientId(UUID id, UUID recipientId);
 	
 	// bildirim tipine gore filtreleyerek listeleme
-	Page<Notification> findByRecipientIdAndTypeInOrderByCreatedAtDesc(UUID recipientId, Collection<NotificationType> types, Pageable pageable);
+	Page<Notification> findByRecipientIdAndTypeIn(UUID recipientId, Collection<NotificationType> types, Pageable pageable);
 	
 	// hizli cache doldurma icin son 10 kayit (kullanici hizlica son 10 bildirimi gorebilsin diye)
-	List<Notification> findTop10ByRecipientIdOrderByCreatedAtDesc(UUID recipientId);
+	List<Notification> findTop10ByRecipientIdOrderByOccurredAtDescIdDesc(UUID recipientId);
 	
 	// tek bir bildirimi sahiplik kontrolu yaparak okundu olarak isaretle
 	@Modifying // bu anatasyon veriyi update etmek icin (mutating query: degistirilebilir sorgular)

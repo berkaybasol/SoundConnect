@@ -7,9 +7,6 @@ import org.mapstruct.Mapping;
 import org.mapstruct.NullValueCheckStrategy;
 import org.mapstruct.ReportingPolicy;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 
 @Mapper(
@@ -25,14 +22,9 @@ public interface NotificationMapper {
 	)
 	@Mapping(
 			target = "createdAt",
-			expression = "java(map(n.getCreatedAt()))"
+			source = "occurredAt"
 	)
 	NotificationResponseDto toDto(Notification n);
 	
 	List<NotificationResponseDto> toDtoList(List<Notification> notifications);
-	
-	// --- helper method ---
-	default Instant map(LocalDateTime value) {
-		return value != null ? value.toInstant(ZoneOffset.UTC) : null;
-	}
 }

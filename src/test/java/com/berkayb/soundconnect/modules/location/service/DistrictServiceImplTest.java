@@ -77,34 +77,37 @@ class DistrictServiceImplTest {
 	
 	@Test
 	void findAll_ShouldMapList() {
-		District d1 = District.builder().id(UUID.randomUUID()).name("A").build();
-		District d2 = District.builder().id(UUID.randomUUID()).name("B").build();
+		District d1 = District.builder().id(UUID.randomUUID()).name("Çankaya").build();
+		District d2 = District.builder().id(UUID.randomUUID()).name("Ceyhan").build();
 		
 		when(districtRepository.findAll()).thenReturn(List.of(d1, d2));
-		DistrictResponseDto r1 = new DistrictResponseDto(d1.getId(), "A", null);
-		DistrictResponseDto r2 = new DistrictResponseDto(d2.getId(), "B", null);
-		when(districtMapper.toResponseList(List.of(d1, d2))).thenReturn(List.of(r1, r2));
+		DistrictResponseDto r1 = new DistrictResponseDto(d1.getId(), d1.getName(), null);
+		DistrictResponseDto r2 = new DistrictResponseDto(d2.getId(), d2.getName(), null);
+		when(districtMapper.toResponseList(List.of(d2, d1))).thenReturn(List.of(r2, r1));
 		
 		var out = districtService.findAll();
-		assertThat(out).containsExactly(r1, r2);
+		assertThat(out).containsExactly(r2, r1);
 		
 		verify(districtRepository).findAll();
-		verify(districtMapper).toResponseList(List.of(d1, d2));
+		verify(districtMapper).toResponseList(List.of(d2, d1));
 	}
 	
 	@Test
 	void findByCityId_ShouldMapList() {
 		UUID cityId = UUID.randomUUID();
-		District d = District.builder().id(UUID.randomUUID()).name("X").build();
-		when(districtRepository.findDistrictsByCity_Id(cityId)).thenReturn(List.of(d));
-		DistrictResponseDto r = new DistrictResponseDto(d.getId(), "X", cityId);
-		when(districtMapper.toResponseList(List.of(d))).thenReturn(List.of(r));
+		District dottedI = District.builder().id(UUID.randomUUID()).name("İstanbul").build();
+		District dotlessI = District.builder().id(UUID.randomUUID()).name("Iğdır").build();
+		when(districtRepository.findDistrictsByCity_Id(cityId)).thenReturn(List.of(dottedI, dotlessI));
+		DistrictResponseDto dottedResponse = new DistrictResponseDto(dottedI.getId(), dottedI.getName(), cityId);
+		DistrictResponseDto dotlessResponse = new DistrictResponseDto(dotlessI.getId(), dotlessI.getName(), cityId);
+		when(districtMapper.toResponseList(List.of(dotlessI, dottedI)))
+				.thenReturn(List.of(dotlessResponse, dottedResponse));
 		
 		var out = districtService.findByCityId(cityId);
-		assertThat(out).containsExactly(r);
+		assertThat(out).containsExactly(dotlessResponse, dottedResponse);
 		
 		verify(districtRepository).findDistrictsByCity_Id(cityId);
-		verify(districtMapper).toResponseList(List.of(d));
+		verify(districtMapper).toResponseList(List.of(dotlessI, dottedI));
 	}
 	
 	@Test

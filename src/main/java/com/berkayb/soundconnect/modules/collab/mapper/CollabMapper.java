@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.collab.dto.response.*;
 import com.berkayb.soundconnect.modules.collab.entity.*;
 import com.berkayb.soundconnect.modules.collab.enums.*;
 import com.berkayb.soundconnect.modules.collab.service.CollabActorService;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +25,8 @@ public class CollabMapper {
 
     public CollabListingResponse listing(Collab value, ListingContext context) {
         UUID viewerId = context.viewerId();
-        UUID ownerId = value.getOwner().getId();
+        User owner = value.getOwner();
+        UUID ownerId = owner.getId();
         var instrument = value.getInstrument() == null ? null
                 : new CollabInstrumentSummary(value.getInstrument().getId(), value.getInstrument().getName());
         return new CollabListingResponse(
@@ -33,7 +35,7 @@ public class CollabMapper {
                 value.getDescription(), new CollabCitySummary(value.getCity().getId(), value.getCity().getName()),
                 List.copyOf(value.getGenres()), value.getScheduledAt(), value.getExpiresAt(), value.getFeeAmountMinor(),
                 value.getCurrency(), feeStatus(value), value.getPublishedAt(), value.getClosedAt(),
-                toInstant(value.getCreatedAt()), actorService.toSummary(value.getPublisherActor(), ownerId),
+                toInstant(value.getCreatedAt()), actorService.toSummary(value.getPublisherActor(), owner),
                 context.applicationCounts().getOrDefault(value.getId(), 0L),
                 Objects.equals(viewerId, ownerId), context.appliedIds().contains(value.getId()),
                 context.savedIds().contains(value.getId()));
@@ -44,7 +46,7 @@ public class CollabMapper {
                 || Objects.equals(viewerId, value.getListing().getOwner().getId());
         return new CollabApplicationResponse(value.getId(), value.getVersion(), value.getStatus(),
                 listing(value.getListing(), listingContext),
-                actorService.toSummary(value.getApplicantActor(), value.getApplicantUser().getId()),
+                actorService.toSummary(value.getApplicantActor(), value.getApplicantUser()),
                 party ? value.getPhoneSnapshot() : null, party ? value.getMessage() : null, value.getSubmittedAt(),
                 value.getStatusChangedAt(), value.getDecidedAt());
     }
@@ -54,8 +56,8 @@ public class CollabMapper {
         boolean publisher = Objects.equals(viewerId, value.getPublisherUser().getId());
         return new CollabJobResponse(value.getId(), value.getVersion(), value.getStatus(),
                 listing(value.getListing(), listingContext),
-                actorService.toSummary(value.getPublisherActor(), value.getPublisherUser().getId()),
-                actorService.toSummary(value.getApplicantActor(), value.getApplicantUser().getId()),
+                actorService.toSummary(value.getPublisherActor(), value.getPublisherUser()),
+                actorService.toSummary(value.getApplicantActor(), value.getApplicantUser()),
                 value.getPublisherConfirmedAt() != null, value.getApplicantConfirmedAt() != null,
                 value.getPublisherConfirmedAt(), value.getApplicantConfirmedAt(),
                 publisher ? value.getPublisherConfirmedAt() != null : value.getApplicantConfirmedAt() != null,
@@ -63,13 +65,13 @@ public class CollabMapper {
     }
 
     public CollabReviewResponse review(CollabReview value) {
-        UUID reviewerId = value.getReviewerUser().getId();
-        UUID targetContactUserId = Objects.equals(reviewerId, value.getJob().getPublisherUser().getId())
-                ? value.getJob().getApplicantUser().getId()
-                : value.getJob().getPublisherUser().getId();
+        User reviewer = value.getReviewerUser();
+        User targetContactUser = Objects.equals(reviewer.getId(), value.getJob().getPublisherUser().getId())
+                ? value.getJob().getApplicantUser()
+                : value.getJob().getPublisherUser();
         return new CollabReviewResponse(value.getId(), value.getJob().getId(),
-                actorService.toSummary(value.getReviewerActor(), reviewerId),
-                actorService.toSummary(value.getTargetActor(), targetContactUserId), value.getRating(), value.getComment(),
+                actorService.toSummary(value.getReviewerActor(), reviewer),
+                actorService.toSummary(value.getTargetActor(), targetContactUser), value.getRating(), value.getComment(),
                 value.getSubmittedAt());
     }
 

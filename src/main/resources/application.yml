@@ -112,6 +112,12 @@ management:
       show-details: never
       probes:
         enabled: true
+      status:
+        order: down,out-of-service,degraded,unknown,up
+        http-mapping:
+          down: 503
+          out-of-service: 503
+          degraded: 200
 
 app:
   jwt:
@@ -156,6 +162,20 @@ app:
   notification:
     retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
     cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
+    collab-outbox:
+      batch-size: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_BATCH_SIZE:25}
+      max-attempts: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:8}
+      worker-threads: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_WORKER_THREADS:2}
+      queue-capacity: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_QUEUE_CAPACITY:250}
+      poll-delay-ms: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_POLL_DELAY_MS:5000}
+      initial-delay-ms: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_INITIAL_DELAY_MS:5000}
+      lease-duration: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_LEASE_DURATION:30s}
+      retry-initial-delay: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_RETRY_INITIAL_DELAY:5s}
+      retry-max-delay: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_RETRY_MAX_DELAY:15m}
+      publisher-confirm-timeout: ${SOUNDCONNECT_COLLAB_NOTIFICATION_PUBLISHER_CONFIRM_TIMEOUT:5s}
+      published-retention: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_PUBLISHED_RETENTION:7d}
+      health-undelivered-age-threshold: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_HEALTH_UNDELIVERED_AGE_THRESHOLD:30m}
+      cleanup-cron: "${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_CLEANUP_CRON:0 35 4 * * *}"
   share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:

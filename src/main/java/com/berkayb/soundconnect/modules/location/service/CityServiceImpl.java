@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.location.mapper.CityMapper;
 import com.berkayb.soundconnect.modules.location.mapper.CityPrettyMapper;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.location.support.TurkishAlphabeticalOrder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +43,9 @@ public class CityServiceImpl implements CityService {
 	@Override
 	public List<CityResponseDto> findAll() {
 		log.info("Find all cities");
-		List<City> cities = cityRepository.findAll();
+		List<City> cities = cityRepository.findAll().stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(City::getName))
+				.toList();
 		return cityMapper.toResponseList(cities);
 	}
 	
@@ -63,7 +66,9 @@ public class CityServiceImpl implements CityService {
 	
 	@Override
 	public List<CityPrettyDto> findAllPretty() {
-		List<City> cities = cityRepository.findAll(); // fetch = lazy ama zaten veriyi çekiyoruz
+		List<City> cities = cityRepository.findAll().stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(City::getName))
+				.toList(); // fetch = lazy ama zaten veriyi çekiyoruz
 		return cities.stream().map(cityPrettyMapper::toPretty).toList();
 	}
 	

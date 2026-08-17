@@ -20,7 +20,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -65,14 +68,22 @@ public class LocationSeeder implements ApplicationRunner {
 					createdDistricts++;
 				}
 
+				Set<String> existingNeighborhoodNames = neighborhoodRepository.findAllByDistrict_Id(district.getId())
+						.stream()
+						.map(Neighborhood::getName)
+						.collect(java.util.stream.Collectors.toCollection(HashSet::new));
+				List<Neighborhood> missingNeighborhoods = new ArrayList<>();
 				for (String neighborhoodName : districtSeed.neighborhoods()) {
-					if (!neighborhoodRepository.existsByNameAndDistrict_Id(neighborhoodName, district.getId())) {
-						neighborhoodRepository.save(Neighborhood.builder()
+					if (existingNeighborhoodNames.add(neighborhoodName)) {
+						missingNeighborhoods.add(Neighborhood.builder()
 								.name(neighborhoodName)
 								.district(district)
 								.build());
-						createdNeighborhoods++;
 					}
+				}
+				if (!missingNeighborhoods.isEmpty()) {
+					neighborhoodRepository.saveAll(missingNeighborhoods);
+					createdNeighborhoods += missingNeighborhoods.size();
 				}
 			}
 		}

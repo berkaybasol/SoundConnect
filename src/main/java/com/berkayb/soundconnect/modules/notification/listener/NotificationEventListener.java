@@ -14,6 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.time.Instant;
 
 /**
  * RabbitMQ'dan gelen NotificationInboundEvent mesajlarini tuketir.
@@ -29,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class NotificationEventListener {
+	private static final int MAX_TITLE_LENGTH = 160;
+	private static final int MAX_MESSAGE_LENGTH = 1000;
+
 	private final NotificationRepository notificationRepository;
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
 	private final NotificationMapper notificationMapper;
@@ -44,101 +51,131 @@ public class NotificationEventListener {
 		try {
 			validate(event);
 		} catch (IllegalArgumentException e) {
-			log.warn("Invalid NotificationInboundEvent, skipping. err={}, event={}", e.getMessage(), event);
+			log.warn(
+					"Invalid NotificationInboundEvent, skipping. eventId={}, type={}, reason={}",
+					event == null ? null : event.eventId(),
+					event == null ? null : event.type(),
+					e.getMessage()
+			);
 			return;
+		}
+
+		if (event.eventId() != null && notificationRepository.existsBySourceEventId(event.eventId())) {
+			log.debug(
+					"Duplicate NotificationInboundEvent skipped. eventId={}, type={}",
+					event.eventId(), event.type()
+			);
+			return;
+		}
+
+		Instant occurredAt = event.occurredAt();
+		if (occurredAt == null) {
+			occurredAt = Instant.now();
+			log.warn(
+					"Legacy NotificationInboundEvent is missing occurredAt; using consumption time. eventId={}, type={}",
+					event.eventId(), event.type()
+			);
 		}
 		
 		// Notification entity'sini event verisinden olustur
 		Notification entity = Notification.builder()
+				.sourceEventId(event.eventId())
 				.recipientId(event.recipientId())
 				.type(event.type())
-				.title(event.title())
-				.message(event.message())
+				.title(normalizeTitle(event))
+				.message(event.message() == null ? "" : event.message())
+				.occurredAt(occurredAt)
 				.payload(event.payload())
 				.read(false) // yeni bildirim default olarak okunmadi
 				.build();
 		
 		// veritabanina kaydet
-		entity = notificationRepository.save(entity);
-		
-		
-		// okunmamis notification sayisini guncelle (Redis'e badge cache olarak setle)
+		// Flush before any cache/WS/mail side effect. The source_event_id unique
+		// constraint is the final concurrency fence when duplicate Rabbit
+		// deliveries race on different consumer threads/nodes.
+		Notification persisted = notificationRepository.saveAndFlush(entity);
+		runAfterCommit(() -> dispatchCommitted(persisted, event));
+		log.debug("Notification persistence staged: id={}, user={}, type={}",
+				persisted.getId(), persisted.getRecipientId(), persisted.getType());
+	}
+
+	private void dispatchCommitted(Notification entity, NotificationInboundEvent event) {
+		Long unread = null;
 		try {
-			// ilgili kullanicinin okunmamis notification sayisini db'den al
-			long unread = notificationRepository.countByRecipientIdAndReadIsFalse(event.recipientId());
-			
-			// sayaci redis'e ttl ile yaz
-			badgeCacheHelper.setUnreadWithTtl(event.recipientId(), unread);
+			unread = notificationRepository.countByRecipientIdAndReadIsFalse(entity.getRecipientId());
+			badgeCacheHelper.setUnreadWithTtl(entity.getRecipientId(), unread);
 		} catch (Exception e) {
-			// cache guncelleme basarisiz olursa sadece logla. sureci kirma
-			log.warn("Failed to update unread badge cache for user={}, err={}", event.recipientId(), e.toString());
+			log.warn("Failed to project unread badge after notification commit. notifId={}, exceptionType={}",
+					entity.getId(), e.getClass().getSimpleName());
 		}
-		
-		// WebSocket push (DTO)
+
 		try {
-			var dto = notificationMapper.toDto(entity);
 			notificationWebSocketService.sendNotificationToUser(
-					entity.getRecipientId(),
-					dto
-			);
-			// opsiyonel: badge'i anlik olarak guncelle (cache'deki degeri yayinla)
-			Long cacheUnread = badgeCacheHelper.getCacheUnread(entity.getRecipientId());
-			notificationWebSocketService.sendUnreadBadgeToUser(
-					entity.getRecipientId(),
-					cacheUnread != null ? cacheUnread: 0L
-			);
+					entity.getRecipientId(), notificationMapper.toDto(entity));
 		} catch (Exception e) {
-			log.warn("WS push failed for notifId={}, user={}, err={}",
-			         entity.getId(), entity.getRecipientId(), e.toString());
+			log.warn("Notification WebSocket push failed. notifId={}, exceptionType={}",
+					entity.getId(), e.getClass().getSimpleName());
 		}
-		
+
+		if (unread != null) {
+			try {
+				notificationWebSocketService.sendUnreadBadgeToUser(entity.getRecipientId(), unread);
+			} catch (Exception e) {
+				log.warn("Notification badge WebSocket push failed. notifId={}, exceptionType={}",
+						entity.getId(), e.getClass().getSimpleName());
+			}
+		}
+
+		dispatchMail(entity, event);
+		log.debug("Committed notification dispatched: id={}, user={}, type={}",
+				entity.getId(), entity.getRecipientId(), entity.getType());
+	}
+
+	private void dispatchMail(Notification entity, NotificationInboundEvent event) {
 		try {
 			boolean sendMail = event.emailForce() != null
 					? event.emailForce()
 					: entity.getType().isEmailRecommended();
-			
-			if (sendMail) {
-				String to = null;
-				if (entity.getPayload() != null) {
-					Object email = entity.getPayload().get("recipientEmail");
-					if (email == null) email = entity.getPayload().get("email");
-					if (email != null) to = String.valueOf(email);
-				}
-				if (to != null && !to.isBlank()) {
-					String subject = "[SoundConnect] " +
-							((entity.getTitle() == null || entity.getTitle().isBlank())
-									? entity.getType().getDefaultTitle()
-									: entity.getTitle());
-					
-					String text = subject + "\n\n" +
-							(entity.getMessage() != null ? entity.getMessage() + "\n\n" : "") +
-							"Bu e-posta SoundConnect tarafından otomatik gönderildi.";
-					
-					String html = null; // ister ileride html şablonla değiştirirsin
-					
-					mailProducer.send(
-							new MailSendRequest(
-									to,
-									subject,
-									html,
-									text,
-									MailKind.NOTIFICATION,
-									entity.getPayload()
-							)
-					);
-					log.debug("Notification mail pipeline'a gönderildi. to={}, notifId={}", to, entity.getId());
-				} else {
-					log.warn("Mail gönderilemedi: notification payload'da email yok! notifId={}", entity.getId());
-				}
+			if (!sendMail) return;
+
+			String to = null;
+			if (entity.getPayload() != null) {
+				Object email = entity.getPayload().get("recipientEmail");
+				if (email == null) email = entity.getPayload().get("email");
+				if (email != null) to = String.valueOf(email);
 			}
+			if (to == null || to.isBlank()) {
+				log.warn("Notification mail skipped because payload has no email. notifId={}", entity.getId());
+				return;
+			}
+
+			String subject = "[SoundConnect] "
+					+ ((entity.getTitle() == null || entity.getTitle().isBlank())
+					? entity.getType().getDefaultTitle()
+					: entity.getTitle());
+			String text = subject + "\n\n"
+					+ (entity.getMessage() != null ? entity.getMessage() + "\n\n" : "")
+					+ "Bu e-posta SoundConnect tarafından otomatik gönderildi.";
+			mailProducer.send(new MailSendRequest(
+					to, subject, null, text, MailKind.NOTIFICATION, entity.getPayload()));
+			log.debug("Notification mail queued after commit. notifId={}", entity.getId());
 		} catch (Exception e) {
-			log.error("Mail pipeline'a gönderme hatası! notifId={}, err={}", entity.getId(), e.toString());
+			log.error("Notification mail dispatch failed. notifId={}, exceptionType={}",
+					entity.getId(), e.getClass().getSimpleName());
 		}
-		
-		// TODO: elasticSearchService.indexNotification(entity);
-		
-		log.debug("Notification persisted & dispatched: id={}, user={}, type={}",
-		          entity.getId(), entity.getRecipientId(), entity.getType());
+	}
+
+	private void runAfterCommit(Runnable action) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			action.run();
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				action.run();
+			}
+		});
 	}
 	
 	// event dogrulama methodu. Gerekli alanlar var mi? eksik varsa hata firlat
@@ -146,6 +183,17 @@ public class NotificationEventListener {
 		if (e == null) throw new IllegalArgumentException("event=null");
 		if (e.recipientId() == null) throw new IllegalArgumentException("recipientId required");
 		if (e.type() == null) throw new IllegalArgumentException("type required");
-		// title/message opsiyonel. UI/mapper defaultTitle ile handle ediyor.
+		if (e.title() != null && e.title().length() > MAX_TITLE_LENGTH) {
+			throw new IllegalArgumentException("title exceeds " + MAX_TITLE_LENGTH + " characters");
+		}
+		if (e.message() != null && e.message().length() > MAX_MESSAGE_LENGTH) {
+			throw new IllegalArgumentException("message exceeds " + MAX_MESSAGE_LENGTH + " characters");
+		}
+	}
+
+	private String normalizeTitle(NotificationInboundEvent event) {
+		return event.title() == null || event.title().isBlank()
+				? event.type().getDefaultTitle()
+				: event.title();
 	}
 }

@@ -86,13 +86,13 @@ class CollabDomainMigrationPostgresTest {
                     """);
 
             statement.execute("CREATE TABLE tbl_user (id uuid PRIMARY KEY)");
-            statement.execute("CREATE TABLE tbl_city (id uuid PRIMARY KEY)");
-            statement.execute("CREATE TABLE tbl_instrument (id uuid PRIMARY KEY)");
+            statement.execute("CREATE TABLE tbl_city (id uuid PRIMARY KEY, name varchar(120) NOT NULL)");
+            statement.execute("CREATE TABLE tbl_instrument (id uuid PRIMARY KEY, name varchar(120) NOT NULL)");
             statement.execute("""
                     INSERT INTO tbl_user (id) VALUES
                         ('%s'), ('%s'), ('%s');
-                    INSERT INTO tbl_city (id) VALUES ('%s');
-                    INSERT INTO tbl_instrument (id) VALUES ('%s');
+                    INSERT INTO tbl_city (id, name) VALUES ('%s', 'Istanbul');
+                    INSERT INTO tbl_instrument (id, name) VALUES ('%s', 'Bas Gitar');
                     """.formatted(
                     OWNER_ID,
                     APPLICANT_ONE_ID,
@@ -277,7 +277,8 @@ class CollabDomainMigrationPostgresTest {
                     "idx_collab_review_target",
                     "idx_collab_saved_user",
                     "idx_collab_report_listing",
-                    "idx_collab_report_reason"
+                    "idx_collab_report_reason",
+                    "idx_collab_report_admin_queue"
             );
             assertThat(singleString(statement, """
                     SELECT indexdef
@@ -285,6 +286,158 @@ class CollabDomainMigrationPostgresTest {
                      WHERE schemaname = current_schema()
                        AND indexname = 'uk_collab_one_accepted_application'
                     """)).contains("UNIQUE", "WHERE", "ACCEPTED");
+        }
+    }
+
+    @Test
+    void moderationMigrationBackfillsImmutableEvidenceAndNeverRefreshesItFromMutableListing() throws Exception {
+        executeMigration(domainMigrationSql());
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            seedCanonicalActorsAndListing(statement);
+            statement.execute("""
+                    INSERT INTO tbl_collab_genre (collab_id, position, genre)
+                    VALUES ('%s', 0, 'Rock'), ('%s', 1, 'Jazz')
+                    """.formatted(LISTING_ID, LISTING_ID));
+            statement.execute("""
+                    INSERT INTO tbl_collab_report
+                        (id, collab_id, reporter_user_id, client_request_id,
+                         request_payload_hash, reason, reported_at)
+                    VALUES
+                        ('00000000-0000-0000-0000-000000000925', '%s', '%s',
+                         '00000000-0000-0000-0000-000000000926', repeat('4', 64),
+                         'MISLEADING', TIMESTAMPTZ '2026-08-11 11:21:00+03')
+                    """.formatted(LISTING_ID, APPLICANT_TWO_ID));
+        }
+
+        executeMigration(moderationMigrationSql());
+
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            assertThat(singleString(statement, """
+                    SELECT listing_evidence ->> 'title'
+                      FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("Bas gitarist ariyoruz");
+            assertThat(singleString(statement, """
+                    SELECT listing_evidence -> 'genres' ->> 1
+                      FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("Jazz");
+            assertThat(singleString(statement, """
+                    SELECT is_nullable
+                      FROM information_schema.columns
+                     WHERE table_schema = current_schema()
+                       AND table_name = 'tbl_collab_report'
+                       AND column_name = 'listing_evidence'
+                    """)).isEqualTo("NO");
+
+            statement.execute("UPDATE tbl_collab SET title = 'Degisen ilan basligi' WHERE id = '" + LISTING_ID + "'");
+            statement.execute("UPDATE tbl_collab_actor SET display_name = 'Degisen yayinci' WHERE id = '"
+                    + PUBLISHER_ACTOR_ID + "'");
+            statement.execute("UPDATE tbl_collab_genre SET genre = 'Metal' WHERE collab_id = '"
+                    + LISTING_ID + "' AND position = 1");
+
+            assertThat(singleString(statement, """
+                    SELECT listing_evidence ->> 'title'
+                      FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("Bas gitarist ariyoruz");
+            assertThat(singleString(statement, """
+                    SELECT listing_evidence ->> 'publisherDisplayName'
+                      FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("Publisher");
+            assertThat(singleString(statement, """
+                    SELECT listing_evidence -> 'genres' ->> 1
+                      FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("Jazz");
+        }
+
+        executeMigration(moderationMigrationSql());
+    }
+
+    @Test
+    void rerunReconcilesAllDomainChecksAndSqlOnlyGenreUniquenessOnPrecreatedTables() throws Exception {
+        executeMigration(migrationSql());
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            seedCanonicalActorsAndListing(statement);
+            statement.execute("""
+                    DO $drop_collab_checks$
+                    DECLARE constraint_row record;
+                    BEGIN
+                        FOR constraint_row IN
+                            SELECT rel.relname AS table_name, con.conname
+                              FROM pg_constraint con
+                              JOIN pg_class rel ON rel.oid = con.conrelid
+                             WHERE con.contype = 'c'
+                               AND rel.relname IN (
+                                   'tbl_collab_actor', 'tbl_collab', 'tbl_collab_genre',
+                                   'tbl_collab_application', 'tbl_collab_job',
+                                   'tbl_collab_review', 'tbl_collab_report'
+                               )
+                        LOOP
+                            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I',
+                                           constraint_row.table_name, constraint_row.conname);
+                        END LOOP;
+                    END
+                    $drop_collab_checks$;
+                    ALTER TABLE tbl_collab_genre
+                        DROP CONSTRAINT IF EXISTS uk_collab_genre_value;
+                    """);
+            assertThat(singleInt(statement, """
+                    SELECT count(*)
+                      FROM pg_constraint constraint_row
+                      JOIN pg_class rel ON rel.oid = constraint_row.conrelid
+                     WHERE constraint_row.contype = 'c'
+                       AND rel.relname LIKE 'tbl_collab%'
+                    """)).isZero();
+        }
+
+        executeMigration(domainMigrationSql());
+
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            assertThat(singleInt(statement, """
+                    SELECT count(*)
+                      FROM pg_constraint constraint_row
+                      JOIN pg_class rel ON rel.oid = constraint_row.conrelid
+                     WHERE constraint_row.contype = 'c'
+                       AND constraint_row.conname LIKE 'ck_collab_%'
+                       AND rel.relname IN (
+                           'tbl_collab_actor', 'tbl_collab', 'tbl_collab_genre',
+                           'tbl_collab_application', 'tbl_collab_job',
+                           'tbl_collab_review', 'tbl_collab_report'
+                       )
+                    """)).isEqualTo(39);
+            assertThat(singleInt(statement, """
+                    SELECT count(*) FROM pg_constraint
+                     WHERE conrelid = 'tbl_collab_genre'::regclass
+                       AND conname = 'uk_collab_genre_value'
+                       AND contype = 'u'
+                    """)).isOne();
+            assertThat(singleInt(statement, """
+                    SELECT count(*)
+                      FROM pg_constraint key_constraint
+                     WHERE key_constraint.conrelid = 'tbl_collab_genre'::regclass
+                       AND key_constraint.contype IN ('p', 'u')
+                       AND ARRAY(
+                           SELECT attribute.attname::text
+                             FROM unnest(key_constraint.conkey) AS key_column(attnum)
+                             JOIN pg_attribute attribute
+                               ON attribute.attrelid = key_constraint.conrelid
+                              AND attribute.attnum = key_column.attnum
+                            ORDER BY attribute.attname::text
+                       ) = ARRAY['collab_id', 'position']::text[]
+                    """)).isOne();
+            assertSqlState("23514", () -> statement.execute(
+                    "UPDATE tbl_collab SET status = 'INVALID' WHERE id = '" + LISTING_ID + "'"));
+            statement.execute("INSERT INTO tbl_collab_genre (collab_id, position, genre) VALUES ('"
+                    + LISTING_ID + "', 0, 'Rock')");
+            assertSqlState("23505", () -> statement.execute(
+                    "INSERT INTO tbl_collab_genre (collab_id, position, genre) VALUES ('"
+                            + LISTING_ID + "', 0, 'Jazz')"));
+            assertSqlState("23505", () -> statement.execute(
+                    "INSERT INTO tbl_collab_genre (collab_id, position, genre) VALUES ('"
+                            + LISTING_ID + "', 1, 'Rock')"));
         }
     }
 
@@ -504,12 +657,53 @@ class CollabDomainMigrationPostgresTest {
             assertSqlState("23514", () -> statement.execute("""
                     INSERT INTO tbl_collab_report
                         (id, collab_id, reporter_user_id, client_request_id,
-                         request_payload_hash, reason, details, reported_at)
+                         request_payload_hash, reason, details, reported_at, listing_evidence)
                     VALUES
                         ('00000000-0000-0000-0000-000000000921', '%s', '%s',
                          '00000000-0000-0000-0000-000000000922', repeat('1', 64),
-                         'OTHER', NULL, TIMESTAMPTZ '2026-08-11 11:20:00+03')
-                    """.formatted(LISTING_ID, APPLICANT_TWO_ID)));
+                         'OTHER', NULL, TIMESTAMPTZ '2026-08-11 11:20:00+03', %s)
+                    """.formatted(LISTING_ID, APPLICANT_TWO_ID, listingEvidenceJson())));
+
+            statement.execute("""
+                    INSERT INTO tbl_collab_report
+                        (id, collab_id, reporter_user_id, client_request_id,
+                         request_payload_hash, reason, reported_at, listing_evidence)
+                    VALUES
+                        ('00000000-0000-0000-0000-000000000923', '%s', '%s',
+                         '00000000-0000-0000-0000-000000000924', repeat('3', 64),
+                         'SPAM', TIMESTAMPTZ '2026-08-11 11:21:00+03', %s)
+                    """.formatted(LISTING_ID, APPLICANT_TWO_ID, listingEvidenceJson()));
+
+            assertSqlState("23514", () -> statement.execute("""
+                    UPDATE tbl_collab_report
+                       SET status = 'ACTIONED'
+                     WHERE id = '00000000-0000-0000-0000-000000000923'
+                    """));
+
+            assertSqlState("23514", () -> statement.execute("""
+                    UPDATE tbl_collab_report
+                       SET status = 'DISMISSED',
+                           review_decision = 'REMOVE_LISTING',
+                           reviewed_by_user_id = '%s',
+                           reviewed_at = TIMESTAMPTZ '2026-08-11 11:22:00+03',
+                           resolution_note = 'Ihlal yok.'
+                     WHERE id = '00000000-0000-0000-0000-000000000923'
+                    """.formatted(OWNER_ID)));
+
+            statement.execute("""
+                    UPDATE tbl_collab_report
+                       SET status = 'DISMISSED',
+                           review_decision = 'DISMISS',
+                           reviewed_by_user_id = '%s',
+                           reviewed_at = TIMESTAMPTZ '2026-08-11 11:22:00+03',
+                           resolution_note = 'Ihlal tespit edilmedi.'
+                     WHERE id = '00000000-0000-0000-0000-000000000923'
+                    """.formatted(OWNER_ID));
+
+            assertThat(singleString(statement, """
+                    SELECT status FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000923'
+                    """)).isEqualTo("DISMISSED");
 
             statement.execute("""
                     INSERT INTO tbl_collab_saved_listing (id, user_id, collab_id)
@@ -759,11 +953,46 @@ class CollabDomainMigrationPostgresTest {
         );
     }
 
-    private static String migrationSql() throws Exception {
+    private static String listingEvidenceJson() {
+        return """
+                jsonb_build_object(
+                    'title', 'Bas gitarist ariyoruz',
+                    'description', 'Sahne programimiz icin deneyimli bir ekip arkadasi ariyoruz.',
+                    'publisherActorId', '%s',
+                    'publisherDisplayName', 'Publisher',
+                    'cadence', 'REGULAR',
+                    'wantedType', 'MUSICIAN',
+                    'instrumentId', '%s',
+                    'instrumentName', 'Bas Gitar',
+                    'branch', NULL,
+                    'customSpecialty', NULL,
+                    'cityId', '%s',
+                    'cityName', 'Istanbul',
+                    'genres', '[]'::jsonb,
+                    'scheduledAt', NULL,
+                    'feeAmountMinor', NULL,
+                    'currency', NULL,
+                    'listingStatus', 'OPEN'
+                )
+                """.formatted(PUBLISHER_ACTOR_ID, INSTRUMENT_ID, CITY_ID).strip();
+    }
+
+    private static String domainMigrationSql() throws Exception {
         return Files.readString(Path.of(
                 System.getProperty("user.dir"),
                 "scripts", "db", "2026-08-11-collab-domain.sql"
         ));
+    }
+
+    private static String moderationMigrationSql() throws Exception {
+        return Files.readString(Path.of(
+                System.getProperty("user.dir"),
+                "scripts", "db", "2026-08-11-collab-moderation.sql"
+        ));
+    }
+
+    private static String migrationSql() throws Exception {
+        return domainMigrationSql() + System.lineSeparator() + moderationMigrationSql();
     }
 
     private static void executeMigration(String sql) throws SQLException {

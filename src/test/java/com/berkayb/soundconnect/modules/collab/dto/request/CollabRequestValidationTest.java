@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.collab.dto.request;
 
 import com.berkayb.soundconnect.modules.collab.enums.CollabCadence;
 import com.berkayb.soundconnect.modules.collab.enums.CollabWantedType;
+import com.berkayb.soundconnect.modules.collab.enums.CollabReportDecision;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
@@ -67,5 +68,18 @@ class CollabRequestValidationTest {
         assertThat(validator.validate(request))
                 .extracting(value -> value.getPropertyPath().toString())
                 .containsExactly("instrumentIds");
+    }
+
+    @Test
+    void reportReviewRequiresVersionDecisionAndAuditableNote() {
+        CollabReportReviewRequest request = new CollabReportReviewRequest(
+                CollabReportDecision.REMOVE_LISTING,
+                null,
+                "x"
+        );
+
+        assertThat(validator.validate(request))
+                .extracting(value -> value.getPropertyPath().toString())
+                .containsExactlyInAnyOrder("expectedVersion", "resolutionNote");
     }
 }

@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -33,20 +34,21 @@ public class NotificationServiceImpl implements NotificationService {
 	private static final int MAX_PAGE = 1000;
 	private static final int MAX_PAGE_SIZE = 100;
 	private static final Sort NOTIFICATION_SORT = Sort.by(
-			Sort.Order.desc("createdAt"),
+			Sort.Order.desc("occurredAt"),
 			Sort.Order.desc("id")
 	);
 	
 	private final NotificationRepository notificationRepository;
 	private final NotificationMapper notificationMapper;
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
+	private final NotificationWebSocketService notificationWebSocketService;
 	
 	
 	// kullaniciya ait tum bilgileri getir (yeniden eskiye)
 	@Override
 	public Page<NotificationResponseDto> getUserNotifications(UUID userId, int page, int size) {
 		return notificationRepository
-				.findByRecipientIdOrderByCreatedAtDesc(userId, notificationPage(page, size))
+				.findByRecipientId(userId, notificationPage(page, size))
 				.map(notificationMapper::toDto);
 	}
 	
@@ -59,7 +61,7 @@ public class NotificationServiceImpl implements NotificationService {
 			int size
 	) {
 		return notificationRepository
-				.findByRecipientIdAndTypeInOrderByCreatedAtDesc(
+				.findByRecipientIdAndTypeIn(
 						userId,
 						types,
 						notificationPage(page, size)
@@ -81,20 +83,19 @@ public class NotificationServiceImpl implements NotificationService {
 	// kullanicinin son 10 bildirimini getir (badge icin hizli erisim)
 	@Override
 	public List<NotificationResponseDto> getRecentNotifications(UUID userId) {
-		List<Notification> entities = notificationRepository.findTop10ByRecipientIdOrderByCreatedAtDesc(userId);
+		List<Notification> entities = notificationRepository
+				.findTop10ByRecipientIdOrderByOccurredAtDescIdDesc(userId);
 		return notificationMapper.toDtoList(entities);
 	}
 	
-	// kullanicinin okunmamis bildirim sayisini getir (once cach'e bakilir)
+	// Kullaniciya donen unread sayisinda DB source of truth'tur. Projection
+	// callback'leri farkli node'larda siradan cikabildigi icin Redis cache hit'i
+	// authoritative kabul etmek 15 dakika stale badge uretebilir.
 	@Override
 	public long getUnreadCount(UUID userId) {
-		// Redis cache'ten unread sayisini al
-		Long cached = badgeCacheHelper.getCacheUnread(userId);
-		if (cached != null) {
-			return cached;
-		}
-		// Cache yoksa veritabanindan say -> cache'e yaz -> sonucu dondur
 		long count = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
+		// Redis only remains a best-effort projection; REST reconciliation always
+		// returns the database snapshot calculated above.
 		badgeCacheHelper.setUnreadWithTtl(userId, count);
 		return count;
 	}
@@ -110,19 +111,13 @@ public class NotificationServiceImpl implements NotificationService {
 			throw new SoundConnectException(ErrorType.NOTIFICATION_NOT_FOUND);
 		}
 		Notification notification = opt.get();
-		if (notification.isRead()) {
-			// zaten okunmussa hata firlat
-			throw new SoundConnectException(ErrorType.NOTIFICATION_ALREADY_READ);
+		if (!notification.isRead()) {
+			int updated = notificationRepository.markAsRead(notificationId, userId);
+			if (updated == 0) {
+				log.debug("markAsRead noop: id={}, user={}", notificationId, userId);
+			}
 		}
-		// bildirimi okundu olarak isaretle
-		int updated =  notificationRepository.markAsRead(notificationId, userId);
-		if (updated == 1) {
-			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			// DB guncel sayiyi verdigi icin cache'i dogrudan senkronla.
-			badgeCacheHelper.setUnread(userId, freshUnread);
-		} else {
-			log.debug("markAsRead noop: id={}, user={}", notificationId, userId);
-		}
+		projectUnreadAfterCommit(userId);
 	}
 	
 	
@@ -131,10 +126,7 @@ public class NotificationServiceImpl implements NotificationService {
 	public int markAllAsRead(UUID userId) {
 		// tumunu okundu olarak isaretle -> kac kayit  guncellendigini al
 		int updated = notificationRepository.markAllAsRead(userId);
-		if (updated > 0) {
-			// cache'deki unread sayacini sifirla
-			badgeCacheHelper.setUnread(userId, 0);
-		}
+		projectUnreadAfterCommit(userId);
 		return updated;
 	}
 
@@ -145,17 +137,7 @@ public class NotificationServiceImpl implements NotificationService {
 				userId,
 				conversationId.toString()
 		);
-		if (updated > 0) {
-			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			runAfterCommit(() -> {
-				try {
-					badgeCacheHelper.setUnread(userId, freshUnread);
-				} catch (RuntimeException exception) {
-					log.warn("DM notification badge projection failed userId={} exceptionType={}",
-					         userId, exception.getClass().getSimpleName());
-				}
-			});
-		}
+		projectUnreadAfterCommit(userId);
 		return updated;
 	}
 
@@ -182,8 +164,6 @@ public class NotificationServiceImpl implements NotificationService {
 			throw new SoundConnectException(ErrorType.NOTIFICATION_NOT_FOUND);
 		}
 		Notification notification = opt.get();
-		boolean wasUnread = !notification.isRead(); // silinnen bildirim okunmamis mi?
-		
 		try {
 			// bildirimi sil
 			notificationRepository.delete(notification);
@@ -192,11 +172,7 @@ public class NotificationServiceImpl implements NotificationService {
 			log.debug("deleteById already removed: id={}, user={}", notificationId, userId);
 			throw new SoundConnectException(ErrorType.NOTIFICATION_NOT_FOUND);
 		}
-		if (wasUnread) {
-			// eger silinen bildirim unread ise -> cache'i DB'deki guncel sayiyla senkronla
-			long freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
-			badgeCacheHelper.setUnread(userId, freshUnread);
-		}
+		projectUnreadAfterCommit(userId);
 		return true;
 	}
 	
@@ -204,7 +180,34 @@ public class NotificationServiceImpl implements NotificationService {
 	@Transactional
 	public int clearAll(UUID userId) {
 		int deleted = notificationRepository.deleteByRecipientId(userId);
-		badgeCacheHelper.setUnread(userId, 0);
+		projectUnreadAfterCommit(userId);
 		return deleted;
+	}
+
+	private void projectUnreadAfterCommit(UUID userId) {
+		runAfterCommit(() -> {
+			long freshUnread;
+			try {
+				// Read after the mutation transaction commits so every projection is
+				// derived from committed database state, not an in-flight snapshot.
+				freshUnread = notificationRepository.countByRecipientIdAndReadIsFalse(userId);
+			} catch (RuntimeException exception) {
+				log.warn("Notification unread recount failed after commit userId={} exceptionType={}",
+						userId, exception.getClass().getSimpleName());
+				return;
+			}
+			try {
+				badgeCacheHelper.setUnread(userId, freshUnread);
+			} catch (RuntimeException exception) {
+				log.warn("Notification badge cache projection failed userId={} exceptionType={}",
+						userId, exception.getClass().getSimpleName());
+			}
+			try {
+				notificationWebSocketService.sendUnreadBadgeToUser(userId, freshUnread);
+			} catch (RuntimeException exception) {
+				log.warn("Notification badge WebSocket projection failed userId={} exceptionType={}",
+						userId, exception.getClass().getSimpleName());
+			}
+		});
 	}
 }

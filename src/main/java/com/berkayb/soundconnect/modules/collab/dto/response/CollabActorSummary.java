@@ -10,6 +10,7 @@ public record CollabActorSummary(
         ProfileType profileType,
         UUID sourceProfileId,
         UUID contactUserId,
+        String contactUsername,
         String displayName,
         String avatarUrl,
         BigDecimal rating,

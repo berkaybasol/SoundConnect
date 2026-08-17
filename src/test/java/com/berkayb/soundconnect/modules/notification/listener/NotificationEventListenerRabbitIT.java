@@ -31,6 +31,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Map;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,19 +91,21 @@ class NotificationEventListenerRabbitIT {
 	@DisplayName("RabbitMQ → Listener: event tüketilir; save + cache + WS + mail tetiklenir")
 	void consume_event_from_queue_and_invoke_side_effects() {
 		UUID userId = UUID.randomUUID();
+		Instant occurredAt = Instant.parse("2026-08-11T10:00:00Z");
 		
 		Notification persisted = Notification.builder()
 		                                     .recipientId(userId)
 		                                     .type(NotificationType.MEDIA_TRANSCODE_FAILED) // emailRecommended=true
 		                                     .title("Medya işleme başarısız")
 		                                     .message("Parça işlenemedi")
+		                                     .occurredAt(occurredAt)
 		                                     .payload(Map.of("recipientEmail", "user@example.com"))
 		                                     .read(false)
 		                                     .build();
 		UUID notifId = UUID.randomUUID();
 		org.springframework.test.util.ReflectionTestUtils.setField(persisted, "id", notifId);
 		
-		when(notificationRepository.save(any(Notification.class))).thenReturn(persisted);
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenReturn(persisted);
 		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(5L);
 		
 		NotificationResponseDto dto = new NotificationResponseDto(
@@ -110,7 +113,6 @@ class NotificationEventListenerRabbitIT {
 				"Medya işleme başarısız", "Parça işlenemedi", false, null, Map.of("recipientEmail", "user@example.com")
 		);
 		when(notificationMapper.toDto(persisted)).thenReturn(dto);
-		when(badgeCacheHelper.getCacheUnread(userId)).thenReturn(5L);
 		
 		NotificationInboundEvent event = NotificationInboundEvent.builder()
 		                                                         .recipientId(userId)
@@ -119,16 +121,18 @@ class NotificationEventListenerRabbitIT {
 		                                                         .message("Parça işlenemedi")
 		                                                         .payload(Map.of("recipientEmail", "user@example.com"))
 		                                                         .emailForce(null)
+		                                                         .occurredAt(occurredAt)
 		                                                         .build();
 		
 		rabbitTemplate.convertAndSend("notification.exchange", "notification.media.failed", event);
 		
 		ArgumentCaptor<Notification> toSaveCap = ArgumentCaptor.forClass(Notification.class);
-		verify(notificationRepository, timeout(5000)).save(toSaveCap.capture());
+		verify(notificationRepository, timeout(5000)).saveAndFlush(toSaveCap.capture());
 		Notification toSave = toSaveCap.getValue();
 		assertThat(toSave.getRecipientId()).isEqualTo(userId);
 		assertThat(toSave.getType()).isEqualTo(NotificationType.MEDIA_TRANSCODE_FAILED);
 		assertThat(toSave.isRead()).isFalse();
+		assertThat(toSave.getOccurredAt()).isEqualTo(occurredAt);
 		
 		verify(notificationRepository, timeout(5000)).countByRecipientIdAndReadIsFalse(userId);
 		verify(badgeCacheHelper, timeout(5000)).setUnreadWithTtl(userId, 5L);
@@ -136,6 +140,7 @@ class NotificationEventListenerRabbitIT {
 		verify(notificationMapper, timeout(5000)).toDto(persisted);
 		verify(notificationWebSocketService, timeout(5000)).sendNotificationToUser(userId, dto);
 		verify(notificationWebSocketService, timeout(5000)).sendUnreadBadgeToUser(userId, 5L);
+		verify(badgeCacheHelper, never()).getCacheUnread(any());
 		
 		// mailProducer çağrılmalı
 		verify(mailProducer, timeout(5000)).send(any());

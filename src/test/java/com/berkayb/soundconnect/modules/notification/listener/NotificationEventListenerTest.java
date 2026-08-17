@@ -15,7 +15,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -77,6 +81,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("Happy path: save → unread count → cache set → WS notif+badge → mail pipeline'a gönderim")
 	void handle_happyPath() {
+		Instant occurredAt = Instant.parse("2026-08-11T09:15:00Z");
 		NotificationInboundEvent event = NotificationInboundEvent.builder()
 		                                                         .recipientId(userId)
 		                                                         .type(NotificationType.MEDIA_TRANSCODE_FAILED) // <-- emailRecommended=true
@@ -84,6 +89,7 @@ class NotificationEventListenerTest {
 		                                                         .message("Parça işlenemedi")
 		                                                         .payload(Map.of("recipientEmail", "user@example.com"))
 		                                                         .emailForce(null) // type.emailRecommended() devrede
+		                                                         .occurredAt(occurredAt)
 		                                                         .build();
 		
 		// repo.save(entity) → entity + id dönsün
@@ -99,7 +105,7 @@ class NotificationEventListenerTest {
 		UUID notifId = UUID.randomUUID();
 		org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", notifId);
 		
-		when(notificationRepository.save(any(Notification.class))).thenReturn(saved);
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenReturn(saved);
 		
 		// unread count → cache set
 		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(7L);
@@ -111,19 +117,17 @@ class NotificationEventListenerTest {
 		);
 		when(notificationMapper.toDto(saved)).thenReturn(dto);
 		
-		// badge için cache okununca 7L gelsin
-		when(badgeCacheHelper.getCacheUnread(userId)).thenReturn(7L);
-		
 		// act
 		listener.handle(event);
 		
 		// assert: DB save doğru alanlarla çağrılmış mı (argument captor ile temel doğrulama)
 		ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
-		verify(notificationRepository).save(captor.capture());
+		verify(notificationRepository).saveAndFlush(captor.capture());
 		Notification toSave = captor.getValue();
 		assertThat(toSave.getRecipientId()).isEqualTo(userId);
 		assertThat(toSave.getType()).isEqualTo(NotificationType.MEDIA_TRANSCODE_FAILED);
 		assertThat(toSave.isRead()).isFalse();
+		assertThat(toSave.getOccurredAt()).isEqualTo(occurredAt);
 		
 		// unread count → cache set
 		verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
@@ -133,13 +137,14 @@ class NotificationEventListenerTest {
 		verify(notificationMapper).toDto(saved);
 		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
 		verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 7L);
+		verify(badgeCacheHelper, never()).getCacheUnread(any());
 		
 		// mail kararı: **Artık mailProducer üzerinden**
 		verify(mailProducer).send(any(MailSendRequest.class));
 	}
 	
 	@Test
-	@DisplayName("WS ve Mail hata atsa bile swallow edilir; notif WS fail olursa badge push yapılmaz (aynı try bloğu)")
+	@DisplayName("Notification WS ve mail hata atsa da DB badge push bağımsız çalışır")
 	void handle_swallowWsAndMailErrors() {
 		NotificationInboundEvent event = NotificationInboundEvent.builder()
 		                                                         .recipientId(userId)
@@ -148,6 +153,7 @@ class NotificationEventListenerTest {
 		                                                         .message("Selam!")
 		                                                         .payload(Map.of("recipientEmail", "user@example.com"))
 		                                                         .emailForce(true)
+		                                                         .occurredAt(Instant.parse("2026-08-11T09:16:00Z"))
 		                                                         .build();
 		
 		Notification saved = Notification.builder()
@@ -161,7 +167,7 @@ class NotificationEventListenerTest {
 		UUID notifId = UUID.randomUUID();
 		org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", notifId);
 		
-		when(notificationRepository.save(any(Notification.class))).thenReturn(saved);
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenReturn(saved);
 		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(9L);
 		
 		NotificationResponseDto dto = new NotificationResponseDto(
@@ -170,7 +176,7 @@ class NotificationEventListenerTest {
 		);
 		when(notificationMapper.toDto(saved)).thenReturn(dto);
 		
-		// WS notif fail → aynı try içinde olduğu için badge push çağrılmayacak
+		// Notification frame fail etse de DB kaynaklı badge frame'i bağımsızdır.
 		doThrow(new RuntimeException("ws down"))
 				.when(notificationWebSocketService).sendNotificationToUser(userId, dto);
 		
@@ -182,15 +188,173 @@ class NotificationEventListenerTest {
 		listener.handle(event);
 		
 		// assert
-		verify(notificationRepository).save(any(Notification.class));
+		verify(notificationRepository).saveAndFlush(any(Notification.class));
 		verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
 		verify(badgeCacheHelper).setUnreadWithTtl(userId, 9L);
 		
 		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
-		verify(notificationWebSocketService, never()).sendUnreadBadgeToUser(any(), anyLong());
+		verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 9L);
 		
 		// MailProducer çağrılır ama hata swallow edilir
 		verify(mailProducer).send(any(MailSendRequest.class));
+	}
+
+	@Test
+	@DisplayName("Legacy event occurredAt taşımıyorsa tüketim zamanı audit fallback olarak kaydedilir")
+	void handle_legacyEventFallsBackToConsumptionTime() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("Yeni takipçi")
+				.message("Selam")
+				.emailForce(false)
+				.build();
+		when(notificationRepository.saveAndFlush(any(Notification.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(1L);
+		Instant before = Instant.now();
+
+		listener.handle(event);
+
+		ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+		verify(notificationRepository).saveAndFlush(captor.capture());
+		assertThat(captor.getValue().getOccurredAt())
+				.isBetween(before, Instant.now());
+	}
+
+	@Test
+	@DisplayName("Optional title/message DB NOT NULL sözleşmesine güvenli varsayılanlarla yazılır")
+	void handle_optionalTextUsesPersistenceSafeDefaults() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("  ")
+				.message(null)
+				.emailForce(false)
+				.occurredAt(Instant.parse("2026-08-11T09:16:30Z"))
+				.build();
+		when(notificationRepository.saveAndFlush(any(Notification.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(1L);
+
+		listener.handle(event);
+
+		ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+		verify(notificationRepository).saveAndFlush(captor.capture());
+		assertThat(captor.getValue().getTitle())
+				.isEqualTo(NotificationType.SOCIAL_NEW_FOLLOWER.getDefaultTitle());
+		assertThat(captor.getValue().getMessage()).isEmpty();
+	}
+
+	@Test
+	@DisplayName("DB kolon sınırını aşan event poison retry yerine validation ile atlanır")
+	void handle_oversizedTextSkipsBeforePersistence() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("x".repeat(161))
+				.message("message")
+				.build();
+
+		listener.handle(event);
+
+		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer);
+	}
+
+	@Test
+	@DisplayName("Redis projection fail/null olsa da WS badge DB fresh unread değerini kullanır")
+	void handle_cacheFailureStillBroadcastsDatabaseUnread() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("Yeni takipçi")
+				.message("Selam")
+				.emailForce(false)
+				.occurredAt(Instant.parse("2026-08-11T09:17:00Z"))
+				.build();
+		Notification saved = Notification.builder()
+				.recipientId(userId)
+				.type(event.type())
+				.title(event.title())
+				.message(event.message())
+				.occurredAt(event.occurredAt())
+				.read(false)
+				.build();
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenReturn(saved);
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(12L);
+		doThrow(new IllegalStateException("redis unavailable"))
+				.when(badgeCacheHelper).setUnreadWithTtl(userId, 12L);
+
+		listener.handle(event);
+
+		verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 12L);
+		verify(badgeCacheHelper, never()).getCacheUnread(any());
+	}
+
+	@Test
+	@DisplayName("DB transaction commit olmadan cache, WS veya mail yan etkisi oluşmaz")
+	void handle_defersExternalSideEffectsUntilCommit() {
+		Instant occurredAt = Instant.parse("2026-08-11T09:18:00Z");
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("Yeni takipçi")
+				.message("Selam")
+				.emailForce(false)
+				.occurredAt(occurredAt)
+				.build();
+		Notification saved = Notification.builder()
+				.recipientId(userId).type(event.type()).title(event.title()).message(event.message())
+				.occurredAt(occurredAt).read(false).build();
+		when(notificationRepository.saveAndFlush(any(Notification.class))).thenReturn(saved);
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(2L);
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			listener.handle(event);
+
+			verify(notificationRepository, never()).countByRecipientIdAndReadIsFalse(any());
+			verifyNoInteractions(badgeCacheHelper, notificationMapper,
+					notificationWebSocketService, mailProducer);
+			List<TransactionSynchronization> synchronizations =
+					TransactionSynchronizationManager.getSynchronizations();
+			assertThat(synchronizations).hasSize(1);
+			synchronizations.getFirst().afterCommit();
+
+			verify(badgeCacheHelper).setUnreadWithTtl(userId, 2L);
+			verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 2L);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
+	}
+
+	@Test
+	@DisplayName("DB transaction rollback olursa cache, WS veya mail phantom side effect üretmez")
+	void handle_rollbackDoesNotDispatchExternalSideEffects() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.title("Yeni takipçi")
+				.message("Selam")
+				.emailForce(false)
+				.occurredAt(Instant.parse("2026-08-11T09:19:00Z"))
+				.build();
+		when(notificationRepository.saveAndFlush(any(Notification.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			listener.handle(event);
+			List<TransactionSynchronization> synchronizations =
+					TransactionSynchronizationManager.getSynchronizations();
+			assertThat(synchronizations).hasSize(1);
+			synchronizations.getFirst().afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+			verify(notificationRepository, never()).countByRecipientIdAndReadIsFalse(any());
+			verifyNoInteractions(badgeCacheHelper, notificationMapper,
+					notificationWebSocketService, mailProducer);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
 	}
 	
 }

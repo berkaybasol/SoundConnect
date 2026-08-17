@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.collab.enums.CollabCadence;
 import com.berkayb.soundconnect.modules.collab.enums.CollabClosureReason;
 import com.berkayb.soundconnect.modules.collab.enums.CollabListingStatus;
 import com.berkayb.soundconnect.modules.collab.enums.CollabWantedType;
+import com.berkayb.soundconnect.modules.collab.spec.CollabSavedListingSpecifications;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
@@ -111,8 +112,10 @@ class CollabSavedListingRepositoryConcurrencyPostgresTest {
             locked.setClosureReason(CollabClosureReason.OWNER_CLOSED);
             locked.setClosedAt(NOW.plusSeconds(60));
         });
-        var visibleAfterClose = transaction.execute(status -> savedRepository.findVisibleByUserId(
-                saver.getId(), CollabListingStatus.OPEN, NOW.plusSeconds(60), PageRequest.of(0, 20)));
+        var visibleAfterClose = transaction.execute(status -> savedRepository.findAll(
+                CollabSavedListingSpecifications.visible(
+                        saver.getId(), CollabListingStatus.OPEN, NOW.plusSeconds(60)),
+                PageRequest.of(0, 20)));
         assertThat(visibleAfterClose).isNotNull();
         assertThat(visibleAfterClose.getContent()).isEmpty();
     }

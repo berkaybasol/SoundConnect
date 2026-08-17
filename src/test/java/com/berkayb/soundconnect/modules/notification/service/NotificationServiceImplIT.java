@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapperImpl;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -103,6 +105,7 @@ class NotificationServiceImplIT {
 	private com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter jwtAuthenticationFilter;
 	@MockitoBean private com.berkayb.soundconnect.auth.security.JwtTokenProvider jwtTokenProvider;
 	@MockitoBean private com.berkayb.soundconnect.auth.service.GoogleAuthService googleAuthService;
+	@MockitoBean private NotificationWebSocketService notificationWebSocketService;
 	
 	@Autowired private NotificationRepository repo;
 	@Autowired private NotificationService notificationService;
@@ -123,6 +126,7 @@ class NotificationServiceImplIT {
 		                             .type(t)
 		                             .title(title)
 		                             .message(msg)
+		                             .occurredAt(Instant.now())
 		                             .payload(Map.of("recipientEmail","user@example.com"))
 		                             .read(read)
 		                             .build();
@@ -131,8 +135,8 @@ class NotificationServiceImplIT {
 	}
 	
 	@Test
-	@DisplayName("getUnreadCount: cache miss → DB; ikinci çağrı cache hit")
-	void getUnreadCount_caches_then_uses_cache() {
+	@DisplayName("getUnreadCount: Redis projection stale olsa da her çağrı DB snapshot'ını döndürür")
+	void getUnreadCount_alwaysReconcilesFromDatabase() {
 		make(user, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "u1", "m1");
 		make(user, NotificationType.AUTH_EMAIL_VERIFIED, false, "u2", "m2");
 		make(user, NotificationType.SOCIAL_NEW_FOLLOWER, true,  "r1", "read");
@@ -143,10 +147,11 @@ class NotificationServiceImplIT {
 		Long cached = badgeHelper.getCacheUnread(user);
 		assertThat(cached).isEqualTo(2L);
 		
-		// DB’ye yeni unread eklesek de cache sabit kalmalı
+		// Yeni DB kaydı eski cache projection'ına rağmen hemen görünmeli.
 		make(user, NotificationType.MEDIA_TRANSCODE_READY, false, "u3", "m3");
 		long second = notificationService.getUnreadCount(user);
-		assertThat(second).isEqualTo(2L);
+		assertThat(second).isEqualTo(3L);
+		assertThat(badgeHelper.getCacheUnread(user)).isEqualTo(3L);
 	}
 	
 	@Test

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.location.service;
 
 import com.berkayb.soundconnect.modules.location.dto.request.CityRequestDto;
+import com.berkayb.soundconnect.modules.location.dto.response.CityPrettyDto;
 import com.berkayb.soundconnect.modules.location.dto.response.CityResponseDto;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.mapper.CityMapper;
@@ -69,19 +70,37 @@ class CityServiceImplTest {
 	
 	@Test
 	void findAll_ShouldMapList() {
-		City c1 = City.builder().id(UUID.randomUUID()).name("A").build();
-		City c2 = City.builder().id(UUID.randomUUID()).name("B").build();
-		when(cityRepository.findAll()).thenReturn(List.of(c1, c2));
+		City c1 = City.builder().id(UUID.randomUUID()).name("Üsküdar").build();
+		City c2 = City.builder().id(UUID.randomUUID()).name("İstanbul").build();
+		City c3 = City.builder().id(UUID.randomUUID()).name("Iğdır").build();
+		when(cityRepository.findAll()).thenReturn(List.of(c1, c2, c3));
 		
-		CityResponseDto d1 = new CityResponseDto(c1.getId(), "A");
-		CityResponseDto d2 = new CityResponseDto(c2.getId(), "B");
-		when(cityMapper.toResponseList(List.of(c1, c2))).thenReturn(List.of(d1, d2));
+		CityResponseDto d1 = new CityResponseDto(c1.getId(), c1.getName());
+		CityResponseDto d2 = new CityResponseDto(c2.getId(), c2.getName());
+		CityResponseDto d3 = new CityResponseDto(c3.getId(), c3.getName());
+		when(cityMapper.toResponseList(List.of(c3, c2, c1))).thenReturn(List.of(d3, d2, d1));
 		
 		List<CityResponseDto> out = cityService.findAll();
-		assertThat(out).containsExactly(d1, d2);
+		assertThat(out).containsExactly(d3, d2, d1);
 		
 		verify(cityRepository).findAll();
-		verify(cityMapper).toResponseList(List.of(c1, c2));
+		verify(cityMapper).toResponseList(List.of(c3, c2, c1));
+	}
+
+	@Test
+	void findAllPretty_ShouldSortCitiesBeforeMapping() {
+		City uskudar = City.builder().id(UUID.randomUUID()).name("Üsküdar").build();
+		City istanbul = City.builder().id(UUID.randomUUID()).name("İstanbul").build();
+		City igdir = City.builder().id(UUID.randomUUID()).name("Iğdır").build();
+		when(cityRepository.findAll()).thenReturn(List.of(uskudar, istanbul, igdir));
+		when(cityPrettyMapper.toPretty(igdir)).thenReturn(new CityPrettyDto("Iğdır", List.of()));
+		when(cityPrettyMapper.toPretty(istanbul)).thenReturn(new CityPrettyDto("İstanbul", List.of()));
+		when(cityPrettyMapper.toPretty(uskudar)).thenReturn(new CityPrettyDto("Üsküdar", List.of()));
+
+		List<CityPrettyDto> result = cityService.findAllPretty();
+
+		assertThat(result).extracting(CityPrettyDto::name)
+				.containsExactly("Iğdır", "İstanbul", "Üsküdar");
 	}
 	
 	@Test

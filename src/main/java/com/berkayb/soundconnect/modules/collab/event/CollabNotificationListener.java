@@ -1,40 +1,54 @@
 package com.berkayb.soundconnect.modules.collab.event;
 
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
-import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationDispatchCoordinator;
+import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxDispatcher;
+import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class CollabNotificationListener {
-    private final NotificationProducer notificationProducer;
+    private final CollabNotificationOutboxService outboxService;
+    private final CollabNotificationOutboxDispatcher dispatcher;
+    private final CollabNotificationDispatchCoordinator dispatchCoordinator;
+
+    public CollabNotificationListener(
+            CollabNotificationOutboxService outboxService,
+            CollabNotificationOutboxDispatcher dispatcher,
+            CollabNotificationDispatchCoordinator dispatchCoordinator
+    ) {
+        this.outboxService = outboxService;
+        this.dispatcher = dispatcher;
+        this.dispatchCoordinator = dispatchCoordinator;
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    public void persistInDomainTransaction(CollabNotificationEvent event) {
+        outboxService.enqueue(event);
+    }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onCollabNotification(CollabNotificationEvent event) {
         try {
-            notificationProducer.publish(
-                    NotificationInboundEvent.builder()
-                            .recipientId(event.recipientId())
-                            .type(event.type())
-                            .title(event.title())
-                            .message(event.message())
-                            .payload(event.payload())
-                            .emailForce(false)
-                            .occurredAt(event.occurredAt())
-                            .build()
-            );
-        } catch (Exception exception) {
-            // Recipient and human-readable content are intentionally excluded
-            // from logs because they can contain personal data.
-            log.error(
-                    "Collab notification publish failed. type={}, exceptionType={}",
-                    event.type(),
-                    exception.getClass().getName()
+            dispatchCoordinator.trySchedule(event.eventId(), () -> {
+                try {
+                    dispatcher.dispatch(event.eventId());
+                } catch (RuntimeException exception) {
+                    log.warn(
+                            "Collab notification immediate dispatch task failed; durable row remains recoverable. eventId={}, type={}, exceptionType={}",
+                            event.eventId(), event.type(), exception.getClass().getName()
+                    );
+                }
+            });
+        } catch (RuntimeException exception) {
+            // The committed PENDING row is the fallback. Do not expose recipient,
+            // title, message or payload in operational logs.
+            log.warn(
+                    "Collab notification immediate dispatch failed; scheduler will retry. eventId={}, type={}, exceptionType={}",
+                    event.eventId(), event.type(), exception.getClass().getName()
             );
         }
     }

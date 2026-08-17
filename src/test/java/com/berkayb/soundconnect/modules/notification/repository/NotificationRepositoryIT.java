@@ -16,14 +16,14 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * NotificationRepositoryIT – Sektör standardı JPA repository testleri.
- * Bu sürümde flakiness'i bitirmek için persist sonrası created_at'i
- * native SQL ile deterministik biçimde set ediyoruz.
+ * Olay zamanı ve DB audit zamanı ayrımını gerçek PostgreSQL üzerinde doğrular.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest
@@ -68,7 +68,7 @@ class NotificationRepositoryIT {
 	}
 	
 	/**
-	 * Deterministik created_at ile Notification oluşturur:
+	 * Deterministik event/audit zamanı ile Notification oluşturur:
 	 * 1) save
 	 * 2) native SQL ile created_at güncelle
 	 * 3) persistence context'i temizle
@@ -80,6 +80,7 @@ class NotificationRepositoryIT {
 		                             .type(type)
 		                             .title(title)
 		                             .message(msg)
+		                             .occurredAt(createdAt.toInstant(ZoneOffset.UTC))
 		                             .payload(payload)
 		                             .read(read)
 		                             .build();
@@ -120,14 +121,32 @@ class NotificationRepositoryIT {
 	}
 	
 	@Test
-	@DisplayName("findByRecipientIdOrderByCreatedAtDesc – Sıralama kesin!")
+	@DisplayName("findByRecipientId – Olay zamanına göre sıralama kesin!")
 	void findByRecipient_sortedDesc() {
 		LocalDateTime now = LocalDateTime.of(2025, 9, 4, 12, 0, 0);
 		Notification n1 = make(userA, NotificationType.SOCIAL_NEW_FOLLOWER, false, "t1", "m1", Map.of(), now.minusMinutes(3));
 		Notification n2 = make(userA, NotificationType.MEDIA_TRANSCODE_READY, true, "t2", "m2", Map.of(), now.minusMinutes(2));
 		Notification n3 = make(userA, NotificationType.AUTH_EMAIL_VERIFIED, false, "t3", "m3", Map.of(), now.minusMinutes(1));
+
+		// Simulate delayed/retried delivery: insertion audit order deliberately
+		// disagrees with event order. User-visible ordering must remain event-time.
+		entityManager.createNativeQuery("UPDATE tbl_notification SET created_at = :ts WHERE id = :id")
+				.setParameter("ts", Timestamp.valueOf(now.plusHours(1)))
+				.setParameter("id", n1.getId())
+				.executeUpdate();
+		entityManager.createNativeQuery("UPDATE tbl_notification SET created_at = :ts WHERE id = :id")
+				.setParameter("ts", Timestamp.valueOf(now.minusHours(1)))
+				.setParameter("id", n3.getId())
+				.executeUpdate();
+		entityManager.flush();
+		entityManager.clear();
 		
-		var page = repo.findByRecipientIdOrderByCreatedAtDesc(userA, org.springframework.data.domain.PageRequest.of(0, 10));
+		var page = repo.findByRecipientId(
+				userA,
+				org.springframework.data.domain.PageRequest.of(0, 10,
+						org.springframework.data.domain.Sort.by(
+								org.springframework.data.domain.Sort.Order.desc("occurredAt"),
+								org.springframework.data.domain.Sort.Order.desc("id"))));
 		assertThat(page.getContent()).extracting("id")
 		                             .containsExactly(n3.getId(), n2.getId(), n1.getId());
 	}
@@ -143,26 +162,29 @@ class NotificationRepositoryIT {
 	}
 	
 	@Test
-	@DisplayName("findTop10ByRecipientIdOrderByCreatedAtDesc – Limit ve sıralama")
+	@DisplayName("findTop10ByRecipientIdOrderByOccurredAtDescIdDesc – Limit ve sıralama")
 	void findTop10ByRecipient_descOrder_limitApplies() {
 		LocalDateTime base = LocalDateTime.of(2025, 9, 4, 13, 0, 0);
 		for (int i = 0; i < 12; i++) {
 			make(userB, NotificationType.MEDIA_UPLOAD_RECEVIED, false, "b" + i, "m" + i,
 			     Map.of("i", i), base.minusSeconds(60 - i));
 		}
-		List<Notification> top10 = repo.findTop10ByRecipientIdOrderByCreatedAtDesc(userB);
+		List<Notification> top10 = repo.findTop10ByRecipientIdOrderByOccurredAtDescIdDesc(userB);
 		assertThat(top10).hasSize(10);
 		assertThat(top10.get(0).getTitle()).isEqualTo("b11");
 	}
 	
 	@Test
-	@DisplayName("findByRecipientIdAndTypeInOrderByCreatedAtDesc – Tür filtresi")
+	@DisplayName("findByRecipientIdAndTypeIn – Tür filtresi")
 	void findByTypes_filtering() {
 		make(userA, NotificationType.MEDIA_TRANSCODE_FAILED, false, "f1", "", Map.of(), LocalDateTime.of(2025, 9, 4, 14, 0));
-		var page = repo.findByRecipientIdAndTypeInOrderByCreatedAtDesc(
+		var page = repo.findByRecipientIdAndTypeIn(
 				userA,
 				List.of(NotificationType.MEDIA_TRANSCODE_FAILED, NotificationType.AUTH_EMAIL_VERIFIED),
-				org.springframework.data.domain.PageRequest.of(0, 20)
+				org.springframework.data.domain.PageRequest.of(0, 20,
+						org.springframework.data.domain.Sort.by(
+								org.springframework.data.domain.Sort.Order.desc("occurredAt"),
+								org.springframework.data.domain.Sort.Order.desc("id")))
 		);
 		assertThat(page.getContent()).extracting(Notification::getType)
 		                             .allMatch(t -> t == NotificationType.MEDIA_TRANSCODE_FAILED || t == NotificationType.AUTH_EMAIL_VERIFIED);

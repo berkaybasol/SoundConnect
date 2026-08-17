@@ -617,4 +617,170 @@ CREATE INDEX IF NOT EXISTS idx_collab_report_reason
 CREATE INDEX IF NOT EXISTS idx_collab_report_user
     ON tbl_collab_report (reporter_user_id, reported_at DESC, id DESC);
 
+-- ---------------------------------------------------------------------------
+-- Hibernate may have created the canonical tables before this migration ran.
+-- CREATE TABLE IF NOT EXISTS then cannot add SQL-only domain checks, so every
+-- check is reconciled independently by its stable name.
+-- ---------------------------------------------------------------------------
+
+DO $collab_domain_check_reconciliation$
+DECLARE
+    constraint_row record;
+BEGIN
+    FOR constraint_row IN
+        SELECT *
+          FROM (VALUES
+            ('tbl_collab_actor', 'ck_collab_actor_profile_type',
+             $$profile_type IN ('MUSICIAN', 'BAND', 'VENUE', 'STUDIO')$$),
+            ('tbl_collab_actor', 'ck_collab_actor_display_name',
+             $$char_length(btrim(display_name)) BETWEEN 1 AND 120$$),
+            ('tbl_collab_actor', 'ck_collab_actor_avatar_url',
+             $$avatar_url IS NULL OR char_length(btrim(avatar_url)) BETWEEN 1 AND 1024$$),
+            ('tbl_collab_actor', 'ck_collab_actor_rating_totals',
+             $$rating_sum >= 0 AND review_count >= 0 AND ((review_count = 0 AND rating_sum = 0) OR (review_count > 0 AND rating_sum BETWEEN review_count AND review_count * 5))$$),
+            ('tbl_collab_actor', 'ck_collab_actor_completed_jobs',
+             $$completed_job_count >= 0$$),
+            ('tbl_collab_actor', 'ck_collab_actor_version',
+             $$version >= 0$$),
+
+            ('tbl_collab', 'ck_collab_creation_payload_hash',
+             $$creation_payload_hash ~ '^[0-9A-Fa-f]{64}$'$$),
+            ('tbl_collab', 'ck_collab_cadence',
+             $$cadence IN ('REGULAR', 'EXTRA')$$),
+            ('tbl_collab', 'ck_collab_wanted_type',
+             $$wanted_type IN ('MUSICIAN', 'BAND', 'VENUE', 'STUDIO')$$),
+            ('tbl_collab', 'ck_collab_branch',
+             $$branch IS NULL OR branch IN ('VOCAL', 'SOUND_ENGINEER', 'PRODUCER', 'DJ', 'OTHER')$$),
+            ('tbl_collab', 'ck_collab_specialty_shape',
+             $$(wanted_type = 'MUSICIAN' AND ((instrument_id IS NOT NULL AND branch IS NULL AND custom_specialty IS NULL) OR (instrument_id IS NULL AND branch IS NOT NULL AND ((branch = 'OTHER' AND custom_specialty IS NOT NULL AND char_length(btrim(custom_specialty)) BETWEEN 1 AND 80) OR (branch <> 'OTHER' AND custom_specialty IS NULL))))) OR (wanted_type <> 'MUSICIAN' AND instrument_id IS NULL AND branch IS NULL AND custom_specialty IS NULL)$$),
+            ('tbl_collab', 'ck_collab_title',
+             $$char_length(btrim(title)) BETWEEN 5 AND 100$$),
+            ('tbl_collab', 'ck_collab_description',
+             $$char_length(btrim(description)) BETWEEN 20 AND 500$$),
+            ('tbl_collab', 'ck_collab_schedule_shape',
+             $$(cadence = 'REGULAR' AND scheduled_at IS NULL AND expires_at IS NULL) OR (cadence = 'EXTRA' AND scheduled_at IS NOT NULL AND expires_at IS NOT NULL AND expires_at = scheduled_at)$$),
+            ('tbl_collab', 'ck_collab_extra_publication_window',
+             $$cadence <> 'EXTRA' OR published_at IS NULL OR (scheduled_at >= published_at AND scheduled_at <= published_at + INTERVAL '7 days')$$),
+            ('tbl_collab', 'ck_collab_fee_pair',
+             $$(fee_amount_minor IS NULL AND currency IS NULL) OR (fee_amount_minor IS NOT NULL AND fee_amount_minor BETWEEN 1 AND 100000000 AND currency IS NOT NULL AND currency ~ '^[A-Z]{3}$')$$),
+            ('tbl_collab', 'ck_collab_status',
+             $$status IN ('DRAFT', 'OPEN', 'CLOSED', 'EXPIRED')$$),
+            ('tbl_collab', 'ck_collab_closure_reason',
+             $$closure_reason IS NULL OR closure_reason IN ('MATCHED', 'OWNER_CLOSED', 'EXPIRED', 'ADMIN_REMOVED')$$),
+            ('tbl_collab', 'ck_collab_lifecycle',
+             $$(status = 'DRAFT' AND published_at IS NULL AND closed_at IS NULL AND closure_reason IS NULL) OR (status = 'OPEN' AND published_at IS NOT NULL AND closed_at IS NULL AND closure_reason IS NULL) OR (status = 'CLOSED' AND published_at IS NOT NULL AND closed_at IS NOT NULL AND closed_at >= published_at AND closure_reason IS NOT NULL AND closure_reason IN ('MATCHED', 'OWNER_CLOSED', 'ADMIN_REMOVED')) OR (status = 'EXPIRED' AND cadence = 'EXTRA' AND published_at IS NOT NULL AND closed_at IS NOT NULL AND closed_at >= published_at AND closure_reason = 'EXPIRED')$$),
+            ('tbl_collab', 'ck_collab_version',
+             $$version >= 0$$),
+
+            ('tbl_collab_genre', 'ck_collab_genre_position',
+             $$position BETWEEN 0 AND 2$$),
+            ('tbl_collab_genre', 'ck_collab_genre_value',
+             $$char_length(btrim(genre)) BETWEEN 1 AND 40$$),
+
+            ('tbl_collab_application', 'ck_collab_application_payload_hash',
+             $$request_payload_hash ~ '^[0-9A-Fa-f]{64}$'$$),
+            ('tbl_collab_application', 'ck_collab_application_phone',
+             $$char_length(phone_snapshot) BETWEEN 7 AND 32 AND phone_snapshot ~ '^\+?[0-9][0-9 ()/.-]*[0-9]$' AND char_length(regexp_replace(phone_snapshot, '[^0-9]', '', 'g')) BETWEEN 7 AND 15$$),
+            ('tbl_collab_application', 'ck_collab_application_message',
+             $$message IS NULL OR char_length(btrim(message)) BETWEEN 1 AND 500$$),
+            ('tbl_collab_application', 'ck_collab_application_status',
+             $$status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN_BY_APPLICANT', 'INVALIDATED_BY_LISTING_CLOSURE')$$),
+            ('tbl_collab_application', 'ck_collab_application_timestamps',
+             $$status_changed_at >= submitted_at AND ((status = 'PENDING' AND decided_at IS NULL) OR (status IN ('ACCEPTED', 'REJECTED') AND decided_at IS NOT NULL AND decided_at >= submitted_at) OR (status IN ('WITHDRAWN_BY_APPLICANT', 'INVALIDATED_BY_LISTING_CLOSURE') AND decided_at IS NULL))$$),
+            ('tbl_collab_application', 'ck_collab_application_version',
+             $$version >= 0$$),
+
+            ('tbl_collab_job', 'ck_collab_job_status',
+             $$status IN ('ACTIVE', 'COMPLETED')$$),
+            ('tbl_collab_job', 'ck_collab_job_distinct_parties',
+             $$publisher_actor_id <> applicant_actor_id AND publisher_user_id <> applicant_user_id$$),
+            ('tbl_collab_job', 'ck_collab_job_lifecycle',
+             $$(status = 'ACTIVE' AND completed_at IS NULL AND NOT (publisher_confirmed_at IS NOT NULL AND applicant_confirmed_at IS NOT NULL)) OR (status = 'COMPLETED' AND publisher_confirmed_at IS NOT NULL AND applicant_confirmed_at IS NOT NULL AND completed_at IS NOT NULL AND completed_at >= publisher_confirmed_at AND completed_at >= applicant_confirmed_at)$$),
+            ('tbl_collab_job', 'ck_collab_job_version',
+             $$version >= 0$$),
+
+            ('tbl_collab_review', 'ck_collab_review_payload_hash',
+             $$request_payload_hash ~ '^[0-9A-Fa-f]{64}$'$$),
+            ('tbl_collab_review', 'ck_collab_review_rating',
+             $$rating BETWEEN 1 AND 5$$),
+            ('tbl_collab_review', 'ck_collab_review_distinct_actors',
+             $$reviewer_actor_id <> target_actor_id$$),
+            ('tbl_collab_review', 'ck_collab_review_comment',
+             $$comment IS NULL OR char_length(btrim(comment)) BETWEEN 1 AND 500$$),
+
+            ('tbl_collab_report', 'ck_collab_report_payload_hash',
+             $$request_payload_hash ~ '^[0-9A-Fa-f]{64}$'$$),
+            ('tbl_collab_report', 'ck_collab_report_reason',
+             $$reason IN ('SPAM', 'INAPPROPRIATE', 'MISLEADING', 'OTHER')$$),
+            ('tbl_collab_report', 'ck_collab_report_details',
+             $$(reason <> 'OTHER' AND (details IS NULL OR char_length(btrim(details)) BETWEEN 1 AND 500)) OR (reason = 'OTHER' AND details IS NOT NULL AND char_length(btrim(details)) BETWEEN 1 AND 500)$$)
+          ) AS required(table_name, constraint_name, predicate_sql)
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1
+              FROM pg_constraint
+             WHERE conrelid = to_regclass(format('%I.%I', current_schema(), constraint_row.table_name))
+               AND conname = constraint_row.constraint_name
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE %I ADD CONSTRAINT %I CHECK (%s)',
+                constraint_row.table_name,
+                constraint_row.constraint_name,
+                constraint_row.predicate_sql
+            );
+        END IF;
+
+        IF EXISTS (
+            SELECT 1
+              FROM pg_constraint
+             WHERE conrelid = to_regclass(format('%I.%I', current_schema(), constraint_row.table_name))
+               AND conname = constraint_row.constraint_name
+               AND NOT convalidated
+        ) THEN
+            EXECUTE format(
+                'ALTER TABLE %I VALIDATE CONSTRAINT %I',
+                constraint_row.table_name,
+                constraint_row.constraint_name
+            );
+        END IF;
+    END LOOP;
+END
+$collab_domain_check_reconciliation$;
+
+DO $collab_genre_unique_reconciliation$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = 'tbl_collab_genre'::regclass
+           AND conname = 'uk_collab_genre_value'
+    ) THEN
+        ALTER TABLE tbl_collab_genre
+            ADD CONSTRAINT uk_collab_genre_value UNIQUE (collab_id, genre);
+    END IF;
+END
+$collab_genre_unique_reconciliation$;
+
+DO $collab_genre_position_key_reconciliation$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint key_constraint
+         WHERE key_constraint.conrelid = 'tbl_collab_genre'::regclass
+           AND key_constraint.contype IN ('p', 'u')
+           AND ARRAY(
+               SELECT attribute.attname::text
+                 FROM unnest(key_constraint.conkey) AS key_column(attnum)
+                 JOIN pg_attribute attribute
+                   ON attribute.attrelid = key_constraint.conrelid
+                  AND attribute.attnum = key_column.attnum
+                ORDER BY attribute.attname::text
+           ) = ARRAY['collab_id', 'position']::text[]
+    ) THEN
+        ALTER TABLE tbl_collab_genre
+            ADD CONSTRAINT uk_collab_genre_position UNIQUE (collab_id, position);
+    END IF;
+END
+$collab_genre_position_key_reconciliation$;
+
 COMMIT;

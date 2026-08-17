@@ -168,7 +168,7 @@ public class CollabController {
             @RequestParam(required = false) CollabJobStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ok(service.jobsMine(userId(principal), status, page, size), "Isler listelendi.");
+        return ok(service.jobsMine(userId(principal), status, page, size), "İşler listelendi.");
     }
 
     @PostMapping(CONFIRM_COMPLETION)

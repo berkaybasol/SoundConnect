@@ -78,16 +78,19 @@ class NeighborhoodServiceImplTest {
 	
 	@Test
 	void findAll_ShouldMapList() {
-		Neighborhood n = Neighborhood.builder().id(UUID.randomUUID()).name("X").build();
-		when(neighborhoodRepository.findAll()).thenReturn(List.of(n));
-		NeighborhoodResponseDto r = new NeighborhoodResponseDto(n.getId(), "X", null);
-		when(neighborhoodMapper.toResponseList(List.of(n))).thenReturn(List.of(r));
+		Neighborhood hundred = Neighborhood.builder().id(UUID.randomUUID()).name("100. Yıl").build();
+		Neighborhood two = Neighborhood.builder().id(UUID.randomUUID()).name("2 Eylül").build();
+		when(neighborhoodRepository.findAll()).thenReturn(List.of(hundred, two));
+		NeighborhoodResponseDto hundredResponse = new NeighborhoodResponseDto(hundred.getId(), hundred.getName(), null);
+		NeighborhoodResponseDto twoResponse = new NeighborhoodResponseDto(two.getId(), two.getName(), null);
+		when(neighborhoodMapper.toResponseList(List.of(two, hundred)))
+				.thenReturn(List.of(twoResponse, hundredResponse));
 		
 		var out = neighborhoodService.findAll();
-		assertThat(out).containsExactly(r);
+		assertThat(out).containsExactly(twoResponse, hundredResponse);
 		
 		verify(neighborhoodRepository).findAll();
-		verify(neighborhoodMapper).toResponseList(List.of(n));
+		verify(neighborhoodMapper).toResponseList(List.of(two, hundred));
 	}
 	
 	@Test
@@ -117,16 +120,21 @@ class NeighborhoodServiceImplTest {
 	@Test
 	void findByDistrictId_ShouldMapList() {
 		UUID districtId = UUID.randomUUID();
-		Neighborhood n = Neighborhood.builder().id(UUID.randomUUID()).name("Z").build();
-		when(neighborhoodRepository.findAllByDistrict_Id(districtId)).thenReturn(List.of(n));
-		NeighborhoodResponseDto r = new NeighborhoodResponseDto(n.getId(), "Z", districtId);
-		when(neighborhoodMapper.toResponseList(List.of(n))).thenReturn(List.of(r));
+		Neighborhood odemis = Neighborhood.builder().id(UUID.randomUUID()).name("Ödemiş").build();
+		Neighborhood osmangazi = Neighborhood.builder().id(UUID.randomUUID()).name("Osmangazi").build();
+		when(neighborhoodRepository.findAllByDistrict_Id(districtId)).thenReturn(List.of(odemis, osmangazi));
+		NeighborhoodResponseDto odemisResponse = new NeighborhoodResponseDto(odemis.getId(), odemis.getName(), districtId);
+		NeighborhoodResponseDto osmangaziResponse = new NeighborhoodResponseDto(
+				osmangazi.getId(), osmangazi.getName(), districtId
+		);
+		when(neighborhoodMapper.toResponseList(List.of(osmangazi, odemis)))
+				.thenReturn(List.of(osmangaziResponse, odemisResponse));
 		
 		var out = neighborhoodService.findByDistrictId(districtId);
-		assertThat(out).containsExactly(r);
+		assertThat(out).containsExactly(osmangaziResponse, odemisResponse);
 		
 		verify(neighborhoodRepository).findAllByDistrict_Id(districtId);
-		verify(neighborhoodMapper).toResponseList(List.of(n));
+		verify(neighborhoodMapper).toResponseList(List.of(osmangazi, odemis));
 	}
 	
 	@Test

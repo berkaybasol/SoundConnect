@@ -12,6 +12,12 @@ public interface CollabActorRepository extends JpaRepository<CollabActor, UUID> 
     Optional<CollabActor> findByProfileTypeAndSourceProfileId(ProfileType profileType, UUID sourceProfileId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from CollabActor a where a.profileType = :profileType and a.sourceProfileId = :sourceProfileId")
+    Optional<CollabActor> findByProfileTypeAndSourceProfileIdForUpdate(
+            @Param("profileType") ProfileType profileType,
+            @Param("sourceProfileId") UUID sourceProfileId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from CollabActor a where a.id = :id")
     Optional<CollabActor> findByIdForUpdate(@Param("id") UUID id);
 }

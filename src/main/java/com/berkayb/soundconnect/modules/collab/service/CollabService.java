@@ -6,8 +6,10 @@ import com.berkayb.soundconnect.modules.collab.entity.*;
 import com.berkayb.soundconnect.modules.collab.enums.*;
 import com.berkayb.soundconnect.modules.collab.event.CollabNotificationEvent;
 import com.berkayb.soundconnect.modules.collab.exception.CollabExpiredException;
+import com.berkayb.soundconnect.modules.collab.exception.CollabExpiredListingNotFoundException;
 import com.berkayb.soundconnect.modules.collab.mapper.CollabMapper;
 import com.berkayb.soundconnect.modules.collab.repository.*;
+import com.berkayb.soundconnect.modules.collab.spec.CollabSavedListingSpecifications;
 import com.berkayb.soundconnect.modules.collab.spec.CollabSpecifications;
 import com.berkayb.soundconnect.modules.collab.support.*;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
@@ -17,7 +19,6 @@ import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import com.berkayb.soundconnect.shared.response.PageResponse;
@@ -48,11 +49,11 @@ public class CollabService {
     private final CollabReportRepository reportRepository;
     private final CollabActorService actorService;
     private final CollabMapper mapper;
-    private final UserEntityFinder userFinder;
     private final UserRepository userRepository;
     private final LocationEntityFinder locationFinder;
     private final InstrumentEntityFinder instrumentFinder;
     private final CollabTimeProvider timeProvider;
+    private final CollabPublisherOwnershipGuard publisherOwnershipGuard;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -65,19 +66,22 @@ public class CollabService {
     @Transactional
     public CollabListingResponse createDraft(UUID userId, CollabDraftCreateRequest request) {
         User owner = lockUser(userId);
-        CollabActor publisher = actorService.requireOwned(userId, request.publisherActorId());
-        NormalizedListing normalized = normalizeListing(
+        CanonicalListingPayload canonical = canonicalizeListing(
                 request.cadence(), request.wantedType(), request.instrumentId(), request.branch(),
                 request.customSpecialty(), request.title(), request.description(), request.cityId(),
-                request.genres(), request.scheduledAt(), request.feeAmountMinor(), request.currency(),
-                publisher.getProfileType(), timeProvider.now());
-        String payloadHash = creationHash(request.clientRequestId(), publisher.getId(), normalized);
+                request.genres(), request.scheduledAt(), request.feeAmountMinor(), request.currency());
+        String payloadHash = creationHash(request.clientRequestId(), request.publisherActorId(), canonical);
 
         Optional<Collab> replay = listingRepository.findByOwnerIdAndClientRequestId(userId, request.clientRequestId());
         if (replay.isPresent()) {
             assertPayload(replay.get().getCreationPayloadHash(), payloadHash);
             return mapSingle(replay.get(), userId);
         }
+
+        CollabActor publisher = actorService.requireOwned(userId, request.publisherActorId());
+        Instant now = timeProvider.now();
+        NormalizedListing normalized = validateAndResolveListing(
+                canonical, publisher.getProfileType(), now, now);
 
         Collab listing = Collab.builder()
                 .owner(owner)
@@ -86,7 +90,7 @@ public class CollabService {
                 .creationPayloadHash(payloadHash)
                 .status(CollabListingStatus.DRAFT)
                 .build();
-        applyNormalized(listing, normalized, false);
+        applyNormalized(listing, normalized);
         listingRepository.saveAndFlush(listing);
         return mapSingle(listing, userId);
     }
@@ -98,24 +102,29 @@ public class CollabService {
         if (listing.getStatus() != CollabListingStatus.DRAFT && listing.getStatus() != CollabListingStatus.OPEN) {
             throw new SoundConnectException(ErrorType.COLLAB_LIFECYCLE_INVALID);
         }
-        assertVersion(listing.getVersion(), request.expectedVersion());
-        if (listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, timeProvider.now())) {
-            expireLocked(listing, timeProvider.now());
+        Instant now = timeProvider.now();
+        if (listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, now)) {
+            expireLocked(listing, now);
             throw new CollabExpiredException();
         }
+        assertVersion(listing.getVersion(), request.expectedVersion());
 
         CollabActor publisher = actorService.requireOwned(userId, request.publisherActorId());
-        NormalizedListing normalized = normalizeListing(
+        CanonicalListingPayload canonical = canonicalizeListing(
                 request.cadence(), request.wantedType(), request.instrumentId(), request.branch(),
                 request.customSpecialty(), request.title(), request.description(), request.cityId(),
-                request.genres(), request.scheduledAt(), request.feeAmountMinor(), request.currency(),
-                publisher.getProfileType(), timeProvider.now());
+                request.genres(), request.scheduledAt(), request.feeAmountMinor(), request.currency());
+        Instant schedulingWindowStart = listing.getStatus() == CollabListingStatus.OPEN
+                ? listing.getPublishedAt()
+                : now;
+        NormalizedListing normalized = validateAndResolveListing(
+                canonical, publisher.getProfileType(), now, schedulingWindowStart);
 
         if (listing.getStatus() == CollabListingStatus.OPEN && applicationRepository.existsByListingId(listingId)) {
             assertPublishedImmutableFields(listing, publisher, normalized);
         }
         listing.setPublisherActor(publisher);
-        applyNormalized(listing, normalized, listing.getStatus() == CollabListingStatus.OPEN);
+        applyNormalized(listing, normalized);
         listingRepository.flush();
         return mapSingle(listing, userId);
     }
@@ -124,10 +133,10 @@ public class CollabService {
     public CollabListingResponse publish(UUID userId, UUID listingId, ExpectedVersionRequest request) {
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
-        actorService.requireOwned(userId, listing.getPublisherActor().getId());
         if (listing.getStatus() == CollabListingStatus.OPEN) {
-            if (isDue(listing, timeProvider.now())) {
-                expireLocked(listing, timeProvider.now());
+            Instant now = timeProvider.now();
+            if (isDue(listing, now)) {
+                expireLocked(listing, now);
                 throw new CollabExpiredException();
             }
             return mapSingle(listing, userId);
@@ -135,6 +144,7 @@ public class CollabService {
         if (listing.getStatus() != CollabListingStatus.DRAFT) {
             throw new SoundConnectException(ErrorType.COLLAB_LIFECYCLE_INVALID);
         }
+        actorService.requireOwned(userId, listing.getPublisherActor().getId());
         assertVersion(listing.getVersion(), request.expectedVersion());
         Instant now = timeProvider.now();
         validateStoredForPublish(listing, now);
@@ -184,19 +194,24 @@ public class CollabService {
         return mapSingle(listing, userId);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = CollabExpiredListingNotFoundException.class)
     public CollabListingResponse detail(UUID userId, UUID listingId) {
         Collab listing = lockListing(listingId);
-        boolean wasPubliclyOpen = listing.getStatus() == CollabListingStatus.OPEN;
-        if (listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, timeProvider.now())) {
-            expireLocked(listing, timeProvider.now());
+        Instant now = timeProvider.now();
+        boolean expiredNow = listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, now);
+        if (expiredNow) {
+            expireLocked(listing, now);
         }
         boolean owner = Objects.equals(listing.getOwner().getId(), userId);
-        if (listing.getStatus() == CollabListingStatus.DRAFT && !owner) {
+        if (owner) return mapSingle(listing, userId);
+        if (listing.getStatus() == CollabListingStatus.DRAFT) {
             throw new SoundConnectException(ErrorType.COLLAB_NOT_FOUND);
         }
-        if (listing.getStatus() != CollabListingStatus.OPEN && !wasPubliclyOpen && !owner
-                && !applicationRepository.existsByListingIdAndApplicantUserId(listingId, userId)) {
+        boolean applicant = applicationRepository.existsByListingIdAndApplicantUserId(listingId, userId);
+        if (listing.getStatus() == CollabListingStatus.OPEN) {
+            if (!applicant) publisherOwnershipGuard.requireValid(listing);
+        } else if (!applicant) {
+            if (expiredNow) throw new CollabExpiredListingNotFoundException();
             throw new SoundConnectException(ErrorType.COLLAB_NOT_FOUND);
         }
         return mapSingle(listing, userId);
@@ -234,6 +249,7 @@ public class CollabService {
                     requireOpen(unavailable);
                     return unavailable;
                 });
+        publisherOwnershipGuard.requireValid(listing);
         if (Objects.equals(listing.getOwner().getId(), userId)) {
             throw new SoundConnectException(ErrorType.COLLAB_FORBIDDEN);
         }
@@ -250,8 +266,9 @@ public class CollabService {
     @Transactional(readOnly = true)
     public PageResponse<CollabListingResponse> savedMine(UUID userId, int page, int size) {
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Page<CollabSavedListing> saved = savedRepository.findVisibleByUserId(
-                userId, CollabListingStatus.OPEN, timeProvider.now(), pageable);
+        Page<CollabSavedListing> saved = savedRepository.findAll(
+                CollabSavedListingSpecifications.visible(userId, CollabListingStatus.OPEN, timeProvider.now()),
+                pageable);
         List<Collab> listings = saved.getContent().stream().map(CollabSavedListing::getListing).toList();
         CollabMapper.ListingContext context = listingContext(listings, userId);
         return PageResponse.from(saved.map(value -> mapper.listing(value.getListing(), context)));
@@ -259,7 +276,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabApplicationResponse apply(UUID userId, UUID listingId, CollabApplicationCreateRequest request) {
-        lockUser(userId);
+        User applicantUser = lockUser(userId);
         String phone = normalizePhone(request.phoneNumber());
         String message = normalizeOptional(request.message());
         String payloadHash = CollabPayloadHasher.hash(listingId, request.applicantActorId(), phone, message);
@@ -270,9 +287,10 @@ public class CollabService {
             return mapApplication(replay.get(), userId);
         }
 
-        CollabActor applicantActor = actorService.requireOwned(userId, request.applicantActorId());
         Collab listing = lockListing(listingId);
         requireOpen(listing);
+        publisherOwnershipGuard.requireValid(listing);
+        CollabActor applicantActor = actorService.requireOwned(userId, request.applicantActorId());
         if (Objects.equals(listing.getOwner().getId(), userId)
                 || Objects.equals(listing.getPublisherActor().getId(), applicantActor.getId())) {
             throw new SoundConnectException(ErrorType.COLLAB_SELF_APPLICATION);
@@ -286,7 +304,7 @@ public class CollabService {
         }
         Instant now = timeProvider.now();
         CollabApplication application = CollabApplication.builder()
-                .listing(listing).applicantActor(applicantActor).applicantUser(userFinder.getUser(userId))
+                .listing(listing).applicantActor(applicantActor).applicantUser(applicantUser)
                 .clientRequestId(request.clientRequestId()).requestPayloadHash(payloadHash)
                 .phoneSnapshot(phone).message(message).status(CollabApplicationStatus.PENDING)
                 .submittedAt(now).statusChangedAt(now).build();
@@ -340,6 +358,7 @@ public class CollabService {
             return mapJob(existing, userId);
         }
         requireOpen(listing);
+        publisherOwnershipGuard.requireValid(listing);
         if (application.getStatus() != CollabApplicationStatus.PENDING) {
             throw new SoundConnectException(ErrorType.COLLAB_APPLICATION_STATUS_INVALID);
         }
@@ -363,9 +382,10 @@ public class CollabService {
         publish(application.getApplicantUser().getId(), NotificationType.COLLAB_APPLICATION_ACCEPTED,
                 "Başvurun kabul edildi", listing.getTitle() + " ilanı için eşleşme oluştu.",
                 "APPLICATION_ACCEPTED", Map.of("listingId", listingId, "applicationId", applicationId, "jobId", job.getId()), now);
+        String matchInvalidationMessage = CollabMatchNotificationMessageFactory.create(listing);
         invalidated.forEach(value -> publish(value.getApplicantUser().getId(),
                 NotificationType.COLLAB_APPLICATION_INVALIDATED, "Başvuru geçersizleşti",
-                "İlan başka bir başvuruyla eşleşti.", "APPLICATION_INVALIDATED",
+                matchInvalidationMessage, "APPLICATION_INVALIDATED",
                 Map.of("listingId", listingId, "applicationId", value.getId()), now));
         return mapJob(job, userId);
     }
@@ -379,6 +399,7 @@ public class CollabService {
         CollabApplication application = lockApplication(applicationId);
         if (application.getStatus() == CollabApplicationStatus.REJECTED) return mapApplication(application, userId);
         requireOpen(listing);
+        publisherOwnershipGuard.requireValid(listing);
         if (application.getStatus() != CollabApplicationStatus.PENDING) {
             throw new SoundConnectException(ErrorType.COLLAB_APPLICATION_STATUS_INVALID);
         }
@@ -485,7 +506,7 @@ public class CollabService {
 
     @Transactional
     public CollabReviewResponse review(UUID userId, UUID jobId, CollabReviewCreateRequest request) {
-        lockUser(userId);
+        User reviewerUser = lockUser(userId);
         String comment = normalizeOptional(request.comment());
         String payloadHash = CollabPayloadHasher.hash(jobId, request.rating(), comment);
         Optional<CollabReview> replay = reviewRepository
@@ -516,7 +537,7 @@ public class CollabService {
         lockedTarget.recordReview(request.rating());
         Instant now = timeProvider.now();
         CollabReview review = CollabReview.builder()
-                .job(job).reviewerActor(reviewerActor).targetActor(lockedTarget).reviewerUser(userFinder.getUser(userId))
+                .job(job).reviewerActor(reviewerActor).targetActor(lockedTarget).reviewerUser(reviewerUser)
                 .clientRequestId(request.clientRequestId()).requestPayloadHash(payloadHash)
                 .rating(request.rating()).comment(comment).submittedAt(now).build();
         reviewRepository.saveAndFlush(review);
@@ -535,7 +556,7 @@ public class CollabService {
 
     @Transactional
     public CollabReportResponse report(UUID userId, UUID listingId, CollabReportCreateRequest request) {
-        lockUser(userId);
+        User reporterUser = lockUser(userId);
         String details = normalizeOptional(request.details());
         if (request.reason() == CollabReportReason.OTHER && details == null) {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
@@ -553,8 +574,7 @@ public class CollabService {
                     && Objects.equals(duplicate.get().getDetails(), details)) return mapReport(duplicate.get());
             throw new SoundConnectException(ErrorType.COLLAB_REPORT_DUPLICATE);
         }
-        Collab listing = listingRepository.findById(listingId)
-                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_NOT_FOUND));
+        Collab listing = lockListing(listingId);
         if (Objects.equals(listing.getOwner().getId(), userId)) {
             throw new SoundConnectException(ErrorType.COLLAB_SELF_REPORT);
         }
@@ -562,9 +582,10 @@ public class CollabService {
             throw new SoundConnectException(ErrorType.COLLAB_NOT_FOUND);
         }
         Instant now = timeProvider.now();
-        CollabReport value = CollabReport.builder().listing(listing).reporterUser(userFinder.getUser(userId))
+        CollabReport value = CollabReport.builder().listing(listing).reporterUser(reporterUser)
                 .clientRequestId(request.clientRequestId()).requestPayloadHash(payloadHash)
-                .reason(request.reason()).details(details).reportedAt(now).build();
+                .reason(request.reason()).details(details).reportedAt(now)
+                .listingEvidence(CollabReportListingEvidence.capture(listing)).build();
         reportRepository.saveAndFlush(value);
         return mapReport(value);
     }
@@ -664,11 +685,14 @@ public class CollabService {
     }
 
     private boolean isVisibleToNonOwner(Collab listing, UUID userId) {
+        boolean applicant = applicationRepository.existsByListingIdAndApplicantUserId(listing.getId(), userId);
         if (listing.getStatus() == CollabListingStatus.OPEN) {
-            return !isDue(listing, timeProvider.now());
+            if (isDue(listing, timeProvider.now())) return false;
+            if (!applicant) publisherOwnershipGuard.requireValid(listing);
+            return true;
         }
         if (listing.getStatus() == CollabListingStatus.DRAFT) return false;
-        return applicationRepository.existsByListingIdAndApplicantUserId(listing.getId(), userId);
+        return applicant;
     }
 
     private Collab lockListing(UUID id) {
@@ -742,31 +766,42 @@ public class CollabService {
                 value.getDetails(), value.getReportedAt());
     }
 
-    private NormalizedListing normalizeListing(CollabCadence cadence, CollabWantedType wantedType,
-                                                UUID instrumentId, CollabBranch branch, String customSpecialty,
-                                                String title, String description, UUID cityId, List<String> genres,
-                                                Instant scheduledAt, Long feeAmountMinor, String currency,
-                                                ProfileType publisherType, Instant now) {
-        String normalizedTitle = title == null ? null : title.strip();
-        String normalizedDescription = description == null ? null : description.strip();
-        if (normalizedTitle == null || normalizedTitle.length() < 5 || normalizedTitle.length() > 100
-                || normalizedDescription == null || normalizedDescription.length() < 20
-                || normalizedDescription.length() > 500) {
+    private CanonicalListingPayload canonicalizeListing(CollabCadence cadence, CollabWantedType wantedType,
+                                                         UUID instrumentId, CollabBranch branch,
+                                                         String customSpecialty, String title, String description,
+                                                         UUID cityId, List<String> genres, Instant scheduledAt,
+                                                         Long feeAmountMinor, String currency) {
+        Money money = canonicalizeMoney(feeAmountMinor, currency);
+        return new CanonicalListingPayload(cadence, wantedType, instrumentId, branch,
+                normalizeOptional(customSpecialty), title == null ? null : title.strip(),
+                description == null ? null : description.strip(), cityId, canonicalizeGenres(genres),
+                scheduledAt, money.amountMinor(), money.currency());
+    }
+
+    private NormalizedListing validateAndResolveListing(CanonicalListingPayload value,
+                                                         ProfileType publisherType,
+                                                         Instant now,
+                                                         Instant schedulingWindowStart) {
+        if (value.cadence() == null || value.wantedType() == null || value.cityId() == null
+                || value.title() == null || value.title().length() < 5 || value.title().length() > 100
+                || value.description() == null || value.description().length() < 20
+                || value.description().length() > 500) {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
         }
-        List<String> normalizedGenres = normalizeGenres(genres);
-        String custom = normalizeOptional(customSpecialty);
-        if (custom != null && custom.length() > 80) {
+        validateGenres(value.genres());
+        if (value.customSpecialty() != null && value.customSpecialty().length() > 80) {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
         }
-        validateSpecialty(wantedType, instrumentId, branch, custom);
-        Instrument instrument = instrumentId == null ? null : instrumentFinder.getInstrument(instrumentId);
-        City city = locationFinder.getCity(cityId);
-        validateCadence(cadence, scheduledAt, now);
-        Money money = normalizeMoney(cadence, publisherType, feeAmountMinor, currency);
-        return new NormalizedListing(cadence, wantedType, instrument, branch, custom,
-                normalizedTitle, normalizedDescription, city, normalizedGenres, scheduledAt,
-                money.amountMinor(), money.currency());
+        validateSpecialty(value.wantedType(), value.instrumentId(), value.branch(), value.customSpecialty());
+        validateCadence(value.cadence(), value.scheduledAt(), now, schedulingWindowStart);
+        validateMoney(value.cadence(), publisherType, value.feeAmountMinor(), value.currency());
+        Instrument instrument = value.instrumentId() == null
+                ? null
+                : instrumentFinder.getInstrument(value.instrumentId());
+        City city = locationFinder.getCity(value.cityId());
+        return new NormalizedListing(value.cadence(), value.wantedType(), instrument, value.branch(),
+                value.customSpecialty(), value.title(), value.description(), city, value.genres(),
+                value.scheduledAt(), value.feeAmountMinor(), value.currency());
     }
 
     private void validateSpecialty(CollabWantedType wantedType, UUID instrumentId,
@@ -786,22 +821,37 @@ public class CollabService {
         }
     }
 
-    private void validateCadence(CollabCadence cadence, Instant scheduledAt, Instant now) {
+    private void validateCadence(CollabCadence cadence, Instant scheduledAt, Instant now,
+                                 Instant schedulingWindowStart) {
         if (cadence == CollabCadence.REGULAR) {
             if (scheduledAt != null) throw new SoundConnectException(ErrorType.COLLAB_CADENCE_FIELDS_INVALID);
             return;
         }
         if (cadence != CollabCadence.EXTRA || scheduledAt == null || !scheduledAt.isAfter(now)
-                || scheduledAt.isAfter(now.plus(Duration.ofDays(7)))) {
+                || schedulingWindowStart == null
+                || scheduledAt.isAfter(schedulingWindowStart.plus(Duration.ofDays(7)))) {
             throw new SoundConnectException(ErrorType.COLLAB_CADENCE_FIELDS_INVALID);
         }
     }
 
-    private Money normalizeMoney(CollabCadence cadence, ProfileType publisherType,
-                                 Long amountMinor, String currency) {
+    private Money canonicalizeMoney(Long amountMinor, String currency) {
         if (amountMinor == null) {
-            if (currency != null && !currency.isBlank()) throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
-            return new Money(null, null);
+            String normalizedCurrency = currency == null || currency.isBlank()
+                    ? null
+                    : currency.strip().toUpperCase(Locale.ROOT);
+            return new Money(null, normalizedCurrency);
+        }
+        String normalizedCurrency = currency == null || currency.isBlank()
+                ? "TRY"
+                : currency.strip().toUpperCase(Locale.ROOT);
+        return new Money(amountMinor, normalizedCurrency);
+    }
+
+    private void validateMoney(CollabCadence cadence, ProfileType publisherType,
+                               Long amountMinor, String currency) {
+        if (amountMinor == null) {
+            if (currency != null) throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
+            return;
         }
         if (amountMinor < 1 || amountMinor > MAX_FEE_MINOR) {
             throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
@@ -809,25 +859,34 @@ public class CollabService {
         if (cadence == CollabCadence.REGULAR && publisherType != ProfileType.VENUE) {
             throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
         }
-        String normalizedCurrency = currency == null || currency.isBlank() ? "TRY" : currency.strip().toUpperCase(Locale.ROOT);
-        if (!"TRY".equals(normalizedCurrency)) throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
-        return new Money(amountMinor, normalizedCurrency);
+        if (!"TRY".equals(currency)) throw new SoundConnectException(ErrorType.COLLAB_FEE_INVALID);
     }
 
-    private List<String> normalizeGenres(List<String> genres) {
+    private List<String> canonicalizeGenres(List<String> genres) {
         if (genres == null || genres.isEmpty()) return List.of();
         Map<String, String> distinct = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        List<String> nullValues = new ArrayList<>();
         for (String value : genres) {
-            if (value == null || value.isBlank()) throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+            if (value == null) {
+                nullValues.add(null);
+                continue;
+            }
             String normalized = value.strip();
-            if (normalized.length() > 40) throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
             distinct.putIfAbsent(normalized, normalized);
         }
-        if (distinct.size() > 3) throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
-        return List.copyOf(distinct.values());
+        List<String> canonical = new ArrayList<>(distinct.values());
+        canonical.addAll(nullValues);
+        return Collections.unmodifiableList(canonical);
     }
 
-    private void applyNormalized(Collab listing, NormalizedListing value, boolean published) {
+    private void validateGenres(List<String> genres) {
+        if (genres.size() > 3 || genres.stream().anyMatch(value ->
+                value == null || value.isBlank() || value.length() > 40)) {
+            throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+        }
+    }
+
+    private void applyNormalized(Collab listing, NormalizedListing value) {
         listing.setCadence(value.cadence());
         listing.setWantedType(value.wantedType());
         listing.setInstrument(value.instrument());
@@ -851,7 +910,12 @@ public class CollabService {
                 || listing.getBranch() != next.branch()
                 || !Objects.equals(listing.getCustomSpecialty(), next.customSpecialty())
                 || !Objects.equals(listing.getCity().getId(), next.city().getId())
-                || !Objects.equals(listing.getScheduledAt(), next.scheduledAt())) {
+                || !Objects.equals(listing.getScheduledAt(), next.scheduledAt())
+                || !Objects.equals(listing.getTitle(), next.title())
+                || !Objects.equals(listing.getDescription(), next.description())
+                || !Objects.equals(listing.getGenres(), next.genres())
+                || !Objects.equals(listing.getFeeAmountMinor(), next.feeAmountMinor())
+                || !Objects.equals(listing.getCurrency(), next.currency())) {
             throw new SoundConnectException(ErrorType.COLLAB_PUBLISHED_EDIT_RESTRICTED);
         }
     }
@@ -860,15 +924,15 @@ public class CollabService {
 
     private void validateStoredForPublish(Collab listing, Instant now) {
         validateSpecialty(listing.getWantedType(), idOf(listing.getInstrument()), listing.getBranch(), listing.getCustomSpecialty());
-        validateCadence(listing.getCadence(), listing.getScheduledAt(), now);
-        normalizeMoney(listing.getCadence(), listing.getPublisherActor().getProfileType(),
+        validateCadence(listing.getCadence(), listing.getScheduledAt(), now, now);
+        validateMoney(listing.getCadence(), listing.getPublisherActor().getProfileType(),
                 listing.getFeeAmountMinor(), listing.getCurrency());
     }
 
-    private String creationHash(UUID requestId, UUID publisherActorId, NormalizedListing value) {
+    private String creationHash(UUID requestId, UUID publisherActorId, CanonicalListingPayload value) {
         return CollabPayloadHasher.hash(requestId, publisherActorId, value.cadence(), value.wantedType(),
-                idOf(value.instrument()), value.branch(), value.customSpecialty(), value.title(), value.description(),
-                value.city().getId(), value.genres(), value.scheduledAt(), value.feeAmountMinor(), value.currency());
+                value.instrumentId(), value.branch(), value.customSpecialty(), value.title(), value.description(),
+                value.cityId(), value.genres(), value.scheduledAt(), value.feeAmountMinor(), value.currency());
     }
 
     private String normalizePhone(String value) {
@@ -891,6 +955,11 @@ public class CollabService {
     }
 
     private record Money(Long amountMinor, String currency) {}
+
+    private record CanonicalListingPayload(CollabCadence cadence, CollabWantedType wantedType,
+                                           UUID instrumentId, CollabBranch branch, String customSpecialty,
+                                           String title, String description, UUID cityId, List<String> genres,
+                                           Instant scheduledAt, Long feeAmountMinor, String currency) {}
 
     private record NormalizedListing(CollabCadence cadence, CollabWantedType wantedType,
                                      Instrument instrument, CollabBranch branch, String customSpecialty,

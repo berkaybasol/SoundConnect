@@ -16,6 +16,7 @@ public enum PermissionEnum {
 	MANAGE_PROFILES,
 	MANAGE_DM,
 	MANAGE_BACKLINE_CATALOG,
+	MANAGE_COLLAB_REPORTS,
 	
 	// USER
 	READ_USER, // sisteme kayit olan herkes bu role sahip olur.

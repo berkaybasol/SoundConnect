@@ -201,6 +201,8 @@ public enum ErrorType {
 	COLLAB_PUBLISHED_EDIT_RESTRICTED(9320, "Published Collab fields are locked", HttpStatus.CONFLICT, "Başvuru alan ilanın temel alanları değiştirilemez."),
 	COLLAB_ACTOR_NOT_FOUND(9321, "Collab actor not found", HttpStatus.NOT_FOUND, "Collab profili bulunamadı."),
 	COLLAB_PAGE_REQUEST_INVALID(9322, "Invalid Collab page request", HttpStatus.BAD_REQUEST, "Sayfalama parametreleri geçersiz."),
+	COLLAB_REPORT_NOT_FOUND(9323, "Collab report not found", HttpStatus.NOT_FOUND, "Collab raporu bulunamadı."),
+	COLLAB_REPORT_STATUS_INVALID(9324, "Collab report status invalid", HttpStatus.CONFLICT, "Collab raporu bu işlem için uygun durumda değil."),
 	
 	// COMMENT(9350 - 9399)
 	COMMENT_NOT_FOUND(9350,"Comment not found", HttpStatus.NOT_FOUND, "Yorum bulunamadi."),

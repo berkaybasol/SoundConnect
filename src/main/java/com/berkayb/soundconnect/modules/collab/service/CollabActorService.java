@@ -6,8 +6,10 @@ import com.berkayb.soundconnect.modules.collab.repository.CollabActorRepository;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.profile.shared.ownership.*;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +30,8 @@ public class CollabActorService {
 
     @Transactional
     public List<CollabActorSummary> listMine(UUID userId) {
-        userRepository.findByIdForUpdate(userId)
+        // The user row is the mutex for a non-band profile whose actor projection does not exist yet.
+        User contactUser = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
         List<OwnedProfileTarget> ownedTargets = ownershipResolver.resolveOwnedProfiles(userId, ALLOWED_TYPES);
         ownedTargets.stream().filter(target -> target.type() == ProfileType.BAND)
@@ -37,7 +40,7 @@ public class CollabActorService {
                 .forEach(id -> bandRepository.findByIdForUpdate(id)
                         .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND)));
         return ownedTargets.stream()
-                .map(target -> synchronize(target, userId))
+                .map(target -> synchronize(target, contactUser))
                 .sorted(Comparator.comparing((CollabActorSummary a) -> a.profileType().name())
                         .thenComparing(CollabActorSummary::displayName, String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(CollabActorSummary::actorId))
@@ -46,21 +49,28 @@ public class CollabActorService {
 
     @Transactional
     public CollabActor requireOwned(UUID userId, UUID actorId) {
-        CollabActor actor = actorRepository.findById(actorId)
+        CollabActor actorSnapshot = actorRepository.findById(actorId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
-        if (!ALLOWED_TYPES.contains(actor.getProfileType())) {
+        if (!ALLOWED_TYPES.contains(actorSnapshot.getProfileType())) {
             throw new SoundConnectException(ErrorType.COLLAB_INVALID_ACTOR);
         }
         OwnedProfileTarget owned = ownershipResolver.requireOwnership(
-                userId, actor.getProfileType(), actor.getSourceProfileId());
+                userId, actorSnapshot.getProfileType(), actorSnapshot.getSourceProfileId());
+        CollabActor actor = actorRepository.findByIdForUpdate(actorId)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
+        if (actor.getProfileType() != owned.type()
+                || !Objects.equals(actor.getSourceProfileId(), owned.sourceId())) {
+            throw new SoundConnectException(ErrorType.COLLAB_INVALID_ACTOR);
+        }
         actor.setDisplayName(normalizeName(owned.displayName()));
         actor.setAvatarUrl(blankToNull(owned.profilePictureUrl()));
         actor.setActive(true);
         return actor;
     }
 
-    private CollabActorSummary synchronize(OwnedProfileTarget target, UUID contactUserId) {
-        CollabActor actor = actorRepository.findByProfileTypeAndSourceProfileId(target.type(), target.sourceId())
+    private CollabActorSummary synchronize(OwnedProfileTarget target, User contactUser) {
+        CollabActor actor = actorRepository
+                .findByProfileTypeAndSourceProfileIdForUpdate(target.type(), target.sourceId())
                 .orElseGet(() -> CollabActor.builder()
                         .profileType(target.type())
                         .sourceProfileId(target.sourceId())
@@ -72,17 +82,22 @@ public class CollabActorService {
         actor.setAvatarUrl(blankToNull(target.profilePictureUrl()));
         actor.setActive(true);
         actor = actorRepository.save(actor);
-        return toSummary(actor, contactUserId);
+        return toSummary(actor, contactUser);
     }
 
-    public CollabActorSummary toSummary(CollabActor actor, UUID contactUserId) {
+    public CollabActorSummary toSummary(CollabActor actor, User contactUser) {
         BigDecimal rating = actor.getReviewCount() == 0
                 ? BigDecimal.ZERO.setScale(2)
                 : BigDecimal.valueOf(actor.getRatingSum())
                 .divide(BigDecimal.valueOf(actor.getReviewCount()), 2, RoundingMode.HALF_UP);
         return new CollabActorSummary(actor.getId(), actor.getProfileType(), actor.getSourceProfileId(),
-                contactUserId, actor.getDisplayName(), actor.getAvatarUrl(), rating,
+                contactUser.getId(), normalizeContactUsername(contactUser.getUsername()), actor.getDisplayName(),
+                actor.getAvatarUrl(), rating,
                 actor.getReviewCount(), actor.getCompletedJobCount());
+    }
+
+    private String normalizeContactUsername(String value) {
+        return blankToNull(UsernameUtils.normalize(value));
     }
 
     private String normalizeName(String value) {

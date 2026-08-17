@@ -36,6 +36,8 @@ class CollabNotificationEventTest {
                 Instant.parse("2026-08-11T00:00:00Z")
         );
 
+        assertThat(event.eventId()).isNotNull();
+
         attributes.put("listingId", UUID.randomUUID());
         actor.put("displayName", "Degistirildi");
         actorLabels.add("Yeni etiket");
@@ -57,6 +59,7 @@ class CollabNotificationEventTest {
     @Test
     void invalidRoutingPayloadFailsFast() {
         assertThatThrownBy(() -> new CollabNotificationEvent(
+                UUID.randomUUID(),
                 UUID.randomUUID(),
                 NotificationType.COLLAB_APPLICATION_ACCEPTED,
                 "Basvuru kabul edildi",

@@ -18,7 +18,7 @@ class CollabSpecificationsTest {
     @Test
     void combinedInstrumentAndBranchFilterUsesLeftJoinAndOrPredicate() {
         Root<Collab> root = mock(Root.class, RETURNS_DEEP_STUBS);
-        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class, RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, RETURNS_DEEP_STUBS);
         Join instrumentJoin = mock(Join.class);
         Path instrumentIdPath = mock(Path.class);
@@ -44,5 +44,7 @@ class CollabSpecificationsTest {
 
         verify(root).join("instrument", JoinType.LEFT);
         verify(cb).or(instrumentPredicate, branchPredicate);
+        verify(query, times(4)).subquery(Integer.class);
+        verify(cb).isTrue(any(Expression.class));
     }
 }

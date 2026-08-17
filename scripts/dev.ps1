@@ -14,7 +14,12 @@ $EnvFile = Join-Path $ProjectRoot ".env.local"
 $EnvTemplate = Join-Path $ProjectRoot ".env.example"
 $WorkerDbEnvFile = Join-Path $ProjectRoot ".env.worker-db.local"
 $WorkerRabbitEnvFile = Join-Path $ProjectRoot ".env.worker-rabbit.local"
-$StudioSchemaPath = Join-Path $ProjectRoot "scripts\db\2026-07-21-studio-domain.sql"
+$LocalSchemaMigrations = @(
+    @{ Name = "Studio domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-07-21-studio-domain.sql" },
+    @{ Name = "Collab domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-domain.sql" },
+    @{ Name = "Collab moderation"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-moderation.sql" },
+    @{ Name = "Collab notification outbox"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-notification-outbox.sql" }
+)
 
 function Assert-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -255,27 +260,31 @@ function Wait-LocalComposeServicesHealthy(
     throw "Services did not become healthy within ${TimeoutSeconds}s: $($Services -join ', ')"
 }
 
-function Sync-LocalStudioSchema {
-    if (-not (Test-Path -LiteralPath $StudioSchemaPath)) {
-        throw "Local Studio schema source is missing: $StudioSchemaPath"
+function Sync-LocalSchemas {
+    foreach ($Migration in $LocalSchemaMigrations) {
+        if (-not (Test-Path -LiteralPath $Migration.Path)) {
+            throw "Local schema source is missing: $($Migration.Path)"
+        }
     }
     if (-not (Test-LocalBaseSchemaReady)) {
         throw "Local base schema is not ready; run '.\\dev.cmd up' once before using an IDE-only backend."
     }
 
     $Connection = Get-LocalPostgresConnection
-    Write-Host "Synchronizing local Studio schema..." -ForegroundColor Cyan
-    Get-Content -Raw -LiteralPath $StudioSchemaPath | & docker compose `
-        --project-directory $ProjectRoot `
-        --env-file $EnvFile `
-        exec -T postgres psql `
-        -X -v ON_ERROR_STOP=1 `
-        -U $Connection.Username `
-        -d $Connection.Database
-    if ($LASTEXITCODE -ne 0) {
-        throw "Local Studio schema synchronization failed with exit code $LASTEXITCODE."
+    foreach ($Migration in $LocalSchemaMigrations) {
+        Write-Host "Applying local $($Migration.Name) migration..." -ForegroundColor Cyan
+        Get-Content -Raw -LiteralPath $Migration.Path | & docker compose `
+            --project-directory $ProjectRoot `
+            --env-file $EnvFile `
+            exec -T postgres psql `
+            -X -v ON_ERROR_STOP=1 `
+            -U $Connection.Username `
+            -d $Connection.Database
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($Migration.Name) migration failed with exit code $LASTEXITCODE."
+        }
     }
-    Write-Host "Local Studio schema is ready." -ForegroundColor Green
+    Write-Host "Local Studio and Collab schemas are ready." -ForegroundColor Green
     return $true
 }
 
@@ -310,19 +319,23 @@ try {
     switch ($Action) {
         "up" {
             Assert-NoPlaceholders
-            # Hibernate owns the legacy local bootstrap, while the idempotent
-            # Studio SQL owns PostgreSQL-only constraints, indexes and
-            # backfills. Quiesce the worker, wait for the API to finish its full
-            # Spring/Hibernate startup, stop request traffic, then reconcile
-            # Studio before workers and normal test traffic start.
-            Invoke-Compose @("stop", "media-worker")
-            Invoke-Compose @("up", "--build", "--detach", "postgres", "rabbitmq", "redis", "backend")
-            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend")
+            # Never start a new binary against an existing pre-migration schema.
+            # On a genuinely empty database Hibernate performs the one-time
+            # legacy bootstrap; every subsequent start applies the idempotent SQL
+            # while API and worker traffic are stopped.
+            Invoke-Compose @("stop", "backend", "media-worker")
+            Invoke-Compose @("up", "--detach", "postgres", "rabbitmq", "redis")
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis")
             if (-not (Test-LocalBaseSchemaReady)) {
-                throw "The backend is healthy, but the required local base schema is incomplete."
+                Write-Host "Bootstrapping an empty local schema once with Hibernate..." -ForegroundColor Yellow
+                Invoke-Compose @("up", "--build", "--detach", "backend")
+                Wait-LocalComposeServicesHealthy @("backend")
+                Invoke-Compose @("stop", "backend")
+                if (-not (Test-LocalBaseSchemaReady)) {
+                    throw "The bootstrap backend became healthy, but the required local base schema is incomplete."
+                }
             }
-            Invoke-Compose @("stop", "backend")
-            [void](Sync-LocalStudioSchema)
+            [void](Sync-LocalSchemas)
             Invoke-Compose @("up", "--build", "--detach")
             Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend", "media-worker")
             Invoke-Compose @("ps")
@@ -331,7 +344,8 @@ try {
             Assert-NoPlaceholders
             Invoke-Compose @("up", "--detach", "postgres", "rabbitmq", "redis")
             Invoke-Compose @("stop", "backend", "media-worker")
-            [void](Sync-LocalStudioSchema)
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis")
+            [void](Sync-LocalSchemas)
             Write-Host "Infrastructure is ready. Compose API/native worker are stopped; start SoundConnectApplication from IntelliJ." -ForegroundColor Green
         }
         "infra" {
@@ -343,6 +357,11 @@ try {
             Assert-NoPlaceholders
             Invoke-Compose @("up", "--detach", "postgres", "rabbitmq", "redis")
             Invoke-Compose @("stop", "backend", "media-worker")
+            Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis")
+            if (-not (Test-LocalBaseSchemaReady)) {
+                throw "Local base schema is empty. Run '.\dev.cmd up' once before '.\dev.cmd boot'."
+            }
+            [void](Sync-LocalSchemas)
             Import-DotEnv $EnvFile
             & (Join-Path $ProjectRoot "gradlew.bat") bootRun
             if ($LASTEXITCODE -ne 0) {
@@ -379,7 +398,7 @@ try {
                 throw "The backend is healthy, but the required local base schema is incomplete."
             }
             Invoke-Compose @("stop", "backend")
-            [void](Sync-LocalStudioSchema)
+            [void](Sync-LocalSchemas)
             Invoke-Compose @("up", "--build", "--detach")
             Wait-LocalComposeServicesHealthy @("postgres", "rabbitmq", "redis", "backend", "media-worker")
             Invoke-Compose @("ps")

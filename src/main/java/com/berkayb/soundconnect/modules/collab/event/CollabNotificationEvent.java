@@ -16,9 +16,11 @@ import java.util.UUID;
 
 /**
  * Immutable Collab notification snapshot captured inside the domain transaction.
- * Delivery is deliberately deferred to an {@code AFTER_COMMIT} listener.
+ * The stable event id and payload are persisted to the outbox before commit;
+ * broker delivery is attempted only after that transaction commits.
  */
 public record CollabNotificationEvent(
+        UUID eventId,
         UUID recipientId,
         NotificationType type,
         String title,
@@ -31,6 +33,7 @@ public record CollabNotificationEvent(
     public static final String ACTION_KEY = "action";
 
     public CollabNotificationEvent {
+        eventId = Objects.requireNonNull(eventId, "eventId is required");
         recipientId = Objects.requireNonNull(recipientId, "recipientId is required");
         type = requireCollabType(type);
         title = requireText(title, "title");
@@ -72,6 +75,7 @@ public record CollabNotificationEvent(
         });
 
         return new CollabNotificationEvent(
+                UUID.randomUUID(),
                 recipientId,
                 type,
                 title,

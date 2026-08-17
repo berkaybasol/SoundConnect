@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.location.mapper.DistrictMapper;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.location.support.TurkishAlphabeticalOrder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -46,13 +47,19 @@ public class DistrictServiceImpl implements DistrictService {
 	@Override
 	public List<DistrictResponseDto> findAll() {
 		log.info("get all districts");
-		return districtMapper.toResponseList(districtRepository.findAll());
+		List<District> districts = districtRepository.findAll().stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(District::getName))
+				.toList();
+		return districtMapper.toResponseList(districts);
 	}
 	
 	@Override
 	public List<DistrictResponseDto> findByCityId(UUID cityId) {
 		log.info("find district by id: {}", cityId);
-		return districtMapper.toResponseList(districtRepository.findDistrictsByCity_Id(cityId));
+		List<District> districts = districtRepository.findDistrictsByCity_Id(cityId).stream()
+				.sorted(TurkishAlphabeticalOrder.comparing(District::getName))
+				.toList();
+		return districtMapper.toResponseList(districts);
 	}
 	
 	@Override

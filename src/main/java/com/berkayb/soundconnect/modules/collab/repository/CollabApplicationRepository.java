@@ -22,9 +22,9 @@ public interface CollabApplicationRepository extends JpaRepository<CollabApplica
     @Query("select a.listing.id from CollabApplication a where a.applicantUser.id = :userId and a.listing.id in :listingIds")
     Set<UUID> findAppliedListingIds(@Param("userId") UUID userId, @Param("listingIds") Collection<UUID> listingIds);
 
-    @Query("select distinct a.listing.id from CollabApplication a where a.applicantUser.id = :userId " +
+    @Query("select a.listing.id from CollabApplication a where a.applicantUser.id = :userId " +
             "and a.status = :applicationStatus and a.listing.status = :listingStatus and a.listing.expiresAt <= :now " +
-            "order by a.listing.id")
+            "order by a.listing.expiresAt, a.listing.id")
     List<UUID> findDueListingIdsForApplicant(@Param("userId") UUID userId,
                                              @Param("applicationStatus") CollabApplicationStatus applicationStatus,
                                              @Param("listingStatus") com.berkayb.soundconnect.modules.collab.enums.CollabListingStatus listingStatus,

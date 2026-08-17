@@ -60,7 +60,8 @@ public class NotificationBadgeCacheHelper {
 		}
 	}
 	
-	// Cache'deki unread sayacini okur eger cache'de veri yoksa null doner
+	// Cache projection'ini diagnostik/yardimci amacla okur. Kullaniciya donen
+	// unread sayisinda bu deger source of truth olarak kullanilmamalidir.
 	public Long getCacheUnread(UUID userId) {
 		String key = unreadKey(userId);
 		try {
