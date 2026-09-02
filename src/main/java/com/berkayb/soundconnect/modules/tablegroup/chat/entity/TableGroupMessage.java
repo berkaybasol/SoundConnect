@@ -16,12 +16,20 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@AttributeOverride(
+		name = "createdAt",
+		column = @Column(name = "created_at", nullable = false, updatable = false)
+)
 @Table( name = "tbl_table_group_message",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_tg_message_game",
+				columnNames = "game_id"
+		),
 		indexes = {
 				// Belirli bir masaya (tableGroupId) ait mesajlari hizli cekmek icin
 				@Index(
-						name = "idx_tg_msg_group_created",
-						columnList = "table_group_id, created_at"
+						name = "idx_tg_msg_group_created_desc_id",
+						columnList = "table_group_id, created_at DESC, id DESC"
 				),
 				// Sender bazlı filtreler ileride gerekebilir (moderasyon vs)
 				@Index(
@@ -39,6 +47,12 @@ public class TableGroupMessage extends BaseEntity {
 	// mesaji kim gonderdi?
 	@Column(name = "sender_id", nullable = false, columnDefinition = "uuid")
 	private UUID senderId;
+
+	@Column(name = "client_message_id", columnDefinition = "uuid")
+	private UUID clientMessageId;
+
+	@Column(name = "game_id", columnDefinition = "uuid")
+	private UUID gameId;
 	
 	// mesaj govdesi. TEXT kullaniyoruz uzun icerikler icin guvenli
 	@Column(name = "content", nullable = false, columnDefinition = "TEXT")

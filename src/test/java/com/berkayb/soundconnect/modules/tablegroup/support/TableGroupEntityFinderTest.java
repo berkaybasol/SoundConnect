@@ -70,4 +70,26 @@ class TableGroupEntityFinderTest {
 		
 		verify(tableGroupRepository).findById(tableGroupId);
 	}
+
+	@Test
+	void getTableGroupByIdForUpdate_whenExists_shouldUseLockedRepositoryQuery() {
+		UUID tableGroupId = UUID.randomUUID();
+		TableGroup tableGroup = new TableGroup();
+		tableGroup.setId(tableGroupId);
+		when(tableGroupRepository.findByIdForUpdate(tableGroupId)).thenReturn(Optional.of(tableGroup));
+
+		assertThat(entityFinder.getTableGroupByIdForUpdate(tableGroupId)).isSameAs(tableGroup);
+
+		verify(tableGroupRepository).findByIdForUpdate(tableGroupId);
+	}
+
+	@Test
+	void getTableGroupByIdForUpdate_whenMissing_shouldUseDomainNotFoundError() {
+		UUID tableGroupId = UUID.randomUUID();
+		when(tableGroupRepository.findByIdForUpdate(tableGroupId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> entityFinder.getTableGroupByIdForUpdate(tableGroupId))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_NOT_FOUND);
+	}
 }

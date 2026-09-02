@@ -167,6 +167,8 @@ class ProductionSafetyValidatorTest {
 				.withProperty("spring.datasource.hikari.connection-init-sql", "SET TIME ZONE 'UTC'")
 				.withProperty("server.forward-headers-strategy", "none")
 				.withProperty("app.security.auth-rate-limit.enabled", "true")
+				.withProperty("app.table-group.rate-limit.enabled", "true")
+				.withProperty("app.websocket.broker-relay.enabled", "true")
 				.withProperty("app.data.init.enabled", "false")
 				.withProperty("app.data.init.owner.enabled", "false")
 				.withProperty("app.location.seed.enabled", "false")
@@ -197,7 +199,7 @@ class ProductionSafetyValidatorTest {
 				.withProperty("cloud.storage.cdnBaseUrl", "https://cdn.api.test.invalid")
 				.withProperty(
 						"management.endpoint.health.group.readiness.include",
-						"readinessState,db,redis,rabbit"
+						"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth"
 				);
 	}
 }

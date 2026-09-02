@@ -301,7 +301,7 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	
 	public void publishRoomState(PulseRoomState room) {
 		// Room state guncellemeleri ayri kanaldan gitsin message event ile karismasin
-		String destination = WebSocketChannels.pulseRoom(room.getRoomId()) + "/state";
+		String destination = WebSocketChannels.pulseState(room.getRoomId());
 		messagingTemplate.convertAndSend(destination, room);
 	}
 	
@@ -314,7 +314,7 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	
 	
 	public void publishPresence(UUID roomId, int activeCount) {
-		String destination = WebSocketChannels.pulseRoom(roomId) + "/presence";
+		String destination = WebSocketChannels.pulsePresence(roomId);
 		messagingTemplate.convertAndSend(destination, activeCount);
 	}
 	

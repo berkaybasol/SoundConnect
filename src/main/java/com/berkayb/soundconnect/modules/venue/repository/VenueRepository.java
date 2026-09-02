@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.venue.repository;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
+import com.berkayb.soundconnect.modules.venue.repository.projection.TableGroupVenueOptionProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -19,6 +21,47 @@ public interface VenueRepository extends JpaRepository<Venue, UUID> {
 List<Venue> findAllByOwnerId(UUID ownerId);
 Optional<Venue> findByIdAndOwnerId(UUID venueId, UUID ownerId);
 boolean existsByOwner_Id(UUID ownerId);
+
+	@Query("""
+			select
+				v.id as id,
+				v.name as name,
+				vp.profilePictureMediaId as profilePictureMediaId,
+				v.address as address,
+				c.id as cityId,
+				c.name as cityName,
+				d.id as districtId,
+				d.name as districtName,
+				n.id as neighborhoodId,
+				n.name as neighborhoodName
+			from Venue v
+			join v.city c
+			join v.district d
+			join v.neighborhood n
+			left join VenueProfile vp on vp.venue = v
+			where v.status = :status
+			  and d.city = c
+			  and n.district = d
+			  and locate(lower(:q), lower(v.name)) > 0
+			order by
+				case
+					when lower(v.name) = lower(:q) then 0
+					when locate(lower(:q), lower(v.name)) = 1 then 1
+					else 2
+				end,
+				lower(v.name),
+				lower(c.name),
+				lower(d.name),
+				lower(n.name),
+				lower(v.address),
+				v.id
+			""")
+	List<TableGroupVenueOptionProjection> searchTableGroupVenueOptions(
+			@Param("q") String q,
+			@Param("status") VenueStatus status,
+			Pageable pageable
+	);
+
 	@EntityGraph(attributePaths = {"owner", "city", "district", "neighborhood"})
 	@Query(
 			value = """

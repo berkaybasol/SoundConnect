@@ -46,8 +46,10 @@ class ProductionConfigurationTest {
 		assertThat(property(sources, "management.endpoints.web.exposure.include")).isEqualTo("health");
 		assertThat(property(sources, "management.endpoint.health.show-details")).isEqualTo("never");
 		assertThat(property(sources, "management.endpoint.health.probes.enabled")).isEqualTo(true);
+		assertThat(property(sources, "app.websocket.broker-relay.enabled")).isEqualTo(true);
+		assertThat(property(sources, "app.table-group.rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "management.endpoint.health.group.readiness.include"))
-				.isEqualTo("readinessState,db,redis,rabbit");
+				.isEqualTo("readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth");
 	}
 
 	private Object property(List<PropertySource<?>> sources, String key) {

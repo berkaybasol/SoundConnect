@@ -33,6 +33,8 @@ public class ProductionSafetyValidator {
 			new RequiredSetting("spring.datasource.hikari.connection-init-sql", "SET TIME ZONE 'UTC'"),
 			new RequiredSetting("server.forward-headers-strategy", "none"),
 			new RequiredSetting("app.security.auth-rate-limit.enabled", "true"),
+			new RequiredSetting("app.table-group.rate-limit.enabled", "true"),
+			new RequiredSetting("app.websocket.broker-relay.enabled", "true"),
 			new RequiredSetting("app.data.init.enabled", "false"),
 			new RequiredSetting("app.data.init.owner.enabled", "false"),
 			new RequiredSetting("app.location.seed.enabled", "false"),
@@ -57,7 +59,7 @@ public class ProductionSafetyValidator {
 			new RequiredSetting("cloud.storage.aclPublicReadOnPut", "false"),
 			new RequiredSetting(
 					"management.endpoint.health.group.readiness.include",
-					"readinessState,db,redis,rabbit"
+					"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth"
 			)
 	);
 

@@ -5,6 +5,8 @@ import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.ratelimit.AuthRateLimitFilter;
 import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import com.berkayb.soundconnect.auth.service.AuthService;
+import com.berkayb.soundconnect.modules.tablegroup.controller.TableGroupController;
+import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
 import com.berkayb.soundconnect.modules.user.controller.user.UserAccountController;
 import com.berkayb.soundconnect.modules.user.service.UserService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -28,9 +30,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = {AuthControllerImpl.class, UserAccountController.class})
+@WebMvcTest(controllers = {
+		AuthControllerImpl.class,
+		UserAccountController.class,
+		TableGroupController.class
+})
 @Import({
 		SecurityConfig.class,
 		RestAuthenticationEntryPoint.class,
@@ -44,6 +51,7 @@ class SecurityConfigAuthorizationTest {
 	@MockitoBean AuthService authService;
 	@MockitoBean PasswordResetService passwordResetService;
 	@MockitoBean UserService userService;
+	@MockitoBean TableGroupService tableGroupService;
 	@MockitoBean JwtAuthenticationFilter jwtAuthenticationFilter;
 	@MockitoBean AuthRateLimitFilter authRateLimitFilter;
 
@@ -76,6 +84,13 @@ class SecurityConfigAuthorizationTest {
 						.content("""
 								{"username":"newname"}
 								"""))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void anonymousTableGroupVenueOptionsAreRejectedByTheFilterChain() throws Exception {
+		mockMvc.perform(get("/api/v1/table-groups/venue-options")
+						.param("q", "Sound"))
 				.andExpect(status().isUnauthorized());
 	}
 

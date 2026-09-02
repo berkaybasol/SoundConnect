@@ -13,7 +13,7 @@ import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,7 +50,7 @@ class TableGroupMapperTest {
 		
 		// participants
 		UUID participantUserId = UUID.randomUUID();
-		LocalDateTime joinedAt = LocalDateTime.now().minusMinutes(10);
+		Instant joinedAt = Instant.now().minusSeconds(600);
 		
 		TableGroupParticipant participant = TableGroupParticipant.builder()
 		                                                         .userId(participantUserId)
@@ -65,17 +65,21 @@ class TableGroupMapperTest {
 		genderPrefs.add("MALE");
 		genderPrefs.add("FEMALE");
 		
-		LocalDateTime expiresAt = LocalDateTime.now().plusHours(2);
+		Instant startAt = Instant.now();
+		Instant meetingAt = startAt.plusSeconds(3600);
+		Instant expiresAt = Instant.now().plusSeconds(7200);
 		
 		TableGroup entity = TableGroup.builder()
 		                              .ownerId(ownerId)
 		                              .venueId(venueId)
 		                              .venueName("Sound Bar")
+		                              .description("Akustik müzik ve sohbet")
 		                              .maxPersonCount(4)
 		                              .genderPrefs(genderPrefs)
 		                              .ageMin(20)
 		                              .ageMax(30)
-		                              .startAt(LocalDateTime.now())
+		                              .startAt(startAt)
+		                              .meetingAt(meetingAt)
 		                              .expiresAt(expiresAt)
 		                              .status(TableGroupStatus.ACTIVE)
 		                              .participants(participants)
@@ -95,10 +99,13 @@ class TableGroupMapperTest {
 		assertThat(dto.ownerId()).isEqualTo(ownerId);
 		assertThat(dto.venueId()).isEqualTo(venueId);
 		assertThat(dto.venueName()).isEqualTo("Sound Bar");
+		assertThat(dto.description()).isEqualTo("Akustik müzik ve sohbet");
 		assertThat(dto.maxPersonCount()).isEqualTo(4);
 		assertThat(dto.genderPrefs()).containsExactly("MALE", "FEMALE");
 		assertThat(dto.ageMin()).isEqualTo(20);
 		assertThat(dto.ageMax()).isEqualTo(30);
+		assertThat(dto.startAt()).isEqualTo(startAt);
+		assertThat(dto.meetingAt()).isEqualTo(meetingAt);
 		assertThat(dto.expiresAt()).isEqualTo(expiresAt);
 		assertThat(dto.status()).isEqualTo(TableGroupStatus.ACTIVE);
 		
@@ -132,16 +139,17 @@ class TableGroupMapperTest {
 		UUID neighborhoodId = UUID.randomUUID();
 		
 		List<String> genderPrefs = List.of("MALE", "FEMALE");
-		LocalDateTime expiresAt = LocalDateTime.now().plusHours(3);
+		Instant meetingAt = Instant.now().plusSeconds(10800);
 		
 		TableGroupCreateRequestDto requestDto = new TableGroupCreateRequestDto(
 				UUID.randomUUID(),           // venueId
 				"My Venue",                  // venueName
+				"Table description",         // description
 				4,                           // maxPersonCount
 				genderPrefs,                 // gender prefs
 				22,                          // ageMin
 				30,                          // ageMax
-				expiresAt,                   // expiresAt
+				meetingAt,                   // meetingAt
 				cityId,
 				districtId,
 				neighborhoodId
@@ -154,11 +162,13 @@ class TableGroupMapperTest {
 		assertThat(entity).isNotNull();
 		assertThat(entity.getVenueId()).isEqualTo(requestDto.venueId());
 		assertThat(entity.getVenueName()).isEqualTo("My Venue");
+		assertThat(entity.getDescription()).isEqualTo("Table description");
 		assertThat(entity.getMaxPersonCount()).isEqualTo(4);
 		assertThat(entity.getGenderPrefs()).containsExactlyElementsOf(genderPrefs);
 		assertThat(entity.getAgeMin()).isEqualTo(22);
 		assertThat(entity.getAgeMax()).isEqualTo(30);
-		assertThat(entity.getExpiresAt()).isEqualTo(expiresAt);
+		assertThat(entity.getMeetingAt()).isEqualTo(meetingAt);
+		assertThat(entity.getExpiresAt()).isNull();
 		
 		// service layer set edecek: mapper ignore ediyor mu?
 		assertThat(entity.getCity()).isNull();
@@ -168,5 +178,31 @@ class TableGroupMapperTest {
 		// participants da ignore edilmeli (service owner'ı ekliyor)
 		// Lombok @Builder.Default sayesinde boş set olabilir; null da olabilir.
 		assertThat(entity.getParticipants()).isNullOrEmpty();
+	}
+
+	@Test
+	void optionalVenueFields_shouldRemainNullAcrossRequestEntityAndResponseMapping() {
+		TableGroupCreateRequestDto requestDto = new TableGroupCreateRequestDto(
+				null,
+				null,
+				"Mekan belirtilmeyen masa",
+				2,
+				List.of("MALE", "FEMALE"),
+				22,
+				30,
+				Instant.now().plusSeconds(3600),
+				UUID.randomUUID(),
+				null,
+				null
+		);
+
+		TableGroup entity = mapper.toEntity(requestDto);
+		entity.setParticipants(new HashSet<>());
+		TableGroupResponseDto response = mapper.toDto(entity);
+
+		assertThat(entity.getVenueId()).isNull();
+		assertThat(entity.getVenueName()).isNull();
+		assertThat(response.venueId()).isNull();
+		assertThat(response.venueName()).isNull();
 	}
 }

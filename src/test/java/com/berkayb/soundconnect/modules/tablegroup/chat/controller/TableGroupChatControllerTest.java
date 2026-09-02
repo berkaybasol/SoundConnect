@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
@@ -28,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.security.Principal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -95,7 +96,7 @@ class TableGroupChatControllerTest {
 				senderId,
 				"kanka nerdesiniz",
 				MessageType.TEXT,
-				LocalDateTime.now(),
+				Instant.now(),
 				null
 		);
 	}
@@ -150,10 +151,12 @@ class TableGroupChatControllerTest {
 		// given
 		UUID tableGroupId = UUID.randomUUID();
 		UUID messageId = UUID.randomUUID();
+		UUID clientMessageId = UUID.randomUUID();
 		
 		TableGroupMessageRequestDto requestDto = new TableGroupMessageRequestDto(
 				"kanka nerdesiniz",
-				MessageType.TEXT
+				MessageType.TEXT,
+				clientMessageId
 		);
 		
 		TableGroupMessageResponseDto responseDto = sampleMessageDto(messageId, tableGroupId, userId);
@@ -174,9 +177,28 @@ class TableGroupChatControllerTest {
 		       .andExpect(jsonPath("$.message").value("Message sent"))
 		       .andExpect(jsonPath("$.data.messageId").value(messageId.toString()))
 		       .andExpect(jsonPath("$.data.tableGroupId").value(tableGroupId.toString()))
-		       .andExpect(jsonPath("$.data.senderId").value(userId.toString()));
+		       .andExpect(jsonPath("$.data.senderId").value(userId.toString()))
+		       .andExpect(jsonPath("$.data.sentAt").value(responseDto.sentAt().toString()));
 		
-		verify(chatService).sendMessage(eq(userId), eq(tableGroupId), any(TableGroupMessageRequestDto.class));
+		ArgumentCaptor<TableGroupMessageRequestDto> requestCaptor =
+				ArgumentCaptor.forClass(TableGroupMessageRequestDto.class);
+		verify(chatService).sendMessage(eq(userId), eq(tableGroupId), requestCaptor.capture());
+		assertThat(requestCaptor.getValue().clientMessageId()).isEqualTo(clientMessageId);
+	}
+
+	@Test
+	void sendMessage_withoutClientMessageId_shouldFailValidationBeforeService() throws Exception {
+		UUID tableGroupId = UUID.randomUUID();
+
+		mockMvc.perform(
+				post(EndPoints.TableGroup.Chat.BASE + EndPoints.TableGroup.Chat.MESSAGES, tableGroupId)
+						.principal(principal())
+						.contentType("application/json")
+						.content("{\"content\":\"idempotent olmalı\",\"messageType\":\"TEXT\"}")
+		)
+				.andExpect(status().isBadRequest());
+
+		verifyNoInteractions(chatService);
 	}
 	
 	// -------------------- getUnreadBadge (MockMvc, int) --------------------

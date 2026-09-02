@@ -25,7 +25,9 @@ public class EndPoints {
 		public static final String BASE = API + VERSION + "/table-groups";
 		
 		public static final String CREATE = "/create";
+		public static final String VENUE_OPTIONS = "/venue-options";
 		public static final String LIST_ACTIVE = "/active";
+		public static final String LIST_MINE = "/mine";
 		public static final String DETAIL = "/{tableGroupId}";
 		public static final String JOIN = "/{tableGroupId}/join";
 		public static final String APPROVE = "/{tableGroupId}/approve/{participantId}";
@@ -38,6 +40,17 @@ public class EndPoints {
 			public static final String BASE = API + VERSION + "/table-groups/{tableGroupId}/chat"; //degisti
 			public static final String MESSAGES = "/messages";
 			public static final String GET_UNREAD_BADGE = "/unread-badge";
+
+			public static class Game {
+				public static final String BASE = Chat.BASE + "/games";
+				public static final String ACTIVE = "/active";
+				public static final String BY_ID = "/{gameId}";
+				public static final String JOIN = BY_ID + "/join";
+				public static final String LEAVE = BY_ID + "/leave";
+				public static final String START = BY_ID + "/start";
+				public static final String CANCEL = BY_ID + "/cancel";
+				public static final String ACTIONS = BY_ID + "/actions";
+			}
 		}
 	}
 	

@@ -2,8 +2,6 @@ package com.berkayb.soundconnect.shared.realtime;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.pulse.redis.PulseRedisService;
-import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroup;
-import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroupParticipant;
 import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
 import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
@@ -16,10 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -38,11 +33,14 @@ class WebSocketSubscriptionAuthorizerTest {
 		UUID userId = UUID.randomUUID();
 		UserDetailsImpl principal = principal(userId);
 
-		assertThatCode(() -> authorizer.authorize(principal, "/topic/dm/" + userId))
+		assertThatCode(() -> authorizer.authorize(principal, WebSocketChannels.dm(userId)))
 				.doesNotThrowAnyException();
-		assertThatCode(() -> authorizer.authorize(principal, "/topic/notifications/" + userId + "/badge"))
+		assertThatCode(() -> authorizer.authorize(principal, WebSocketChannels.notificationsBadge(userId)))
 				.doesNotThrowAnyException();
-		assertThatThrownBy(() -> authorizer.authorize(principal, "/topic/dm/" + UUID.randomUUID()))
+		assertThatThrownBy(() -> authorizer.authorize(principal, WebSocketChannels.dm(UUID.randomUUID())))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> authorizer.authorize(principal, "/topic/dm/" + userId))
+				.as("legacy slash-separated broker topics must stay denied")
 				.isInstanceOf(AccessDeniedException.class);
 	}
 
@@ -50,18 +48,22 @@ class WebSocketSubscriptionAuthorizerTest {
 	void acceptedTableGroupParticipantCanSubscribeButPendingParticipantCannot() {
 		UUID groupId = UUID.randomUUID();
 		UUID userId = UUID.randomUUID();
-		TableGroup tableGroup = activeTableGroup(userId, ParticipantStatus.ACCEPTED);
-		when(tableGroupRepository.findById(groupId)).thenReturn(Optional.of(tableGroup));
+		when(tableGroupRepository.countOpenAccess(
+				org.mockito.ArgumentMatchers.eq(groupId),
+				org.mockito.ArgumentMatchers.eq(userId),
+				org.mockito.ArgumentMatchers.eq(TableGroupStatus.ACTIVE),
+				org.mockito.ArgumentMatchers.eq(ParticipantStatus.ACCEPTED),
+				org.mockito.ArgumentMatchers.any(Instant.class)
+		)).thenReturn(1L, 0L);
 
 		assertThatCode(() -> authorizer.authorize(
 				principal(userId),
-				"/topic/table_group/" + groupId
+				WebSocketChannels.tableGroup(groupId)
 		)).doesNotThrowAnyException();
 
-		tableGroup.getParticipants().iterator().next().setStatus(ParticipantStatus.PENDING);
 		assertThatThrownBy(() -> authorizer.authorize(
 				principal(userId),
-				"/topic/table_group/" + groupId
+				WebSocketChannels.tableGroup(groupId)
 		)).isInstanceOf(AccessDeniedException.class);
 	}
 
@@ -73,11 +75,11 @@ class WebSocketSubscriptionAuthorizerTest {
 
 		assertThatCode(() -> authorizer.authorize(
 				principal(userId),
-				"/topic/pulse/" + roomId + "/vote"
+				WebSocketChannels.pulseVote(roomId)
 		)).doesNotThrowAnyException();
 		assertThatThrownBy(() -> authorizer.authorize(
 				principal(userId),
-				"/topic/pulse/" + roomId
+				WebSocketChannels.pulseRoom(roomId)
 		)).isInstanceOf(AccessDeniedException.class);
 	}
 
@@ -90,37 +92,21 @@ class WebSocketSubscriptionAuthorizerTest {
 	}
 
 	@Test
-	void clientSendIsRestrictedToExplicitApplicationDestinations() {
+	void clientSendIsRestrictedToFirstReleasePulseCommands() {
 		UUID userId = UUID.randomUUID();
 		UUID groupId = UUID.randomUUID();
-		when(tableGroupRepository.findById(groupId))
-				.thenReturn(Optional.of(activeTableGroup(userId, ParticipantStatus.ACCEPTED)));
-
-		assertThatCode(() -> authorizer.authorizeSend(
-				principal(userId),
-				"/app/table-group/" + groupId + "/chat"
-		)).doesNotThrowAnyException();
 		assertThatCode(() -> authorizer.authorizeSend(
 				principal(userId),
 				"/app/pulse/send"
 		)).doesNotThrowAnyException();
 		assertThatThrownBy(() -> authorizer.authorizeSend(
 				principal(userId),
-				"/topic/dm/" + userId
+				"/app/table-group/" + groupId + "/chat"
 		)).isInstanceOf(AccessDeniedException.class);
-	}
-
-	private TableGroup activeTableGroup(UUID userId, ParticipantStatus participantStatus) {
-		TableGroupParticipant participant = TableGroupParticipant.builder()
-				.userId(userId)
-				.status(participantStatus)
-				.build();
-		return TableGroup.builder()
-				.ownerId(UUID.randomUUID())
-				.status(TableGroupStatus.ACTIVE)
-				.expiresAt(LocalDateTime.now().plusHours(1))
-				.participants(new HashSet<>(Set.of(participant)))
-				.build();
+		assertThatThrownBy(() -> authorizer.authorizeSend(
+				principal(userId),
+				WebSocketChannels.dm(userId)
+		)).isInstanceOf(AccessDeniedException.class);
 	}
 
 	private UserDetailsImpl principal(UUID userId) {

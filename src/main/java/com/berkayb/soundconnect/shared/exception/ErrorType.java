@@ -138,6 +138,7 @@ public enum ErrorType {
 	
 	// VENUE (7000-7099)
 	VENUE_NOT_FOUND(7001, "Venue not found", HttpStatus.NOT_FOUND, "Mekan bilgisi bulunamadı."),
+	VENUE_OWNER_IMMUTABLE(7002, "Venue owner cannot be changed", HttpStatus.CONFLICT, "Mekan sahibi bu islemle degistirilemez."),
 	
 	// TOKEN (8000-8099)
 	TOKEN_NOT_FOUND(8001, "TOKEN not found", HttpStatus.NOT_FOUND, "Token bulunamadı."),
@@ -150,12 +151,31 @@ public enum ErrorType {
 	VENUE_INFORMATION_REQUIRED(9101,"Venue information is required", HttpStatus.BAD_REQUEST, "Mekan bilgisi (venue) girilmeli."),
 	INVALID_AGE_RANGE(9102, "Invalid age range", HttpStatus.BAD_REQUEST,"Yas araligi gecersiz"),
 	GENDER_AND_COUNT_MISMATCH(9103,"Gender preference and participant count mismatch", HttpStatus.BAD_REQUEST,"Cinsiyet tercihi ve kisi sayisi esit olmali"),
-	TABLE_END_DATE_PASSED(9104,"Table end date has already passed", HttpStatus.BAD_REQUEST,"Masa bitis tarihi bitmis olamaz veya masa suresi bitmis"),
+	TABLE_END_DATE_PASSED(9104,"Table or meeting time has already passed", HttpStatus.BAD_REQUEST,"Bulusma saati gecmiste olamaz veya masa suresi dolmus"),
 	TABLE_GROUP_NOT_FOUND(9105,"Table group not found", HttpStatus.NOT_FOUND,"Table group bulunamadi"),
 	MAX_PARTICIPANT_LIMIT(9106,"Max participant limit",HttpStatus.CONFLICT,"Masa dolu."),
 	ALREADY_PARTICIPANT(9107,"Already participant",HttpStatus.CONFLICT,"Zaten masadasin veya basvuru yapmissin"),
 	PARTICIPANT_NOT_FOUND(9108,"Participant not found",HttpStatus.NOT_FOUND,"Basvuru bulunamadi"),
 	OWNER_CANNOT_LEAVE(9109,"Owner cannot leave",HttpStatus.BAD_REQUEST,"Masa sahibi masadan ayrilamaz"),
+	TABLE_GROUP_RATE_LIMITED(9110,"Table group rate limited",HttpStatus.TOO_MANY_REQUESTS,"Cok fazla masa islemi yaptin. Lutfen kisa sure sonra tekrar dene."),
+	TABLE_GROUP_RATE_LIMIT_UNAVAILABLE(9111,"Table group protection unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Masa islemleri gecici olarak kullanilamiyor. Lutfen tekrar dene."),
+	TABLE_GROUP_DURATION_INVALID(9112,"Table group meeting time is invalid",HttpStatus.BAD_REQUEST,"Bulusma saati en fazla 24 saat sonrasina secilebilir."),
+	TABLE_GROUP_PAGE_REQUEST_INVALID(9113,"Table group page request is invalid",HttpStatus.BAD_REQUEST,"Sayfalama parametreleri gecersiz."),
+	TABLE_GROUP_VENUE_LOCATION_MISMATCH(9114,"Venue location does not match the table location",HttpStatus.BAD_REQUEST,"Mekan konumu masa konumuyla uyusmuyor."),
+	TABLE_GROUP_APPLICATION_LIMIT_REACHED(9115,"Table group application queue is full",HttpStatus.CONFLICT,"Bu masanin basvuru sirasi dolu. Lutfen daha sonra tekrar dene."),
+	TABLE_GROUP_CHAT_LIMIT_REACHED(9116,"Table group chat storage limit reached",HttpStatus.CONFLICT,"Bu masa icin mesaj sinirina ulasildi."),
+	TABLE_GROUP_GAME_NOT_FOUND(9117,"Table group game not found",HttpStatus.NOT_FOUND,"Oyun bulunamadi."),
+	TABLE_GROUP_GAME_ACTIVE_EXISTS(9118,"An active table group game already exists",HttpStatus.CONFLICT,"Bu masada zaten aktif bir oyun var."),
+	TABLE_GROUP_GAME_STATE_INVALID(9119,"Table group game state is invalid",HttpStatus.CONFLICT,"Oyun bu islem icin uygun durumda degil."),
+	TABLE_GROUP_GAME_DEADLINE_PASSED(9120,"Table group game deadline passed",HttpStatus.CONFLICT,"Bu oyun adimi icin sure doldu."),
+	TABLE_GROUP_GAME_NOT_PLAYER(9121,"User is not a game player",HttpStatus.FORBIDDEN,"Bu oyunun oyuncusu degilsin."),
+	TABLE_GROUP_GAME_ACTION_CONFLICT(9122,"Game action conflicts with an existing action",HttpStatus.CONFLICT,"Bu tur icin hamleni zaten yaptin."),
+	TABLE_GROUP_GAME_MIN_PLAYERS(9123,"Game requires at least two players",HttpStatus.CONFLICT,"Oyunu baslatmak icin en az iki oyuncu gerekli."),
+	TABLE_GROUP_ACTOR_ROLE_FORBIDDEN(9124,"Account role cannot create or join table groups",HttpStatus.FORBIDDEN,"Mekan ve studyo hesaplari masa olusturamaz veya masaya katilamaz."),
+	TABLE_GROUP_VENUE_OPTION_QUERY_INVALID(9125,"Venue option query must contain between 2 and 64 characters",HttpStatus.BAD_REQUEST,"Mekan arama metni 2 ile 64 karakter arasinda olmalidir."),
+	TABLE_GROUP_VENUE_OPTION_LIMIT_INVALID(9126,"Venue option limit must be between 1 and 10",HttpStatus.BAD_REQUEST,"Mekan arama limiti 1 ile 10 arasinda olmalidir."),
+	TABLE_GROUP_OWNER_ACTIVE_EXISTS(9127,"Owner already has an active table group",HttpStatus.CONFLICT,"Yeni masa oluşturmadan önce açık masanı kapatmalısın."),
+	TABLE_GROUP_MESSAGE_IDEMPOTENCY_CONFLICT(9128,"Table group message idempotency conflict",HttpStatus.CONFLICT,"Mesaj anahtarı farklı bir içerikle daha önce kullanılmış."),
 	
 	// BAND (9200 - 9250)
 	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.CONFLICT, "Bu band zaten mevcut."),

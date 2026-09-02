@@ -43,9 +43,6 @@ public class CollabNotificationOutboxProperties {
     private Duration retryMaxDelay = Duration.ofMinutes(15);
 
     @NotNull
-    private Duration publisherConfirmTimeout = Duration.ofSeconds(5);
-
-    @NotNull
     private Duration publishedRetention = Duration.ofDays(7);
 
     @NotNull
@@ -56,13 +53,11 @@ public class CollabNotificationOutboxProperties {
         if (!positive(leaseDuration)
                 || !positive(retryInitialDelay)
                 || !positive(retryMaxDelay)
-                || !positive(publisherConfirmTimeout)
                 || !positive(publishedRetention)
                 || !positive(healthUndeliveredAgeThreshold)) {
             return false;
         }
         return !retryMaxDelay.minus(retryInitialDelay).isNegative()
-                && leaseDuration.compareTo(publisherConfirmTimeout.plusSeconds(1)) >= 0
                 && healthUndeliveredAgeThreshold.compareTo(retryMaxDelay) >= 0;
     }
 

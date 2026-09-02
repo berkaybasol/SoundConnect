@@ -35,6 +35,7 @@ Bu class diger modullerde notification ihtiyaci oldugunda DI ile inject edilip k
 public class NotificationProducer {
 	
 	private final RabbitTemplate rabbitTemplate;
+	private final NotificationPublisherProperties publisherProperties;
 	
 	// Exchange ve publish routing key'i application.yml dan aliyoruz
 	@Value("${app.messaging.notification.exchange}")
@@ -43,16 +44,14 @@ public class NotificationProducer {
 	@Value("${app.messaging.notification.publishRoutingKey:notification.event}")
 	private String publishRoutingKey;
 
-	@Value("${app.notification.collab-outbox.publisher-confirm-timeout:5s}")
-	private Duration publisherConfirmTimeout;
-
 	@PostConstruct
 	void validateConfiguration() {
+		Duration publisherConfirmTimeout = publisherProperties.getPublisherConfirmTimeout();
 		if (publisherConfirmTimeout == null
 				|| publisherConfirmTimeout.compareTo(Duration.ofSeconds(1)) < 0
 				|| publisherConfirmTimeout.compareTo(Duration.ofSeconds(30)) > 0) {
 			throw new IllegalStateException(
-					"app.notification.collab-outbox.publisher-confirm-timeout must be between 1s and 30s"
+					"app.messaging.notification.publisher-confirm-timeout must be between 1s and 30s"
 			);
 		}
 	}
@@ -99,7 +98,7 @@ public class NotificationProducer {
 					correlationData
 			);
 			CorrelationData.Confirm confirm = correlationData.getFuture().get(
-					publisherConfirmTimeout.toMillis(),
+					publisherProperties.getPublisherConfirmTimeout().toMillis(),
 					TimeUnit.MILLISECONDS
 			);
 			ReturnedMessage returned = correlationData.getReturned();

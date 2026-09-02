@@ -19,8 +19,15 @@ services:
       SPRING_RABBITMQ_PORT: 5672
       SPRING_RABBITMQ_USERNAME: ${SPRING_RABBITMQ_USERNAME:-soundconnect}
       SPRING_RABBITMQ_PASSWORD: ${SPRING_RABBITMQ_PASSWORD:?SPRING_RABBITMQ_PASSWORD must be set in .env.local}
+      SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_ENABLED: "true"
+      SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_HOST: rabbitmq
+      SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_PORT: 61613
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      # Keep the local deployment smoke honest: Docker health remains a
+      # process-liveness check, while the externally polled readiness endpoint
+      # must exercise the same TableGroup dependencies as production.
+      MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth"
       # Keep application admission aligned with the hard /tmp tmpfs quota below.
       SOUNDCONNECT_TRANSCODE_TEMP_VOLUME_BYTES: 6442450944
       SOUNDCONNECT_TRANSCODE_GLOBAL_TEMP_BUDGET_BYTES: 6442450944

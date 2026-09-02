@@ -7,7 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -23,12 +23,15 @@ import java.util.UUID;
 @EqualsAndHashCode(of = "userId")
 public class TableGroupParticipant {
 	
+	@Column(name = "user_id", nullable = false, columnDefinition = "uuid")
 	private UUID userId;
 	
-	private LocalDateTime joinedAt; // katilimci ne zaman eklendi?
+	@Column(name = "joined_at", nullable = false)
+	private Instant joinedAt; // katilimci ne zaman eklendi?
 	
 	// katilimcinin durumu
 	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false, length = 16)
 	private ParticipantStatus status;
 	
 	@Column(name = "join_note", length = 256)

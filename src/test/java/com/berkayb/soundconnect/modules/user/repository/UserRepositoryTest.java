@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.user.repository;
 
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -25,6 +27,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -121,6 +124,23 @@ class UserRepositoryTest {
 		userRepository.save(newUser(randomUsername("u_"), email));
 		assertThat(userRepository.existsByEmail(email)).isTrue();
 		assertThat(userRepository.existsByEmail("none@test.com")).isFalse();
+	}
+
+	@Test
+	void findRoleNamesByUserIdReturnsScalarAuthorizationProjection() {
+		Role musician = entityManager.persistAndFlush(
+				Role.builder().name(RoleEnum.ROLE_MUSICIAN.name()).build());
+		Role venue = entityManager.persistAndFlush(
+				Role.builder().name(RoleEnum.ROLE_VENUE.name()).build());
+		User user = newUser(randomUsername("roles_"), "roles@test.com");
+		user.setRoles(Set.of(musician, venue));
+		User saved = userRepository.saveAndFlush(user);
+		entityManager.clear();
+
+		assertThat(userRepository.findRoleNamesByUserId(saved.getId()))
+				.containsExactlyInAnyOrder(
+						RoleEnum.ROLE_MUSICIAN.name(), RoleEnum.ROLE_VENUE.name());
+		assertThat(userRepository.findRoleNamesByUserId(UUID.randomUUID())).isEmpty();
 	}
 	
 	@Test @DisplayName("findByEmail → bulundu/bulunamadı")

@@ -16,6 +16,7 @@ import org.springframework.security.authentication.AuthenticationCredentialsNotF
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Component;
@@ -39,7 +40,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
 		StompHeaderAccessor accessor =
 				MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-		if (accessor == null) {
+		if (accessor == null || accessor.getCommand() == StompCommand.MESSAGE) {
 			return authorizeBrokerDelivery(message) ? message : null;
 		}
 		if (accessor.getCommand() == null) {
@@ -74,7 +75,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 			UserDetailsImpl principal = requireFreshPrincipal(sessionId);
 			subscriptionAuthorizer.authorize(principal, destination);
 			return true;
-		} catch (AuthenticationException exception) {
+		} catch (AuthenticationException | AccessDeniedException exception) {
 			// Broker deliveries can race with logout, token expiry or a
 			// development database reset. The durable notification is already
 			// persisted; silently drop only this stale socket delivery.

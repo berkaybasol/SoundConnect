@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupCreateRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.request.TableGroupJoinRequestDto;
 import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupResponseDto;
+import com.berkayb.soundconnect.modules.tablegroup.dto.response.TableGroupVenueOptionDto;
 import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -18,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -55,16 +57,37 @@ public class TableGroupController {
 				            .build()
 		);
 	}
+
+	@Operation(summary = "Masa olusturma icin kayitli mekan onerilerini ara")
+	@GetMapping(EndPoints.TableGroup.VENUE_OPTIONS)
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<BaseResponse<List<TableGroupVenueOptionDto>>> findVenueOptions(
+			@RequestParam(name = "q") String query,
+			@RequestParam(name = "limit", defaultValue = "8") int limit
+	) {
+		List<TableGroupVenueOptionDto> options = tableGroupService.findVenueOptions(query, limit);
+		return ResponseEntity.ok(
+				BaseResponse.<List<TableGroupVenueOptionDto>>builder()
+						.success(true)
+						.code(200)
+						.message("Kayitli mekan onerileri listelendi")
+						.data(options)
+						.build()
+		);
+	}
 	
 	@Operation(summary = "Aktif masalari filtrele ve listele")
 	@GetMapping(EndPoints.TableGroup.LIST_ACTIVE)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<Page<TableGroupResponseDto>>> listActiveTableGroups(
-			@RequestParam UUID cityId,
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@RequestParam(required = false) UUID cityId,
 			@RequestParam(required = false) UUID districtId,
 			@RequestParam(required = false) UUID neighborhoodId,
 			Pageable pageable
 	) {
 		Page<TableGroupResponseDto> page = tableGroupService.listActiveTableGroups(
+				getCurrentUserId(principal),
 				cityId,
 				districtId,
 				neighborhoodId,
@@ -80,13 +103,37 @@ public class TableGroupController {
 				            .build()
 		);
 	}
+
+	@Operation(summary = "Kullanicinin aktif masalarini listele")
+	@GetMapping(EndPoints.TableGroup.LIST_MINE)
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<BaseResponse<Page<TableGroupResponseDto>>> listMyActiveTableGroups(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			Pageable pageable
+	) {
+		Page<TableGroupResponseDto> page = tableGroupService.listMyActiveTableGroups(
+				getCurrentUserId(principal),
+				pageable
+		);
+
+		return ResponseEntity.ok(
+				BaseResponse.<Page<TableGroupResponseDto>>builder()
+						.success(true)
+						.code(200)
+						.message("Kullanicinin aktif masalari listelendi")
+						.data(page)
+						.build()
+		);
+	}
 	
 	@Operation(summary = "Masa detayi getir")
 	@GetMapping(EndPoints.TableGroup.DETAIL)
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<BaseResponse<TableGroupResponseDto>> getTableGroupDetail(
+			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId
 	) {
-		TableGroupResponseDto dto = tableGroupService.getTableGroupDetail(tableGroupId);
+		TableGroupResponseDto dto = tableGroupService.getTableGroupDetail(getCurrentUserId(principal), tableGroupId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<TableGroupResponseDto>builder()

@@ -21,6 +21,7 @@ import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.mapper.VenueMapper;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -140,7 +141,7 @@ class VenueServiceImplTest {
 		when(locationEntityFinder.getCity(dto.cityId())).thenReturn(city);
 		when(locationEntityFinder.getDistrict(dto.districtId())).thenReturn(district);
 		when(locationEntityFinder.getNeighborhood(dto.neighborhoodId())).thenReturn(neighborhood);
-		when(userEntityFinder.getUser(dto.ownerId())).thenReturn(owner);
+		when(userRepository.findByIdForUpdate(dto.ownerId())).thenReturn(Optional.of(owner));
 		
 		// mapper.toEntity -> gerçek entity
 		Venue mapped = Venue.builder()
@@ -216,11 +217,11 @@ class VenueServiceImplTest {
 				.createProfile(eq(res.id()), any(VenueProfileSaveRequestDto.class));
 		
 		// 5) çağrı sırası (opsiyonel ama güzel bir güvence)
-		InOrder inOrder = inOrder(locationEntityFinder, userEntityFinder, venueMapper, venueRepository, roleRepository, userRepository, venueProfileService, venueMapper);
+		InOrder inOrder = inOrder(locationEntityFinder, userRepository, venueMapper, venueRepository, roleRepository, venueProfileService, venueMapper);
 		inOrder.verify(locationEntityFinder).getCity(dto.cityId());
 		inOrder.verify(locationEntityFinder).getDistrict(dto.districtId());
 		inOrder.verify(locationEntityFinder).getNeighborhood(dto.neighborhoodId());
-		inOrder.verify(userEntityFinder).getUser(dto.ownerId());
+		inOrder.verify(userRepository).findByIdForUpdate(dto.ownerId());
 		inOrder.verify(venueMapper).toEntity(eq(dto), eq(city), eq(district), eq(neighborhood), eq(owner));
 		inOrder.verify(venueRepository).save(any(Venue.class));
 		inOrder.verify(roleRepository).findByName(RoleEnum.ROLE_VENUE.name());
@@ -228,6 +229,7 @@ class VenueServiceImplTest {
 		inOrder.verify(venueProfileService).createProfile(any(UUID.class), any(VenueProfileSaveRequestDto.class));
 		inOrder.verify(venueMapper).toResponse(any(Venue.class));
 		inOrder.verifyNoMoreInteractions();
+		verify(userEntityFinder, never()).getUser(dto.ownerId());
 	}
 	@Test
 	void update_ok() {
@@ -257,7 +259,6 @@ class VenueServiceImplTest {
 		when(locationEntityFinder.getCity(dto.cityId())).thenReturn(city);
 		when(locationEntityFinder.getDistrict(dto.districtId())).thenReturn(district);
 		when(locationEntityFinder.getNeighborhood(dto.neighborhoodId())).thenReturn(neighborhood);
-		when(userEntityFinder.getUser(dto.ownerId())).thenReturn(owner);
 		
 		// repo.save: aynı entity'yi geri döndürelim (updated state)
 		when(venueRepository.save(any(Venue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -310,15 +311,44 @@ class VenueServiceImplTest {
 		assertThat(existing.getOwner()).isSameAs(owner);
 		
 		// çağrı sırası (opsiyonel)
-		InOrder inOrder = inOrder(venueEntityFinder, locationEntityFinder, userEntityFinder, venueRepository, venueMapper);
+		InOrder inOrder = inOrder(venueEntityFinder, locationEntityFinder, venueRepository, venueMapper);
 		inOrder.verify(venueEntityFinder).getVenue(venueId);
 		inOrder.verify(locationEntityFinder).getCity(dto.cityId());
 		inOrder.verify(locationEntityFinder).getDistrict(dto.districtId());
 		inOrder.verify(locationEntityFinder).getNeighborhood(dto.neighborhoodId());
-		inOrder.verify(userEntityFinder).getUser(dto.ownerId());
 		inOrder.verify(venueRepository).save(any(Venue.class));
 		inOrder.verify(venueMapper).toResponse(any(Venue.class));
 		inOrder.verifyNoMoreInteractions();
+	}
+
+	@Test
+	void update_whenOwnerChanges_shouldRejectBeforeDownstreamLookupOrMutation() {
+		UUID venueId = UUID.randomUUID();
+		Venue existing = Venue.builder()
+				.id(venueId)
+				.name("Old")
+				.address("Old address")
+				.city(city)
+				.district(district)
+				.neighborhood(neighborhood)
+				.owner(owner)
+				.status(VenueStatus.APPROVED)
+				.build();
+		VenueRequestDto transfer = new VenueRequestDto(
+				"Transferred", "New address", cityId, districtId, neighborhoodId,
+				UUID.randomUUID(), "05320000000", null, null, null);
+
+		when(venueEntityFinder.getVenue(venueId)).thenReturn(existing);
+
+		assertThatThrownBy(() -> sut.update(venueId, transfer))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.VENUE_OWNER_IMMUTABLE);
+
+		assertThat(existing.getOwner()).isSameAs(owner);
+		assertThat(existing.getName()).isEqualTo("Old");
+		assertThat(existing.getAddress()).isEqualTo("Old address");
+		verifyNoInteractions(locationEntityFinder, userRepository, roleRepository, venueMapper);
+		verify(venueRepository, never()).save(any());
 	}
 	@Test
 	void findById_ok() {

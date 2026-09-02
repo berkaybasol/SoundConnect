@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,9 +25,12 @@ class TableGroupMessageRepositoryTest {
 	
 	@Autowired
 	private TableGroupMessageRepository messageRepository;
+
+	@Autowired
+	private TestEntityManager entityManager;
 	
 	@Test
-	void findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc_whenMessagesExist_shouldReturnNonDeletedInAscendingOrder() {
+	void findNewestMessages_whenMessagesExist_shouldReturnNonDeletedInDescendingOrder() {
 		// given
 		UUID tableGroupId = UUID.randomUUID();
 		UUID otherTableGroupId = UUID.randomUUID();
@@ -81,7 +86,10 @@ class TableGroupMessageRepositoryTest {
 		
 		// when
 		Page<TableGroupMessage> page =
-				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(tableGroupId, pageable);
+				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+						tableGroupId,
+						pageable
+				);
 		
 		// then
 		assertThat(page).isNotNull();
@@ -90,9 +98,9 @@ class TableGroupMessageRepositoryTest {
 		List<TableGroupMessage> content = page.getContent();
 		assertThat(content).hasSize(2);
 		
-		// createdAt ASC: msg1, msg2 sırayla gelmeli
-		assertThat(content.get(0).getContent()).isEqualTo("msg1");
-		assertThat(content.get(1).getContent()).isEqualTo("msg2");
+		// Newest page semantics: msg2, msg1.
+		assertThat(content.get(0).getContent()).isEqualTo("msg2");
+		assertThat(content.get(1).getContent()).isEqualTo("msg1");
 		
 		// hiçbiri soft-deleted olmamalı
 		assertThat(content)
@@ -104,18 +112,96 @@ class TableGroupMessageRepositoryTest {
 	}
 	
 	@Test
-	void findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc_whenNoMessages_shouldReturnEmptyPage() {
+	void findNewestMessages_whenNoMessages_shouldReturnEmptyPage() {
 		// given
 		UUID tableGroupId = UUID.randomUUID();
 		Pageable pageable = PageRequest.of(0, 10);
 		
 		// when
 		Page<TableGroupMessage> page =
-				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtAsc(tableGroupId, pageable);
+				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+						tableGroupId,
+						pageable
+				);
 		
 		// then
 		assertThat(page).isNotNull();
 		assertThat(page.getTotalElements()).isEqualTo(0);
 		assertThat(page.getContent()).isEmpty();
+	}
+
+	@Test
+	void findByClientMessageId_shouldBeScopedToTableAndSender() {
+		UUID tableGroupId = UUID.randomUUID();
+		UUID senderId = UUID.randomUUID();
+		UUID clientMessageId = UUID.randomUUID();
+		TableGroupMessage message = messageRepository.saveAndFlush(
+				TableGroupMessage.builder()
+						.tableGroupId(tableGroupId)
+						.senderId(senderId)
+						.clientMessageId(clientMessageId)
+						.content("idempotent")
+						.messageType(MessageType.TEXT)
+						.createdAt(LocalDateTime.now())
+						.build()
+		);
+
+		assertThat(messageRepository.findByTableGroupIdAndSenderIdAndClientMessageId(
+				tableGroupId, senderId, clientMessageId)).contains(message);
+		assertThat(messageRepository.findByTableGroupIdAndSenderIdAndClientMessageId(
+				tableGroupId, UUID.randomUUID(), clientMessageId)).isEmpty();
+		assertThat(messageRepository.findByTableGroupIdAndSenderIdAndClientMessageId(
+				UUID.randomUUID(), senderId, clientMessageId)).isEmpty();
+	}
+
+	@Test
+	void findNewestMessages_pageZeroShouldContainLatestWindow() {
+		UUID tableGroupId = UUID.randomUUID();
+		UUID senderId = UUID.randomUUID();
+		LocalDateTime base = LocalDateTime.of(2026, 1, 1, 12, 0);
+		List<TableGroupMessage> messages = new ArrayList<>();
+		for (int index = 0; index < 5; index++) {
+			messages.add(TableGroupMessage.builder()
+					.tableGroupId(tableGroupId)
+					.senderId(senderId)
+					.content("msg-" + index)
+					.messageType(MessageType.TEXT)
+					.createdAt(base.plusMinutes(index))
+					.build());
+		}
+		messageRepository.saveAllAndFlush(messages);
+
+		// @CreatedDate may replace fixture values during persist, so fix the stored
+		// timestamps only after auditing has run.
+		for (int index = 0; index < messages.size(); index++) {
+			entityManager.getEntityManager()
+					.createQuery("""
+							update TableGroupMessage message
+							set message.createdAt = :createdAt
+							where message.id = :id
+							""")
+					.setParameter("createdAt", base.plusMinutes(index))
+					.setParameter("id", messages.get(index).getId())
+					.executeUpdate();
+		}
+		entityManager.clear();
+
+		Page<TableGroupMessage> firstPage =
+				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+						tableGroupId,
+						PageRequest.of(0, 2)
+				);
+		Page<TableGroupMessage> secondPage =
+				messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
+						tableGroupId,
+						PageRequest.of(1, 2)
+				);
+
+		assertThat(firstPage.getContent())
+				.extracting(TableGroupMessage::getContent)
+				.containsExactly("msg-4", "msg-3");
+		assertThat(secondPage.getContent())
+				.extracting(TableGroupMessage::getContent)
+				.containsExactly("msg-2", "msg-1");
 	}
 }

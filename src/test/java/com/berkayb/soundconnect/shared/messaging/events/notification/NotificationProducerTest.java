@@ -27,14 +27,16 @@ import static org.mockito.Mockito.mock;
 class NotificationProducerTest {
     private RabbitTemplate rabbitTemplate;
     private NotificationProducer producer;
+    private NotificationPublisherProperties publisherProperties;
 
     @BeforeEach
     void setUp() {
         rabbitTemplate = mock(RabbitTemplate.class);
-        producer = new NotificationProducer(rabbitTemplate);
+        publisherProperties = new NotificationPublisherProperties();
+        publisherProperties.setPublisherConfirmTimeout(Duration.ofSeconds(1));
+        producer = new NotificationProducer(rabbitTemplate, publisherProperties);
         ReflectionTestUtils.setField(producer, "exchange", "notification.exchange");
         ReflectionTestUtils.setField(producer, "publishRoutingKey", "notification.event");
-        ReflectionTestUtils.setField(producer, "publisherConfirmTimeout", Duration.ofSeconds(1));
         producer.validateConfiguration();
     }
 
@@ -99,6 +101,15 @@ class NotificationProducerTest {
         assertThatThrownBy(() -> producer.publishConfirmed(event()))
                 .isInstanceOf(AmqpException.class)
                 .hasMessageContaining("returned");
+    }
+
+    @Test
+    void invalidConfirmTimeoutNamesTheSharedConfigurationKey() {
+        publisherProperties.setPublisherConfirmTimeout(Duration.ofMillis(999));
+
+        assertThatThrownBy(producer::validateConfiguration)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("app.messaging.notification.publisher-confirm-timeout must be between 1s and 30s");
     }
 
     private static NotificationInboundEvent event() {

@@ -46,7 +46,7 @@ public enum NotificationType {
 	ARTIST_VENUE_LINK_APPLICATION_REJECT("ARTIST_VENUE", "Bağlanma isteğin reddedildi", false),
 	
 	// TABLE GROUP (Muzik birlestirir)
-	TABLE_JOIN_REQUEST_RECEVIED("TABLE","Yeni başvuru isteği", false),
+	TABLE_JOIN_REQUEST_RECEIVED("TABLE","Yeni başvuru isteği", false),
 	TABLE_JOIN_REQUEST_APPROVED("TABLE","Başvurun onaylandı",false),
 	TABLE_JOIN_REQUEST_REJECTED("TABLE","Başvurun reddedildi",false),
 	TABLE_PARTICIPANT_LEFT("TABLE","Katılımcı ayrıldı",false),

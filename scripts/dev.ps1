@@ -18,7 +18,16 @@ $LocalSchemaMigrations = @(
     @{ Name = "Studio domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-07-21-studio-domain.sql" },
     @{ Name = "Collab domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-domain.sql" },
     @{ Name = "Collab moderation"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-moderation.sql" },
-    @{ Name = "Collab notification outbox"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-notification-outbox.sql" }
+    @{ Name = "Collab notification outbox"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-notification-outbox.sql" },
+    @{ Name = "TableGroup hardening"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-17-tablegroup-hardening.sql" },
+    @{ Name = "TableGroup who-pays game"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-30-tablegroup-who-pays-game.sql" },
+    @{ Name = "TableGroup global feed"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-31-tablegroup-global-feed.sql" },
+    @{ Name = "TableGroup description"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-01-tablegroup-description.sql" },
+    @{ Name = "TableGroup optional venue"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-01-tablegroup-optional-venue.sql" },
+    @{ Name = "TableGroup meeting time"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-01-tablegroup-meeting-time.sql" },
+    @{ Name = "TableGroup chat idempotency"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-chat-idempotency.sql" },
+    @{ Name = "TableGroup notification type spelling"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-notification-type-spelling.sql" },
+    @{ Name = "TableGroup strict create contract"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-create-contract-strict.sql" }
 )
 
 function Assert-Command([string]$Name) {
@@ -284,7 +293,7 @@ function Sync-LocalSchemas {
             throw "$($Migration.Name) migration failed with exit code $LASTEXITCODE."
         }
     }
-    Write-Host "Local Studio and Collab schemas are ready." -ForegroundColor Green
+    Write-Host "Local Studio, Collab, and TableGroup schemas are ready." -ForegroundColor Green
     return $true
 }
 

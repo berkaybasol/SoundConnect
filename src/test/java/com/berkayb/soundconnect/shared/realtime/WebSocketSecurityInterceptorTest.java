@@ -23,6 +23,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.UUID;
 import java.util.Set;
@@ -94,7 +95,7 @@ class WebSocketSecurityInterceptorTest {
 	void subscribeDelegatesDestinationAuthorizationForAuthenticatedPrincipal() {
 		UUID userId = UUID.randomUUID();
 		UserDetailsImpl principal = principal(userId);
-		String destination = "/topic/dm/" + userId;
+		String destination = WebSocketChannels.dm(userId);
 		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
 		accessor.setSessionId("session-subscribe");
 		accessor.setDestination(destination);
@@ -121,7 +122,7 @@ class WebSocketSecurityInterceptorTest {
 		UserDetailsImpl principal = principal(userId);
 		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
 		accessor.setSessionId("session-send");
-		accessor.setDestination("/topic/dm/" + UUID.randomUUID());
+		accessor.setDestination(WebSocketChannels.dm(UUID.randomUUID()));
 		accessor.setUser(new UsernamePasswordAuthenticationToken(
 				principal,
 				null,
@@ -141,7 +142,7 @@ class WebSocketSecurityInterceptorTest {
 		UserDetailsImpl principal = principal(userId);
 		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
 		accessor.setSessionId("session-expired");
-		accessor.setDestination("/topic/dm/" + userId);
+		accessor.setDestination(WebSocketChannels.dm(userId));
 		accessor.setUser(new UsernamePasswordAuthenticationToken(
 				principal,
 				null,
@@ -157,7 +158,7 @@ class WebSocketSecurityInterceptorTest {
 	void brokerDeliveryUsesSessionRegistryWithoutStompPrincipalHeaders() {
 		UUID userId = UUID.randomUUID();
 		UserDetailsImpl principal = principal(userId);
-		String destination = "/topic/dm/" + userId;
+		String destination = WebSocketChannels.dm(userId);
 		sessionRegistry.register("session-outbound", userId, System.currentTimeMillis() + 60_000);
 		when(userDetailsService.loadUserById(userId)).thenReturn(principal);
 		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
@@ -175,6 +176,23 @@ class WebSocketSecurityInterceptorTest {
 	}
 
 	@Test
+	void brokerRelayStompMessageAlsoRevalidatesTheSubscription() {
+		UUID userId = UUID.randomUUID();
+		UserDetailsImpl principal = principal(userId);
+		String destination = WebSocketChannels.dm(userId);
+		String sessionId = "session-relay-outbound";
+		sessionRegistry.register(sessionId, userId, System.currentTimeMillis() + 60_000);
+		when(userDetailsService.loadUserById(userId)).thenReturn(principal);
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+		accessor.setSessionId(sessionId);
+		accessor.setDestination(destination);
+
+		interceptor.preSend(message(accessor), channel);
+
+		verify(subscriptionAuthorizer).authorize(principal, destination);
+	}
+
+	@Test
 	void brokerDeliveryDropsAndRemovesAStaleSessionWithoutFailingTheConsumer() {
 		UUID userId = UUID.randomUUID();
 		String sessionId = "session-stale-outbound";
@@ -183,7 +201,7 @@ class WebSocketSecurityInterceptorTest {
 				.thenThrow(new AuthenticationCredentialsNotFoundException("user deleted"));
 		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
 		accessor.setSessionId(sessionId);
-		accessor.setDestination("/topic/notifications/" + userId);
+		accessor.setDestination(WebSocketChannels.notifications(userId));
 		accessor.setLeaveMutable(true);
 		Message<byte[]> outbound = MessageBuilder.createMessage(
 				new byte[0],
@@ -193,6 +211,26 @@ class WebSocketSecurityInterceptorTest {
 		Message<?> result = interceptor.preSend(outbound, channel);
 
 		assertThat(result).isNull();
+		assertThat(sessionRegistry.find(sessionId)).isEmpty();
+	}
+
+	@Test
+	void brokerDeliveryDropsAUserWhoseDestinationAccessWasRevoked() {
+		UUID userId = UUID.randomUUID();
+		String sessionId = "session-revoked-outbound";
+		String destination = WebSocketChannels.tableGroup(UUID.randomUUID());
+		UserDetailsImpl principal = principal(userId);
+		sessionRegistry.register(sessionId, userId, System.currentTimeMillis() + 60_000);
+		when(userDetailsService.loadUserById(userId)).thenReturn(principal);
+		org.mockito.Mockito.doThrow(new AccessDeniedException("kicked"))
+				.when(subscriptionAuthorizer).authorize(principal, destination);
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+		accessor.setSessionId(sessionId);
+		accessor.setDestination(destination);
+		accessor.setLeaveMutable(true);
+		Message<byte[]> outbound = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+		assertThat(interceptor.preSend(outbound, channel)).isNull();
 		assertThat(sessionRegistry.find(sessionId)).isEmpty();
 	}
 

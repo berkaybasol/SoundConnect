@@ -62,8 +62,15 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 			throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
 		}
 		
-		// basvuru sahibi
-		User applicant = application.getApplicant();
+		// TableGroup admission and every institutional-role writer serialize on
+		// this row. The application reference itself is not an authorization-safe
+		// role snapshot after waiting on the application lock.
+		User applicantReference = application.getApplicant();
+		if (applicantReference == null || applicantReference.getId() == null) {
+			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		}
+		User applicant = userRepository.findByIdForUpdate(applicantReference.getId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		// venue rolu atanacak
 		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())

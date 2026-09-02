@@ -38,9 +38,15 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db,redis,rabbit
+          include: readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth
 
 app:
+  websocket:
+    broker-relay:
+      enabled: true
+  table-group:
+    rate-limit:
+      enabled: true
   cors:
     allowed-origin-patterns: ${SOUNDCONNECT_CORS_ALLOWED_ORIGIN_PATTERNS}
   security:

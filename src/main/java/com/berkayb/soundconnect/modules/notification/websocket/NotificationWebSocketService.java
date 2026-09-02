@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * STOMP uzerinden kullanicilara real-time bildirim yayini.
- * varsayilan destination: /topic/notifications/{userId}
+ * Canonical destination: {@code /topic/notifications.<userId>}
  */
 public interface NotificationWebSocketService {
 	
@@ -16,7 +16,8 @@ public interface NotificationWebSocketService {
 	
 	/**
 	 * İsteğe bağlı: badge (unread count) güncellemesi push etmek istersek.
-	 * UI tarafı ayrı bir kanala abone olabilir: /topic/notifications/{userId}/badge
+	 * UI tarafı ayrı bir kanala abone olabilir:
+	 * {@code /topic/notifications.<userId>.badge}
 	 */
 	default void sendUnreadBadgeToUser(UUID userId, long unreadCount) {
 		// opsiyonel; implementasyon tarafında override edilebilir

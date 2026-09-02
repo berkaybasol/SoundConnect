@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
@@ -28,6 +29,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select u from User u where u.id = :id")
 	Optional<User> findByIdForUpdate(@Param("id") UUID id);
+
+	/**
+	 * Lightweight authorization projection that deliberately does not attach a
+	 * User entity to the persistence context before a later locked read.
+	 */
+	@Query("select r.name from User u join u.roles r where u.id = :id")
+	Set<String> findRoleNamesByUserId(@Param("id") UUID id);
 
 	long countDistinctByRoles_Name(String roleName);
 

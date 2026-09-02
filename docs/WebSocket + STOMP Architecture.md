@@ -19,10 +19,9 @@
   WebSocket üzerinde çalışan, mesajların nasıl yönlendirileceğini ve yönetileceğini belirleyen, **açık ve basit** bir mesajlaşma protokolüdür.
 - WebSocket **ham veri** taşır, STOMP ise bu veriyi **adresler, yönlendirir ve yönetir**.
 - Java (Spring), Python, Node.js gibi birçok teknolojide kolayca entegre edilebilir.
-- Mesajlara "adres" (destination) ekler:
-    - `/topic/notifications` (tüm kullanıcılara)
-    - `/queue/messages` (kişiye özel)
-    - `/user/{username}/queue/notifications` (spesifik kullanıcıya)
+- Mesajlara "adres" (destination) ekler. SoundConnect broker topic'leri
+  `/topic/<routing-key>` biçimindedir; routing-key alt parçaları RabbitMQ ile
+  uyumlu olacak şekilde noktayla ayrılır.
 - STOMP protokolünde mesajlar **komutlar** ile yönetilir.
 
 ---
@@ -38,10 +37,26 @@
 | MESSAGE      | Sunucudan gelen mesaj (SUBSCRIBE olunan kanaldan alınır).       |
 | DISCONNECT   | Bağlantıyı sonlandırma komutu.                                  |
 
-#### Örnek Destinasyonlar:
-- `/topic/*` → Broadcast (tüm kullanıcılara)
-- `/queue/*` → Noktadan noktaya (kişiye özel)
-- `/user/queue/*` → Oturum açmış kullanıcıya özel (Spring ile popüler)
+#### Canonical broker destination sözleşmesi
+
+| Akış | SUBSCRIBE destination |
+|---|---|
+| Bildirim | `/topic/notifications.<userId>` |
+| Bildirim badge | `/topic/notifications.<userId>.badge` |
+| DM | `/topic/dm.<userId>` |
+| DM badge | `/topic/dm.<userId>.badge` |
+| TableGroup | `/topic/table-group.<tableGroupId>` |
+| Pulse oda | `/topic/pulse.<roomId>` |
+| Pulse alt akışları | `/topic/pulse.<roomId>.(vote|state|presence)` |
+
+`/topic/` sonrasında ham `/` kullanılmaz. RabbitMQ STOMP bu bölümü AMQP topic
+routing key olarak yorumlar ve slash-separated eski biçimleri reddeder.
+
+İlk sürümde TableGroup sohbet yazımı application-level cevap ve kararlı hata
+kodu sağlayan authenticated REST `POST` üzerinden yapılır. TableGroup STOMP
+kanalı yalnız sunucudan istemciye canlı teslimat içindir; `/app/table-group/...`
+gönderim destination'ı yayınlanmaz. Pulse'ın incelenmiş `/app/...` komutları
+broker routing key'i değildir ve ayrı uygulama mesajları olarak kalır.
 
 ---
 
@@ -57,5 +72,6 @@
    Client, ilgi duyduğu bir topic veya queue'ya abone olur.  
    Örnek:
    ```js
-   stompClient.subscribe('/topic/notifications', onNotification);
-   stompClient.subscribe('/user/queue/notifications', onPrivateNotification);
+   stompClient.subscribe('/topic/notifications.' + userId, onNotification);
+   stompClient.subscribe('/topic/notifications.' + userId + '.badge', onBadge);
+   ```

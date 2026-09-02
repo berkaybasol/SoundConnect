@@ -12,7 +12,6 @@ import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
-import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.dto.request.VenueRequestDto;
 import com.berkayb.soundconnect.modules.venue.dto.response.VenueResponseDto;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
@@ -31,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -44,7 +44,6 @@ public class VenueServiceImpl implements VenueService {
 	private final VenueRepository venueRepository;
 	private final VenueMapper venueMapper;
 	private final LocationEntityFinder locationEntityFinder;
-	private final UserEntityFinder userEntityFinder;
 	private final VenueEntityFinder venueEntityFinder;
 	private final RoleRepository roleRepository;
 	private final UserRepository userRepository;
@@ -90,7 +89,10 @@ public class VenueServiceImpl implements VenueService {
 		City city = locationEntityFinder.getCity(dto.cityId());
 		District district = locationEntityFinder.getDistrict(dto.districtId());
 		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(dto.neighborhoodId());
-		User owner = userEntityFinder.getUser(dto.ownerId());
+		// ROLE_VENUE assignment shares the user-row serialization point with
+		// TableGroup admission checks and application-based venue approval.
+		User owner = userRepository.findByIdForUpdate(dto.ownerId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		// degistirildi: owner'in zaten venue'su varsa ikinci venue olusturulmasi engellenir
 		if (venueRepository.existsByOwner_Id(owner.getId())) {
@@ -150,11 +152,17 @@ public class VenueServiceImpl implements VenueService {
 		log.info("Updating venue with id: {}", id);
 		
 		Venue venue = venueEntityFinder.getVenue(id);
+		User owner = venue.getOwner();
+		if (owner == null || owner.getId() == null) {
+			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		}
+		if (!Objects.equals(owner.getId(), dto.ownerId())) {
+			throw new SoundConnectException(ErrorType.VENUE_OWNER_IMMUTABLE);
+		}
 		
 		City city = locationEntityFinder.getCity(dto.cityId());
 		District district = locationEntityFinder.getDistrict(dto.districtId());
 		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(dto.neighborhoodId());
-		User owner = userEntityFinder.getUser(dto.ownerId());
 		
 		// degistirildi: district secilen city'ye ait olmali
 		if (!district.getCity().getId().equals(city.getId())) {
@@ -169,12 +177,6 @@ public class VenueServiceImpl implements VenueService {
 			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		}
 		
-		// degistirildi: owner degisiyorsa yeni owner'in baska venue'su olmamali
-		if (!venue.getOwner().getId().equals(owner.getId()) && venueRepository.existsByOwner_Id(owner.getId())) {
-			log.warn("New owner already has another venue. ownerId={}", owner.getId());
-			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
-		}
-		
 		// manuel mapping
 		venue.setName(dto.name());
 		venue.setAddress(dto.address());
@@ -186,7 +188,7 @@ public class VenueServiceImpl implements VenueService {
 		venue.setDistrict(district);
 		venue.setNeighborhood(neighborhood);
 		venue.setOwner(owner);
-		
+
 		Venue updated = venueRepository.save(venue);
 		return venueMapper.toResponse(updated);
 	}

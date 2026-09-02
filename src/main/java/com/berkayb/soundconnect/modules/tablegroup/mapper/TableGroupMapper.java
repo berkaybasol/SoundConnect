@@ -18,6 +18,8 @@ public interface TableGroupMapper {
 	@Mapping(target = "city", expression = "java(toLocationDto(entity.getCity()))")
 	@Mapping(target = "district", expression = "java(toLocationDto(entity.getDistrict()))")
 	@Mapping(target = "neighborhood", expression = "java(toLocationDto(entity.getNeighborhood()))")
+	@Mapping(target = "ownerUsername", ignore = true)
+	@Mapping(target = "ownerProfileImageUrl", ignore = true)
 	TableGroupResponseDto toDto(TableGroup entity);
 	
 	@Mapping(target = "username", expression = "java((String) null)") //eklendi
@@ -33,6 +35,12 @@ public interface TableGroupMapper {
 	@Mapping(target = "district", ignore = true)
 	@Mapping(target = "neighborhood", ignore = true)
 	@Mapping(target = "participants", ignore = true) // Katılımcılar ayrı eklenir
+	@Mapping(target = "version", ignore = true)
+	@Mapping(target = "createRequestKey", ignore = true)
+	@Mapping(target = "ownerId", ignore = true)
+	@Mapping(target = "startAt", ignore = true)
+	@Mapping(target = "expiresAt", ignore = true)
+	@Mapping(target = "status", ignore = true)
 	TableGroup toEntity(TableGroupCreateRequestDto dto);
 	
 	

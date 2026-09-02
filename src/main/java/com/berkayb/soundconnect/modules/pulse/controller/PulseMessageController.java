@@ -23,7 +23,7 @@ import java.util.UUID;
 /**
  * Pulse modulu icin WebSocket/STOMP uzerinden gelen mesajlari karsilayan controller
  * - Client -> /app/pulse/send uzerinden mesaj gonderir
- * - Server -> /topic/pulse{roomId} uzerinden ilgili odaya broadcast yapar
+ * - Server -> /topic/pulse.{roomId} uzerinden ilgili odaya broadcast yapar
  */
 
 @Controller

@@ -21,4 +21,9 @@ public class TableGroupEntityFinder {
 		return tableGroupRepository.findById(tableGroupId)
 		                                            .orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
 	}
+
+	public TableGroup getTableGroupByIdForUpdate(UUID tableGroupId) {
+		return tableGroupRepository.findByIdForUpdate(tableGroupId)
+		                           .orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_NOT_FOUND));
+	}
 }

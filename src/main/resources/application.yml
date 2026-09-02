@@ -120,6 +120,45 @@ management:
           degraded: 200
 
 app:
+  websocket:
+    broker-relay:
+      enabled: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_ENABLED:false}
+      host: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_HOST:${SPRING_RABBITMQ_HOST:localhost}}
+      port: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_PORT:61613}
+      login: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_LOGIN:${SPRING_RABBITMQ_USERNAME:guest}}
+      passcode: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_PASSCODE:${SPRING_RABBITMQ_PASSWORD:guest}}
+      virtual-host: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_VHOST:${SPRING_RABBITMQ_VIRTUAL_HOST:/}}
+  table-group:
+    chat:
+      unread-ttl: ${TABLE_GROUP_CHAT_UNREAD_TTL:PT720H}
+      retention: ${TABLE_GROUP_CHAT_RETENTION:P30D}
+    rate-limit:
+      enabled: ${TABLE_GROUP_RATE_LIMIT_ENABLED:true}
+      key-prefix: ${TABLE_GROUP_RATE_LIMIT_KEY_PREFIX:soundconnect:table-group:rate-limit}
+      create:
+        limit: ${TABLE_GROUP_CREATE_RATE_LIMIT:10}
+        window: ${TABLE_GROUP_CREATE_RATE_WINDOW:1h}
+      join:
+        limit: ${TABLE_GROUP_JOIN_RATE_LIMIT:60}
+        window: ${TABLE_GROUP_JOIN_RATE_WINDOW:1h}
+      message-per-table:
+        limit: ${TABLE_GROUP_MESSAGE_TABLE_RATE_LIMIT:60}
+        window: ${TABLE_GROUP_MESSAGE_TABLE_RATE_WINDOW:1m}
+      message-global:
+        limit: ${TABLE_GROUP_MESSAGE_GLOBAL_RATE_LIMIT:120}
+        window: ${TABLE_GROUP_MESSAGE_GLOBAL_RATE_WINDOW:1m}
+      message-table-global:
+        limit: ${TABLE_GROUP_MESSAGE_TABLE_GLOBAL_RATE_LIMIT:120}
+        window: ${TABLE_GROUP_MESSAGE_TABLE_GLOBAL_RATE_WINDOW:1m}
+      game-create:
+        limit: ${TABLE_GROUP_GAME_CREATE_RATE_LIMIT:10}
+        window: ${TABLE_GROUP_GAME_CREATE_RATE_WINDOW:1h}
+      game-command:
+        limit: ${TABLE_GROUP_GAME_COMMAND_RATE_LIMIT:60}
+        window: ${TABLE_GROUP_GAME_COMMAND_RATE_WINDOW:1m}
+      game-read:
+        limit: ${TABLE_GROUP_GAME_READ_RATE_LIMIT:120}
+        window: ${TABLE_GROUP_GAME_READ_RATE_WINDOW:1m}
   jwt:
     secret: ${SOUNDCONNECT_JWT_SECRETKEY}
     expiration: ${SOUNDCONNECT_JWT_EXTIME}
@@ -162,6 +201,19 @@ app:
   notification:
     retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
     cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
+    table-group-outbox:
+      batch-size: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_BATCH_SIZE:25}
+      max-attempts: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_MAX_ATTEMPTS:8}
+      worker-threads: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_WORKER_THREADS:2}
+      queue-capacity: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_QUEUE_CAPACITY:250}
+      poll-delay-ms: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_POLL_DELAY_MS:5000}
+      initial-delay-ms: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_INITIAL_DELAY_MS:5000}
+      lease-duration: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_LEASE_DURATION:30s}
+      retry-initial-delay: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_RETRY_INITIAL_DELAY:5s}
+      retry-max-delay: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_RETRY_MAX_DELAY:15m}
+      published-retention: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_PUBLISHED_RETENTION:7d}
+      health-undelivered-age-threshold: ${SOUNDCONNECT_TABLE_GROUP_OUTBOX_HEALTH_AGE_THRESHOLD:30m}
+      cleanup-cron: "${SOUNDCONNECT_TABLE_GROUP_OUTBOX_CLEANUP_CRON:0 40 4 * * *}"
     collab-outbox:
       batch-size: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_BATCH_SIZE:25}
       max-attempts: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:8}
@@ -172,7 +224,6 @@ app:
       lease-duration: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_LEASE_DURATION:30s}
       retry-initial-delay: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_RETRY_INITIAL_DELAY:5s}
       retry-max-delay: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_RETRY_MAX_DELAY:15m}
-      publisher-confirm-timeout: ${SOUNDCONNECT_COLLAB_NOTIFICATION_PUBLISHER_CONFIRM_TIMEOUT:5s}
       published-retention: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_PUBLISHED_RETENTION:7d}
       health-undelivered-age-threshold: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_HEALTH_UNDELIVERED_AGE_THRESHOLD:30m}
       cleanup-cron: "${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_CLEANUP_CRON:0 35 4 * * *}"
@@ -205,6 +256,7 @@ app:
       queue: notification.queue
       routingKey: notification.#
       publishRoutingKey: notification.event
+      publisher-confirm-timeout: ${SOUNDCONNECT_NOTIFICATION_PUBLISHER_CONFIRM_TIMEOUT:5s}
       dlxExchange: notification.dlx
       dlq: notification.queue.dlq
 
@@ -252,7 +304,7 @@ mail:
 logging:
   level:
     root: ${LOGGING_LEVEL_ROOT:INFO}
-    org.springframework.web: ${LOGGING_LEVEL_SPRING_WEB:DEBUG}
+    org.springframework.web: ${LOGGING_LEVEL_SPRING_WEB:INFO}
     org.hibernate.SQL: OFF  # degistirildi
     org.hibernate.orm.jdbc.bind: OFF  # eklendi
     org.hibernate.type.descriptor.sql.BasicBinder: OFF  # eklendi

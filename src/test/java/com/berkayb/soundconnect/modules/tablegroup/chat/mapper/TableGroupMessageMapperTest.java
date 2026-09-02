@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,6 +23,7 @@ class TableGroupMessageMapperTest {
 		UUID messageId   = UUID.randomUUID();
 		UUID tableGroupId = UUID.randomUUID();
 		UUID senderId    = UUID.randomUUID();
+		UUID clientMessageId = UUID.randomUUID();
 		String content   = "kanka nerdesiniz";
 		MessageType type = MessageType.TEXT;
 		LocalDateTime sentAt    = LocalDateTime.now().minusMinutes(5);
@@ -32,6 +34,7 @@ class TableGroupMessageMapperTest {
 		                                            .id(messageId)
 		                                            .tableGroupId(tableGroupId)
 		                                            .senderId(senderId)
+		                                            .clientMessageId(clientMessageId)
 		                                            .content(content)
 		                                            .messageType(type)
 		                                            .createdAt(sentAt)    // sentAt -> DTO'da sentAt
@@ -46,10 +49,11 @@ class TableGroupMessageMapperTest {
 		assertThat(dto.messageId()).isEqualTo(messageId);
 		assertThat(dto.tableGroupId()).isEqualTo(tableGroupId);
 		assertThat(dto.senderId()).isEqualTo(senderId);
+		assertThat(dto.clientMessageId()).isEqualTo(clientMessageId);
 		assertThat(dto.content()).isEqualTo(content);
 		assertThat(dto.messageType()).isEqualTo(type);
-		assertThat(dto.sentAt()).isEqualTo(sentAt);
-		assertThat(dto.deletedAt()).isEqualTo(deletedAt);
+		assertThat(dto.sentAt()).isEqualTo(sentAt.toInstant(ZoneOffset.UTC));
+		assertThat(dto.deletedAt()).isEqualTo(deletedAt.toInstant(ZoneOffset.UTC));
 	}
 	
 	@Test
@@ -76,6 +80,7 @@ class TableGroupMessageMapperTest {
 		TableGroupMessageResponseDto dto = mapper.toResponseDto(entity);
 		
 		// then
+		assertThat(dto.sentAt()).isEqualTo(sentAt.toInstant(ZoneOffset.UTC));
 		assertThat(dto.deletedAt()).isNull();
 	}
 }

@@ -67,7 +67,7 @@
     function subscribeDm() {
         const userId = document.getElementById('userId').value.trim();
         if (!userId) { log('UserId gir!'); return; }
-        const dest = '/topic/dm/' + userId;
+        const dest = '/topic/dm.' + userId;
         const sub = stompClient.subscribe(dest, function (message) {
             log('DM Mesaj (' + dest + '):\n' + JSON.stringify(JSON.parse(message.body), null, 2));
         });
@@ -78,7 +78,7 @@
     function subscribeDmBadge() {
         const userId = document.getElementById('userId').value.trim();
         if (!userId) { log('UserId gir!'); return; }
-        const dest = '/topic/dm/' + userId + '/badge';
+        const dest = '/topic/dm.' + userId + '.badge';
         const sub = stompClient.subscribe(dest, function (message) {
             log('DM Badge (' + dest + '): ' + message.body);
         });
@@ -89,7 +89,7 @@
     function subscribeNotif() {
         const userId = document.getElementById('userId').value.trim();
         if (!userId) { log('UserId gir!'); return; }
-        const dest = '/topic/notifications/' + userId;
+        const dest = '/topic/notifications.' + userId;
         const sub = stompClient.subscribe(dest, function (message) {
             log('Notification (' + dest + '):\n' + JSON.stringify(JSON.parse(message.body), null, 2));
         });
@@ -100,7 +100,7 @@
     function subscribeNotifBadge() {
         const userId = document.getElementById('userId').value.trim();
         if (!userId) { log('UserId gir!'); return; }
-        const dest = '/topic/notifications/' + userId + '/badge';
+        const dest = '/topic/notifications.' + userId + '.badge';
         const sub = stompClient.subscribe(dest, function (message) {
             log('Notification Badge (' + dest + '): ' + message.body);
         });

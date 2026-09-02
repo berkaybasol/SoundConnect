@@ -1,7 +1,9 @@
 package com.berkayb.soundconnect.modules.notification.config;
 
+import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import org.springframework.amqp.core.*;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -16,6 +18,7 @@ import java.util.Map;
  */
 
 @Configuration
+@EnableConfigurationProperties(NotificationPublisherProperties.class)
 public class NotificationRabbitConfig {
 	
 	@Value("${app.messaging.notification.exchange:notification.exchange}")

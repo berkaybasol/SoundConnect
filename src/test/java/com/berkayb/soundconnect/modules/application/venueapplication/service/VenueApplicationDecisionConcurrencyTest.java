@@ -86,6 +86,8 @@ class VenueApplicationDecisionConcurrencyTest {
 		Role venueRole = Role.builder().name(RoleEnum.ROLE_VENUE.name()).build();
 		VenueApplicationResponseDto response = response(applicationId, ApplicationStatus.APPROVED);
 		when(venueApplicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
+		when(userRepository.findByIdForUpdate(application.getApplicant().getId()))
+				.thenReturn(Optional.of(application.getApplicant()));
 		when(roleRepository.findByName(RoleEnum.ROLE_VENUE.name())).thenReturn(Optional.of(venueRole));
 		when(venueRepository.save(any(Venue.class))).thenAnswer(invocation -> invocation.getArgument(0));
 		when(venueApplicationMapper.toResponseDto(application)).thenReturn(response);
@@ -96,6 +98,7 @@ class VenueApplicationDecisionConcurrencyTest {
 		assertThat(application.getStatus()).isEqualTo(ApplicationStatus.APPROVED);
 		assertThat(application.getApplicant().getRoles()).contains(venueRole);
 		verify(venueApplicationRepository).findByIdForUpdate(applicationId);
+		verify(userRepository).findByIdForUpdate(application.getApplicant().getId());
 		verify(venueApplicationRepository, never()).findById(applicationId);
 		verify(venueRepository).save(any(Venue.class));
 	}

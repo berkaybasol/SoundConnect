@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * Masa TTL cleanup scheduler.
  * Suresi dolan mesajlari ACTIVE'den INACTIVE ceker.
@@ -20,14 +22,33 @@ import org.springframework.stereotype.Component;
 public class TableGroupCleanupScheduler {
 	
 	private final TableGroupServiceImpl tableGroupService;
+	private final TableGroupCleanupLock cleanupLock;
 	
 	// periyodik temizlik. fixedDelay = 60000 -> 1 dakikada bir tetiklenir
-	@Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
+	@Scheduled(
+			fixedDelay = 60_000L,
+			initialDelay = 60_000L,
+			scheduler = TableGroupSchedulingConfiguration.CLEANUP_SCHEDULER
+	)
 	public void cleanupExpiredTableGroups() {
+		Optional<TableGroupCleanupLock.Lease> lease = cleanupLock.tryAcquire();
+		if (lease.isEmpty()) {
+			return;
+		}
 		try {
-			tableGroupService.expireExpiredTableGroups();
-		} catch (Exception e) {
-			log.error("Error while expiring table groups: {}", e.toString());
+			runPhase("expire", tableGroupService::expireExpiredTableGroups);
+			runPhase("chat-retention", tableGroupService::purgeRetainedChatMessages);
+			runPhase("participant-retention", tableGroupService::purgeRetainedParticipantHistory);
+		} finally {
+			cleanupLock.release(lease.get());
+		}
+	}
+
+	private void runPhase(String phase, Runnable work) {
+		try {
+			work.run();
+		} catch (RuntimeException exception) {
+			log.error("Table-group cleanup phase failed. phase={}", phase, exception);
 		}
 	}
 }
