@@ -14,5 +14,6 @@ public interface ListenerProfileMapper {
 	@Mapping(target = "profilePictureUrl", ignore = true)
 	@Mapping(target = "followerCount", ignore = true)
 	@Mapping(target = "followingCount", ignore = true)
+	@Mapping(target = "visibilityChangedAt", ignore = true)
 	ListenerProfileResponseDto toDto(ListenerProfile entity);
 }

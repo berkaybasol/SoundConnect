@@ -9,6 +9,9 @@ import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -23,9 +26,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -38,12 +44,35 @@ class AuthServiceSecurityTest {
 	@Mock PasswordEncoder passwordEncoder;
 	@Mock RoleRepository roleRepository;
 	@Mock ProfileFactory profileFactory;
+	@Mock ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	@Mock OtpService otpService;
 	@Mock OtpMailService otpMailService;
 	@Mock VenueApplicationService venueApplicationService;
 	@Mock StudioApplicationService studioApplicationService;
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
 	@InjectMocks AuthService authService;
+
+	@Test
+	void activeListenerLoginCarriesTheServerAuthoritativeChooserDecision() {
+		User listener = User.builder()
+				.id(UUID.randomUUID())
+				.username("listener")
+				.email("listener@example.com")
+				.password("encoded")
+				.emailVerified(true)
+				.status(UserStatus.ACTIVE)
+				.roles(Set.of(Role.builder().name(RoleEnum.ROLE_LISTENER.name()).build()))
+				.build();
+		when(userRepository.findByUsername("listener")).thenReturn(Optional.of(listener));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+		when(jwtTokenProvider.generateToken(any())).thenReturn("token");
+		when(listenerProfileChoiceStatusReader.requiresChoice(listener)).thenReturn(true);
+
+		var response = authService.login(new LoginRequestDto("listener", "secret"));
+
+		assertThat(response.getData().requiresListenerProfileChoice()).isTrue();
+		verify(listenerProfileChoiceStatusReader).requiresChoice(listener);
+	}
 
 	@Test
 	void usernameAvailabilityNormalizesAndReportsExistingUsername() {

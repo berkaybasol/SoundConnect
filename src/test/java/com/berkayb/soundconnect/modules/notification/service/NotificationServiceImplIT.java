@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCac
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapperImpl;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -106,6 +107,7 @@ class NotificationServiceImplIT {
 	@MockitoBean private com.berkayb.soundconnect.auth.security.JwtTokenProvider jwtTokenProvider;
 	@MockitoBean private com.berkayb.soundconnect.auth.service.GoogleAuthService googleAuthService;
 	@MockitoBean private NotificationWebSocketService notificationWebSocketService;
+	@MockitoBean private GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	
 	@Autowired private NotificationRepository repo;
 	@Autowired private NotificationService notificationService;

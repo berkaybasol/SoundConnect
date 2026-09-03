@@ -21,6 +21,7 @@ import com.berkayb.soundconnect.modules.media.storage.PresignedUploadWriteWindow
 import com.berkayb.soundconnect.modules.media.transcode.MediaTranscodeQueuedEvent;
 import com.berkayb.soundconnect.modules.media.verification.MediaUploadVerificationCoordinator;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
@@ -192,6 +193,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private final StudioProfileRepository studioProfileRepository;
 	private final ListenerProfileRepository listenerProfileRepository;
 	private final VenueProfileRepository venueProfileRepository;
+	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
 	
 	// dosya depolama (S3/R2) islemleri icin storage client
 	private final StorageClient storageClient;
@@ -318,20 +320,40 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 	
 	// sadece public ve ready assetleri dondur
-	@Transactional (readOnly = true)
+	@Transactional
 	@Override
 	public Page<MediaAsset> listPublicByOwner(MediaOwnerType ownerType, UUID ownerId, Pageable pageable) {
+		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
+			return Page.empty(pageable);
+		}
 		return mediaAssetRepository.findByOwnerTypeAndOwnerIdAndVisibilityAndStatus(
 				ownerType, ownerId, MediaVisibility.PUBLIC, MediaStatus.READY, pageable
 		);
 	}
 	
 	// belirli bir ownerin belirli bir turdeki public ve ready assetlerini dondurur.
-	@Transactional (readOnly = true)
+	@Transactional
 	@Override
 	public Page<MediaAsset> listPublicByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable) {
+		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
+			return Page.empty(pageable);
+		}
 		return mediaAssetRepository.findByOwnerTypeAndOwnerIdAndKindAndVisibilityAndStatus(
 				ownerType, ownerId, kind, MediaVisibility.PUBLIC, MediaStatus.READY, pageable);
+	}
+
+	private boolean lockAndIsHiddenGhostProfileMedia(MediaOwnerType ownerType, UUID ownerId) {
+		if (ownerType == null || ownerId == null) return false;
+		return switch (ownerType) {
+			// Hold the same row lock used by visibility transitions until the media
+			// query completes. This closes the visibility-check/content-read window.
+			case LISTENER_PROFILE -> listenerVisibilityPolicy
+					.lockForReadAndIsPubliclyRestrictedProfile(ownerId);
+			// Legacy/profile-creation avatars are USER-owned. Raw listing stays
+			// hidden; identity resolvers can still fetch the exact avatar asset.
+			case USER -> listenerVisibilityPolicy.lockForReadAndIsPubliclyRestricted(ownerId);
+			default -> false;
+		};
 	}
 	
 	

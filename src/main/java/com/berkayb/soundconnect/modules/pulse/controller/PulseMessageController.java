@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.pulse.controller;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.pulse.dto.request.PulseMessageSendRequestDto;
 import com.berkayb.soundconnect.modules.pulse.event.PulseMessageEvent;
 import com.berkayb.soundconnect.modules.pulse.redis.PulseRedisService;
@@ -15,9 +18,13 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -35,9 +42,11 @@ public class PulseMessageController {
 	private final PulseRedisService pulseRedisService;
 	private final PulseRoomService pulseRoomService;
 	private final UserEntityFinder userEntityFinder;
+	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	
 	// Pulse odasina gelen bir mesaji isler
 	@MessageMapping("/pulse/send")
+	@Transactional
 	public void handlePulseMessage (@Payload PulseMessageSendRequestDto request, Principal principal) {
 		
 		// WebSocket oturumunda kullanici authenticated olmali.
@@ -58,11 +67,6 @@ public class PulseMessageController {
 			return;
 		}
 		UUID userId = userDetails.getId();
-		User currentUser = userEntityFinder.getUser(userId);
-		String username = currentUser.getUsername();
-
-		// Display data is loaded by immutable ID so an open socket observes a rename.
-		String profileImageUrl = currentUser.getProfilePicture();
 
 		// temel validasyonlar
 		if (request == null) {
@@ -106,9 +110,41 @@ public class PulseMessageController {
 			log.warn("[Pulse] User not in room. message ignored. roomId={}, userId={}", roomId, userId);
 			return;
 		}
-		
+
+		GhostListenerIdentity ghostIdentity;
+		try {
+			Map<UUID, GhostListenerIdentity> identities = Objects.requireNonNull(
+					ghostListenerIdentityBatchResolver.resolve(List.of(userId)),
+					"Ghost identity resolver returned null"
+			);
+			ghostIdentity = identities.get(userId);
+		} catch (RuntimeException exception) {
+			// Identity fallback is deliberately forbidden here: an old professional
+			// name/avatar could disclose a listener who has just enabled ghost mode.
+			log.warn("[Pulse] Sender identity resolve failed; message ignored. userId={}, exceptionType={}",
+					userId, exception.getClass().getSimpleName());
+			return;
+		}
+
+		String username;
+		String profileImageUrl;
+		ListenerVisibilityMode visibilityMode = null;
+		if (ghostIdentity != null) {
+			if (ghostIdentity.visibilityMode() != ListenerVisibilityMode.GHOST) {
+				log.warn("[Pulse] Invalid contextual sender identity; message ignored. userId={}", userId);
+				return;
+			}
+			username = ghostIdentity.username();
+			profileImageUrl = ghostIdentity.profilePictureUrl();
+			visibilityMode = ListenerVisibilityMode.GHOST;
+		} else {
+			// Display data is loaded by immutable ID so an open socket observes a rename.
+			User currentUser = userEntityFinder.getUser(userId);
+			username = currentUser.getUsername();
+			profileImageUrl = currentUser.getProfilePicture();
+		}
+
 		pulseRedisService.setUserCooldown(userId, pulseRoomService.getCooldownSeconds());
-		
 		
 		// event nesnesini olustur
 		PulseMessageEvent event = PulseMessageEvent.builder()
@@ -116,6 +152,7 @@ public class PulseMessageController {
 				.userId(userId)
 				.username(username)
 				.profileImageUrl(profileImageUrl)
+				.visibilityMode(visibilityMode)
 				.content(content)
 				.sentAt(Instant.now())
 				.build();

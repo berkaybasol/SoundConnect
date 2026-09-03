@@ -19,6 +19,7 @@ import com.berkayb.soundconnect.modules.application.venueapplication.service.Ven
 import com.berkayb.soundconnect.modules.application.studioapplication.dto.request.StudioApplicationCreateRequestDto;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -39,6 +40,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -56,6 +58,7 @@ public class AuthService {
 	private final PasswordEncoder passwordEncoder;
 	private final RoleRepository roleRepository;
 	private final ProfileFactory profileFactory;
+	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	private final OtpService otpService;
 	private final OtpMailService otpMailService;
 	private final VenueApplicationService venueApplicationService;
@@ -139,7 +142,11 @@ public class AuthService {
 		                   .success(true)
 		                   .message("Entry Successful")
 		                   .code(200)
-		                   .data(LoginResponse.fromUser(token, user))
+		                   .data(LoginResponse.fromUser(
+						   token,
+						   user,
+						   listenerProfileChoiceStatusReader.requiresChoice(user)
+		                   ))
 		                   .build();
 	}
 	
@@ -342,7 +349,7 @@ public class AuthService {
 	}
 	
 	@Transactional
-	public BaseResponse<Void> verifyCode(VerifyCodeRequestDto dto){
+	public BaseResponse<LoginResponse> verifyCode(VerifyCodeRequestDto dto){
 		accountRateLimitGuard.checkOtpVerify(dto.email());
 		final String email = EmailUtils.normalize(dto.email());
 		// Redis verification is deliberately performed before branching on account
@@ -366,14 +373,38 @@ public class AuthService {
 				&& user.getStatus() != UserStatus.REJECTED_STUDIO_REQUEST) {
 			user.setStatus(UserStatus.ACTIVE);
 		}
-		userRepository.save(user);
+		userRepository.saveAndFlush(user);
+
+		// E-posta OTP'si, yeni dinleyicinin bu cihazdaki ilk oturumunu
+		// baslatmak icin yeterli bir kimlik kanitidir. Bu kolaylik yalnizca
+		// urunun Sosyal Deneyim (ROLE_LISTENER) kayit akisina aittir. Rol ve
+		// hesap durumu istemciden degil, kilit altinda okunan kullanicidan
+		// belirlenir; basvuru bekleyen/reddedilen veya baska roldeki hesaplara
+		// bu public endpoint uzerinden bearer token verilmez.
+		LoginResponse session = null;
+		if (user.getStatus() == UserStatus.ACTIVE && hasRole(user, RoleEnum.ROLE_LISTENER)) {
+			String token = jwtTokenProvider.generateToken(UserDetailsImpl.fromUser(user));
+			session = LoginResponse.fromUser(
+					token,
+					user,
+					listenerProfileChoiceStatusReader.requiresChoice(user)
+			);
+		}
 		
 		// succes reponse
-		return BaseResponse.<Void>builder()
+		return BaseResponse.<LoginResponse>builder()
 		                   .success(true)
 		                   .code(200)
 		                   .message("Dogrulama istegi basariyla islendi.")
+		                   .data(session)
 		                   .build();
+	}
+
+	private boolean hasRole(User user, RoleEnum role) {
+		return user.getRoles() != null
+				&& user.getRoles().stream()
+				.filter(Objects::nonNull)
+				.anyMatch(candidate -> role.name().equals(candidate.getName()));
 	}
 	
 	public BaseResponse<ResendCodeResponseDto> resendCode (ResendCodeRequestDto dto) {

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.shared.avatar;
 
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,10 @@ public class PersonalProfileAvatarBatchResolver {
 		LinkedHashSet<UUID> mediaIds = new LinkedHashSet<>();
 		for (PersonalProfileAvatarCandidate candidate : candidates) {
 			if (candidate == null) continue;
+			if (isGhostListener(candidate)) {
+				addIfPresent(mediaIds, candidate.listenerMediaId());
+				continue;
+			}
 			addIfPresent(mediaIds, candidate.musicianMediaId());
 			addIfPresent(mediaIds, candidate.listenerMediaId());
 			addIfPresent(mediaIds, candidate.organizerMediaId());
@@ -92,6 +97,12 @@ public class PersonalProfileAvatarBatchResolver {
 			PersonalProfileAvatarCandidate candidate,
 			Map<UUID, String> displayUrls
 	) {
+		if (isGhostListener(candidate)) {
+			String listenerUrl = candidate.listenerMediaId() == null
+					? null
+					: displayUrls.get(candidate.listenerMediaId());
+			return listenerUrl == null || listenerUrl.isBlank() ? null : listenerUrl;
+		}
 		for (UUID mediaId : new UUID[]{
 				candidate.musicianMediaId(),
 				candidate.listenerMediaId(),
@@ -102,5 +113,9 @@ public class PersonalProfileAvatarBatchResolver {
 			if (url != null && !url.isBlank()) return url;
 		}
 		return null;
+	}
+
+	private boolean isGhostListener(PersonalProfileAvatarCandidate candidate) {
+		return candidate.listenerVisibilityMode() == ListenerVisibilityMode.GHOST;
 	}
 }

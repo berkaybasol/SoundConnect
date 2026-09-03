@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRe
 import com.berkayb.soundconnect.modules.overthinking.mapper.OverthinkingRevealRequestMapper;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingRevealRequestRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -17,12 +19,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
+// Ghost identity resolution takes a shared database lock so these projections
+// linearize with a concurrent visibility switch. PostgreSQL forbids that lock
+// inside a read-only transaction.
+@Transactional
 public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealRequestService {
 	
 	private final OverthinkingRevealRequestRepository revealRequestRepository;
@@ -30,6 +39,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 	private final UserEntityFinder userEntityFinder;
 	private final OverthinkingRevealRequestMapper revealRequestMapper;
 	private final OverthinkingNotificationService notificationService;
+	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
 	
 	@Override
 	@Transactional
@@ -49,7 +59,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		
 		var existing = revealRequestRepository.findByPostIdAndRequesterId(postId, requesterId);
 		if (existing.isPresent()) {
-			return revealRequestMapper.toDto(existing.get());
+			return toDto(existing.get());
 		}
 		
 		OverthinkingRevealRequest request = OverthinkingRevealRequest.builder()
@@ -65,7 +75,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		log.info("[OverthinkingReveal] Reveal request created. post={}, requester={}, author={}, request={}",
 		         postId, requesterId, post.getAuthor().getId(), request.getId());
 		
-		return revealRequestMapper.toDto(request);
+		return toDto(request);
 	}
 	
 	@Override
@@ -77,7 +87,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		                                                           .orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
 		
 		if (request.isApproved()) {
-			return revealRequestMapper.toDto(request);
+			return toDto(request);
 		}
 		
 		if (!request.isPending()) {
@@ -92,7 +102,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		
 		log.info("[OverthinkingReveal] Reveal request approved. request={}, author={}", requestId, authorId);
 		
-		return revealRequestMapper.toDto(saved);
+		return toDto(saved);
 	}
 	
 	@Override
@@ -104,7 +114,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		                                                           .orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
 		
 		if (request.isRejected()) {
-			return revealRequestMapper.toDto(request);
+			return toDto(request);
 		}
 		
 		if (!request.isPending()) {
@@ -119,22 +129,50 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		
 		log.info("[OverthinkingReveal] Reveal request rejected. request={}, author={}", requestId, authorId);
 		
-		return revealRequestMapper.toDto(saved);
+		return toDto(saved);
 	}
 	
 	@Override
 	public Page<OverthinkingRevealRequestResponseDto> getIncomingRequests(UUID authorId, Pageable pageable) {
 		userEntityFinder.getUser(authorId);
 		
-		return revealRequestRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, pageable)
-		                              .map(revealRequestMapper::toDto);
+		return mapPage(revealRequestRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, pageable));
 	}
 	
 	@Override
 	public Page<OverthinkingRevealRequestResponseDto> getMySentRequests(UUID requesterId, Pageable pageable) {
 		userEntityFinder.getUser(requesterId);
 		
-		return revealRequestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId, pageable)
-		                              .map(revealRequestMapper::toDto);
+		return mapPage(revealRequestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId, pageable));
+	}
+
+	private OverthinkingRevealRequestResponseDto toDto(OverthinkingRevealRequest request) {
+		UUID requesterId = requesterId(request);
+		Map<UUID, GhostListenerIdentity> ghostIdentities = requesterId == null
+				? Map.of()
+				: ghostIdentityBatchResolver.resolve(Set.of(requesterId));
+		return revealRequestMapper.toDto(request, ghostIdentities.get(requesterId));
+	}
+
+	private Page<OverthinkingRevealRequestResponseDto> mapPage(Page<OverthinkingRevealRequest> page) {
+		List<OverthinkingRevealRequest> requests = page.getContent();
+		LinkedHashSet<UUID> requesterIds = new LinkedHashSet<>();
+		for (OverthinkingRevealRequest request : requests) {
+			UUID requesterId = requesterId(request);
+			if (requesterId != null) requesterIds.add(requesterId);
+		}
+		Map<UUID, GhostListenerIdentity> ghostIdentities = requesterIds.isEmpty()
+				? Map.of()
+				: ghostIdentityBatchResolver.resolve(requesterIds);
+		return page.map(request -> {
+			UUID requesterId = requesterId(request);
+			return revealRequestMapper.toDto(request, ghostIdentities.get(requesterId));
+		});
+	}
+
+	private UUID requesterId(OverthinkingRevealRequest request) {
+		return request == null || request.getRequester() == null
+				? null
+				: request.getRequester().getId();
 	}
 }

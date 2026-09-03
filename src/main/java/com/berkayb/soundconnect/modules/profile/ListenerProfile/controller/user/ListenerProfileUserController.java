@@ -1,16 +1,23 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.controller.user;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.abuse.ListenerVisibilityRateLimitGuard;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
-import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerAvatarUpdateRequestDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerVisibilityUpdateRequestDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileOwnerResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile.*;
 
@@ -37,34 +44,60 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
 		"profile")
 public class ListenerProfileUserController {
 	private final ListenerProfileService listenerProfileService;
+	private final ListenerVisibilityRateLimitGuard visibilityRateLimitGuard;
 	
 	// getir
 	@GetMapping(ME)
-	public ResponseEntity<BaseResponse<ListenerProfileResponseDto>> getMyProfile(
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> getMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails) {
-		ListenerProfileResponseDto response = listenerProfileService.getProfileByUserId(userDetails.getUser().getId());
-		return ResponseEntity.ok(BaseResponse.<ListenerProfileResponseDto>builder()
+		ListenerProfileOwnerResponseDto response = listenerProfileService.getMyProfile(userDetails.getUser().getId());
+		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
 		                                     .success(true).code(200).message("Profil getirildi").data(response).build());
 	}
 	
 	// olustur
 	@PostMapping(CREATE)
-	public ResponseEntity<BaseResponse<ListenerProfileResponseDto>> createMyProfile(
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> createMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@RequestBody ListenerSaveRequestDto dto) {
-		ListenerProfileResponseDto response = listenerProfileService.createProfile(userDetails.getUser().getId(), dto);
-		return ResponseEntity.ok(BaseResponse.<ListenerProfileResponseDto>builder()
-		                                     .success(true).code(201).message("Profil oluşturuldu").data(response).build());
+			@Valid @RequestBody ListenerSaveRequestDto dto) {
+		ListenerProfileOwnerResponseDto response = listenerProfileService.createProfile(userDetails.getUser().getId(), dto);
+		return ResponseEntity.status(HttpStatus.CREATED)
+		                     .body(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
+		                                       .success(true).code(201).message("Profil oluşturuldu")
+		                                       .data(response).build());
 	}
 	
 	// guncelle
 	@PutMapping(UPDATE)
-	public ResponseEntity<BaseResponse<ListenerProfileResponseDto>> updateMyProfile(
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> updateMyProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@RequestBody ListenerSaveRequestDto dto) {
-		ListenerProfileResponseDto response = listenerProfileService.updateProfile(userDetails.getUser().getId(), dto);
-		return ResponseEntity.ok(BaseResponse.<ListenerProfileResponseDto>builder()
+			@Valid @RequestBody ListenerSaveRequestDto dto) {
+		ListenerProfileOwnerResponseDto response = listenerProfileService.updateMyProfile(userDetails.getUser().getId(), dto);
+		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
 		                                     .success(true).code(200).message("Profil güncellendi").data(response).build());
+	}
+
+	@PatchMapping(AVATAR)
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> updateMyAvatar(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody ListenerAvatarUpdateRequestDto dto) {
+		ListenerProfileOwnerResponseDto response = listenerProfileService.updateAvatar(
+				userDetails.getUser().getId(), dto);
+		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
+		                                     .success(true).code(200).message("Profil fotoğrafı güncellendi")
+		                                     .data(response).build());
+	}
+
+	@PatchMapping(VISIBILITY)
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> updateMyVisibility(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody ListenerVisibilityUpdateRequestDto dto) {
+		UUID userId = userDetails.getUser().getId();
+		visibilityRateLimitGuard.check(userId);
+		ListenerProfileOwnerResponseDto response = listenerProfileService.updateVisibility(userId, dto);
+		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
+		                                     .success(true).code(200).message("Profil görünürlüğü güncellendi")
+		                                     .data(response).build());
 	}
 	
 }

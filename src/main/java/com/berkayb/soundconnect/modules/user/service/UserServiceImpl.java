@@ -2,7 +2,10 @@ package com.berkayb.soundconnect.modules.user.service;
 
 import com.berkayb.soundconnect.modules.role.entity.Permission;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileProvisioner;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UserUpdateRequestDto;
 import com.berkayb.soundconnect.modules.user.dto.request.UsernameChangeRequestDto;
@@ -37,13 +40,14 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
 	private static final int USERNAME_CHANGE_COOLDOWN_DAYS = 30;
-	
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final UserMapper userMapper;
 	private final UserEntityFinder userEntityFinder;
 	private final PasswordEncoder passwordEncoder;
 	private final UsernameChangeTimeProvider usernameChangeTimeProvider;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final ListenerProfileProvisioner listenerProfileProvisioner;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -88,6 +92,7 @@ public class UserServiceImpl implements UserService {
 			Role role = roleRepository.findById(dto.roleId())
 			                          .orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 			assertCanAssignRole(actor, user, role);
+			personalProfileTypePolicy.assertRoleReplacementAllowed(user, role);
 			user.setRoles(new HashSet<>(Set.of(role)));
 			isUpdated = true;
 		}
@@ -96,7 +101,8 @@ public class UserServiceImpl implements UserService {
 		// herhangi bir alan guncellenmisse updatedAt set edilir ve kaydedilir
 		if (isUpdated) {
 			user.setUpdatedAt(LocalDateTime.now());
-			saveIdentityAndFlush(user);
+			User saved = saveIdentityAndFlush(user);
+			ensureListenerProfileInvariant(saved);
 			log.info("User updated by administrator. actorId={} targetId={} roleChanged={}",
 					actingUserId, id, dto.roleId() != null);
 		}
@@ -201,9 +207,18 @@ public class UserServiceImpl implements UserService {
 		                .build();
 
 		User saved = saveIdentityAndFlush(user);
+		ensureListenerProfileInvariant(saved);
 		log.info("User created by administrator. actorId={} targetId={} role={}",
 				actingUserId, saved.getId(), role.getName());
 		return saved;
+	}
+
+	private void ensureListenerProfileInvariant(User user) {
+		if (user.getRoles() == null || user.getRoles().stream()
+				.noneMatch(role -> RoleEnum.ROLE_LISTENER.name().equals(role.getName()))) {
+			return;
+		}
+		listenerProfileProvisioner.ensureExistsForUpdate(user.getId());
 	}
 
 	private User saveIdentityAndFlush(User user) {

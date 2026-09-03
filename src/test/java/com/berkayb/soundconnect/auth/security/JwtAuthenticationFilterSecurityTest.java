@@ -1,11 +1,13 @@
 package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.security.SecurityErrorResponseWriter;
 import com.berkayb.soundconnect.shared.util.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +22,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +31,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterSecurityTest {
@@ -35,6 +40,8 @@ class JwtAuthenticationFilterSecurityTest {
 	@Mock JwtTokenProvider jwtTokenProvider;
 	@Mock CustomUserDetailsService userDetailsService;
 	@Mock JwtUtil jwtUtil;
+	@Mock ListenerProfileChoiceGate listenerProfileChoiceGate;
+	@Mock SecurityErrorResponseWriter securityErrorResponseWriter;
 	@Mock HttpServletRequest request;
 	@Mock HttpServletResponse response;
 	@Mock FilterChain filterChain;
@@ -71,6 +78,28 @@ class JwtAuthenticationFilterSecurityTest {
 		verify(filterChain).doFilter(request, response);
 		verify(response, never()).sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
 		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	@Test
+	void pendingListenerGateWritesStableErrorAndStopsTheChain() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UserDetailsImpl principal = new UserDetailsImpl(User.builder()
+				.id(userId)
+				.username("listener")
+				.email("listener@example.com")
+				.password("encoded")
+				.status(UserStatus.ACTIVE)
+				.emailVerified(true)
+				.roles(Set.of(Role.builder().name("ROLE_LISTENER").build()))
+				.build());
+		stubValidToken(userId, principal);
+		when(listenerProfileChoiceGate.shouldReject(eq(request), any())).thenReturn(true);
+
+		filter.doFilterInternal(request, response, filterChain);
+
+		verify(securityErrorResponseWriter).write(
+				request, response, ErrorType.LISTENER_PROFILE_CHOICE_REQUIRED);
+		verifyNoInteractions(filterChain);
 	}
 
 	@Test

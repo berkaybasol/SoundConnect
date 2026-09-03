@@ -413,6 +413,8 @@ public class EndPoints {
 		public static final String ME = "/me";
 		public static final String CREATE = "/create";
 		public static final String UPDATE = "/update";
+		public static final String AVATAR = "/me/avatar";
+		public static final String VISIBILITY = "/me/visibility";
 		
 		public static final String BY_USER_ID = "/by-user/{userId}";
 		public static final String ADMIN_UPDATE = "/by-user/{userId}/update";

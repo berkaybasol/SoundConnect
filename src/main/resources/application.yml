@@ -87,6 +87,7 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6379}
       username: ${SPRING_DATA_REDIS_USERNAME:}
       password: ${SPRING_DATA_REDIS_PASSWORD:}
+      connect-timeout: ${SPRING_DATA_REDIS_CONNECT_TIMEOUT:1s}
       timeout: ${SPRING_DATA_REDIS_TIMEOUT:2s}
       ssl:
         enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false}
@@ -128,6 +129,12 @@ app:
       login: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_LOGIN:${SPRING_RABBITMQ_USERNAME:guest}}
       passcode: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_PASSCODE:${SPRING_RABBITMQ_PASSWORD:guest}}
       virtual-host: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_VHOST:${SPRING_RABBITMQ_VIRTUAL_HOST:/}}
+  listener-profile:
+    visibility-rate-limit:
+      enabled: ${LISTENER_VISIBILITY_RATE_LIMIT_ENABLED:true}
+      key-prefix: ${LISTENER_VISIBILITY_RATE_LIMIT_KEY_PREFIX:soundconnect:listener-profile:visibility-rate-limit}
+      burst-capacity: ${LISTENER_VISIBILITY_RATE_LIMIT_BURST_CAPACITY:3}
+      refill-period: ${LISTENER_VISIBILITY_RATE_LIMIT_REFILL_PERIOD:10s}
   table-group:
     chat:
       unread-ttl: ${TABLE_GROUP_CHAT_UNREAD_TTL:PT720H}

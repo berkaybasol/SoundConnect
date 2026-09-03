@@ -44,6 +44,17 @@ public class GlobalExceptionHandler {
 				.body(contract.getBody());
 	}
 
+	@ExceptionHandler(ServiceUnavailableRetryException.class)
+	public ResponseEntity<ErrorResponse> handleServiceUnavailableRetryException(
+			ServiceUnavailableRetryException exception,
+			HttpServletRequest request
+	) {
+		ResponseEntity<ErrorResponse> contract = response(exception.getErrorType(), request);
+		return ResponseEntity.status(contract.getStatusCode())
+				.header("Retry-After", Long.toString(exception.getRetryAfterSeconds()))
+				.body(contract.getBody());
+	}
+
 	@ExceptionHandler(SoundConnectException.class)
 	public ResponseEntity<ErrorResponse> handleSoundConnectException(
 			SoundConnectException exception,

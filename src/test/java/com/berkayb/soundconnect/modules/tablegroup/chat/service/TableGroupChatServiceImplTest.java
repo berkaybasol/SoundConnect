@@ -633,14 +633,14 @@ class TableGroupChatServiceImplTest {
 	}
 
 	@Test
-	void getMessagesUsesOneRepeatableReadSnapshotForGameRevisionPlayersAndReveals()
+	void getMessagesUsesWritableRepeatableReadForGameSnapshotAndGhostVisibilityLocks()
 			throws NoSuchMethodException {
 		Transactional transaction = TableGroupChatServiceImpl.class
 				.getMethod("getMessages", UUID.class, UUID.class, Pageable.class)
 				.getAnnotation(Transactional.class);
 
 		assertThat(transaction).isNotNull();
-		assertThat(transaction.readOnly()).isTrue();
+		assertThat(transaction.readOnly()).isFalse();
 		assertThat(transaction.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
 	}
 	

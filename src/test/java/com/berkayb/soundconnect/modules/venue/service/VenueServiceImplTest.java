@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -57,6 +58,7 @@ class VenueServiceImplTest {
 	@Mock private RoleRepository roleRepository;
 	@Mock private UserRepository userRepository;
 	@Mock private VenueProfileService venueProfileService;
+	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@InjectMocks
 	private VenueServiceImpl sut; // system under test
@@ -141,7 +143,8 @@ class VenueServiceImplTest {
 		when(locationEntityFinder.getCity(dto.cityId())).thenReturn(city);
 		when(locationEntityFinder.getDistrict(dto.districtId())).thenReturn(district);
 		when(locationEntityFinder.getNeighborhood(dto.neighborhoodId())).thenReturn(neighborhood);
-		when(userRepository.findByIdForUpdate(dto.ownerId())).thenReturn(Optional.of(owner));
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(
+				dto.ownerId(), RoleEnum.ROLE_VENUE)).thenReturn(owner);
 		
 		// mapper.toEntity -> gerçek entity
 		Venue mapped = Venue.builder()
@@ -217,11 +220,13 @@ class VenueServiceImplTest {
 				.createProfile(eq(res.id()), any(VenueProfileSaveRequestDto.class));
 		
 		// 5) çağrı sırası (opsiyonel ama güzel bir güvence)
-		InOrder inOrder = inOrder(locationEntityFinder, userRepository, venueMapper, venueRepository, roleRepository, venueProfileService, venueMapper);
+		InOrder inOrder = inOrder(locationEntityFinder, personalProfileTypePolicy, userRepository,
+				venueMapper, venueRepository, roleRepository, venueProfileService);
 		inOrder.verify(locationEntityFinder).getCity(dto.cityId());
 		inOrder.verify(locationEntityFinder).getDistrict(dto.districtId());
 		inOrder.verify(locationEntityFinder).getNeighborhood(dto.neighborhoodId());
-		inOrder.verify(userRepository).findByIdForUpdate(dto.ownerId());
+		inOrder.verify(personalProfileTypePolicy).lockAndAssertCanAcquire(
+				dto.ownerId(), RoleEnum.ROLE_VENUE);
 		inOrder.verify(venueMapper).toEntity(eq(dto), eq(city), eq(district), eq(neighborhood), eq(owner));
 		inOrder.verify(venueRepository).save(any(Venue.class));
 		inOrder.verify(roleRepository).findByName(RoleEnum.ROLE_VENUE.name());
@@ -230,6 +235,25 @@ class VenueServiceImplTest {
 		inOrder.verify(venueMapper).toResponse(any(Venue.class));
 		inOrder.verifyNoMoreInteractions();
 		verify(userEntityFinder, never()).getUser(dto.ownerId());
+	}
+
+	@Test
+	void save_rejectsConflictingPersonalProfileBeforeVenueOrRoleWrites() {
+		when(locationEntityFinder.getCity(dto.cityId())).thenReturn(city);
+		when(locationEntityFinder.getDistrict(dto.districtId())).thenReturn(district);
+		when(locationEntityFinder.getNeighborhood(dto.neighborhoodId())).thenReturn(neighborhood);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(
+				dto.ownerId(), RoleEnum.ROLE_VENUE))
+				.thenThrow(new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		assertThatThrownBy(() -> sut.save(dto))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		verify(venueRepository, never()).save(any());
+		verify(userRepository, never()).save(any());
+		verifyNoInteractions(roleRepository, venueMapper, venueProfileService);
 	}
 	@Test
 	void update_ok() {

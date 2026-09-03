@@ -17,9 +17,14 @@ public record LoginResponse(
 		String username,
 		Set<String> roles,
 		Set<String> permissions,
-		boolean admin
+		boolean admin,
+		boolean requiresListenerProfileChoice
 ) {
-	public static LoginResponse fromUser(String token, User user) {
+	public static LoginResponse fromUser(
+			String token,
+			User user,
+			boolean requiresListenerProfileChoice
+	) {
 		Set<String> roles = user.getRoles().stream()
 				.map(Role::getName)
 				.collect(Collectors.toCollection(TreeSet::new));
@@ -40,7 +45,8 @@ public record LoginResponse(
 				user.getUsername(),
 				roles,
 				permissions,
-				admin
+				admin,
+				requiresListenerProfileChoice
 		);
 	}
 }

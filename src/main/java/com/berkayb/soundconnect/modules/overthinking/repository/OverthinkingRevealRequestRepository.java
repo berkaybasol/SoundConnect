@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRe
 import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingRevealRequestStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,12 +24,16 @@ public interface OverthinkingRevealRequestRepository extends JpaRepository<Overt
 			OverthinkingRevealRequestStatus status
 	);
 	
+	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Optional<OverthinkingRevealRequest> findByPostIdAndRequesterId(UUID postId, UUID requesterId);
 	
+	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Optional<OverthinkingRevealRequest> findByIdAndAuthorId(UUID requestId, UUID authorId);
 	
+	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Page<OverthinkingRevealRequest> findByAuthorIdOrderByCreatedAtDesc(UUID authorId, Pageable pageable);
 	
+	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Page<OverthinkingRevealRequest> findByRequesterIdOrderByCreatedAtDesc(UUID requesterId, Pageable pageable);
 	
 	@Query("""

@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingRevealReq
 import com.berkayb.soundconnect.modules.overthinking.mapper.OverthinkingPostMapper;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingRevealRequestRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -26,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -36,7 +39,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
+@Transactional
 public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	
 	private final OverthinkingPostRepository postRepository;
@@ -47,6 +50,7 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	private final LikeService likeService;
 	private final CommentService commentService;
 	private final SpotifyApiClient spotifyApiClient;
+	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
 	private static final Pattern SPOTIFY_TRACK_PATH = Pattern.compile("track/([A-Za-z0-9]+)");
 	
 	@Override
@@ -168,6 +172,11 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		Set<UUID> likedPostIds = getLikedPostIds(posts, viewerId);
 		Set<UUID> approvedRevealPostIds = getApprovedRevealPostIds(posts, viewerId);
 		Map<String, SpotifyTrackItemDto> spotifyTracks = getSpotifyTracks(posts);
+		Map<UUID, GhostListenerIdentity> ghostIdentities = getVisibleGhostIdentities(
+				posts,
+				viewerId,
+				approvedRevealPostIds
+		);
 		
 		return page.map(post -> toViewerAwareDto(
 				post,
@@ -176,7 +185,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				commentCounts,
 				likedPostIds,
 				approvedRevealPostIds,
-				spotifyTracks
+				spotifyTracks,
+				ghostIdentities
 		));
 	}
 	
@@ -186,6 +196,11 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		Set<UUID> likedPostIds = getLikedPostIds(List.of(post), viewerId);
 		Set<UUID> approvedRevealPostIds = getApprovedRevealPostIds(List.of(post), viewerId);
 		Map<String, SpotifyTrackItemDto> spotifyTracks = getSpotifyTracks(List.of(post));
+		Map<UUID, GhostListenerIdentity> ghostIdentities = getVisibleGhostIdentities(
+				List.of(post),
+				viewerId,
+				approvedRevealPostIds
+		);
 		
 		return toViewerAwareDto(
 				post,
@@ -194,7 +209,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				commentCounts,
 				likedPostIds,
 				approvedRevealPostIds,
-				spotifyTracks
+				spotifyTracks,
+				ghostIdentities
 		);
 	}
 	
@@ -205,10 +221,14 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 			Map<UUID, Long> commentCounts,
 			Set<UUID> likedPostIds,
 			Set<UUID> approvedRevealPostIds,
-			Map<String, SpotifyTrackItemDto> spotifyTracks
+			Map<String, SpotifyTrackItemDto> spotifyTracks,
+			Map<UUID, GhostListenerIdentity> ghostIdentities
 	) {
 		boolean canViewAuthor = canViewAuthor(post, viewerId, approvedRevealPostIds);
 		String spotifyTrackId = extractSpotifyTrackId(post.getSpotifyTrackUrl());
+		GhostListenerIdentity ghostIdentity = canViewAuthor && post.getAuthor() != null
+				? ghostIdentities.get(post.getAuthor().getId())
+				: null;
 		
 		return postMapper.toDto(
 				post,
@@ -216,8 +236,27 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 				likeCounts.getOrDefault(post.getId(), 0L),
 				commentCounts.getOrDefault(post.getId(), 0L),
 				likedPostIds.contains(post.getId()),
-				spotifyTrackId == null ? null : spotifyTracks.get(spotifyTrackId)
+				spotifyTrackId == null ? null : spotifyTracks.get(spotifyTrackId),
+				ghostIdentity
 		);
+	}
+
+	private Map<UUID, GhostListenerIdentity> getVisibleGhostIdentities(
+			List<OverthinkingPost> posts,
+			UUID viewerId,
+			Set<UUID> approvedRevealPostIds
+	) {
+		if (posts == null || posts.isEmpty()) return Map.of();
+
+		LinkedHashSet<UUID> visibleAuthorIds = new LinkedHashSet<>();
+		for (OverthinkingPost post : posts) {
+			if (post == null || post.getAuthor() == null || post.getAuthor().getId() == null) continue;
+			if (canViewAuthor(post, viewerId, approvedRevealPostIds)) {
+				visibleAuthorIds.add(post.getAuthor().getId());
+			}
+		}
+		if (visibleAuthorIds.isEmpty()) return Map.of();
+		return ghostIdentityBatchResolver.resolve(visibleAuthorIds);
 	}
 	
 	private boolean canViewAuthor(OverthinkingPost post, UUID viewerId, Set<UUID> approvedRevealPostIds) {
@@ -229,7 +268,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 			return false;
 		}
 		
-		if (post.getAuthor().getId().equals(viewerId)) {
+		if (post.getAuthor() != null && post.getAuthor().getId() != null
+				&& post.getAuthor().getId().equals(viewerId)) {
 			return true;
 		}
 		

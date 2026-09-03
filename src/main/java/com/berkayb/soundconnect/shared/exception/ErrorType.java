@@ -35,10 +35,19 @@ public enum ErrorType {
 	BAND_ALREADY_FOLLOWED(1203, "Band already followed", HttpStatus.CONFLICT, "Bu band zaten takip ediliyor."),
 	BAND_FOLLOW_RELATION_NOT_FOUND(1204, "Band follow relation not found", HttpStatus.NOT_FOUND, "Band takip ilişkisi bulunamadı."),
 	BAND_MEMBER_CANNOT_FOLLOW_OWN_BAND(1205, "Band member cannot follow own band", HttpStatus.BAD_REQUEST, "Band üyesi kendi grubunu takip edemez."),
+	GHOST_PROFILE_CANNOT_BE_FOLLOWED(1206, "Ghost profiles cannot be followed", HttpStatus.CONFLICT, "Hayalet profiller takipçi kabul etmez."),
+	FOLLOW_GRAPH_PRIVATE(1207, "Follow graph is private", HttpStatus.FORBIDDEN, "Bu kullanıcının takip bağlantıları gizlidir."),
+	FOLLOW_RELATION_QUERY_FORBIDDEN(1208, "Follow relation query is forbidden", HttpStatus.FORBIDDEN, "Yalnızca kendi takip durumunuzu sorgulayabilirsiniz."),
 	// PROFILE (1300-1399)
 	PROFILE_ALREADY_EXISTS(1300, "Profile already exists", HttpStatus.CONFLICT, "Bu profil zaten var."),
 	PROFILE_NOT_FOUND(1301, "Profile not found", HttpStatus.NOT_FOUND, "Profil bulunamadi."),
 	PROFILE_MEDIA_NOT_FOUND(1302, "Profile media not found", HttpStatus.NOT_FOUND, "Profil medyasi bulunamadi."),
+	LISTENER_PROFILE_CONTENT_LOCKED(1303, "Listener profile content is locked while profile visibility is restricted", HttpStatus.CONFLICT, "Profil görünürlüğü kısıtlıyken profil içeriği değiştirilemez."),
+	LISTENER_PROFILE_VERSION_CONFLICT(1304, "Listener profile changed since it was loaded", HttpStatus.CONFLICT, "Profil başka bir işlem tarafından değiştirildi. Lütfen profili yenileyip tekrar deneyin."),
+	PROFILE_TYPE_IMMUTABLE(1305, "Profile type cannot be changed after account creation", HttpStatus.CONFLICT, "Profil türü hesap oluşturulduktan sonra değiştirilemez."),
+	LISTENER_PROFILE_VISIBILITY_RATE_LIMITED(1306, "Too many listener visibility requests", HttpStatus.TOO_MANY_REQUESTS, "Görünürlük ayarını çok sık değiştirmeye çalıştınız. Lütfen kısa süre sonra tekrar deneyin."),
+	LISTENER_PROFILE_VISIBILITY_RATE_LIMIT_UNAVAILABLE(1307, "Listener visibility protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Görünürlük ayarı geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."),
+	LISTENER_PROFILE_CHOICE_REQUIRED(1308, "Listener profile visibility choice is required", HttpStatus.PRECONDITION_REQUIRED, "Devam etmek için profil görünürlüğü seçimini tamamlamalısınız."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),

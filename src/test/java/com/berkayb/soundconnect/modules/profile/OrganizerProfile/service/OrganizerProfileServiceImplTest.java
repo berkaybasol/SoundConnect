@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.response.Or
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.mapper.OrganizerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -35,6 +37,7 @@ class OrganizerProfileServiceImplTest {
 	@Mock UserEntityFinder userFinder;
 	@Mock OrganizerProfileMapper mapper;
 	@Mock MediaAssetService mediaAssetService;
+	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@InjectMocks OrganizerProfileServiceImpl service;
 	
@@ -55,7 +58,8 @@ class OrganizerProfileServiceImplTest {
 				"Org", "desc", ppId, "addr", "555", "ig", "yt"
 		);
 		
-		when(userFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_ORGANIZER))
+				.thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.empty());
 		
 		OrganizerProfile saved = OrganizerProfile.builder()
@@ -103,7 +107,8 @@ class OrganizerProfileServiceImplTest {
 	
 	@Test
 	void createProfile_should_throw_when_duplicate() {
-		when(userFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_ORGANIZER))
+				.thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(OrganizerProfile.builder().build()));
 		
 		assertThatThrownBy(() -> service.createProfile(

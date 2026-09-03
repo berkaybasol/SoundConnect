@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
@@ -18,6 +19,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -129,6 +132,148 @@ class DmMessageEventListenerTest {
 				.containsEntry("senderAvatarUrl", "https://cdn.soundconnect.test/basol.jpg")
 				.containsEntry("recipientId", recipientId.toString())
 				.containsEntry("messageType", "text");
+		assertThat(notification.payload()).doesNotContainKey("senderVisibilityMode");
+	}
+
+	@Test
+	@DisplayName("onDmMessageSent: ghost sender snapshot uses canonical identity without avatar fallback")
+	void onDmMessageSent_ghostSenderUsesCanonicalIdentityAndMarker() {
+		SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+		DMMessageMapper messageMapper = mock(DMMessageMapper.class);
+		DMMessageRepository messageRepository = mock(DMMessageRepository.class);
+		NotificationProducer notificationProducer = mock(NotificationProducer.class);
+		UserRepository userRepository = mock(UserRepository.class);
+		PublicProfileResolverService publicProfileResolverService = mock(PublicProfileResolverService.class);
+		DmMessageEventListener listener = new DmMessageEventListener(
+				messagingTemplate,
+				messageMapper,
+				messageRepository,
+				notificationProducer,
+				userRepository,
+				publicProfileResolverService
+		);
+		UUID conversationId = UUID.randomUUID();
+		UUID senderId = UUID.randomUUID();
+		UUID recipientId = UUID.randomUUID();
+		UUID messageId = UUID.randomUUID();
+		DMMessage message = DMMessage.builder()
+				.id(messageId)
+				.conversationId(conversationId)
+				.senderId(senderId)
+				.recipientId(recipientId)
+				.content("hello")
+				.messageType("text")
+				.build();
+		when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
+		when(messageMapper.toResponseDto(message)).thenReturn(new DMMessageResponseDto(
+				messageId,
+				conversationId,
+				senderId,
+				recipientId,
+				"hello",
+				"text",
+				LocalDateTime.now(),
+				null,
+				null
+		));
+		when(publicProfileResolverService.resolveByUserId(senderId))
+				.thenReturn(new UserProfilesResolveResponseDto(
+						senderId,
+						List.of(new UserProfileTargetDto(
+								"LISTENER",
+								UUID.randomUUID(),
+								"ghosthandle",
+								null,
+								ListenerVisibilityMode.GHOST
+						))
+				));
+		DmMessageSentEvent event = DmMessageSentEvent.builder()
+				.messageId(messageId)
+				.conversationId(conversationId)
+				.senderId(senderId)
+				.recipientId(recipientId)
+				.content("hello")
+				.messageType("text")
+				.sentAt(LocalDateTime.now())
+				.build();
+
+		listener.onDmMessageSent(event);
+
+		ArgumentCaptor<NotificationInboundEvent> notificationCaptor =
+				ArgumentCaptor.forClass(NotificationInboundEvent.class);
+		verify(notificationProducer).publish(notificationCaptor.capture());
+		assertThat(notificationCaptor.getValue().payload())
+				.containsEntry("senderUsername", "ghosthandle")
+				.containsEntry("senderAvatarUrl", "")
+				.containsEntry("senderVisibilityMode", "GHOST");
+		verifyNoInteractions(userRepository);
+	}
+
+	@Test
+	@DisplayName("onDmMessageSent: identity resolver failure never falls back to legacy user identity")
+	void onDmMessageSent_identityResolverFailurePublishesSanitizedNotification() {
+		SimpMessagingTemplate messagingTemplate = mock(SimpMessagingTemplate.class);
+		DMMessageMapper messageMapper = mock(DMMessageMapper.class);
+		DMMessageRepository messageRepository = mock(DMMessageRepository.class);
+		NotificationProducer notificationProducer = mock(NotificationProducer.class);
+		UserRepository userRepository = mock(UserRepository.class);
+		PublicProfileResolverService publicProfileResolverService = mock(PublicProfileResolverService.class);
+		DmMessageEventListener listener = new DmMessageEventListener(
+				messagingTemplate,
+				messageMapper,
+				messageRepository,
+				notificationProducer,
+				userRepository,
+				publicProfileResolverService
+		);
+		UUID conversationId = UUID.randomUUID();
+		UUID senderId = UUID.randomUUID();
+		UUID recipientId = UUID.randomUUID();
+		UUID messageId = UUID.randomUUID();
+		DMMessage message = DMMessage.builder()
+				.id(messageId)
+				.conversationId(conversationId)
+				.senderId(senderId)
+				.recipientId(recipientId)
+				.content("hello")
+				.messageType("text")
+				.build();
+		when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
+		when(messageMapper.toResponseDto(message)).thenReturn(new DMMessageResponseDto(
+				messageId, conversationId, senderId, recipientId,
+				"hello", "text", LocalDateTime.now(), null, null
+		));
+		when(publicProfileResolverService.resolveByUserId(senderId))
+				.thenThrow(new IllegalStateException("identity store unavailable"));
+		when(userRepository.findById(senderId)).thenReturn(Optional.of(User.builder()
+				.username("legacy-display-name")
+				.profilePicture("https://cdn.example/legacy-avatar.jpg")
+				.build()));
+		DmMessageSentEvent event = DmMessageSentEvent.builder()
+				.messageId(messageId)
+				.conversationId(conversationId)
+				.senderId(senderId)
+				.recipientId(recipientId)
+				.content("hello")
+				.messageType("text")
+				.sentAt(LocalDateTime.now())
+				.build();
+
+		listener.onDmMessageSent(event);
+
+		ArgumentCaptor<NotificationInboundEvent> notificationCaptor =
+				ArgumentCaptor.forClass(NotificationInboundEvent.class);
+		verify(notificationProducer).publish(notificationCaptor.capture());
+		NotificationInboundEvent notification = notificationCaptor.getValue();
+		assertThat(notification.title()).isEqualTo("Bir kullanici size bir mesaj gönderdi");
+		assertThat(notification.payload())
+				.containsEntry("senderId", senderId.toString())
+				.containsEntry("senderUsername", "Bir kullanici")
+				.containsEntry("senderAvatarUrl", "")
+				.doesNotContainKey("senderVisibilityMode");
+		assertThat(notification.payload().values())
+				.doesNotContain("legacy-display-name", "https://cdn.example/legacy-avatar.jpg");
+		verifyNoInteractions(userRepository);
 	}
 	
 	@Test
@@ -177,11 +322,16 @@ class DmMessageEventListenerTest {
 		TransactionalEventListener readListener = DmMessageEventListener.class
 				.getMethod("onDmMessageRead", DmMessageReadEvent.class)
 				.getAnnotation(TransactionalEventListener.class);
+		Transactional sentTransaction = DmMessageEventListener.class
+				.getMethod("onDmMessageSent", DmMessageSentEvent.class)
+				.getAnnotation(Transactional.class);
 
 		assertThat(sentListener).isNotNull();
 		assertThat(sentListener.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
 		assertThat(readListener).isNotNull();
 		assertThat(readListener.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+		assertThat(sentTransaction).isNotNull();
+		assertThat(sentTransaction.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
 	}
 
 	@Test

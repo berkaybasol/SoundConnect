@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.message.dm.service;
 
+import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPreviewResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
@@ -7,6 +8,9 @@ import com.berkayb.soundconnect.modules.message.dm.model.DmParticipantPair;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
@@ -55,6 +59,8 @@ class DMConversationServiceImplTest {
 	@Mock ProducerProfileRepository producerProfileRepository;
 	@Mock StudioProfileRepository studioProfileRepository;
 	@Mock VenueRepository venueRepository;
+	@Mock MediaAssetService mediaAssetService;
+	@Mock GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	
 	@Test
 	@DisplayName("getAllConversationsForUser: son mesaja göre DESC sıralama + profil lookup + okundu bayrağı")
@@ -159,6 +165,75 @@ class DMConversationServiceImplTest {
 		assertThat(prevC2.lastMessageContent()).isEqualTo("hello other2");
 		// last message sender currentUser, recipient other2 → currentUser açısından okundu=true
 		assertThat(prevC2.lastMessageRead()).isTrue();
+	}
+
+	@Test
+	@DisplayName("getAllConversationsForUser: ghost identity is resolved once and bypasses legacy profile lookup")
+	void getAllConversationsForUser_ghostIdentityOverridesAndBypassesLegacyLookup() {
+		UUID currentUserId = UUID.randomUUID();
+		UUID ghostUserId = UUID.randomUUID();
+		UUID standardUserId = UUID.randomUUID();
+		DMConversation ghostConversation = DMConversation.builder()
+				.id(UUID.randomUUID())
+				.userAId(currentUserId)
+				.userBId(ghostUserId)
+				.build();
+		DMConversation standardConversation = DMConversation.builder()
+				.id(UUID.randomUUID())
+				.userAId(standardUserId)
+				.userBId(currentUserId)
+				.build();
+		when(conversationRepository.findByUserAIdOrUserBId(currentUserId, currentUserId))
+				.thenReturn(List.of(ghostConversation, standardConversation));
+		when(messageRepository.findTopByConversationIdOrderByCreatedAtDesc(any()))
+				.thenReturn(Optional.empty());
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection()))
+				.thenReturn(Map.of(ghostUserId, new GhostListenerIdentity(
+						ghostUserId,
+						"ghosthandle",
+						"https://cdn.example/listener-avatar.jpg",
+						ListenerVisibilityMode.GHOST
+				)));
+		when(venueRepository.findAllByOwnerId(standardUserId)).thenReturn(List.of());
+		when(userRepository.findById(standardUserId)).thenReturn(Optional.of(User.builder()
+				.id(standardUserId)
+				.username("standard")
+				.profilePicture("https://cdn.example/standard.jpg")
+				.build()));
+		when(musicianProfileRepository.findByUserId(standardUserId)).thenReturn(Optional.empty());
+		when(listenerProfileRepository.findByUserId(standardUserId)).thenReturn(Optional.empty());
+		when(organizerProfileRepository.findByUserId(standardUserId)).thenReturn(Optional.empty());
+		when(producerProfileRepository.findByUserId(standardUserId)).thenReturn(Optional.empty());
+		when(studioProfileRepository.findByUserId(standardUserId)).thenReturn(Optional.empty());
+
+		List<DMConversationPreviewResponseDto> result =
+				service.getAllConversationsForUser(currentUserId);
+
+		assertThat(result).filteredOn(dto -> dto.otherUserId().equals(ghostUserId))
+				.singleElement()
+				.satisfies(dto -> {
+					assertThat(dto.otherUsername()).isEqualTo("ghosthandle");
+					assertThat(dto.otherUserProfilePicture())
+							.isEqualTo("https://cdn.example/listener-avatar.jpg");
+					assertThat(dto.otherUserVisibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
+				});
+		assertThat(result).filteredOn(dto -> dto.otherUserId().equals(standardUserId))
+				.singleElement()
+				.satisfies(dto -> {
+					assertThat(dto.otherUsername()).isEqualTo("standard");
+					assertThat(dto.otherUserProfilePicture())
+							.isEqualTo("https://cdn.example/standard.jpg");
+					assertThat(dto.otherUserVisibilityMode()).isNull();
+				});
+		verify(ghostListenerIdentityBatchResolver).resolve(argThat(ids ->
+				ids.size() == 2 && ids.containsAll(Set.of(ghostUserId, standardUserId))));
+		verify(userRepository, never()).findById(ghostUserId);
+		verify(venueRepository, never()).findAllByOwnerId(ghostUserId);
+		verify(musicianProfileRepository, never()).findByUserId(ghostUserId);
+		verify(listenerProfileRepository, never()).findByUserId(ghostUserId);
+		verify(organizerProfileRepository, never()).findByUserId(ghostUserId);
+		verify(producerProfileRepository, never()).findByUserId(ghostUserId);
+		verify(studioProfileRepository, never()).findByUserId(ghostUserId);
 	}
 	
 	@Test

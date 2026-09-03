@@ -1,25 +1,22 @@
 package com.berkayb.soundconnect.modules.follow.service;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
+import com.berkayb.soundconnect.modules.follow.event.FollowNotificationRequestedEvent;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
-import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
-import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
-import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.UUID;
 
 
 
@@ -28,8 +25,9 @@ import java.util.Map;
 @Slf4j
 public class FollowServiceImpl implements FollowService {
 	private final FollowRepository followRepository;
-	private final NotificationProducer notificationProducer;
-	private final PublicProfileResolverService publicProfileResolverService;
+	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
+	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
+	private final ApplicationEventPublisher applicationEventPublisher;
 	
 	@Transactional // islemlerden birinde bile hata olursa butun islemleri geri al
 	@Override
@@ -40,6 +38,20 @@ public class FollowServiceImpl implements FollowService {
 		if (follower.getId().equals(following.getId())) {
 			log.warn("User {} tried to follow themselves :D", follower.getId());
 			throw new SoundConnectException(ErrorType.CANNOT_FOLLOW_SELF);
+		}
+
+		// Follow creation and ghost activation serialize on the same listener row.
+		// Therefore activation either purges this relationship after it commits, or
+		// this request observes GHOST and cannot insert it after the purge.
+		if (listenerProfileChoiceStatusReader.requiresChoice(following)) {
+			// A listener who has not completed onboarding is not a public target.
+			// Keep this indistinguishable from any other unresolved public profile.
+			log.info("Follow rejected because target user {} has no public listener profile", following.getId());
+			throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		}
+		if (listenerVisibilityPolicy.lockAndIsPubliclyRestricted(following.getId())) {
+			log.info("Follow rejected because target user {} has a restricted listener profile", following.getId());
+			throw new SoundConnectException(ErrorType.GHOST_PROFILE_CANNOT_BE_FOLLOWED);
 		}
 		
 		// zaten takip ediyorsa
@@ -59,7 +71,7 @@ public class FollowServiceImpl implements FollowService {
 		
 		log.info("User {} succesfully followed user {}", follower.getId(), following.getId());
 		
-		publishNewFollowerNotification(follower, following);
+		requestNewFollowerNotification(follower.getId(), following.getId());
 	}
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemleri geri al
@@ -87,11 +99,25 @@ public class FollowServiceImpl implements FollowService {
 	public List<Follow> getFollowing(User follower) {
 		return followRepository.findAllByFollower(follower);
 	}
+
+	@Transactional
+	@Override
+	public List<Follow> getFollowingVisibleTo(UUID viewerId, User follower) {
+		assertCanViewGraph(viewerId, follower);
+		return getFollowing(follower);
+	}
 	
 	@Transactional(readOnly = true)
 	@Override
 	public List<Follow> getFollowers(User following) {
 		return followRepository.findAllByFollowing(following);
+	}
+
+	@Transactional
+	@Override
+	public List<Follow> getFollowersVisibleTo(UUID viewerId, User following) {
+		assertCanViewGraph(viewerId, following);
+		return getFollowers(following);
 	}
 	
 	@Transactional(readOnly = true)
@@ -99,11 +125,34 @@ public class FollowServiceImpl implements FollowService {
 	public boolean isFollowing(User follower, User following) {
 		return followRepository.existsByFollowerAndFollowing(follower, following);
 	}
+
+	@Transactional
+	@Override
+	public boolean isFollowingVisibleTo(User viewer, UUID requestedFollowerId, User following) {
+		if (requestedFollowerId != null && !viewer.getId().equals(requestedFollowerId)) {
+			throw new SoundConnectException(ErrorType.FOLLOW_RELATION_QUERY_FORBIDDEN);
+		}
+		// A committed ghost transition owns the linearization point on this row.
+		// Once observed, the incoming edge is private and should already have been
+		// purged; returning false also fails closed while reconciliation runs.
+		if (listenerProfileChoiceStatusReader.requiresChoice(following)
+				|| listenerVisibilityPolicy.lockForReadAndIsPubliclyRestricted(following.getId())) {
+			return false;
+		}
+		return isFollowing(viewer, following);
+	}
 	
 	@Transactional(readOnly = true)
 	@Override
 	public long countFollowing(User follower) {
 		return followRepository.countByFollower(follower);
+	}
+
+	@Transactional
+	@Override
+	public long countFollowingVisibleTo(UUID viewerId, User follower) {
+		assertCanViewGraph(viewerId, follower);
+		return countFollowing(follower);
 	}
 	
 	@Transactional(readOnly = true)
@@ -111,60 +160,36 @@ public class FollowServiceImpl implements FollowService {
 	public long countFollowers(User following) {
 		return followRepository.countByFollowing(following);
 	}
-	
-	private void publishNewFollowerNotification(User follower, User following) {
-		try {
-			String followerNotificationName = resolveFollowerNotificationName(follower);
-			Map<String, Object> payload = new HashMap<>();
-			payload.put("module", "SOCIAL");
-			payload.put("action", "NEW_FOLLOWER");
-			payload.put("followerId", follower.getId().toString());
-			payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanıcı"));
-			putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));
-			
-			notificationProducer.publish(
-					NotificationInboundEvent.builder()
-					                        .recipientId(following.getId())
-					                        .type(NotificationType.SOCIAL_NEW_FOLLOWER)
-					                        .title(followerNotificationName + " seni takip etmeye başladı")
-					                        .message("Yeni bir takipçin var.")
-					                        .payload(payload)
-					                        .emailForce(false)
-					                        .occurredAt(Instant.now())
-					                        .build()
-			);
-		} catch (Exception e) {
-			log.warn("Follow notification publish failed. follower={}, following={}, err={}",
-			         follower.getId(), following.getId(), e.toString());
+
+	@Transactional
+	@Override
+	public long countFollowersVisibleTo(UUID viewerId, User following) {
+		assertCanViewGraph(viewerId, following);
+		return countFollowers(following);
+	}
+
+	private void assertCanViewGraph(UUID viewerId, User subject) {
+		UUID subjectUserId = subject.getId();
+		if (listenerProfileChoiceStatusReader.requiresChoice(subject)) {
+			throw new SoundConnectException(ErrorType.FOLLOW_GRAPH_PRIVATE);
+		}
+		boolean restricted = listenerVisibilityPolicy
+				.lockForReadAndIsPubliclyRestricted(subjectUserId);
+		if (!subjectUserId.equals(viewerId) && restricted) {
+			throw new SoundConnectException(ErrorType.FOLLOW_GRAPH_PRIVATE);
 		}
 	}
 
-	private String resolveFollowerNotificationName(User follower) {
-		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
-				.filter(profile -> "VENUE".equals(profile.type()))
-				.map(UserProfileTargetDto::displayName)
-				.filter(this::notBlank)
-				.findFirst()
-				.orElse(safe(follower.getUsername(), "Bir kullanıcı"));
-	}
-
-	private String resolveFollowerProfilePictureUrl(User follower) {
-		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
-				.map(UserProfileTargetDto::profilePictureUrl)
-				.filter(this::notBlank)
-				.findFirst()
-				.orElse(follower.getProfilePicture());
-	}
-
-	private void putIfPresent(Map<String, Object> payload, String key, String value) {
-		if (value != null && !value.isBlank()) payload.put(key, value.trim());
-	}
-
-	private String safe(String value, String fallback) {
-		return value == null || value.isBlank() ? fallback : value.trim();
-	}
-
-	private boolean notBlank(String value) {
-		return value != null && !value.isBlank();
+	private void requestNewFollowerNotification(UUID followerId, UUID followingId) {
+		try {
+			applicationEventPublisher.publishEvent(
+					new FollowNotificationRequestedEvent(followerId, followingId)
+			);
+		} catch (RuntimeException exception) {
+			// Notification registration is best effort and must never roll back the
+			// successfully validated follow relationship.
+			log.warn("Follow notification request failed. followerId={}, followingId={}, exceptionType={}",
+					followerId, followingId, exception.getClass().getSimpleName());
+		}
 	}
 }

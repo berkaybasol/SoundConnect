@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.shared.media.entity.ProfileMedia;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileMediaRole;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
@@ -41,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(ProfileMediaServiceImpl.class)
+@Import({ProfileMediaServiceImpl.class, ListenerVisibilityPolicy.class})
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -83,7 +84,11 @@ class ProfileMediaServiceConcurrencyPostgresTest {
 				.emailVerified(true)
 				.build());
 		ListenerProfile profile = listenerProfileRepository.saveAndFlush(
-				ListenerProfile.builder().user(user).name("Concurrency").build());
+				ListenerProfile.builder()
+						.user(user)
+						.name("Concurrency")
+						.visibilityChoiceCompleted(true)
+						.build());
 		MediaAsset asset = mediaAssetRepository.saveAndFlush(MediaAsset.builder()
 				.kind(MediaKind.IMAGE)
 				.status(MediaStatus.READY)

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.security.SecurityErrorResponseWriter;
 import com.berkayb.soundconnect.shared.util.JwtUtil;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -37,6 +38,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private final JwtTokenProvider jwtTokenProvider;
 	private final CustomUserDetailsService userDetailsService;
 	private final JwtUtil jwtUtil;
+	private final ListenerProfileChoiceGate listenerProfileChoiceGate;
+	private final SecurityErrorResponseWriter securityErrorResponseWriter;
 	
 	// OncePerRequestFilter: Her HTTP isteginde yalnizca bir kez calisan filtre temel sinifidir.
 	// doFilterInfernal metodu, filtre mantigini uyguladigimiz ana methoddur.
@@ -97,6 +100,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			}
 		}
 		
+		if (listenerProfileChoiceGate.shouldReject(
+				request,
+				SecurityContextHolder.getContext().getAuthentication()
+		)) {
+			securityErrorResponseWriter.write(
+					request,
+					response,
+					ErrorType.LISTENER_PROFILE_CHOICE_REQUIRED
+			);
+			return;
+		}
+
 		// filtre -> controller -> service vs zincir devam etsin
 		filterChain.doFilter(request, response);
 		

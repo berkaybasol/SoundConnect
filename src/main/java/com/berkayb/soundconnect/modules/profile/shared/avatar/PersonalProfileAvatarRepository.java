@@ -21,7 +21,9 @@ public interface PersonalProfileAvatarRepository extends Repository<User, UUID> 
 				musician.profilePictureMediaId,
 				listener.profilePictureMediaId,
 				organizer.profilePictureMediaId,
-				producer.profilePictureMediaId
+				producer.profilePictureMediaId,
+				user.username,
+				listener.visibilityMode
 			)
 			from User user
 			left join user.musicianProfile musician

@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
@@ -34,8 +35,20 @@ public abstract class CommentMapper {
 	protected VenueProfileRepository venueProfileRepository;
 	
 	protected UserSummaryDto toUserSummaryDto(User user) {
+		return toUserSummaryDto(user, null);
+	}
+
+	protected UserSummaryDto toUserSummaryDto(User user, GhostListenerIdentity ghostIdentity) {
 		if (user == null) {
 			return null;
+		}
+		if (ghostIdentity != null) {
+			return new UserSummaryDto(
+					user.getId(),
+					ghostIdentity.username(),
+					ghostIdentity.profilePictureUrl(),
+					ghostIdentity.visibilityMode()
+			);
 		}
 		
 		return new UserSummaryDto(
@@ -49,22 +62,39 @@ public abstract class CommentMapper {
 	 * Root comment için Response DTO.
 	 * maskAuthor true ise gerçek user bilgisi yerine anonim özet döner.
 	 */
-	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser()))")
+	public CommentResponseDto toCommentResponseDto(Comment comment, int replyCount, boolean maskAuthor) {
+		return toCommentResponseDto(comment, replyCount, maskAuthor, null);
+	}
+
+	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser(), ghostIdentity))")
 	@Mapping(target = "anonymousAuthor", source = "maskAuthor")
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
 	@Mapping(target = "replyCount", source = "replyCount")
-	public abstract CommentResponseDto toCommentResponseDto(Comment comment, int replyCount, boolean maskAuthor);
+	public abstract CommentResponseDto toCommentResponseDto(
+			Comment comment,
+			int replyCount,
+			boolean maskAuthor,
+			GhostListenerIdentity ghostIdentity
+	);
 	
 	/**
 	 * Reply yorumlar için Response DTO.
 	 * maskAuthor true ise gerçek user bilgisi yerine anonim özet döner.
 	 */
-	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser()))")
+	public CommentReplyResponseDto toCommentReplyResponseDto(Comment comment, boolean maskAuthor) {
+		return toCommentReplyResponseDto(comment, maskAuthor, null);
+	}
+
+	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser(), ghostIdentity))")
 	@Mapping(target = "anonymousAuthor", source = "maskAuthor")
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
-	public abstract CommentReplyResponseDto toCommentReplyResponseDto(Comment comment, boolean maskAuthor);
+	public abstract CommentReplyResponseDto toCommentReplyResponseDto(
+			Comment comment,
+			boolean maskAuthor,
+			GhostListenerIdentity ghostIdentity
+	);
 	
 	protected UserSummaryDto anonymousUserSummaryDto() {
 		return new UserSummaryDto(

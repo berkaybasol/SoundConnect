@@ -2,33 +2,33 @@ package com.berkayb.soundconnect.modules.follow.band.service;
 
 import com.berkayb.soundconnect.modules.follow.band.dto.response.BandFollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.band.entity.BandFollow;
+import com.berkayb.soundconnect.modules.follow.band.event.BandFollowNotificationRequestedEvent;
 import com.berkayb.soundconnect.modules.follow.band.mapper.BandFollowMapper;
 import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
-import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
-import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
-import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -40,8 +40,8 @@ public class BandFollowServiceImpl implements BandFollowService {
 	private final BandEntityFinder bandEntityFinder;
 	private final BandFollowMapper bandFollowMapper;
 	private final MediaAssetService mediaAssetService;
-	private final NotificationProducer notificationProducer;
-	private final PublicProfileResolverService publicProfileResolverService;
+	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
+	private final ApplicationEventPublisher applicationEventPublisher;
 	
 	@Override
 	@Transactional
@@ -66,7 +66,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 		
 		log.info("Band followed successfully. userId={}, bandId={}", followerUserId, bandId);
 		
-		publishBandFollowerNotification(follower, band);
+		requestBandFollowerNotification(followerUserId, band);
 	}
 	
 	@Override
@@ -103,25 +103,19 @@ public class BandFollowServiceImpl implements BandFollowService {
 	}
 	
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional
 	public List<BandFollowResponseDto> getBandFollowers(UUID bandId) {
 		Band band = bandEntityFinder.getBand(bandId);
 		
-		return bandFollowRepository.findAllByBand(band)
-		                           .stream()
-		                           .map(this::toResponseDto)
-		                           .toList();
+		return toResponseDtos(bandFollowRepository.findAllByBand(band));
 	}
 	
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional
 	public List<BandFollowResponseDto> getMyFollowedBands(UUID followerUserId) {
 		User follower = userEntityFinder.getUser(followerUserId);
 		
-		return bandFollowRepository.findAllByFollower(follower)
-		                           .stream()
-		                           .map(this::toResponseDto)
-		                           .toList();
+		return toResponseDtos(bandFollowRepository.findAllByFollower(follower));
 	}
 	
 	private void validateBandMembershipForFollow(UUID bandId, UUID followerUserId) {
@@ -138,8 +132,36 @@ public class BandFollowServiceImpl implements BandFollowService {
 		}
 	}
 	
-	private BandFollowResponseDto toResponseDto(BandFollow bandFollow) {
-		var baseDto = bandFollowMapper.toDto(bandFollow);
+	private List<BandFollowResponseDto> toResponseDtos(List<BandFollow> follows) {
+		if (follows == null || follows.isEmpty()) return List.of();
+
+		LinkedHashSet<UUID> followerIds = follows.stream()
+				.filter(Objects::nonNull)
+				.map(BandFollow::getFollower)
+				.filter(Objects::nonNull)
+				.map(User::getId)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+		Map<UUID, GhostListenerIdentity> ghostIdentities = followerIds.isEmpty()
+				? Map.of()
+				: ghostIdentityBatchResolver.resolve(followerIds);
+
+		return follows.stream()
+				.filter(Objects::nonNull)
+				.map(follow -> toResponseDto(
+						follow,
+						follow.getFollower() == null
+								? null
+								: ghostIdentities.get(follow.getFollower().getId())
+				))
+				.toList();
+	}
+
+	private BandFollowResponseDto toResponseDto(
+			BandFollow bandFollow,
+			GhostListenerIdentity ghostIdentity
+	) {
+		var baseDto = bandFollowMapper.toDto(bandFollow, ghostIdentity);
 		String bandProfilePictureUrl = resolveBandProfilePictureUrl(bandFollow.getBand().getProfilePictureMediaId());
 		
 		return new BandFollowResponseDto(
@@ -147,6 +169,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 				baseDto.followerId(),
 				baseDto.followerUsername(),
 				baseDto.followerProfilePicture(),
+				baseDto.followerVisibilityMode(),
 				baseDto.bandId(),
 				baseDto.bandName(),
 				baseDto.bandProfilePictureMediaId(),
@@ -168,63 +191,31 @@ public class BandFollowServiceImpl implements BandFollowService {
 		}
 	}
 	
-	private void publishBandFollowerNotification(User follower, Band band) {
+	private void requestBandFollowerNotification(UUID followerId, Band band) {
 		try {
-			for (BandMember member : band.getMembers()) {
-				if (member.getStatus() != BandMemberShipStatus.ACTIVE || member.getUser() == null) {
-					continue;
-				}
-				UUID recipientId = member.getUser().getId();
-				if (recipientId == null || recipientId.equals(follower.getId())) {
-					continue;
-				}
-				notificationProducer.publish(
-						NotificationInboundEvent.builder()
-						                        .recipientId(recipientId)
-						                        .type(NotificationType.SOCIAL_NEW_BAND_FOLLOWER)
-						                        .title(safe(follower.getUsername(), "Bir kullanıcı") + " bandını takip etmeye başladı")
-						                        .message(safe(band.getName(), "Band") + " yeni bir takipçi kazandı.")
-						                        .payload(bandFollowerPayload(follower, band))
-						                        .emailForce(false)
-						                        .occurredAt(Instant.now())
-						                        .build()
-				);
-			}
-		} catch (Exception e) {
-			log.warn("Band follow notification publish failed. follower={}, band={}, err={}",
-			         follower.getId(), band.getId(), e.toString());
+			List<UUID> recipientIds = band.getMembers() == null
+					? List.of()
+					: band.getMembers().stream()
+					      .filter(Objects::nonNull)
+					      .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+					      .map(BandMember::getUser)
+					      .filter(Objects::nonNull)
+					      .map(User::getId)
+					      .filter(Objects::nonNull)
+					      .filter(recipientId -> !recipientId.equals(followerId))
+					      .distinct()
+					      .toList();
+			if (recipientIds.isEmpty()) return;
+			applicationEventPublisher.publishEvent(new BandFollowNotificationRequestedEvent(
+					followerId,
+					band.getId(),
+					recipientIds
+			));
+		} catch (RuntimeException exception) {
+			// Notification registration remains best effort and cannot invalidate the
+			// committed band-follow relationship.
+			log.warn("Band follow notification request failed. followerId={}, bandId={}, exceptionType={}",
+					followerId, band.getId(), exception.getClass().getSimpleName());
 		}
-	}
-	
-	private Map<String, Object> bandFollowerPayload(User follower, Band band) {
-		Map<String, Object> payload = new HashMap<>();
-		payload.put("module", "SOCIAL");
-		payload.put("action", "NEW_BAND_FOLLOWER");
-		payload.put("followerId", follower.getId().toString());
-		payload.put("followerUsername", safe(follower.getUsername(), "Bir kullanıcı"));
-		payload.put("bandId", band.getId().toString());
-		payload.put("bandName", safe(band.getName(), "Band"));
-		putIfPresent(payload, "followerAvatarUrl", resolveFollowerProfilePictureUrl(follower));
-		return payload;
-	}
-
-	private String resolveFollowerProfilePictureUrl(User follower) {
-		return publicProfileResolverService.resolveByUserId(follower.getId()).profiles().stream()
-				.map(UserProfileTargetDto::profilePictureUrl)
-				.filter(this::notBlank)
-				.findFirst()
-				.orElse(follower.getProfilePicture());
-	}
-
-	private void putIfPresent(Map<String, Object> payload, String key, String value) {
-		if (value != null && !value.isBlank()) payload.put(key, value.trim());
-	}
-
-	private String safe(String value, String fallback) {
-		return value == null || value.isBlank() ? fallback : value.trim();
-	}
-
-	private boolean notBlank(String value) {
-		return value != null && !value.isBlank();
 	}
 }

@@ -1,10 +1,10 @@
 package com.berkayb.soundconnect.modules.profile.shared.resolver.contributor;
 
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
-import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,7 +18,6 @@ import java.util.UUID;
 public class ListenerProfileContributor implements PublicProfileContributor {
 	
 	private final ListenerProfileRepository listenerProfileRepository;
-	private final UserRepository userRepository;
 	private final MediaAssetService mediaAssetService;
 	
 	@Override
@@ -28,21 +27,32 @@ public class ListenerProfileContributor implements PublicProfileContributor {
 	
 	@Override
 	public List<UserProfileTargetDto> resolve(UUID userId) {
-		return listenerProfileRepository.findByUserId(userId)
+		return listenerProfileRepository.findForPublicIdentityByUserId(userId)
+		                                .filter(ListenerProfile::isVisibilityChoiceCompleted)
 		                                .map(lp -> List.of(
 				                                new UserProfileTargetDto(
 						                                type(),
 						                                lp.getId(),
-						                                resolveDisplayName(lp.getName(), userId),
-						                                resolveMediaUrl(lp.getProfilePictureMediaId())
+						                                resolveDisplayName(lp),
+						                                resolveMediaUrl(lp.getProfilePictureMediaId()),
+						                                publicVisibilityMode(lp.getVisibilityMode())
 				                                )
 		                                ))
 		                                .orElse(List.of());
 	}
 	
-	private String resolveDisplayName(String name, UUID userId) {
-		if (notBlank(name)) return name;
-		return userRepository.findById(userId).map(User::getUsername).orElse("Kullanici");
+	private String resolveDisplayName(ListenerProfile profile) {
+		String username = profile.getUser() == null ? null : profile.getUser().getUsername();
+		if (profile.isGhost()) {
+			return notBlank(username) ? username : "Kullanici";
+		}
+		return notBlank(profile.getName())
+				? profile.getName().trim()
+				: (notBlank(username) ? username : "Kullanici");
+	}
+
+	private ListenerVisibilityMode publicVisibilityMode(ListenerVisibilityMode mode) {
+		return mode == ListenerVisibilityMode.GHOST ? ListenerVisibilityMode.GHOST : null;
 	}
 	
 	private String resolveMediaUrl(UUID mediaAssetId) {

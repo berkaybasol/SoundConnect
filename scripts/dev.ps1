@@ -27,7 +27,8 @@ $LocalSchemaMigrations = @(
     @{ Name = "TableGroup meeting time"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-01-tablegroup-meeting-time.sql" },
     @{ Name = "TableGroup chat idempotency"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-chat-idempotency.sql" },
     @{ Name = "TableGroup notification type spelling"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-notification-type-spelling.sql" },
-    @{ Name = "TableGroup strict create contract"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-create-contract-strict.sql" }
+    @{ Name = "TableGroup strict create contract"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-create-contract-strict.sql" },
+    @{ Name = "Listener ghost profile"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-03-listener-ghost-profile.sql" }
 )
 
 function Assert-Command([string]$Name) {
@@ -293,7 +294,7 @@ function Sync-LocalSchemas {
             throw "$($Migration.Name) migration failed with exit code $LASTEXITCODE."
         }
     }
-    Write-Host "Local Studio, Collab, and TableGroup schemas are ready." -ForegroundColor Green
+    Write-Host "Local Studio, Collab, TableGroup, and listener-profile schemas are ready." -ForegroundColor Green
     return $true
 }
 

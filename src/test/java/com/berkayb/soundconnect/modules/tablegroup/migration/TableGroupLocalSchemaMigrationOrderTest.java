@@ -24,6 +24,8 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				"2026-09-02-tablegroup-notification-type-spelling.sql";
 		String strictCreateContract =
 				"2026-09-02-tablegroup-create-contract-strict.sql";
+		String listenerGhostProfile =
+				"2026-09-03-listener-ghost-profile.sql";
 
 		assertThat(devScript).contains(
 				hardening,
@@ -34,7 +36,8 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				meetingTime,
 				chatIdempotency,
 				notificationTypeSpelling,
-				strictCreateContract
+				strictCreateContract,
+				listenerGhostProfile
 		);
 		assertThat(devScript.indexOf(hardening)).isLessThan(devScript.indexOf(game));
 		assertThat(devScript.indexOf(game)).isLessThan(devScript.indexOf(globalFeed));
@@ -46,7 +49,9 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				.isLessThan(devScript.indexOf(notificationTypeSpelling));
 		assertThat(devScript.indexOf(notificationTypeSpelling))
 				.isLessThan(devScript.indexOf(strictCreateContract));
+		assertThat(devScript.indexOf(strictCreateContract))
+				.isLessThan(devScript.indexOf(listenerGhostProfile));
 		assertThat(devScript).contains(
-				"Local Studio, Collab, and TableGroup schemas are ready.");
+				"Local Studio, Collab, TableGroup, and listener-profile schemas are ready.");
 	}
 }

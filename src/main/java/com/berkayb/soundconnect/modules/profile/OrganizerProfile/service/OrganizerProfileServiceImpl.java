@@ -9,6 +9,8 @@ import com.berkayb.soundconnect.modules.profile.OrganizerProfile.dto.response.Or
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.mapper.OrganizerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -28,12 +30,14 @@ public class OrganizerProfileServiceImpl implements OrganizerProfileService {
 	private final UserEntityFinder userEntityFinder;
 	private final OrganizerProfileMapper organizerProfileMapper;
 	private final MediaAssetService mediaAssetService;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@Override
 	@Transactional
 	public OrganizerProfileResponseDto createProfile(UUID userId, OrganizerProfileSaveRequestDto dto) {
 		// kullaniciyi getir
-		User user = userEntityFinder.getUser(userId);
+		User user = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				userId, RoleEnum.ROLE_ORGANIZER);
 		
 		// daha once acilmis mi
 		if (organizerProfileRepository.findByUserId(user.getId()).isPresent()) {

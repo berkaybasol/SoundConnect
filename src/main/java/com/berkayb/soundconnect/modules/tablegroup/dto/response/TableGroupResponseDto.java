@@ -1,7 +1,9 @@
 package com.berkayb.soundconnect.modules.tablegroup.dto.response;
 
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroupParticipant;
 import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 
 import java.time.Instant;
@@ -47,9 +49,65 @@ public record TableGroupResponseDto(
 		
 		LocationDto city,
 		LocationDto district,
-		LocationDto neighborhood
+		LocationDto neighborhood,
+
+		@JsonInclude(JsonInclude.Include.NON_NULL)
+		ListenerVisibilityMode ownerVisibilityMode
 		
 ) {
+	public TableGroupResponseDto {
+		ownerVisibilityMode = ghostOnly(ownerVisibilityMode);
+	}
+
+	public TableGroupResponseDto(
+			UUID id,
+			UUID ownerId,
+			String ownerUsername,
+			String ownerProfileImageUrl,
+			UUID venueId,
+			String venueName,
+			String description,
+			int maxPersonCount,
+			List<String> genderPrefs,
+			int ageMin,
+			int ageMax,
+			Instant startAt,
+			Instant meetingAt,
+			Instant expiresAt,
+			TableGroupStatus status,
+			Set<TableGroupParticipantDto> participants,
+			LocationDto city,
+			LocationDto district,
+			LocationDto neighborhood
+	) {
+		this(
+				id,
+				ownerId,
+				ownerUsername,
+				ownerProfileImageUrl,
+				venueId,
+				venueName,
+				description,
+				maxPersonCount,
+				genderPrefs,
+				ageMin,
+				ageMax,
+				startAt,
+				meetingAt,
+				expiresAt,
+				status,
+				participants,
+				city,
+				district,
+				neighborhood,
+				null
+		);
+	}
+
+	private static ListenerVisibilityMode ghostOnly(ListenerVisibilityMode visibilityMode) {
+		return visibilityMode == ListenerVisibilityMode.GHOST ? ListenerVisibilityMode.GHOST : null;
+	}
+
 	@Builder
 	public record LocationDto(UUID id, String name) {}
 }

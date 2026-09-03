@@ -1,8 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.StudioProfille.controller.user;
 
-import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
+import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.controller.user.StudioProfileUserController;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.StudioProfileResponseDto;
@@ -49,10 +48,10 @@ class StudioProfileUserControllerTest {
 	
 	@MockitoBean StudioProfileService studioProfileService;
 	
-	// security tarafını sustur
-	@MockitoBean JwtTokenProvider jwtTokenProvider;
-	@MockitoBean CustomUserDetailsService customUserDetailsService;
-	@MockitoBean com.berkayb.soundconnect.shared.util.JwtUtil jwtUtil;
+	// This controller slice deliberately disables servlet filters. Mock the
+	// filter boundary itself; its authorization collaborators are covered by
+	// dedicated security tests.
+	@MockitoBean JwtAuthenticationFilter jwtAuthenticationFilter;
 	
 	@Autowired MockMvc mockMvc;
 	@Autowired ObjectMapper objectMapper;

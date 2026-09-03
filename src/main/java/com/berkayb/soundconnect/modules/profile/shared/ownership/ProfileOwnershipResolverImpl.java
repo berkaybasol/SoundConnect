@@ -18,7 +18,10 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+// The public profile resolver may take a shared listener-visibility row lock.
+// PostgreSQL rejects SELECT ... FOR SHARE inside a read-only transaction, so
+// callers must keep a normal transaction open through ownership projection.
+@Transactional
 public class ProfileOwnershipResolverImpl implements ProfileOwnershipResolver {
 
 	private final PublicProfileResolverService publicProfileResolverService;

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.tablegroup.service;
 
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarBatchResolver;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarCandidate;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarRepository;
@@ -91,6 +92,30 @@ class PersonalProfileAvatarBatchResolverTest {
 				organizerMediaId,
 				producerMediaId
 		));
+	}
+
+	@Test
+	void resolve_shouldUseOnlyListenerAvatarForGhostEvenWhenAnotherProfileExists() {
+		UUID userId = UUID.randomUUID();
+		UUID musicianMediaId = UUID.randomUUID();
+		UUID listenerMediaId = UUID.randomUUID();
+		when(avatarRepository.findCandidatesByUserIdIn(Set.of(userId)))
+				.thenReturn(List.of(new PersonalProfileAvatarCandidate(
+						userId,
+						musicianMediaId,
+						listenerMediaId,
+						null,
+						null,
+						"ghosthandle",
+						ListenerVisibilityMode.GHOST
+				)));
+		when(mediaAssetService.getDisplayUrlMap(List.of(listenerMediaId)))
+				.thenReturn(Map.of(listenerMediaId, "https://cdn.example/listener.jpg"));
+
+		assertThat(resolver.resolve(Set.of(userId)))
+				.containsExactly(Map.entry(userId, "https://cdn.example/listener.jpg"));
+
+		verify(mediaAssetService).getDisplayUrlMap(List.of(listenerMediaId));
 	}
 
 	@Test

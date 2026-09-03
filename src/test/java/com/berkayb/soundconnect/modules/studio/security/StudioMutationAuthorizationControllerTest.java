@@ -1,8 +1,7 @@
 package com.berkayb.soundconnect.modules.studio.security;
 
-import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
+import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.studio.equipment.controller.StudioEquipmentOwnerController;
 import com.berkayb.soundconnect.modules.studio.equipment.dto.EquipmentUpdateRequest;
 import com.berkayb.soundconnect.modules.studio.equipment.service.StudioEquipmentService;
@@ -15,7 +14,6 @@ import com.berkayb.soundconnect.modules.studio.room.dto.request.StudioRoomUpdate
 import com.berkayb.soundconnect.modules.studio.room.service.StudioRoomService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -68,9 +66,10 @@ class StudioMutationAuthorizationControllerTest {
     @MockitoBean StudioRoomService roomService;
     @MockitoBean StudioEquipmentService equipmentService;
     @MockitoBean StudioReservationService reservationService;
-    @MockitoBean JwtTokenProvider jwtTokenProvider;
-    @MockitoBean CustomUserDetailsService customUserDetailsService;
-    @MockitoBean JwtUtil jwtUtil;
+    // This controller slice deliberately disables servlet filters. Mock the
+    // filter boundary itself; its authorization collaborators are covered by
+    // dedicated security tests.
+    @MockitoBean JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;

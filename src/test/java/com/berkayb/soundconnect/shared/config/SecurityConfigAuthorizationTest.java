@@ -7,6 +7,10 @@ import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.modules.tablegroup.controller.TableGroupController;
 import com.berkayb.soundconnect.modules.tablegroup.service.TableGroupService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.controller.publicapi.ListenerProfilePublicController;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfilePublicResponseDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.berkayb.soundconnect.modules.user.controller.user.UserAccountController;
 import com.berkayb.soundconnect.modules.user.service.UserService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -22,7 +26,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -36,7 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = {
 		AuthControllerImpl.class,
 		UserAccountController.class,
-		TableGroupController.class
+		TableGroupController.class,
+		ListenerProfilePublicController.class
 })
 @Import({
 		SecurityConfig.class,
@@ -52,6 +60,7 @@ class SecurityConfigAuthorizationTest {
 	@MockitoBean PasswordResetService passwordResetService;
 	@MockitoBean UserService userService;
 	@MockitoBean TableGroupService tableGroupService;
+	@MockitoBean ListenerProfileService listenerProfileService;
 	@MockitoBean JwtAuthenticationFilter jwtAuthenticationFilter;
 	@MockitoBean AuthRateLimitFilter authRateLimitFilter;
 
@@ -92,6 +101,31 @@ class SecurityConfigAuthorizationTest {
 		mockMvc.perform(get("/api/v1/table-groups/venue-options")
 						.param("q", "Sound"))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void anonymousListenerProfileAndIdentityResolverReadsAreRejected() throws Exception {
+		mockMvc.perform(get("/api/v1/public/listener-profiles/{profileId}", "profile-id"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/public/listener-profiles/search")
+						.param("q", "listener"))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/public/profiles/by-user/{userId}", "user-id"))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@WithMockUser
+	void authenticatedListenerProfileReadPassesTheHistoricalPublicNamespaceBoundary() throws Exception {
+		UUID profileId = UUID.randomUUID();
+		UUID userId = UUID.randomUUID();
+		when(listenerProfileService.getProfileByProfileId(profileId)).thenReturn(
+				new ListenerProfilePublicResponseDto(
+						profileId, userId, "listener", ListenerVisibilityMode.GHOST,
+						null, null, null, null, null, true, false, true));
+
+		mockMvc.perform(get("/api/v1/public/listener-profiles/{profileId}", profileId))
+				.andExpect(status().isOk());
 	}
 
 	@Test

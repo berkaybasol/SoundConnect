@@ -7,6 +7,9 @@ import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCac
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.data.domain.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -40,6 +44,9 @@ class NotificationServiceImplTest {
 
 	@Mock
 	private NotificationWebSocketService notificationWebSocketService;
+
+	@Mock
+	private GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	
 	private NotificationServiceImpl service;
 	
@@ -52,7 +59,8 @@ class NotificationServiceImplTest {
 				notificationRepository,
 				notificationMapper,
 				badgeCacheHelper,
-				notificationWebSocketService);
+				notificationWebSocketService,
+				ghostListenerIdentityBatchResolver);
 		userId = UUID.randomUUID();
 	}
 	
@@ -104,12 +112,369 @@ class NotificationServiceImplTest {
 
 		verifyNoInteractions(notificationRepository, notificationMapper);
 	}
+
+	@Test
+	@DisplayName("getUserNotifications: current ghost identity replaces every persisted DM identity snapshot")
+	void getUserNotifications_rehydratesCurrentGhostIdentityFromStableSenderId() {
+		UUID senderId = UUID.randomUUID();
+		UUID notificationId = UUID.randomUUID();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE)
+				.read(false)
+				.build();
+		entity.setId(notificationId);
+		Map<String, Object> stalePayload = new LinkedHashMap<>();
+		stalePayload.put("module", "DM");
+		stalePayload.put("senderId", senderId.toString());
+		stalePayload.put("conversationId", UUID.randomUUID().toString());
+		stalePayload.put("senderUsername", "Stale Stage Name");
+		stalePayload.put("senderAvatarUrl", "https://cdn.example/stale.jpg");
+		NotificationResponseDto stale = new NotificationResponseDto(
+				notificationId,
+				userId,
+				NotificationType.DM_NEW_MESSAGE,
+				"Stale Stage Name size bir mesaj gönderdi",
+				"hello",
+				false,
+				null,
+				stalePayload
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(stale);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of(
+				senderId,
+				new GhostListenerIdentity(
+						senderId,
+						"canonical_listener",
+						"https://cdn.example/current-listener.jpg",
+						ListenerVisibilityMode.GHOST
+				)
+		));
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result.title()).isEqualTo("canonical_listener size bir mesaj gönderdi");
+		assertThat(result.payload())
+				.containsEntry("senderId", senderId.toString())
+				.containsEntry("senderUsername", "canonical_listener")
+				.containsEntry("senderAvatarUrl", "https://cdn.example/current-listener.jpg")
+				.containsEntry("senderVisibilityMode", "GHOST")
+				.doesNotContainValue("Stale Stage Name")
+				.doesNotContainValue("https://cdn.example/stale.jpg");
+		verify(ghostListenerIdentityBatchResolver).resolve(argThat(ids ->
+				ids.size() == 1 && ids.contains(senderId)));
+	}
+
+	@Test
+	@DisplayName("getRecentNotifications: ghost without an avatar removes a persisted stale avatar")
+	void getRecentNotifications_ghostWithoutAvatarRemovesStaleAvatar() {
+		UUID senderId = UUID.randomUUID();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE)
+				.read(false)
+				.build();
+		NotificationResponseDto stale = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.DM_NEW_MESSAGE,
+				"Old Name size bir mesaj gönderdi", "hello", false, null,
+				Map.of(
+						"senderId", senderId.toString(),
+						"senderUsername", "Old Name",
+						"senderAvatarUrl", "https://cdn.example/old.jpg"
+				)
+		);
+		when(notificationRepository.findTop10ByRecipientIdOrderByOccurredAtDescIdDesc(userId))
+				.thenReturn(List.of(entity));
+		when(notificationMapper.toDtoList(List.of(entity))).thenReturn(List.of(stale));
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of(
+				senderId,
+				new GhostListenerIdentity(senderId, "ghost_user", null, ListenerVisibilityMode.GHOST)
+		));
+
+		NotificationResponseDto result = service.getRecentNotifications(userId).getFirst();
+
+		assertThat(result.payload())
+				.containsEntry("senderUsername", "ghost_user")
+				.containsEntry("senderVisibilityMode", "GHOST")
+				.doesNotContainKey("senderAvatarUrl");
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: identity lookup failure strips snapshots but preserves stable routing keys")
+	void getUserNotifications_identityResolverFailureFailsClosed() {
+		UUID senderId = UUID.randomUUID();
+		String conversationId = UUID.randomUUID().toString();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE)
+				.read(false)
+				.build();
+		NotificationResponseDto stale = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.DM_NEW_MESSAGE,
+				"Private Display Name size bir mesaj gönderdi", "hello", false, null,
+				Map.of(
+						"senderId", senderId.toString(),
+						"conversationId", conversationId,
+						"senderUsername", "Private Display Name",
+						"senderAvatarUrl", "https://cdn.example/private.jpg",
+						"senderVisibilityMode", "STANDARD"
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(stale);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection()))
+				.thenThrow(new IllegalStateException("identity repository unavailable"));
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result.title()).isEqualTo("Yeni mesaj");
+		assertThat(result.payload())
+				.containsEntry("senderId", senderId.toString())
+				.containsEntry("conversationId", conversationId)
+				.doesNotContainKeys("senderUsername", "senderAvatarUrl", "senderVisibilityMode");
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: standard DM payload remains byte-shape compatible and marker-free")
+	void getUserNotifications_standardIdentityKeepsExistingPayloadShape() {
+		UUID senderId = UUID.randomUUID();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE)
+				.read(false)
+				.build();
+		NotificationResponseDto standard = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.DM_NEW_MESSAGE,
+				"artist size bir mesaj gönderdi", "hello", false, null,
+				Map.of(
+						"senderId", senderId.toString(),
+						"senderUsername", "artist",
+						"senderAvatarUrl", "https://cdn.example/artist.jpg"
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(standard);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of());
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result).isSameAs(standard);
+		assertThat(result.payload()).doesNotContainKey("senderVisibilityMode");
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: both follower notification types share one ghost identity batch")
+	void getUserNotifications_rehydratesGhostFollowerTypesInOneBatch() {
+		UUID followerId = UUID.randomUUID();
+		UUID bandFollowerId = UUID.randomUUID();
+		Notification directEntity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.read(false)
+				.build();
+		directEntity.setId(UUID.randomUUID());
+		Notification bandEntity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_BAND_FOLLOWER)
+				.read(false)
+				.build();
+		bandEntity.setId(UUID.randomUUID());
+		NotificationResponseDto direct = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER,
+				"Old Venue Name seni takip etmeye başladı", "Yeni bir takipçin var.", false, null,
+				Map.of(
+						"followerId", followerId.toString(),
+						"followerUsername", "Old Venue Name",
+						"followerAvatarUrl", "https://cdn.example/old-venue.jpg"
+				)
+		);
+		String bandId = UUID.randomUUID().toString();
+		NotificationResponseDto band = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_BAND_FOLLOWER,
+				"Old Artist bandını takip etmeye başladı", "Band yeni bir takipçi kazandı.", false, null,
+				Map.of(
+						"followerId", bandFollowerId.toString(),
+						"followerUsername", "Old Artist",
+						"followerAvatarUrl", "https://cdn.example/old-artist.jpg",
+						"bandId", bandId
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(directEntity, bandEntity)));
+		when(notificationMapper.toDto(directEntity)).thenReturn(direct);
+		when(notificationMapper.toDto(bandEntity)).thenReturn(band);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of(
+				followerId,
+				new GhostListenerIdentity(
+						followerId,
+						"listener_one",
+						"https://cdn.example/listener-one.jpg",
+						ListenerVisibilityMode.GHOST
+				),
+				bandFollowerId,
+				new GhostListenerIdentity(
+						bandFollowerId,
+						"listener_two",
+						null,
+						ListenerVisibilityMode.GHOST
+				)
+		));
+
+		List<NotificationResponseDto> result = service.getUserNotifications(userId, 0, 20).getContent();
+
+		assertThat(result.get(0).title()).isEqualTo("listener_one seni takip etmeye başladı");
+		assertThat(result.get(0).payload())
+				.containsEntry("followerId", followerId.toString())
+				.containsEntry("followerUsername", "listener_one")
+				.containsEntry("followerAvatarUrl", "https://cdn.example/listener-one.jpg")
+				.containsEntry("followerVisibilityMode", "GHOST")
+				.doesNotContainValue("Old Venue Name")
+				.doesNotContainValue("https://cdn.example/old-venue.jpg");
+		assertThat(result.get(1).title()).isEqualTo("listener_two bandını takip etmeye başladı");
+		assertThat(result.get(1).payload())
+				.containsEntry("followerId", bandFollowerId.toString())
+				.containsEntry("followerUsername", "listener_two")
+				.containsEntry("followerVisibilityMode", "GHOST")
+				.containsEntry("bandId", bandId)
+				.doesNotContainKey("followerAvatarUrl");
+		verify(ghostListenerIdentityBatchResolver).resolve(argThat(ids ->
+				ids.size() == 2 && ids.containsAll(List.of(followerId, bandFollowerId))));
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: follower resolver failure strips identity but preserves routing")
+	void getUserNotifications_followerResolverFailureFailsClosed() {
+		UUID followerId = UUID.randomUUID();
+		String bandId = UUID.randomUUID().toString();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_BAND_FOLLOWER)
+				.read(false)
+				.build();
+		NotificationResponseDto stale = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_BAND_FOLLOWER,
+				"Identifying Name bandını takip etmeye başladı", "message", false, null,
+				Map.of(
+						"followerId", followerId.toString(),
+						"followerUsername", "Identifying Name",
+						"followerAvatarUrl", "https://cdn.example/identifying.jpg",
+						"followerVisibilityMode", "STANDARD",
+						"bandId", bandId
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(stale);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection()))
+				.thenThrow(new IllegalStateException("identity repository unavailable"));
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result.title()).isEqualTo("Yeni band takipçisi");
+		assertThat(result.payload())
+				.containsEntry("followerId", followerId.toString())
+				.containsEntry("bandId", bandId)
+				.doesNotContainKeys("followerUsername", "followerAvatarUrl", "followerVisibilityMode");
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: invalid followerId is sanitized without calling the resolver")
+	void getUserNotifications_invalidFollowerIdFailsClosed() {
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.read(false)
+				.build();
+		NotificationResponseDto stale = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER,
+				"Identifying Name seni takip etmeye başladı", "message", false, null,
+				Map.of(
+						"followerId", "not-a-uuid",
+						"followerUsername", "Identifying Name",
+						"followerAvatarUrl", "https://cdn.example/identifying.jpg"
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(stale);
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result.title()).isEqualTo("Yeni takipçi");
+		assertThat(result.payload())
+				.containsEntry("followerId", "not-a-uuid")
+				.doesNotContainKeys("followerUsername", "followerAvatarUrl", "followerVisibilityMode");
+		verifyNoInteractions(ghostListenerIdentityBatchResolver);
+	}
+
+	@Test
+	@DisplayName("getUserNotifications: current standard follower keeps snapshot and loses stale ghost marker")
+	void getUserNotifications_standardFollowerKeepsSnapshotWithoutGhostMarker() {
+		UUID followerId = UUID.randomUUID();
+		Notification entity = Notification.builder()
+				.recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
+				.read(false)
+				.build();
+		NotificationResponseDto staleMarker = new NotificationResponseDto(
+				UUID.randomUUID(), userId, NotificationType.SOCIAL_NEW_FOLLOWER,
+				"artist seni takip etmeye başladı", "message", false, null,
+				Map.of(
+						"followerId", followerId.toString(),
+						"followerUsername", "artist",
+						"followerAvatarUrl", "https://cdn.example/artist.jpg",
+						"followerVisibilityMode", "GHOST"
+				)
+		);
+		when(notificationRepository.findByRecipientId(eq(userId), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(entity)));
+		when(notificationMapper.toDto(entity)).thenReturn(staleMarker);
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of());
+
+		NotificationResponseDto result = service.getUserNotifications(userId, 0, 20)
+				.getContent().getFirst();
+
+		assertThat(result.title()).isEqualTo(staleMarker.title());
+		assertThat(result.payload())
+				.containsEntry("followerUsername", "artist")
+				.containsEntry("followerAvatarUrl", "https://cdn.example/artist.jpg")
+				.doesNotContainKey("followerVisibilityMode");
+	}
+
+	@Test
+	@DisplayName("notification identity reads keep resolver locks in a write-capable outer transaction")
+	void notificationIdentityReadMethodsAreWriteCapableTransactions() throws Exception {
+		Transactional all = NotificationServiceImpl.class
+				.getMethod("getUserNotifications", UUID.class, int.class, int.class)
+				.getAnnotation(Transactional.class);
+		Transactional filtered = NotificationServiceImpl.class
+				.getMethod("getUserNotificationsByTypes", UUID.class, Collection.class, int.class, int.class)
+				.getAnnotation(Transactional.class);
+		Transactional recent = NotificationServiceImpl.class
+				.getMethod("getRecentNotifications", UUID.class)
+				.getAnnotation(Transactional.class);
+
+		assertThat(List.of(all, filtered, recent))
+				.allSatisfy(transaction -> {
+					assertThat(transaction).isNotNull();
+					assertThat(transaction.readOnly()).isFalse();
+				});
+	}
 	
 	// ---------- getUserNotificationsByTypes ----------
 	@Test
 	@DisplayName("getUserNotificationsByTypes: filtreli çağrı ve mapping (Answer ile argümana göre DTO seç)")
 	void getUserNotificationsByTypes_ok() {
-		Set<NotificationType> types = EnumSet.of(NotificationType.MEDIA_TRANSCODE_READY, NotificationType.SOCIAL_NEW_FOLLOWER);
+		Set<NotificationType> types = EnumSet.of(NotificationType.MEDIA_TRANSCODE_READY, NotificationType.AUTH_EMAIL_VERIFIED);
 		
 		Notification n1 = Notification.builder()
 		                              .recipientId(userId)
@@ -119,7 +484,7 @@ class NotificationServiceImplTest {
 		
 		Notification n2 = Notification.builder()
 		                              .recipientId(userId)
-		                              .type(NotificationType.SOCIAL_NEW_FOLLOWER)
+		                              .type(NotificationType.AUTH_EMAIL_VERIFIED)
 		                              .read(true)
 		                              .build();
 		

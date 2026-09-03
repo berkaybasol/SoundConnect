@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.response.Pro
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.mapper.ProducerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -35,6 +37,7 @@ class ProducerProfileServiceImplTest {
 	@Mock UserEntityFinder userFinder;
 	@Mock ProducerProfileMapper mapper;
 	@Mock MediaAssetService mediaAssetService;
+	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@InjectMocks ProducerProfileServiceImpl service;
 	
@@ -53,7 +56,8 @@ class ProducerProfileServiceImplTest {
 				"Prod","desc",UUID.randomUUID(),"addr","555","site.com","ig","yt"
 		);
 		
-		when(userFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_PRODUCER))
+				.thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.empty());
 		
 		ProducerProfile saved = ProducerProfile.builder()
@@ -88,7 +92,8 @@ class ProducerProfileServiceImplTest {
 	
 	@Test
 	void createProfile_should_throw_when_duplicate() {
-		when(userFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_PRODUCER))
+				.thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(ProducerProfile.builder().build()));
 		
 		assertThatThrownBy(() -> service.createProfile(userId,

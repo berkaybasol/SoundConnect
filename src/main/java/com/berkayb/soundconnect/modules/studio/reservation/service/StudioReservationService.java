@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.studio.reservation.service;
 
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockCreateRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockReleaseRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioReservationCreateRequest;
@@ -51,6 +53,7 @@ import java.time.ZonedDateTime;
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -75,6 +78,7 @@ public class StudioReservationService {
     private final StudioRoomMapper roomMapper;
     private final StudioRoomDailyMetricsService dailyMetricsService;
     private final ApplicationEventPublisher eventPublisher;
+    private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 
     @Transactional
     public StudioReservationResponse create(UUID requesterId, StudioReservationCreateRequest request) {
@@ -366,7 +370,7 @@ public class StudioReservationService {
         return StudioPageResponse.from(result);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public StudioRoomScheduleResponse ownerSchedule(
             UUID ownerUserId,
             UUID roomId,
@@ -379,14 +383,28 @@ public class StudioReservationService {
         int boundedSize = safeSize(size);
         StudioRoom room = ownedActiveRoom(ownerUserId, roomId);
         StudioDateRange range = timeProvider.validateOwnerRange(room.getStudioProfile(), from, to);
-        Page<StudioReservationOwnerResponse> reservations = reservationRepository
+        Page<StudioRoomReservation> reservationEntities = reservationRepository
                 .findRoomReservationsInRange(
                         roomId,
                         range.startsAt(),
                         range.endsAt(),
                         PageRequest.of(boundedPage, boundedSize)
-                )
-                .map(this::toOwner);
+                );
+        Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(
+                reservationEntities.getContent().stream()
+                        .map(StudioRoomReservation::getRequester)
+                        .filter(Objects::nonNull)
+                        .map(User::getId)
+                        .filter(Objects::nonNull)
+                        .toList()
+        );
+        Page<StudioReservationOwnerResponse> reservations = reservationEntities.map(reservation -> {
+            User requester = reservation.getRequester();
+            GhostListenerIdentity ghostIdentity = requester == null
+                    ? null
+                    : ghostIdentities.get(requester.getId());
+            return toOwner(reservation, ghostIdentity);
+        });
         List<StudioOccupancyOwnerResponse> occupancies = occupancyRepository
                 .findActiveByRoomInRange(roomId, range.startsAt(), range.endsAt())
                 .stream()
@@ -596,6 +614,22 @@ public class StudioReservationService {
 
     private StudioReservationOwnerResponse toOwner(StudioRoomReservation reservation) {
         User requester = reservation.getRequester();
+        Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(
+                requester == null || requester.getId() == null
+                        ? List.of()
+                        : List.of(requester.getId())
+        );
+        return toOwner(
+                reservation,
+                requester == null ? null : ghostIdentities.get(requester.getId())
+        );
+    }
+
+    private StudioReservationOwnerResponse toOwner(
+            StudioRoomReservation reservation,
+            GhostListenerIdentity ghostIdentity
+    ) {
+        User requester = reservation.getRequester();
 		ZoneId zone = timeProvider.zoneOf(reservation.getRoom().getStudioProfile());
 		LocalWindow local = localWindow(reservation.getStartsAt(), reservation.getEndsAt(), zone);
         return new StudioReservationOwnerResponse(
@@ -605,8 +639,8 @@ public class StudioReservationService {
                 requester.getId(),
                 requester.getPublicCode(),
                 reservation.getContactPhoneSnapshot(),
-                requester.getUsername(),
-                requester.getProfilePicture(),
+                ghostIdentity == null ? requester.getUsername() : ghostIdentity.username(),
+                ghostIdentity == null ? requester.getProfilePicture() : ghostIdentity.profilePictureUrl(),
                 reservation.getStartsAt(),
                 reservation.getEndsAt(),
 				zone.getId(),
@@ -619,7 +653,15 @@ public class StudioReservationService {
                 reservation.getHourlyPriceMinorSnapshot(),
                 reservation.getTotalPriceMinorSnapshot(),
                 reservation.getCurrencySnapshot(),
-                reservation.getVersion()
+                reservation.getVersion(),
+                ghostIdentity == null ? null : ghostIdentity.visibilityMode()
+        );
+    }
+
+    private Map<UUID, GhostListenerIdentity> resolveGhostIdentities(List<UUID> requesterIds) {
+        return Objects.requireNonNull(
+                ghostListenerIdentityBatchResolver.resolve(requesterIds),
+                "Ghost listener identity resolver returned null"
         );
     }
 

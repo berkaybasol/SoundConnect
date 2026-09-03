@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.message.dm.dto.response.DMMessageRespons
 import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
@@ -14,10 +15,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +33,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class DmMessageEventListener {
+	private static final String UNKNOWN_SENDER = "Bir kullanici";
+
 	private final SimpMessagingTemplate messagingTemplate;
 	private final DMMessageMapper messageMapper;
 	private final DMMessageRepository messageRepository;
@@ -37,6 +43,7 @@ public class DmMessageEventListener {
 	private final PublicProfileResolverService publicProfileResolverService;
 	
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void onDmMessageSent(DmMessageSentEvent event) {
 		try {
 			// eventteki bilgiden DMMessage entity'sini DB'den cek (responseDto icin)
@@ -85,25 +92,37 @@ public class DmMessageEventListener {
 
 	private void publishNotification(DmMessageSentEvent event) {
 		try {
-			UserProfileTargetDto senderProfile = resolvePreferredSenderProfile(event);
-			String senderUsername = resolveSenderUsername(event, senderProfile);
-			String senderAvatarUrl = resolveSenderAvatarUrl(event, senderProfile);
+			SenderProfileResolution resolution = resolvePreferredSenderProfile(event);
+			UserProfileTargetDto senderProfile = resolution.profile();
+			String senderUsername = resolution.failed()
+					? UNKNOWN_SENDER
+					: resolveSenderUsername(event, senderProfile);
+			String senderAvatarUrl = resolution.failed()
+					? ""
+					: resolveSenderAvatarUrl(event, senderProfile);
+			Map<String, Object> payload = new LinkedHashMap<>();
+			payload.put("module", "DM");
+			payload.put("conversationId", event.getConversationId().toString());
+			payload.put("messageId", event.getMessageId().toString());
+			payload.put("senderId", event.getSenderId().toString());
+			payload.put("senderUsername", senderUsername);
+			payload.put("senderAvatarUrl", senderAvatarUrl);
+			payload.put("recipientId", event.getRecipientId().toString());
+			payload.put("messageType", event.getMessageType() == null ? "text" : event.getMessageType());
+			if (senderProfile != null
+					&& senderProfile.visibilityMode() == ListenerVisibilityMode.GHOST) {
+				payload.put("senderVisibilityMode", ListenerVisibilityMode.GHOST.name());
+			}
+			// This notification stores a creation-time identity snapshot. Consumers
+			// opening it later must resolve the sender again because ghost mode can
+			// be toggled after the message was published.
 			notificationProducer.publish(
 					NotificationInboundEvent.builder()
 					                        .recipientId(event.getRecipientId())
 					                        .type(NotificationType.DM_NEW_MESSAGE)
 					                        .title(senderUsername + " size bir mesaj gönderdi")
 					                        .message(messagePreview(event))
-					                        .payload(Map.of(
-							                        "module", "DM",
-							                        "conversationId", event.getConversationId().toString(),
-							                        "messageId", event.getMessageId().toString(),
-							                        "senderId", event.getSenderId().toString(),
-							                        "senderUsername", senderUsername,
-							                        "senderAvatarUrl", senderAvatarUrl,
-							                        "recipientId", event.getRecipientId().toString(),
-							                        "messageType", event.getMessageType() == null ? "text" : event.getMessageType()
-					                        ))
+					                        .payload(payload)
 					                        .emailForce(false)
 					                        .occurredAt(Instant.now())
 					                        .build()
@@ -121,32 +140,41 @@ public class DmMessageEventListener {
 		return userRepository.findById(event.getSenderId())
 		                     .map(user -> {
 			                     String username = user.getUsername();
-			                     return username == null || username.isBlank() ? "Bir kullanici" : username.trim();
+			                     return username == null || username.isBlank() ? UNKNOWN_SENDER : username.trim();
 		                     })
-		                     .orElse("Bir kullanici");
+		                     .orElse(UNKNOWN_SENDER);
 	}
 
 	private String resolveSenderAvatarUrl(DmMessageSentEvent event, UserProfileTargetDto profile) {
 		if (profile != null && hasText(profile.profilePictureUrl())) {
 			return profile.profilePictureUrl().trim();
 		}
+		if (profile != null && profile.visibilityMode() == ListenerVisibilityMode.GHOST) {
+			// Never substitute a user-level or alternate-profile image for a ghost.
+			return "";
+		}
 		return resolveUserProfilePicture(event);
 	}
 
-	private UserProfileTargetDto resolvePreferredSenderProfile(DmMessageSentEvent event) {
+	private SenderProfileResolution resolvePreferredSenderProfile(DmMessageSentEvent event) {
 		try {
-			var profiles = publicProfileResolverService.resolveByUserId(event.getSenderId()).profiles();
-			if (profiles == null || profiles.isEmpty()) {
-				return null;
+			var response = publicProfileResolverService.resolveByUserId(event.getSenderId());
+			if (response == null) {
+				throw new IllegalStateException("Public profile resolver returned null");
 			}
-			return profiles.stream()
-			               .filter(profile -> "VENUE".equalsIgnoreCase(profile.type()))
+			var profiles = response.profiles();
+			if (profiles == null || profiles.isEmpty()) {
+				return SenderProfileResolution.resolved(null);
+			}
+			UserProfileTargetDto selectedProfile = profiles.stream()
+			               .filter(candidate -> "VENUE".equalsIgnoreCase(candidate.type()))
 			               .findFirst()
 			               .orElseGet(() -> profiles.stream().findFirst().orElse(null));
+			return SenderProfileResolution.resolved(selectedProfile);
 		} catch (Exception e) {
 			log.warn("DM notification sender profile resolve failed. senderId={}, exceptionType={}",
 			         event.getSenderId(), e.getClass().getSimpleName());
-			return null;
+			return SenderProfileResolution.failure();
 		}
 	}
 
@@ -173,5 +201,15 @@ public class DmMessageEventListener {
 
 	private boolean hasText(String value) {
 		return value != null && !value.trim().isEmpty();
+	}
+
+	private record SenderProfileResolution(UserProfileTargetDto profile, boolean failed) {
+		private static SenderProfileResolution resolved(UserProfileTargetDto profile) {
+			return new SenderProfileResolution(profile, false);
+		}
+
+		private static SenderProfileResolution failure() {
+			return new SenderProfileResolution(null, true);
+		}
 	}
 }

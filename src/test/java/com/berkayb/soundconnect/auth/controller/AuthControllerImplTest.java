@@ -2,12 +2,14 @@ package com.berkayb.soundconnect.auth.controller;
 
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.request.ResendCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.dto.response.ResendCodeResponseDto;
 import com.berkayb.soundconnect.auth.passwordreset.dto.request.ForgotPasswordRequestDto;
 import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
 import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.service.AuthService;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +19,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -49,6 +54,35 @@ class AuthControllerImplTest {
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(response.getBody()).isSameAs(serviceResponse);
 		verify(authService).login(request);
+	}
+
+	@Test
+	void verifyEmailForwardsListenerSessionWithoutChangingTheResponse() {
+		VerifyCodeRequestDto request = new VerifyCodeRequestDto("user@example.com", "123456");
+		LoginResponse session = new LoginResponse(
+				"listener-token",
+				UserStatus.ACTIVE,
+				UUID.randomUUID(),
+				"listener",
+				Set.of("ROLE_LISTENER"),
+				Set.of(),
+				false,
+				true
+		);
+		BaseResponse<LoginResponse> serviceResponse = BaseResponse.<LoginResponse>builder()
+				.success(true)
+				.code(200)
+				.message("verified")
+				.data(session)
+				.build();
+		when(authService.verifyCode(request)).thenReturn(serviceResponse);
+
+		ResponseEntity<BaseResponse<LoginResponse>> response = controller.verifyEmail(request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getBody()).isSameAs(serviceResponse);
+		assertThat(response.getBody().getData()).isSameAs(session);
+		verify(authService).verifyCode(request);
 	}
 
 	@Test

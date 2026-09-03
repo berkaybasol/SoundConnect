@@ -14,6 +14,8 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.mapper.MusicianProfileMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
@@ -43,6 +45,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final BandService bandService;
 	private final MediaAssetService mediaAssetService;
 	private final VenueProfileRepository venueProfileRepository;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@Override
 	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
@@ -75,7 +78,8 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	@Override
 	@Transactional
 	public MusicianProfileResponseDto createProfile(UUID userId, MusicianProfileSaveRequestDto dto) {
-		User user = userEntityFinder.getUser(userId);
+		User user = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				userId, RoleEnum.ROLE_MUSICIAN);
 		
 		if (musicianProfileRepository.findByUserId(userId).isPresent()) {
 			log.warn("Kullanici zaten bir profile sahip: {}", userId);

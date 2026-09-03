@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPo
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.mapstruct.Mapper;
@@ -25,17 +26,39 @@ public abstract class OverthinkingPostMapper {
 			boolean likedByMe,
 			SpotifyTrackItemDto spotifyTrack
 	) {
+		return toDto(
+				post,
+				canViewAuthor,
+				likeCount,
+				commentCount,
+				likedByMe,
+				spotifyTrack,
+				null
+		);
+	}
+
+	public OverthinkingPostResponseDto toDto(
+			OverthinkingPost post,
+			boolean canViewAuthor,
+			long likeCount,
+			long commentCount,
+			boolean likedByMe,
+			SpotifyTrackItemDto spotifyTrack,
+			GhostListenerIdentity ghostIdentity
+	) {
 		User author = post.getAuthor();
+		boolean exposeAuthor = canViewAuthor && author != null;
 		
 		return new OverthinkingPostResponseDto(
 				post.getId(),
 				
-				canViewAuthor ? author.getId() : null,
-				canViewAuthor ? author.getUsername() : "Anonymous",
-				canViewAuthor ? resolveAuthorAvatar(author) : null,
+				exposeAuthor ? author.getId() : null,
+				exposeAuthor ? resolvedUsername(author, ghostIdentity) : "Anonymous",
+				exposeAuthor ? resolvedAvatar(author, ghostIdentity) : null,
+				exposeAuthor && ghostIdentity != null ? ghostIdentity.visibilityMode() : null,
 				
 				post.isAnonymous(),
-				canViewAuthor,
+				exposeAuthor,
 				post.getVisibilityType(),
 				
 				post.getTitle(),
@@ -56,6 +79,14 @@ public abstract class OverthinkingPostMapper {
 				commentCount,
 				likedByMe
 		);
+	}
+
+	private String resolvedUsername(User author, GhostListenerIdentity ghostIdentity) {
+		return ghostIdentity == null ? author.getUsername() : ghostIdentity.username();
+	}
+
+	private String resolvedAvatar(User author, GhostListenerIdentity ghostIdentity) {
+		return ghostIdentity == null ? resolveAuthorAvatar(author) : ghostIdentity.profilePictureUrl();
 	}
 	
 	private String resolveAuthorAvatar(User author) {

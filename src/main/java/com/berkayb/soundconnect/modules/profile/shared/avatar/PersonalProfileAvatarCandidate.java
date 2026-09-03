@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.shared.avatar;
 
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+
 import java.util.UUID;
 
 /**
@@ -12,6 +14,25 @@ public record PersonalProfileAvatarCandidate(
 		UUID musicianMediaId,
 		UUID listenerMediaId,
 		UUID organizerMediaId,
-		UUID producerMediaId
+		UUID producerMediaId,
+		String username,
+		ListenerVisibilityMode listenerVisibilityMode
 ) {
+	public PersonalProfileAvatarCandidate(
+			UUID userId,
+			UUID musicianMediaId,
+			UUID listenerMediaId,
+			UUID organizerMediaId,
+			UUID producerMediaId
+	) {
+		this(
+				userId,
+				musicianMediaId,
+				listenerMediaId,
+				organizerMediaId,
+				producerMediaId,
+				null,
+				null
+		);
+	}
 }

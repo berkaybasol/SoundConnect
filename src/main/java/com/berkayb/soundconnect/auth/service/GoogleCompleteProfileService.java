@@ -4,7 +4,9 @@ import com.berkayb.soundconnect.auth.dto.request.GoogleCompleteProfileRequestDto
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -44,6 +46,8 @@ public class GoogleCompleteProfileService {
 	private final ProfileFactory profileFactory;
 	private final UserRepository userRepository;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 
 	/**
 	 * Yalniz Google tarafindan dogrulanmis, aktif ve henuz rol atanmamis
@@ -62,6 +66,7 @@ public class GoogleCompleteProfileService {
 					List.of("Bu rol Google profil tamamlama akisi ile atanamaz.")
 			);
 		}
+		personalProfileTypePolicy.assertCanAcquire(user, selectedRoleEnum);
 
 		Role selectedRole = roleRepository.findByName(selectedRoleEnum.name())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
@@ -72,7 +77,11 @@ public class GoogleCompleteProfileService {
 
 		log.info("Google onboarding completed. userId={}, role={}", userId, selectedRoleEnum);
 		String token = jwtTokenProvider.generateToken(UserDetailsImpl.fromUser(user));
-		return LoginResponse.fromUser(token, user);
+		return LoginResponse.fromUser(
+				token,
+				user,
+				listenerProfileChoiceStatusReader.requiresChoice(user)
+		);
 	}
 
 	private void validateGoogleOnboardingAccount(User user) {

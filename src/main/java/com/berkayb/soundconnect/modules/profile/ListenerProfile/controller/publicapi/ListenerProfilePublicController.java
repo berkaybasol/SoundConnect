@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.controller.publicapi;
 
-import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfilePublicResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileSearchItemDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -38,13 +38,13 @@ public class ListenerProfilePublicController {
 	}
 	
 	@GetMapping(PUBLIC_BY_PROFILE_ID)
-	public ResponseEntity<BaseResponse<ListenerProfileResponseDto>> getByProfileId(
+	public ResponseEntity<BaseResponse<ListenerProfilePublicResponseDto>> getByProfileId(
 			@PathVariable UUID profileId) {
 		
-		ListenerProfileResponseDto response = listenerProfileService.getProfileByProfileId(profileId);
+		ListenerProfilePublicResponseDto response = listenerProfileService.getProfileByProfileId(profileId);
 		
 		return ResponseEntity.ok(
-				BaseResponse.<ListenerProfileResponseDto>builder()
+				BaseResponse.<ListenerProfilePublicResponseDto>builder()
 				            .success(true)
 				            .code(200)
 				            .message("Profil getirildi")

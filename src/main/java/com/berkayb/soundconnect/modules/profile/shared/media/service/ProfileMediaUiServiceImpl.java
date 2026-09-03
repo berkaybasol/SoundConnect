@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.shared.media.service;
 import com.berkayb.soundconnect.modules.media.mapper.MediaAssetMapper;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.shared.media.dto.response.ProfileMediaUiResponseDto;
 import com.berkayb.soundconnect.modules.profile.shared.media.entity.ProfileMedia;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileMediaRole;
@@ -27,10 +28,15 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 	private final MediaAssetService mediaAssetService;
 	private final MediaAssetMapper mediaAssetMapper;
 	private final TrackService trackService;
+	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
 	
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional
 	public ProfileMediaUiResponseDto getProfileMedia(ProfileType profileType, UUID profileId) {
+		if (profileType == ProfileType.LISTENER
+				&& listenerVisibilityPolicy.lockForReadAndIsPubliclyRestrictedProfile(profileId)) {
+			return new ProfileMediaUiResponseDto(null, List.of(), List.of());
+		}
 		
 		// featured video
 		ProfileMedia featured = profileMediaService.getSingleMedia(

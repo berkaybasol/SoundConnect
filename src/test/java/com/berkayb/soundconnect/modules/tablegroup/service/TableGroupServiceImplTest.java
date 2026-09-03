@@ -8,7 +8,10 @@ import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarBatchResolver;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -99,6 +102,9 @@ class TableGroupServiceImplTest {
 
 	@Mock
 	private PersonalProfileAvatarBatchResolver personalProfileAvatarBatchResolver;
+
+	@Mock
+	private GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 
 	@Mock
 	private StudioProfileRepository studioProfileRepository;
@@ -2230,6 +2236,72 @@ class TableGroupServiceImplTest {
 				.containsExactlyInAnyOrder("owner", "accepted");
 		verify(userRepository, times(1)).findAllById(any());
 		verify(userRepository, never()).findById(any());
+	}
+
+	@Test
+	void getTableGroupDetail_shouldOverrideGhostOwnerAndParticipantIdentityInOneBatch() {
+		UUID ghostParticipantId = UUID.randomUUID();
+		UUID standardParticipantId = UUID.randomUUID();
+		TableGroup entity = createActiveTableGroup(4, Instant.now().plusSeconds(3600));
+		entity.setId(tableGroupId);
+		TableGroupResponseDto raw = responseWithParticipants(entity, Set.of(
+				participantDto(ghostParticipantId, ParticipantStatus.ACCEPTED, null),
+				participantDto(standardParticipantId, ParticipantStatus.ACCEPTED, null)
+		));
+		when(tableGroupRepository.findById(tableGroupId)).thenReturn(Optional.of(entity));
+		when(tableGroupMapper.toDto(entity)).thenReturn(raw);
+		when(userRepository.findAllById(any())).thenReturn(List.of(
+				User.builder().id(ownerId).username("wrong-owner-name").build(),
+				User.builder().id(ghostParticipantId).username("wrong-participant-name").build(),
+				User.builder().id(standardParticipantId).username("standard").build()
+		));
+		when(personalProfileAvatarBatchResolver.resolve(anyCollection())).thenReturn(Map.of(
+				ownerId, "wrong-owner-avatar.jpg",
+				ghostParticipantId, "wrong-participant-avatar.jpg",
+				standardParticipantId, "standard.jpg"
+		));
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of(
+				ownerId, new GhostListenerIdentity(
+						ownerId,
+						"ghost-owner",
+						"listener-owner.jpg",
+						ListenerVisibilityMode.GHOST
+				),
+				ghostParticipantId, new GhostListenerIdentity(
+						ghostParticipantId,
+						"ghost-participant",
+						"listener-participant.jpg",
+						ListenerVisibilityMode.GHOST
+				)
+		));
+
+		TableGroupResponseDto result = tableGroupService.getTableGroupDetail(
+				UUID.randomUUID(),
+				tableGroupId
+		);
+
+		assertThat(result.ownerUsername()).isEqualTo("ghost-owner");
+		assertThat(result.ownerProfileImageUrl()).isEqualTo("listener-owner.jpg");
+		assertThat(result.ownerVisibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
+		assertThat(result.participants())
+				.filteredOn(participant -> participant.userId().equals(ghostParticipantId))
+				.singleElement()
+				.satisfies(participant -> {
+					assertThat(participant.username()).isEqualTo("ghost-participant");
+					assertThat(participant.profilePictureUrl()).isEqualTo("listener-participant.jpg");
+					assertThat(participant.visibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
+				});
+		assertThat(result.participants())
+				.filteredOn(participant -> participant.userId().equals(standardParticipantId))
+				.singleElement()
+				.satisfies(participant -> {
+					assertThat(participant.username()).isEqualTo("standard");
+					assertThat(participant.profilePictureUrl()).isEqualTo("standard.jpg");
+					assertThat(participant.visibilityMode()).isNull();
+				});
+		verify(ghostListenerIdentityBatchResolver).resolve(argThat(ids ->
+				ids.size() == 3
+						&& ids.containsAll(Set.of(ownerId, ghostParticipantId, standardParticipantId))));
 	}
 
 	@Test

@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
@@ -20,6 +21,8 @@ import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.profile.shared.media.repository.ProfileMediaRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -50,6 +54,7 @@ class ProfileMediaServiceImplTest {
 	@Mock StudioProfileRepository studioProfileRepository;
 	@Mock ListenerProfileRepository listenerProfileRepository;
 	@Mock VenueProfileRepository venueProfileRepository;
+	@Mock ListenerVisibilityPolicy listenerVisibilityPolicy;
 	@InjectMocks ProfileMediaServiceImpl service;
 
 	@Test
@@ -122,6 +127,59 @@ class ProfileMediaServiceImplTest {
 		assertThat(replay).isSameAs(firstWriter);
 		assertThat(replay.getOrderIndex()).isEqualTo(4);
 		verify(profileMediaRepository, never()).save(any());
+	}
+
+	@Test
+	void ghostListenerCannotAddProfileMediaEvenWhenTheyOwnTheProfile() {
+		UUID actingUserId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		UUID assetId = UUID.randomUUID();
+		ListenerProfile profile = ListenerProfile.builder()
+				.id(profileId)
+				.user(User.builder().id(actingUserId).build())
+				.build();
+		when(listenerProfileRepository.findById(profileId)).thenReturn(Optional.of(profile));
+		when(listenerVisibilityPolicy.lockAndIsPubliclyRestrictedProfile(profileId)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.addMedia(
+				actingUserId,
+				ProfileType.LISTENER,
+				profileId,
+				assetId,
+				ProfileMediaRole.GALLERY,
+				0
+		)).isInstanceOfSatisfying(SoundConnectException.class, exception ->
+				assertThat(exception.getErrorType()).isEqualTo(ErrorType.LISTENER_PROFILE_CONTENT_LOCKED));
+
+		verify(mediaAssetRepository, never()).findByIdForUpdate(any());
+		verify(profileMediaRepository, never()).save(any());
+	}
+
+	@Test
+	void ghostListenerCannotRemoveFrozenProfileMedia() {
+		UUID actingUserId = UUID.randomUUID();
+		UUID profileId = UUID.randomUUID();
+		UUID profileMediaId = UUID.randomUUID();
+		ListenerProfile profile = ListenerProfile.builder()
+				.id(profileId)
+				.user(User.builder().id(actingUserId).build())
+				.build();
+		ProfileMedia profileMedia = ProfileMedia.builder()
+				.id(profileMediaId)
+				.profileType(ProfileType.LISTENER)
+				.profileId(profileId)
+				.mediaAssetId(UUID.randomUUID())
+				.role(ProfileMediaRole.GALLERY)
+				.build();
+		when(profileMediaRepository.findById(profileMediaId)).thenReturn(Optional.of(profileMedia));
+		when(listenerProfileRepository.findById(profileId)).thenReturn(Optional.of(profile));
+		when(listenerVisibilityPolicy.lockAndIsPubliclyRestrictedProfile(profileId)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.removeMedia(actingUserId, profileMediaId))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						assertThat(exception.getErrorType()).isEqualTo(ErrorType.LISTENER_PROFILE_CONTENT_LOCKED));
+
+		verify(profileMediaRepository, never()).delete(any());
 	}
 
 	@Test

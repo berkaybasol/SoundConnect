@@ -35,14 +35,23 @@ class ErrorTypeContractTest {
 		assertThat(ErrorType.BAND_INVITE_UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.BAND_REMOVE_UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.COLLAB_FORBIDDEN.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+		assertThat(ErrorType.FOLLOW_GRAPH_PRIVATE.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+		assertThat(ErrorType.FOLLOW_RELATION_QUERY_FORBIDDEN.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.VENUE_SEARCH_QUERY_REQUIRED.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(ErrorType.SPOTIFY_AUTH_FAILED.getHttpStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
+		assertThat(ErrorType.LISTENER_PROFILE_VISIBILITY_RATE_LIMITED.getHttpStatus())
+				.isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(ErrorType.LISTENER_PROFILE_VISIBILITY_RATE_LIMIT_UNAVAILABLE.getHttpStatus())
+				.isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+		assertThat(ErrorType.LISTENER_PROFILE_CHOICE_REQUIRED.getHttpStatus())
+				.isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
 	}
 
 	@Test
 	void duplicateAndInvalidStateErrorsUseConflict() {
 		assertThat(List.of(
 				ErrorType.BAND_ALREADY_FOLLOWED,
+				ErrorType.GHOST_PROFILE_CANNOT_BE_FOLLOWED,
 				ErrorType.PROFILE_ALREADY_EXISTS,
 				ErrorType.INSTRUMENT_ALREADY_EXISTS,
 				ErrorType.REQUEST_ALREADY_ACCEPTED,

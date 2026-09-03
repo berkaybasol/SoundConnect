@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.tablegroup.repository;
 
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarCandidate;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -18,9 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 		"spring.flyway.enabled=false"
 })
 @Sql(statements = {
-		"create table tbl_user (id uuid primary key)",
+		"create table tbl_user (id uuid primary key, user_name varchar(255))",
 		"create table tbl_musician_profile (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid)",
-		"create table \"tbl_listener-profile\" (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid)",
+		"create table \"tbl_listener-profile\" (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid, visibility_mode varchar(16) default 'STANDARD')",
 		"create table tbl_organizer_profile (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid)",
 		"create table tbl_producer_profile (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid)",
 		"create table tbl_studio_profile (id uuid primary key, user_id uuid unique, profile_picture_media_id uuid)"
@@ -45,6 +46,10 @@ class PersonalProfileAvatarRepositoryTest {
 		insertUser(studioOnlyUserId);
 		insertProfile("tbl_musician_profile", personalUserId, musicianMediaId);
 		insertProfile("\"tbl_listener-profile\"", personalUserId, listenerMediaId);
+		jdbcTemplate.update(
+				"update \"tbl_listener-profile\" set visibility_mode = 'GHOST' where user_id = ?",
+				personalUserId
+		);
 		insertProfile("tbl_organizer_profile", personalUserId, organizerMediaId);
 		insertProfile("tbl_producer_profile", personalUserId, producerMediaId);
 		insertProfile("tbl_studio_profile", studioOnlyUserId, UUID.randomUUID());
@@ -61,6 +66,8 @@ class PersonalProfileAvatarRepositoryTest {
 		assertThat(personal.listenerMediaId()).isEqualTo(listenerMediaId);
 		assertThat(personal.organizerMediaId()).isEqualTo(organizerMediaId);
 		assertThat(personal.producerMediaId()).isEqualTo(producerMediaId);
+		assertThat(personal.username()).isEqualTo("user-" + personalUserId);
+		assertThat(personal.listenerVisibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
 
 		PersonalProfileAvatarCandidate studioOnly = result.stream()
 				.filter(candidate -> candidate.userId().equals(studioOnlyUserId))
@@ -73,7 +80,11 @@ class PersonalProfileAvatarRepositoryTest {
 	}
 
 	private void insertUser(UUID userId) {
-		jdbcTemplate.update("insert into tbl_user (id) values (?)", userId);
+		jdbcTemplate.update(
+				"insert into tbl_user (id, user_name) values (?, ?)",
+				userId,
+				"user-" + userId
+		);
 	}
 
 	private void insertProfile(String tableName, UUID userId, UUID mediaId) {

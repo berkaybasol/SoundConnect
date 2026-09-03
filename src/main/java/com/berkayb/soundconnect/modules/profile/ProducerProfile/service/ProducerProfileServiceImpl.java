@@ -8,6 +8,8 @@ import com.berkayb.soundconnect.modules.profile.ProducerProfile.dto.response.Pro
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.entity.ProducerProfile;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.mapper.ProducerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -27,13 +29,15 @@ public class ProducerProfileServiceImpl implements ProducerProfileService {
 	private final UserEntityFinder userEntityFinder;
 	private final ProducerProfileMapper producerProfileMapper;
 	private final MediaAssetService mediaAssetService;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	
 	@Override
 	@Transactional
 	public ProducerProfileResponseDto createProfile(UUID userId, ProducerProfileSaveRequestDto dto) {
 		// kullaniciyi getir
-		User user = userEntityFinder.getUser(userId);
+		User user = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				userId, RoleEnum.ROLE_PRODUCER);
 		
 		// daha once porofil acilmis mi
 		if (producerProfileRepository.findByUserId(user.getId()).isPresent()) {

@@ -199,6 +199,24 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
+	void retryableUnavailableDomainErrorReturnsRetryAfterAndStableContract() {
+		var request = new org.springframework.mock.web.MockHttpServletRequest(
+				"PATCH", "/api/v1/user/listener-profiles/me/visibility");
+
+		ResponseEntity<ErrorResponse> response = handler.handleServiceUnavailableRetryException(
+				new ServiceUnavailableRetryException(
+						ErrorType.LISTENER_PROFILE_VISIBILITY_RATE_LIMIT_UNAVAILABLE, 5L),
+				request
+		);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+		assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("5");
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().getCode())
+				.isEqualTo(ErrorType.LISTENER_PROFILE_VISIBILITY_RATE_LIMIT_UNAVAILABLE.getCode());
+	}
+
+	@Test
 	void authenticationAndAuthorizationUseDifferentStatuses() {
 		var request = new org.springframework.mock.web.MockHttpServletRequest("GET", "/fixture/secure");
 

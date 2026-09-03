@@ -102,6 +102,14 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/search/tracks").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/spotify/tracks/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/spotify/tracks/by-ids").permitAll()
+						// These endpoints live under the historical public namespace, but
+						// expose authenticated social identity/navigation data. Keep these
+						// rules before the legacy /public/** permit-all matcher.
+						.requestMatchers(
+								HttpMethod.GET,
+								"/api/v1/public/listener-profiles/**",
+								"/api/v1/public/profiles/**"
+						).authenticated()
 
 						.requestMatchers(
 								"/v3/api-docs/**",

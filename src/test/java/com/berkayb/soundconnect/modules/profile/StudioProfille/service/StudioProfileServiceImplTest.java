@@ -7,6 +7,8 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.mapper.StudioProfi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileServiceImpl;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileTransactionExecutor;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
@@ -39,6 +41,7 @@ class StudioProfileServiceImplTest {
 	@Mock private MediaAssetService mediaAssetService;
 	@Mock private StudioRoomRepository studioRoomRepository;
 	@Mock private SpotifyService spotifyService;
+	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Spy private StudioProfileTransactionExecutor transactionExecutor = new StudioProfileTransactionExecutor();
 	
 	@InjectMocks
@@ -72,7 +75,8 @@ class StudioProfileServiceImplTest {
 	void createProfile_ok() {
 		var req = sampleReq();
 		
-		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_STUDIO))
+				.thenReturn(user);
 		when(repository.findByUserId(userId)).thenReturn(Optional.empty());
 		
 		var saved = new StudioProfile();
@@ -109,7 +113,8 @@ class StudioProfileServiceImplTest {
 	
 	@Test
 	void createProfile_should_throw_when_duplicate() {
-		when(userEntityFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_STUDIO))
+				.thenReturn(user);
 		when(repository.findByUserId(userId)).thenReturn(Optional.of(new StudioProfile()));
 		
 		assertThatThrownBy(() -> service.createProfile(userId, sampleReq()))

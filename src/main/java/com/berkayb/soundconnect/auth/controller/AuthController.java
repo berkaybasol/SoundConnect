@@ -18,7 +18,7 @@ import org.springframework.http.ResponseEntity;
 public interface AuthController {
 	ResponseEntity<BaseResponse<LoginResponse>> login(LoginRequestDto loginRequestDto);
 	ResponseEntity<BaseResponse<RegisterResponseDto>> register(RegisterRequestDto registerRequestDto);
-	ResponseEntity<BaseResponse<Void>> verifyEmail(VerifyCodeRequestDto dto);
+	ResponseEntity<BaseResponse<LoginResponse>> verifyEmail(VerifyCodeRequestDto dto);
 	ResponseEntity<BaseResponse<ResendCodeResponseDto>> resendCode(ResendCodeRequestDto dto);
 	ResponseEntity<BaseResponse<UsernameAvailabilityResponseDto>> usernameAvailability(
 			UsernameAvailabilityRequestDto dto);

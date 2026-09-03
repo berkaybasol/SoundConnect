@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.Lis
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,7 +36,7 @@ private final ListenerProfileService listenerProfileService;
 	@PutMapping(ADMIN_UPDATE)
 	public ResponseEntity<BaseResponse<ListenerProfileResponseDto>> updateListenerProfileByUserId(
 			@PathVariable UUID userId,
-			@RequestBody ListenerSaveRequestDto dto) {
+			@Valid @RequestBody ListenerSaveRequestDto dto) {
 		ListenerProfileResponseDto response = listenerProfileService.updateProfile(userId, dto);
 		return ResponseEntity.ok(BaseResponse.<ListenerProfileResponseDto>builder()
 		                                     .success(true).code(200).message("Profil güncellendi").data(response).build());

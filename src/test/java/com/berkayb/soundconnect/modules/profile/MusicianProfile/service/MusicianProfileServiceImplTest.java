@@ -9,6 +9,8 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.Mus
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.mapper.MusicianProfileMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -35,6 +37,7 @@ class MusicianProfileServiceImplTest {
 	@Mock MusicianProfileMapper mapper;
 	@Mock BandService bandService;
 	@Mock MediaAssetService mediaAssetService;
+	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;
@@ -60,7 +63,8 @@ class MusicianProfileServiceImplTest {
 		);
 		
 		var user = User.builder().id(userId).build();
-		when(userFinder.getUser(userId)).thenReturn(user);
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_MUSICIAN))
+				.thenReturn(user);
 		when(repo.findByUserId(userId)).thenReturn(Optional.empty());
 		
 		var instrument = Instrument.builder().name("Guitar").build();
@@ -106,7 +110,8 @@ class MusicianProfileServiceImplTest {
 	void createProfile_shouldThrow_whenAlreadyExists() {
 		UUID userId = UUID.randomUUID();
 		
-		when(userFinder.getUser(userId)).thenReturn(User.builder().id(userId).build());
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(userId, RoleEnum.ROLE_MUSICIAN))
+				.thenReturn(User.builder().id(userId).build());
 		when(repo.findByUserId(userId)).thenReturn(Optional.of(new MusicianProfile()));
 		
 		assertThatThrownBy(() -> service.createProfile(userId, mock(MusicianProfileSaveRequestDto.class)))

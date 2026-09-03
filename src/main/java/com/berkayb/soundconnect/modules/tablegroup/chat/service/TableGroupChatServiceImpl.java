@@ -200,7 +200,9 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 	 * recent window; subsequent page numbers walk backwards in time.
 	 */
 	@Override
-	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	// Game projections resolve Ghost identities under shared visibility locks;
+	// PostgreSQL therefore requires a writable repeatable-read transaction.
+	@Transactional(isolation = Isolation.REPEATABLE_READ)
 	public Page<TableGroupMessageResponseDto> getMessages(
 			UUID requesterId,
 			UUID tableGroupId,

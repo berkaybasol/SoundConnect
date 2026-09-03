@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.auth.controller;
 
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
+import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.passwordreset.dto.request.ForgotPasswordRequestDto;
 import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
 import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
@@ -12,6 +13,7 @@ import com.berkayb.soundconnect.shared.exception.GlobalExceptionHandler;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,9 @@ import org.springframework.http.MediaType;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.Set;
+import java.util.UUID;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -71,6 +76,57 @@ class AuthControllerPasswordValidationMvcTest {
 				.andExpect(jsonPath("$.success").value(true));
 
 		verify(authService).login(request);
+	}
+
+	@Test
+	void verifyEmailSerializesTheListenerSessionContract() throws Exception {
+		VerifyCodeRequestDto request = new VerifyCodeRequestDto("user@example.com", "123456");
+		UUID userId = UUID.randomUUID();
+		LoginResponse session = new LoginResponse(
+				"listener-token",
+				UserStatus.ACTIVE,
+				userId,
+				"listener",
+				Set.of("ROLE_LISTENER"),
+				Set.of("SEND_MESSAGE"),
+				false,
+				true
+		);
+		when(authService.verifyCode(request)).thenReturn(
+				BaseResponse.<LoginResponse>builder()
+						.success(true)
+						.code(200)
+						.message("verified")
+						.data(session)
+						.build()
+		);
+
+		mockMvc.perform(post(EndPoints.Auth.BASE + EndPoints.Auth.VERIFY_CODE)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsBytes(request)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.token").value("listener-token"))
+				.andExpect(jsonPath("$.data.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.data.userId").value(userId.toString()))
+				.andExpect(jsonPath("$.data.username").value("listener"))
+				.andExpect(jsonPath("$.data.roles[0]").value("ROLE_LISTENER"))
+				.andExpect(jsonPath("$.data.requiresListenerProfileChoice").value(true));
+
+		verify(authService).verifyCode(request);
+	}
+
+	@Test
+	void verifyEmailRejectsMalformedCodeBeforeCallingTheService() throws Exception {
+		mockMvc.perform(post(EndPoints.Auth.BASE + EndPoints.Auth.VERIFY_CODE)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"user@example.com","code":"12ab"}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value(4000));
+
+		verifyNoInteractions(authService);
 	}
 
 	@Test

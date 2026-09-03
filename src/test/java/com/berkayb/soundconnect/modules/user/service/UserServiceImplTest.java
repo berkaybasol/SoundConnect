@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.user.service;
 
 import com.berkayb.soundconnect.modules.location.dto.response.CityResponseDto;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileProvisioner;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.dto.request.UserSaveRequestDto;
@@ -62,6 +64,8 @@ class UserServiceImplTest {
 	@Mock private PasswordEncoder passwordEncoder;   // parola hash'leme sahte
 	@Mock private UsernameChangeTimeProvider usernameChangeTimeProvider;
 	@Mock private CityRepository cityRepository;     // ctor bağımlılığı; bu testte kullanılmıyor
+	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
+	@Mock private ListenerProfileProvisioner listenerProfileProvisioner;
 	
 	// ==== Test edeceğimiz servis ====
 	@InjectMocks
@@ -379,11 +383,38 @@ class UserServiceImplTest {
 	}
 
 	@Test
+	void updateUser_RepairsListenerProfileInvariantAfterAdministrativeMutation() {
+		UUID targetId = UUID.randomUUID();
+		User listenerTarget = User.builder()
+				.id(targetId)
+				.username("listener")
+				.email("old@example.com")
+				.roles(Set.of(Role.builder().name("ROLE_LISTENER").build()))
+				.build();
+		when(userRepository.findByIdForUpdate(targetId)).thenReturn(Optional.of(listenerTarget));
+
+		Boolean updated = userService.updateUser(
+				userId,
+				targetId,
+				new UserUpdateRequestDto(null, null, "new@example.com", null)
+		);
+
+		assertThat(updated).isTrue();
+		verify(listenerProfileProvisioner).ensureExistsForUpdate(targetId);
+	}
+
+	@Test
 	void saveUser_CanonicalizesEmailBeforeLookupAndPersistence() {
 		UUID roleId = UUID.randomUUID();
+		UUID newUserId = UUID.randomUUID();
 		Role role = Role.builder().id(roleId).name("ROLE_LISTENER").build();
 		when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
 		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
+			User created = invocation.getArgument(0);
+			created.setId(newUserId);
+			return created;
+		});
 		UserSaveRequestDto dto = new UserSaveRequestDto(
 				" LiStEnEr ", " Listener@Example.COM ", roleId, "password123"
 		);
@@ -394,6 +425,8 @@ class UserServiceImplTest {
 		assertThat(saved.getUsername()).isEqualTo("listener");
 		verify(userRepository).existsByUsername("listener");
 		verify(userRepository).existsByEmail("listener@example.com");
+		verify(listenerProfileProvisioner).ensureExistsForUpdate(newUserId);
+		verifyNoInteractions(personalProfileTypePolicy);
 	}
 	
 	/**
@@ -456,6 +489,66 @@ class UserServiceImplTest {
 				.extracting("name")
 				.containsExactly("ROLE_ADMIN");
 		assertThat(saved.getUpdatedAt()).isNotNull();
+		verify(personalProfileTypePolicy).assertRoleReplacementAllowed(existingUser, newRole);
+	}
+
+	@Test
+	void updateUser_WhenChangingAnExistingPersonalProfileRole_ShouldReject() {
+		UUID targetId = UUID.randomUUID();
+		UUID replacementRoleId = UUID.randomUUID();
+		User listenerTarget = User.builder()
+				.id(targetId)
+				.roles(Set.of(Role.builder().name("ROLE_LISTENER").build()))
+				.build();
+		Role musicianRole = Role.builder()
+				.id(replacementRoleId)
+				.name("ROLE_MUSICIAN")
+				.build();
+
+		when(userRepository.findByIdForUpdate(targetId)).thenReturn(Optional.of(listenerTarget));
+		when(roleRepository.findById(replacementRoleId)).thenReturn(Optional.of(musicianRole));
+		doThrow(new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE))
+				.when(personalProfileTypePolicy)
+				.assertRoleReplacementAllowed(listenerTarget, musicianRole);
+
+		assertThatThrownBy(() -> userService.updateUser(
+				userId,
+				targetId,
+				new UserUpdateRequestDto(null, null, null, replacementRoleId)
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType())
+						.isEqualTo(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		assertThat(listenerTarget.getRoles())
+				.extracting(Role::getName)
+				.containsExactly("ROLE_LISTENER");
+		verify(userRepository, never()).saveAndFlush(listenerTarget);
+	}
+
+	@Test
+	void updateUser_WhenAssigningPersonalProfileRoleWithoutOnboarding_ShouldReject() {
+		UUID replacementRoleId = UUID.randomUUID();
+		Role listenerRole = Role.builder()
+				.id(replacementRoleId)
+				.name("ROLE_LISTENER")
+				.build();
+		Role ownerRole = existingUser.getRoles().iterator().next();
+		when(roleRepository.findById(replacementRoleId)).thenReturn(Optional.of(listenerRole));
+		when(roleRepository.findByNameForUpdate("ROLE_OWNER")).thenReturn(Optional.of(ownerRole));
+		when(userRepository.countDistinctByRoles_Name("ROLE_OWNER")).thenReturn(2L);
+		doThrow(new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE))
+				.when(personalProfileTypePolicy)
+				.assertRoleReplacementAllowed(existingUser, listenerRole);
+
+		assertThatThrownBy(() -> userService.updateUser(
+				userId,
+				userId,
+				new UserUpdateRequestDto(null, null, null, replacementRoleId)
+		)).isInstanceOfSatisfying(SoundConnectException.class,
+				exception -> assertThat(exception.getErrorType())
+						.isEqualTo(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		verify(userRepository, never()).saveAndFlush(any());
 	}
 
 	@Test

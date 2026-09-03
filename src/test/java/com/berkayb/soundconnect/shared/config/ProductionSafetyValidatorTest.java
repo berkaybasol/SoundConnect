@@ -161,12 +161,25 @@ class ProductionSafetyValidatorTest {
 				.hasMessageContaining("springdoc.swagger-ui.enabled must be false");
 	}
 
+	@Test
+	void rejectsUnboundedRedisTimeouts() {
+		MockEnvironment environment = safeEnvironment()
+				.withProperty("spring.data.redis.connect-timeout", "30s");
+
+		assertThatThrownBy(new ProductionSafetyValidator(environment)::validate)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("spring.data.redis.connect-timeout must be greater than zero and at most PT2S");
+	}
+
 	private MockEnvironment safeEnvironment() {
 		return new MockEnvironment()
 				.withProperty("spring.jpa.hibernate.ddl-auto", "validate")
 				.withProperty("spring.datasource.hikari.connection-init-sql", "SET TIME ZONE 'UTC'")
 				.withProperty("server.forward-headers-strategy", "none")
+				.withProperty("spring.data.redis.connect-timeout", "1s")
+				.withProperty("spring.data.redis.timeout", "2s")
 				.withProperty("app.security.auth-rate-limit.enabled", "true")
+				.withProperty("app.listener-profile.visibility-rate-limit.enabled", "true")
 				.withProperty("app.table-group.rate-limit.enabled", "true")
 				.withProperty("app.websocket.broker-relay.enabled", "true")
 				.withProperty("app.data.init.enabled", "false")

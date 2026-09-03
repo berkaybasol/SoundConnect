@@ -4,6 +4,9 @@ import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
@@ -36,6 +39,7 @@ import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Follow.*;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -61,6 +65,7 @@ class FollowControllerTest {
 	@Autowired MockMvc mockMvc;
 	@Autowired UserRepository userRepository;
 	@Autowired FollowRepository followRepository;
+	@Autowired ListenerProfileRepository listenerProfileRepository;
 	
 	// MailProducerImpl yüzünden gerekecek
 	@MockitoBean RabbitTemplate rabbitTemplate;
@@ -101,6 +106,7 @@ class FollowControllerTest {
 	void seed() {
 		// child -> parent sırası
 		followRepository.deleteAll();
+		listenerProfileRepository.deleteAll();
 		userRepository.deleteAll();
 		
 		User follower = userRepository.save(User.builder()
@@ -119,18 +125,7 @@ class FollowControllerTest {
 		                                         .build());
 		followingId = following.getId();
 
-		User securityUser = User.builder()
-		                        .id(followerId)
-		                        .username(follower.getUsername())
-		                        .email(follower.getEmail())
-		                        .password(follower.getPassword())
-		                        .emailVerified(true)
-		                        .status(UserStatus.ACTIVE)
-		                        .build();
-		UserDetailsImpl principal = UserDetailsImpl.fromUser(securityUser);
-		SecurityContextHolder.getContext().setAuthentication(
-				new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
-		);
+		authenticateAs(follower);
 	}
 
 	@AfterEach
@@ -259,6 +254,89 @@ class FollowControllerTest {
 		       .andExpect(jsonPath("$.httpStatus").value("CONFLICT"))
 		       .andExpect(jsonPath("$.message").exists());
 	}
+
+	@Test
+	void follow_should_reject_ghost_target_with_stable_domain_error() throws Exception {
+		User target = userRepository.findById(followingId).orElseThrow();
+		listenerProfileRepository.saveAndFlush(ListenerProfile.builder()
+				.user(target)
+				.visibilityMode(ListenerVisibilityMode.GHOST)
+				.build());
+
+		String body = """
+				{"followingId":"%s"}
+				""".formatted(followingId);
+
+		mockMvc.perform(post(BASE + FOLLOW)
+						.contentType(APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value(1206))
+				.andExpect(jsonPath("$.httpStatus").value("CONFLICT"));
+
+		assertFalse(followRepository.existsByFollowerAndFollowing(
+				userRepository.findById(followerId).orElseThrow(), target));
+	}
+
+	@Test
+	void ghost_follow_graph_should_be_private_to_non_owner() throws Exception {
+		User target = userRepository.findById(followingId).orElseThrow();
+		listenerProfileRepository.saveAndFlush(ListenerProfile.builder()
+				.user(target)
+				.visibilityMode(ListenerVisibilityMode.GHOST)
+				.build());
+
+		mockMvc.perform(get(BASE + FOLLOWERS_COUNT, followingId))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1207));
+
+		mockMvc.perform(get(BASE + FOLLOWING_COUNT, followingId))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1207));
+
+		mockMvc.perform(get(BASE + GET_FOLLOWERS, followingId))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1207));
+
+		mockMvc.perform(get(BASE + GET_FOLLOWING, followingId))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1207));
+	}
+
+	@Test
+	void ghost_owner_should_retain_access_to_their_own_follow_graph_endpoints() throws Exception {
+		User target = userRepository.findById(followingId).orElseThrow();
+		listenerProfileRepository.saveAndFlush(ListenerProfile.builder()
+				.user(target)
+				.visibilityMode(ListenerVisibilityMode.GHOST)
+				.build());
+		authenticateAs(target);
+
+		mockMvc.perform(get(BASE + FOLLOWERS_COUNT, followingId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data").value(0));
+
+		mockMvc.perform(get(BASE + GET_FOLLOWING, followingId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data", hasSize(0)));
+	}
+
+	@Test
+	void isFollowing_should_reject_querying_another_users_relationship() throws Exception {
+		mockMvc.perform(get(BASE + IS_FOLLOWING)
+						.param("followerId", followingId.toString())
+						.param("followingId", followerId.toString()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1208));
+	}
+
+	@Test
+	void isFollowing_should_default_follower_to_authenticated_user_for_new_clients() throws Exception {
+		mockMvc.perform(get(BASE + IS_FOLLOWING)
+						.param("followingId", followingId.toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data").value(false));
+	}
 	
 	// ---- util ----
 	private void follow(UUID followerId, UUID followingId) throws Exception {
@@ -270,5 +348,21 @@ class FollowControllerTest {
 				                .contentType(APPLICATION_JSON)
 				                .content(body))
 		       .andExpect(status().isOk());
+	}
+
+	private void authenticateAs(User user) {
+		User securityUser = User.builder()
+				.id(user.getId())
+				.username(user.getUsername())
+				.email(user.getEmail())
+				.password(user.getPassword())
+				.roles(new HashSet<>())
+				.emailVerified(true)
+				.status(UserStatus.ACTIVE)
+				.build();
+		UserDetailsImpl principal = UserDetailsImpl.fromUser(securityUser);
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
+		);
 	}
 }

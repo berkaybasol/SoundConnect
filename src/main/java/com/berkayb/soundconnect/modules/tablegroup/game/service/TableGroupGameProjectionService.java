@@ -1,8 +1,11 @@
 package com.berkayb.soundconnect.modules.tablegroup.game.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.tablegroup.game.dto.response.*;
 import com.berkayb.soundconnect.modules.tablegroup.game.entity.*;
 import com.berkayb.soundconnect.modules.tablegroup.game.repository.*;
+import com.berkayb.soundconnect.modules.tablegroup.game.support.TableGroupGameMentionFormatter;
 import com.berkayb.soundconnect.modules.tablegroup.game.support.TableGroupGameTimeProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,22 +25,29 @@ public class TableGroupGameProjectionService {
 	private final TableGroupGamePlayerRepository playerRepository;
 	private final TableGroupGameActionRepository actionRepository;
 	private final TableGroupGameTimeProvider timeProvider;
+	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public Optional<TableGroupGameResponseDto> find(UUID gameId) {
 		return gameRepository.findById(gameId).map(this::project);
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public TableGroupGameResponseDto project(TableGroupGame game) {
 		List<TableGroupGamePlayer> players = playerRepository
 				.findByGameIdOrderByJoinedAtAscIdAsc(game.getId());
 		List<TableGroupGameAction> actions = actionRepository
 				.findByGameIdInOrderByGameIdAscRoundNumberAscCreatedAtAscIdAsc(List.of(game.getId()));
-		return project(game, players, actions, timeProvider.now());
+		Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(
+				List.of(game),
+				players
+		);
+		return project(game, players, actions, timeProvider.now(), ghostIdentities);
 	}
 
-	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	// Ghost identity resolution takes shared visibility locks. PostgreSQL does
+	// not permit those locks in a read-only transaction.
+	@Transactional(isolation = Isolation.REPEATABLE_READ)
 	public Map<UUID, TableGroupGameResponseDto> projectByIds(Collection<UUID> gameIds) {
 		if (gameIds == null || gameIds.isEmpty()) {
 			return Map.of();
@@ -48,8 +57,9 @@ public class TableGroupGameProjectionService {
 			return Map.of();
 		}
 
-		Map<UUID, List<TableGroupGamePlayer>> playersByGame = playerRepository
-				.findByGameIdInOrderByGameIdAscJoinedAtAscIdAsc(distinctIds)
+		List<TableGroupGamePlayer> allPlayers = playerRepository
+				.findByGameIdInOrderByGameIdAscJoinedAtAscIdAsc(distinctIds);
+		Map<UUID, List<TableGroupGamePlayer>> playersByGame = allPlayers
 				.stream()
 				.collect(Collectors.groupingBy(
 						TableGroupGamePlayer::getGameId,
@@ -64,14 +74,17 @@ public class TableGroupGameProjectionService {
 						LinkedHashMap::new,
 						Collectors.toList()
 				));
+		List<TableGroupGame> games = gameRepository.findByIdIn(distinctIds);
+		Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(games, allPlayers);
 		Instant now = timeProvider.now();
-		return gameRepository.findByIdIn(distinctIds).stream().collect(Collectors.toMap(
+		return games.stream().collect(Collectors.toMap(
 				TableGroupGame::getId,
 				game -> project(
 						game,
 						playersByGame.getOrDefault(game.getId(), List.of()),
 						actionsByGame.getOrDefault(game.getId(), List.of()),
-						now
+						now,
+						ghostIdentities
 				),
 				(first, ignored) -> first,
 				LinkedHashMap::new
@@ -82,20 +95,25 @@ public class TableGroupGameProjectionService {
 			TableGroupGame game,
 			List<TableGroupGamePlayer> players,
 			List<TableGroupGameAction> actions,
-			Instant now
+			Instant now,
+			Map<UUID, GhostListenerIdentity> ghostIdentities
 	) {
 		Set<UUID> actedCurrentRound = actions.stream()
 				.filter(action -> action.getRoundNumber() == game.getRoundNumber())
 				.map(TableGroupGameAction::getActorUserId)
 				.collect(Collectors.toSet());
 		List<TableGroupGamePlayerResponseDto> playerDtos = players.stream()
-				.map(player -> new TableGroupGamePlayerResponseDto(
-						player.getUserId(),
-						player.getUsername(),
-						player.getStatus(),
-						player.getJoinedAt(),
-						actedCurrentRound.contains(player.getUserId())
-				))
+				.map(player -> {
+					GhostListenerIdentity ghostIdentity = ghostIdentities.get(player.getUserId());
+					return new TableGroupGamePlayerResponseDto(
+							player.getUserId(),
+							contextualUsername(player.getUsername(), ghostIdentity),
+							player.getStatus(),
+							player.getJoinedAt(),
+							actedCurrentRound.contains(player.getUserId()),
+							ghostIdentity == null ? null : ghostIdentity.visibilityMode()
+					);
+				})
 				.toList();
 		List<TableGroupGameRevealedActionResponseDto> revealed = actions.stream()
 				.filter(TableGroupGameAction::isRevealed)
@@ -109,6 +127,13 @@ public class TableGroupGameProjectionService {
 				))
 				.toList();
 
+		GhostListenerIdentity creatorIdentity = identityFor(ghostIdentities, game.getCreatedBy());
+		GhostListenerIdentity selectedIdentity = identityFor(ghostIdentities, game.getSelectedUserId());
+		String selectedUsername = contextualUsername(game.getSelectedUsername(), selectedIdentity);
+		String resultMessage = selectedIdentity == null || game.getOutcome() == null
+				? game.getResultMessage()
+				: TableGroupGameMentionFormatter.resultMessage(game.getOutcome(), selectedUsername);
+
 		return new TableGroupGameResponseDto(
 				SCHEMA_VERSION,
 				game.getId(),
@@ -119,7 +144,8 @@ public class TableGroupGameProjectionService {
 				game.getStatus(),
 				game.getPhase(),
 				game.getCreatedBy(),
-				game.getCreatedByUsername(),
+				contextualUsername(game.getCreatedByUsername(), creatorIdentity),
+				creatorIdentity == null ? null : creatorIdentity.visibilityMode(),
 				game.getRoundNumber(),
 				game.getJoinDeadlineAt(),
 				game.getActionDeadlineAt(),
@@ -127,10 +153,44 @@ public class TableGroupGameProjectionService {
 				playerDtos,
 				revealed,
 				game.getSelectedUserId(),
-				game.getSelectedUsername(),
+				selectedUsername,
+				selectedIdentity == null ? null : selectedIdentity.visibilityMode(),
 				game.getOutcome(),
-				game.getResultMessage(),
+				resultMessage,
 				game.getCancellationReason()
 		);
+	}
+
+	private Map<UUID, GhostListenerIdentity> resolveGhostIdentities(
+			Collection<TableGroupGame> games,
+			Collection<TableGroupGamePlayer> players
+	) {
+		LinkedHashSet<UUID> userIds = new LinkedHashSet<>();
+		if (games != null) {
+			for (TableGroupGame game : games) {
+				if (game == null) continue;
+				if (game.getCreatedBy() != null) userIds.add(game.getCreatedBy());
+				if (game.getSelectedUserId() != null) userIds.add(game.getSelectedUserId());
+			}
+		}
+		if (players != null) {
+			for (TableGroupGamePlayer player : players) {
+				if (player != null && player.getUserId() != null) userIds.add(player.getUserId());
+			}
+		}
+		if (userIds.isEmpty()) return Map.of();
+		Map<UUID, GhostListenerIdentity> resolved = ghostIdentityBatchResolver.resolve(userIds);
+		return resolved == null ? Map.of() : resolved;
+	}
+
+	private String contextualUsername(String storedUsername, GhostListenerIdentity ghostIdentity) {
+		return ghostIdentity == null ? storedUsername : ghostIdentity.username();
+	}
+
+	private GhostListenerIdentity identityFor(
+			Map<UUID, GhostListenerIdentity> identities,
+			UUID userId
+	) {
+		return userId == null ? null : identities.get(userId);
 	}
 }

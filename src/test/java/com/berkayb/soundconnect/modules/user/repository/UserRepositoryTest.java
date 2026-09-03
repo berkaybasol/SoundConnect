@@ -4,6 +4,8 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -141,6 +143,21 @@ class UserRepositoryTest {
 				.containsExactlyInAnyOrder(
 						RoleEnum.ROLE_MUSICIAN.name(), RoleEnum.ROLE_VENUE.name());
 		assertThat(userRepository.findRoleNamesByUserId(UUID.randomUUID())).isEmpty();
+	}
+
+	@Test
+	void findsActualPersonalProfileTypesInOneProjectionQuery() {
+		User saved = userRepository.saveAndFlush(
+				newUser(randomUsername("profile_types_"), "profile-types@test.com"));
+		entityManager.persistAndFlush(ListenerProfile.builder().user(saved).build());
+		entityManager.persistAndFlush(MusicianProfile.builder().user(saved).build());
+		entityManager.clear();
+
+		assertThat(userRepository.findExistingPersonalProfileRoleNames(saved.getId()))
+				.containsExactlyInAnyOrder(
+						RoleEnum.ROLE_LISTENER.name(),
+						RoleEnum.ROLE_MUSICIAN.name());
+		assertThat(userRepository.findExistingPersonalProfileRoleNames(UUID.randomUUID())).isEmpty();
 	}
 	
 	@Test @DisplayName("findByEmail → bulundu/bulunamadı")

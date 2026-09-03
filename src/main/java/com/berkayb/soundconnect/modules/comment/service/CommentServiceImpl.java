@@ -11,6 +11,8 @@ import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.engagement.service.EngagementTargetValidator;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -45,6 +47,7 @@ public class CommentServiceImpl implements CommentService {
 	private final CommentEntityFinder commentEntityFinder;
 	private final UserEntityFinder userEntityFinder;
 	private final OverthinkingPostRepository overthinkingPostRepository;
+	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
 	
 	@Override
 	@Transactional(readOnly = true)
@@ -102,7 +105,10 @@ public class CommentServiceImpl implements CommentService {
 		
 		comment = commentRepository.save(comment);
 		
-		return commentMapper.toCommentResponseDto(comment, 0, false);
+		GhostListenerIdentity ghostIdentity = ghostIdentityBatchResolver
+				.resolve(Set.of(author.getId()))
+				.get(author.getId());
+		return commentMapper.toCommentResponseDto(comment, 0, false, ghostIdentity);
 	}
 	
 	@Override
@@ -123,7 +129,7 @@ public class CommentServiceImpl implements CommentService {
 	}
 	
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional
 	public Page<CommentResponseDto> getComments(
 			UUID viewerId,
 			EngagementTargetType targetType,
@@ -139,23 +145,25 @@ public class CommentServiceImpl implements CommentService {
 		);
 		
 		Map<UUID, Integer> replyCountMap = getReplyCountMap(page.getContent());
+		CommentAuthorContext authorContext = resolveAuthorContext(page.getContent(), viewerId);
 		
 		return page.map(comment -> {
 			int replyCount = replyCountMap.getOrDefault(comment.getId(), 0);
-			return mapToCommentResponse(comment, replyCount, viewerId);
+			return mapToCommentResponse(comment, replyCount, viewerId, authorContext);
 		});
 	}
 	
 	@Override
-	@Transactional(readOnly = true)
+	@Transactional
 	public Page<CommentReplyResponseDto> getReplies(UUID viewerId, UUID parentCommentId, Pageable pageable) {
 		Comment parent = commentEntityFinder.getById(parentCommentId);
 		
 		Pageable safePageable = buildReplyPageable(pageable);
 		
 		Page<Comment> replies = commentRepository.findByParentComment(parent, safePageable);
+		CommentAuthorContext authorContext = resolveAuthorContext(replies.getContent(), viewerId);
 		
-		return replies.map(comment -> mapToReplyResponse(comment, viewerId));
+		return replies.map(comment -> mapToReplyResponse(comment, viewerId, authorContext));
 	}
 	
 	@Override
@@ -175,9 +183,20 @@ public class CommentServiceImpl implements CommentService {
 		}
 	}
 	
-	private CommentResponseDto mapToCommentResponse(Comment comment, int replyCount, UUID viewerId) {
-		boolean maskAuthor = shouldMaskCommentAuthor(comment, viewerId);
-		CommentResponseDto dto = commentMapper.toCommentResponseDto(comment, replyCount, maskAuthor);
+	private CommentResponseDto mapToCommentResponse(
+			Comment comment,
+			int replyCount,
+			UUID viewerId,
+			CommentAuthorContext authorContext
+	) {
+		boolean maskAuthor = shouldMaskCommentAuthor(comment, viewerId, authorContext.postsByTargetId());
+		GhostListenerIdentity ghostIdentity = visibleGhostIdentity(comment, maskAuthor, authorContext);
+		CommentResponseDto dto = commentMapper.toCommentResponseDto(
+				comment,
+				replyCount,
+				maskAuthor,
+				ghostIdentity
+		);
 		
 		if (comment.isDeleted()) {
 			return new CommentResponseDto(
@@ -195,9 +214,18 @@ public class CommentServiceImpl implements CommentService {
 		return dto;
 	}
 	
-	private CommentReplyResponseDto mapToReplyResponse(Comment comment, UUID viewerId) {
-		boolean maskAuthor = shouldMaskCommentAuthor(comment, viewerId);
-		CommentReplyResponseDto dto = commentMapper.toCommentReplyResponseDto(comment, maskAuthor);
+	private CommentReplyResponseDto mapToReplyResponse(
+			Comment comment,
+			UUID viewerId,
+			CommentAuthorContext authorContext
+	) {
+		boolean maskAuthor = shouldMaskCommentAuthor(comment, viewerId, authorContext.postsByTargetId());
+		GhostListenerIdentity ghostIdentity = visibleGhostIdentity(comment, maskAuthor, authorContext);
+		CommentReplyResponseDto dto = commentMapper.toCommentReplyResponseDto(
+				comment,
+				maskAuthor,
+				ghostIdentity
+		);
 		
 		if (comment.isDeleted()) {
 			return new CommentReplyResponseDto(
@@ -214,14 +242,24 @@ public class CommentServiceImpl implements CommentService {
 		return dto;
 	}
 	
-	private boolean shouldMaskCommentAuthor(Comment comment, UUID viewerId) {
+	private boolean shouldMaskCommentAuthor(
+			Comment comment,
+			UUID viewerId,
+			Map<UUID, OverthinkingPost> postsByTargetId
+	) {
 		if (comment.getTargetType() != EngagementTargetType.OVERTHINKING) {
 			return false;
 		}
 		
-		OverthinkingPost post = overthinkingPostRepository.findById(comment.getTargetId()).orElse(null);
+		OverthinkingPost post = postsByTargetId.get(comment.getTargetId());
 		if (post == null || !post.isAnonymous()) {
 			return false;
+		}
+		if (post.getAuthor() == null || post.getAuthor().getId() == null
+				|| comment.getUser() == null || comment.getUser().getId() == null) {
+			// Corrupt legacy rows must fail closed instead of exposing an author whose
+			// anonymity relationship cannot be established safely.
+			return true;
 		}
 		
 		boolean commentAuthorIsPostAuthor = post.getAuthor().getId().equals(comment.getUser().getId());
@@ -230,6 +268,61 @@ public class CommentServiceImpl implements CommentService {
 		}
 		
 		return viewerId == null || !post.getAuthor().getId().equals(viewerId);
+	}
+
+	private CommentAuthorContext resolveAuthorContext(List<Comment> comments, UUID viewerId) {
+		if (comments == null || comments.isEmpty()) {
+			return new CommentAuthorContext(Map.of(), Map.of());
+		}
+
+		Map<UUID, OverthinkingPost> postsByTargetId = loadOverthinkingPosts(comments);
+		LinkedHashSet<UUID> visibleAuthorIds = new LinkedHashSet<>();
+		for (Comment comment : comments) {
+			if (comment == null || comment.getUser() == null || comment.getUser().getId() == null) continue;
+			if (!shouldMaskCommentAuthor(comment, viewerId, postsByTargetId)) {
+				visibleAuthorIds.add(comment.getUser().getId());
+			}
+		}
+
+		Map<UUID, GhostListenerIdentity> ghostIdentities = visibleAuthorIds.isEmpty()
+				? Map.of()
+				: ghostIdentityBatchResolver.resolve(visibleAuthorIds);
+		return new CommentAuthorContext(postsByTargetId, ghostIdentities);
+	}
+
+	private Map<UUID, OverthinkingPost> loadOverthinkingPosts(List<Comment> comments) {
+		LinkedHashSet<UUID> targetIds = comments.stream()
+				.filter(Objects::nonNull)
+				.filter(comment -> comment.getTargetType() == EngagementTargetType.OVERTHINKING)
+				.map(Comment::getTargetId)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+		if (targetIds.isEmpty()) return Map.of();
+
+		return overthinkingPostRepository.findAllById(targetIds).stream()
+				.filter(Objects::nonNull)
+				.filter(post -> post.getId() != null)
+				.collect(Collectors.toMap(
+						OverthinkingPost::getId,
+						post -> post,
+						(first, ignored) -> first,
+						LinkedHashMap::new
+				));
+	}
+
+	private GhostListenerIdentity visibleGhostIdentity(
+			Comment comment,
+			boolean maskAuthor,
+			CommentAuthorContext authorContext
+	) {
+		if (maskAuthor || comment.getUser() == null) return null;
+		return authorContext.ghostIdentities().get(comment.getUser().getId());
+	}
+
+	private record CommentAuthorContext(
+			Map<UUID, OverthinkingPost> postsByTargetId,
+			Map<UUID, GhostListenerIdentity> ghostIdentities
+	) {
 	}
 	
 	private Map<UUID, Integer> getReplyCountMap(List<Comment> comments) {

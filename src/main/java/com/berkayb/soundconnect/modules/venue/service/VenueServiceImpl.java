@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -48,6 +49,7 @@ public class VenueServiceImpl implements VenueService {
 	private final RoleRepository roleRepository;
 	private final UserRepository userRepository;
 	private final VenueProfileService venueProfileService;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@Override
 	public Page<VenueResponseDto> searchByName(String q, Pageable pageable) {
@@ -91,8 +93,8 @@ public class VenueServiceImpl implements VenueService {
 		Neighborhood neighborhood = locationEntityFinder.getNeighborhood(dto.neighborhoodId());
 		// ROLE_VENUE assignment shares the user-row serialization point with
 		// TableGroup admission checks and application-based venue approval.
-		User owner = userRepository.findByIdForUpdate(dto.ownerId())
-				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		User owner = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				dto.ownerId(), RoleEnum.ROLE_VENUE);
 		
 		// degistirildi: owner'in zaten venue'su varsa ikinci venue olusturulmasi engellenir
 		if (venueRepository.existsByOwner_Id(owner.getId())) {

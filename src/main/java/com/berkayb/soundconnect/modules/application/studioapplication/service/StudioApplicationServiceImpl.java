@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileProvisioningCommand;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -61,6 +62,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	private final StudioProfileService studioProfileService;
 	private final StudioApplicationAdminMailService studioApplicationAdminMailService;
 	private final StudioApplicationTimeProvider timeProvider;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 
 	@Override
 	@Transactional
@@ -68,8 +70,8 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 			UUID applicantUserId,
 			StudioApplicationCreateRequestDto request
 	) {
-		User applicant = userRepository.findByIdForUpdate(applicantUserId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		User applicant = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantUserId, RoleEnum.ROLE_STUDIO);
 		if (hasStudioRole(applicant) || studioProfileRepository.existsByUserId(applicantUserId)) {
 			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS);
 		}
@@ -154,7 +156,10 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	@Transactional
 	public StudioApplicationResponseDto approveApplication(UUID applicationId, UUID adminId) {
 		StudioApplication application = pendingApplicationForUpdate(applicationId);
-		User applicant = lockApplicant(application);
+		User applicant = lockApplicantForProfileAcquisition(application, RoleEnum.ROLE_STUDIO);
+		if (studioProfileRepository.existsByUserId(applicant.getId())) {
+			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS);
+		}
 		Role studioRole = roleRepository.findByName(RoleEnum.ROLE_STUDIO.name())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.ROLE_NOT_FOUND));
 		Set<Role> roles = new HashSet<>(applicant.getRoles());
@@ -223,6 +228,14 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		}
 		return userRepository.findByIdForUpdate(reference.getId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+	}
+
+	private User lockApplicantForProfileAcquisition(StudioApplication application, RoleEnum targetRole) {
+		User reference = application.getApplicant();
+		if (reference == null || reference.getId() == null) {
+			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		}
+		return personalProfileTypePolicy.lockAndAssertCanAcquire(reference.getId(), targetRole);
 	}
 
 	private User resolveAdmin(UUID adminId) {

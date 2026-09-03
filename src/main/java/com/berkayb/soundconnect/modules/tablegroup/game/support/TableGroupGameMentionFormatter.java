@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.tablegroup.game.support;
 
+import com.berkayb.soundconnect.modules.tablegroup.game.enums.TableGroupGameOutcome;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 
 /** Produces a single safe chat-card mention without changing stored usernames. */
@@ -21,5 +22,21 @@ public final class TableGroupGameMentionFormatter {
 			contentStart++;
 		}
 		return "@" + sanitized.substring(contentStart);
+	}
+
+	/**
+	 * Builds the server-owned completion copy from structured identity data.
+	 * Keeping this next to mention sanitization lets read projections safely
+	 * regenerate a stored result when a selected listener is currently Ghost.
+	 */
+	public static String resultMessage(TableGroupGameOutcome outcome, String username) {
+		String selectedMention = mention(username);
+		return switch (outcome) {
+			case VOLUNTEER -> "SoundConnect ve masan, sadakatini takdir ediyor! "
+					+ selectedMention + " hesabı gönüllü olarak üstlendi. 😎";
+			case ASSIGNED -> "Geçmiş olsun " + selectedMention
+					+ "! Masan tarafından hesabı ödemekle cezalandırıldın. "
+					+ "Umarız ipin ucu çok kaçmamıştır. 😄";
+		};
 	}
 }

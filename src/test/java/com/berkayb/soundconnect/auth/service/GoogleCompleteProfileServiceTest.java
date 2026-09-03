@@ -2,7 +2,9 @@ package com.berkayb.soundconnect.auth.service;
 
 import com.berkayb.soundconnect.auth.dto.request.GoogleCompleteProfileRequestDto;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -25,6 +27,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +39,8 @@ class GoogleCompleteProfileServiceTest {
 	@Mock ProfileFactory profileFactory;
 	@Mock UserRepository userRepository;
 	@Mock JwtTokenProvider jwtTokenProvider;
+	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
+	@Mock ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	@InjectMocks GoogleCompleteProfileService service;
 
 	@Test
@@ -55,8 +60,55 @@ class GoogleCompleteProfileServiceTest {
 		assertThat(user.getRoles()).containsExactly(musician);
 		assertThat(response.token()).isEqualTo("renewed-token");
 		assertThat(response.roles()).containsExactly(RoleEnum.ROLE_MUSICIAN.name());
+		assertThat(response.requiresListenerProfileChoice()).isFalse();
 		verify(userRepository).save(user);
 		verify(profileFactory).createProfileIfNeeded(user, RoleEnum.ROLE_MUSICIAN);
+		verify(personalProfileTypePolicy).assertCanAcquire(user, RoleEnum.ROLE_MUSICIAN);
+	}
+
+	@Test
+	void listenerCompletionReturnsAnIncompleteVisibilityChoiceSession() {
+		UUID userId = UUID.randomUUID();
+		User user = onboardingUser(userId);
+		Role listener = Role.builder().name(RoleEnum.ROLE_LISTENER.name()).build();
+		when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+		when(roleRepository.findByName(RoleEnum.ROLE_LISTENER.name()))
+				.thenReturn(Optional.of(listener));
+		when(jwtTokenProvider.generateToken(any())).thenReturn("renewed-token");
+		when(listenerProfileChoiceStatusReader.requiresChoice(user)).thenReturn(true);
+
+		var response = service.completeProfileWithRole(
+				userId,
+				new GoogleCompleteProfileRequestDto(RoleEnum.ROLE_LISTENER)
+		);
+
+		assertThat(response.roles()).containsExactly(RoleEnum.ROLE_LISTENER.name());
+		assertThat(response.requiresListenerProfileChoice()).isTrue();
+		verify(profileFactory).createProfileIfNeeded(user, RoleEnum.ROLE_LISTENER);
+		verify(listenerProfileChoiceStatusReader).requiresChoice(user);
+	}
+
+	@Test
+	void legacyProfileEvidencePreventsSelectingADifferentPersonalType() {
+		UUID userId = UUID.randomUUID();
+		User user = onboardingUser(userId);
+		when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+		doThrow(new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE))
+				.when(personalProfileTypePolicy)
+				.assertCanAcquire(user, RoleEnum.ROLE_LISTENER);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> service.completeProfileWithRole(
+						userId,
+						new GoogleCompleteProfileRequestDto(RoleEnum.ROLE_LISTENER)
+				),
+				SoundConnectException.class
+		);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.PROFILE_TYPE_IMMUTABLE);
+		verify(roleRepository, never()).findByName(any());
+		verify(userRepository, never()).save(any());
+		verify(profileFactory, never()).createProfileIfNeeded(any(), any());
 	}
 
 	@Test

@@ -369,6 +369,7 @@ class TableGroupCapacityConcurrencyPostgresTest {
 				mock(TableGroupChatUnreadHelper.class),
 				userRepository,
 				mock(PersonalProfileAvatarBatchResolver.class),
+				mock(com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver.class),
 				mock(StudioProfileRepository.class),
 				mock(VenueRepository.class),
 				mock(MediaAssetService.class),

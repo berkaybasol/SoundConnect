@@ -3,6 +3,10 @@ package com.berkayb.soundconnect.modules.follow.repository;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,9 +18,11 @@ public interface FollowRepository extends JpaRepository<Follow, UUID> {
 	boolean existsByFollowerAndFollowing(User follower, User following);
 	
 	// bir kullanicinin takip ettigi kisilerin listesini getir.
+	@EntityGraph(attributePaths = {"follower", "following"})
 	List<Follow> findAllByFollower(User follower);
 	
 	// bir kullanicinin takipcilerini getir.
+	@EntityGraph(attributePaths = {"follower", "following"})
 	List<Follow> findAllByFollowing(User following);
 	
 	// takip kaydini follower ve followinge gore getir
@@ -27,4 +33,13 @@ public interface FollowRepository extends JpaRepository<Follow, UUID> {
 	
 	// bir kullanicinin kac takipcisi var onu getir
 	Long countByFollowing(User following);
+
+	/**
+	 * Removes every incoming relationship for a user when their listener profile
+	 * enters ghost mode. The caller must serialize this operation against new
+	 * follows by holding the listener-profile visibility lock.
+	 */
+	@Modifying(flushAutomatically = true)
+	@Query("delete from Follow f where f.following.id = :userId")
+	int deleteAllIncomingByUserId(@Param("userId") UUID userId);
 }

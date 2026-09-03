@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.shared.realtime;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -40,6 +41,7 @@ class WebSocketSecurityInterceptorTest {
 	@Mock JwtTokenProvider jwtTokenProvider;
 	@Mock CustomUserDetailsService userDetailsService;
 	@Mock WebSocketSubscriptionAuthorizer subscriptionAuthorizer;
+	@Mock ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	@Mock MessageChannel channel;
 	@Spy WebSocketSessionRegistry sessionRegistry = new WebSocketSessionRegistry();
 	@InjectMocks WebSocketSecurityInterceptor interceptor;
@@ -173,6 +175,27 @@ class WebSocketSecurityInterceptorTest {
 		interceptor.preSend(outbound, channel);
 
 		verify(subscriptionAuthorizer).authorize(principal, destination);
+	}
+
+	@Test
+	void connectRejectsListenerWhoseVisibilityChoiceIsPending() {
+		UUID userId = UUID.randomUUID();
+		UserDetailsImpl pendingListener = principal(userId);
+		pendingListener.getUser().setRoles(Set.of(Role.builder().name("ROLE_LISTENER").build()));
+		when(jwtTokenProvider.validateToken("valid-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserIdFromToken("valid-token")).thenReturn(userId);
+		when(jwtTokenProvider.getExpirationFromToken("valid-token"))
+				.thenReturn(new Date(System.currentTimeMillis() + 60_000));
+		when(userDetailsService.loadUserById(userId)).thenReturn(pendingListener);
+		when(listenerProfileChoiceStatusReader.requiresChoice(pendingListener.getUser())).thenReturn(true);
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+		accessor.setNativeHeader("Authorization", "Bearer valid-token");
+		accessor.setSessionId("session-pending-listener");
+
+		assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+				.isInstanceOf(DisabledException.class)
+				.hasMessageContaining("visibility choice");
+		assertThat(sessionRegistry.find("session-pending-listener")).isEmpty();
 	}
 
 	@Test

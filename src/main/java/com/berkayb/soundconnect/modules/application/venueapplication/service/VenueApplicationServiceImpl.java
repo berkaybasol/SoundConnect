@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -52,6 +53,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 	private final VenueRepository venueRepository;
 	private final VenueProfileService venueProfileService;
 	private final VenueApplicationAdminMailService venueApplicationAdminMailService;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemler geri alinir.
 	@Override
@@ -69,8 +71,11 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		if (applicantReference == null || applicantReference.getId() == null) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
-		User applicant = userRepository.findByIdForUpdate(applicantReference.getId())
-				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		User applicant = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantReference.getId(), RoleEnum.ROLE_VENUE);
+		if (venueRepository.existsByOwner_Id(applicant.getId())) {
+			throw new SoundConnectException(ErrorType.VENUE_APPLICATION_ALREADY_EXISTS);
+		}
 		
 		// venue rolu atanacak
 		Role venueRole = roleRepository.findByName(RoleEnum.ROLE_VENUE.name())
@@ -136,8 +141,11 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		// Applicant row is the serialization point for the "one pending application"
 		// invariant. Concurrent submissions by the same account cannot both pass the
 		// pending lookup and insert a new row.
-		User applicant = userRepository.findByIdForUpdate(applicantUserId)
-		                               .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+		User applicant = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantUserId, RoleEnum.ROLE_VENUE);
+		if (venueRepository.existsByOwner_Id(applicant.getId())) {
+			throw new SoundConnectException(ErrorType.VENUE_APPLICATION_ALREADY_EXISTS);
+		}
 		
 		
 		// zaten basvurmus mu?

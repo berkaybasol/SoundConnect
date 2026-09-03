@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileProvisioningCommand;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.service.StudioProfileService;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
@@ -62,6 +63,7 @@ class StudioApplicationServiceImplTest {
 	@Mock StudioProfileService studioProfileService;
 	@Mock StudioApplicationAdminMailService studioApplicationAdminMailService;
 	@Mock StudioApplicationTimeProvider timeProvider;
+	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	@InjectMocks StudioApplicationServiceImpl service;
 
 	private UUID applicantId;
@@ -90,12 +92,13 @@ class StudioApplicationServiceImplTest {
 				.build();
 		now = LocalDateTime.of(2026, 8, 3, 9, 15);
 		lenient().when(timeProvider.nowUtc()).thenReturn(now);
+		lenient().when(personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantId, RoleEnum.ROLE_STUDIO)).thenReturn(applicant);
 	}
 
 	@Test
 	void createApplicationPersistsValidatedLocationSnapshot() {
 		StudioApplicationCreateRequestDto request = request(neighborhood.getId());
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
 				.thenReturn(Optional.empty());
 		stubLocationLookup();
@@ -116,6 +119,8 @@ class StudioApplicationServiceImplTest {
 		assertThat(saved.getNeighborhood()).isSameAs(neighborhood);
 		assertThat(saved.getStatus()).isEqualTo(ApplicationStatus.PENDING);
 		assertThat(saved.getApplicationDate()).isEqualTo(now);
+		verify(personalProfileTypePolicy).lockAndAssertCanAcquire(
+				applicantId, RoleEnum.ROLE_STUDIO);
 		verify(studioApplicationAdminMailService).sendNewApplicationMail(saved);
 	}
 
@@ -125,8 +130,6 @@ class StudioApplicationServiceImplTest {
 				.id(UUID.randomUUID())
 				.name(RoleEnum.ROLE_STUDIO.name())
 				.build());
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
-
 		assertThatThrownBy(() -> service.createApplication(applicantId, request(neighborhood.getId())))
 				.isInstanceOfSatisfying(SoundConnectException.class,
 						exception -> assertThat(exception.getErrorType())
@@ -139,7 +142,6 @@ class StudioApplicationServiceImplTest {
 
 	@Test
 	void createApplicationRejectsAnAccountThatAlreadyHasAStudioProfile() {
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(studioProfileRepository.existsByUserId(applicantId)).thenReturn(true);
 
 		assertThatThrownBy(() -> service.createApplication(applicantId, request(neighborhood.getId())))
@@ -153,7 +155,6 @@ class StudioApplicationServiceImplTest {
 
 	@Test
 	void createApplicationRejectsDatabaseOverflowBeforeLocationLookupOrInsert() {
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
 				.thenReturn(Optional.empty());
 
@@ -172,7 +173,6 @@ class StudioApplicationServiceImplTest {
 
 	@Test
 	void createApplicationRejectsMalformedPhoneBeforeInsert() {
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
 				.thenReturn(Optional.empty());
 
@@ -190,7 +190,6 @@ class StudioApplicationServiceImplTest {
 		District otherDistrict = District.builder().id(UUID.randomUUID()).city(city).build();
 		Neighborhood otherNeighborhood = Neighborhood.builder()
 				.id(UUID.randomUUID()).district(otherDistrict).build();
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		when(applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING))
 				.thenReturn(Optional.empty());
 		when(locationEntityFinder.getCity(city.getId())).thenReturn(city);
@@ -271,7 +270,8 @@ class StudioApplicationServiceImplTest {
 				.applicationDate(LocalDateTime.now())
 				.build();
 		when(applicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
-		when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantId, RoleEnum.ROLE_STUDIO)).thenReturn(applicant);
 		when(roleRepository.findByName(RoleEnum.ROLE_STUDIO.name())).thenReturn(Optional.of(studioRole));
 		when(userEntityFinder.getUser(adminId)).thenReturn(admin);
 		when(applicationRepository.save(application)).thenReturn(application);
@@ -285,11 +285,52 @@ class StudioApplicationServiceImplTest {
 		assertThat(application.getReviewedBy()).isSameAs(admin);
 		assertThat(application.getDecisionDate()).isNotNull();
 		assertThat(application.getDecisionDate()).isEqualTo(now);
+		verify(personalProfileTypePolicy).lockAndAssertCanAcquire(
+				applicantId, RoleEnum.ROLE_STUDIO);
+		verify(studioProfileRepository).existsByUserId(applicantId);
 		ArgumentCaptor<StudioProfileProvisioningCommand> command =
 				ArgumentCaptor.forClass(StudioProfileProvisioningCommand.class);
 		verify(studioProfileService).createApprovedProfile(command.capture());
 		assertThat(command.getValue().neighborhoodId()).isEqualTo(neighborhood.getId());
 		verify(studioApplicationAdminMailService).sendApplicantDecisionMail(application);
+	}
+
+	@Test
+	void createApplicationRejectsAConflictingPersonalProfileBeforeBusinessWrites() {
+		when(personalProfileTypePolicy.lockAndAssertCanAcquire(
+				applicantId, RoleEnum.ROLE_STUDIO))
+				.thenThrow(new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		assertThatThrownBy(() -> service.createApplication(applicantId, request(neighborhood.getId())))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.PROFILE_TYPE_IMMUTABLE));
+
+		verify(applicationRepository, never()).findByApplicantAndStatus(any(), any());
+		verify(applicationRepository, never()).save(any());
+		verify(studioProfileService, never()).createApprovedProfile(any());
+	}
+
+	@Test
+	void approveApplicationDoesNotProvisionASecondStudioProfile() {
+		UUID applicationId = UUID.randomUUID();
+		StudioApplication application = StudioApplication.builder()
+				.id(applicationId)
+				.applicant(applicant)
+				.status(ApplicationStatus.PENDING)
+				.build();
+		when(applicationRepository.findByIdForUpdate(applicationId))
+				.thenReturn(Optional.of(application));
+		when(studioProfileRepository.existsByUserId(applicantId)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.approveApplication(applicationId, adminId))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						exception -> assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS));
+
+		verify(roleRepository, never()).findByName(any());
+		verify(studioProfileService, never()).createApprovedProfile(any());
+		verify(applicationRepository, never()).save(any());
 	}
 
 	@Test

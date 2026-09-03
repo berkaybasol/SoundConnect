@@ -44,6 +44,9 @@ app:
   websocket:
     broker-relay:
       enabled: true
+  listener-profile:
+    visibility-rate-limit:
+      enabled: true
   table-group:
     rate-limit:
       enabled: true

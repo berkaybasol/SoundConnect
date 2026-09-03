@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.shared.realtime;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -35,6 +36,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 	private final CustomUserDetailsService userDetailsService;
 	private final WebSocketSubscriptionAuthorizer subscriptionAuthorizer;
 	private final WebSocketSessionRegistry sessionRegistry;
+	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 
 	@Override
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -108,6 +110,9 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 				|| principal.getUser().getRoles() == null
 				|| principal.getUser().getRoles().isEmpty()) {
 			throw new DisabledException("User profile onboarding is incomplete");
+		}
+		if (listenerProfileChoiceStatusReader.requiresChoice(principal.getUser())) {
+			throw new DisabledException("Listener profile visibility choice is required");
 		}
 		sessionRegistry.register(accessor.getSessionId(), userId, expiresAt);
 

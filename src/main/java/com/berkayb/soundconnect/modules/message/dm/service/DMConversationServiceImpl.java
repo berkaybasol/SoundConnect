@@ -9,6 +9,8 @@ import com.berkayb.soundconnect.modules.message.dm.model.DmParticipantPair;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
@@ -47,14 +49,24 @@ public class DMConversationServiceImpl implements DMConversationService {
 	private final StudioProfileRepository studioProfileRepository;
 	private final VenueRepository venueRepository;
 	private final MediaAssetService mediaAssetService;
+	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 
 
 	// kullanicinin dahil oldugu tum konusmalari ozet halinde getirir.
 	// her konusma icin son mesaj ve karsi taraf bilgisi profile'dan alinir
 	@Override
+	@Transactional
 	public List<DMConversationPreviewResponseDto> getAllConversationsForUser(UUID userId) {
 	// kullanicinin dahil oldugu tum conversationlari bul
 		List<DMConversation> conversations = conversationRepository.findByUserAIdOrUserBId(userId, userId);
+		Set<UUID> otherUserIds = conversations.stream()
+				.map(conversation -> otherUserId(conversation, userId))
+				.filter(Objects::nonNull)
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+		Map<UUID, GhostListenerIdentity> ghostIdentities =
+				ghostListenerIdentityBatchResolver.resolve(otherUserIds);
+		if (ghostIdentities == null) ghostIdentities = Map.of();
+		Map<UUID, GhostListenerIdentity> resolvedGhostIdentities = ghostIdentities;
 
 		// son mesaji ve karsi tarafi profile lookup ile bul
 		List<DMConversationPreviewResponseDto> result = conversations.stream()
@@ -63,11 +75,17 @@ public class DMConversationServiceImpl implements DMConversationService {
 					Optional<DMMessage> lastMessageOpt = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversation.getId());
 
 					// karsi tarafi bul (userB veya userA)
-					UUID otherUserId = conversation.getUserAId().equals(userId) ? conversation.getUserBId() : conversation.getUserAId();
+					UUID otherUserId = otherUserId(conversation, userId);
+					GhostListenerIdentity ghostIdentity = resolvedGhostIdentities.get(otherUserId);
 
-					// profile lookup
-					String otherUsername = getDisplayNameForUser(otherUserId);
-					String otherUserProfilePicture = getProfilePictureForUser(otherUserId);
+					// Ghost identity is authoritative and must never fall through to an
+					// alternate professional profile in legacy/corrupt multi-profile data.
+					String otherUsername = ghostIdentity == null
+							? getDisplayNameForUser(otherUserId)
+							: ghostIdentity.username();
+					String otherUserProfilePicture = ghostIdentity == null
+							? getProfilePictureForUser(otherUserId)
+							: ghostIdentity.profilePictureUrl();
 
 					// son mesaj icerigi ve bilgileri
 					String lastMessageContent = lastMessageOpt.map(DMMessage::getContent).orElse(null);
@@ -88,7 +106,8 @@ public class DMConversationServiceImpl implements DMConversationService {
 							lastMessageType,
 							lastMessageSenderId,
 							lastMessageAt,
-							lastMessageRead
+							lastMessageRead,
+							ghostIdentity == null ? null : ghostIdentity.visibilityMode()
 					);
 				})
 				.sorted(Comparator.comparing(DMConversationPreviewResponseDto :: lastMessageAt,
@@ -96,6 +115,12 @@ public class DMConversationServiceImpl implements DMConversationService {
 				.collect(Collectors.toList());
 		return result;
  	}
+
+	private UUID otherUserId(DMConversation conversation, UUID currentUserId) {
+		return Objects.equals(conversation.getUserAId(), currentUserId)
+				? conversation.getUserBId()
+				: conversation.getUserAId();
+	}
 
 
 	// iki kisi arasinda var olan conversation'u bulur yoksa yeni conversation olusturur ve id'sini doner

@@ -37,6 +37,35 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Query("select r.name from User u join u.roles r where u.id = :id")
 	Set<String> findRoleNamesByUserId(@Param("id") UUID id);
 
+	/**
+	 * Reads the personal profile aggregates that actually exist for an account.
+	 * Role rows alone are insufficient for legacy/corrupt data because a stale
+	 * role can be missing while its profile aggregate remains reachable.
+	 */
+	@Query(value = """
+			select distinct personal_profile_role
+			from (
+				select 'ROLE_LISTENER' as personal_profile_role
+				from "tbl_listener-profile" where user_id = :userId
+				union all
+				select 'ROLE_MUSICIAN'
+				from tbl_musician_profile where user_id = :userId
+				union all
+				select 'ROLE_STUDIO'
+				from tbl_studio_profile where user_id = :userId
+				union all
+				select 'ROLE_ORGANIZER'
+				from tbl_organizer_profile where user_id = :userId
+				union all
+				select 'ROLE_PRODUCER'
+				from tbl_producer_profile where user_id = :userId
+				union all
+				select 'ROLE_VENUE'
+				from tbl_venues where owner_id = :userId
+			) personal_profiles
+			""", nativeQuery = true)
+	Set<String> findExistingPersonalProfileRoleNames(@Param("userId") UUID userId);
+
 	long countDistinctByRoles_Name(String roleName);
 
 }

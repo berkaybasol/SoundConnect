@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
@@ -48,6 +49,7 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 	private final StudioProfileRepository studioProfileRepository;
 	private final ListenerProfileRepository listenerProfileRepository;
 	private final VenueProfileRepository venueProfileRepository;
+	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
 	
 	
 	@Override
@@ -70,6 +72,7 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 			throw new SoundConnectException(ErrorType.BAD_REQUEST);
 		}
 		assertCanManageProfile(actingUserId, profileType, profileId);
+		assertProfileContentMutable(profileType, profileId);
 		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		assertMediaBelongsToProfile(profileType, profileId, asset);
@@ -133,7 +136,15 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 		ProfileMedia profileMedia = profileMediaRepository.findById(profileMediaId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_MEDIA_NOT_FOUND));
 		assertCanManageProfile(actingUserId, profileMedia.getProfileType(), profileMedia.getProfileId());
+		assertProfileContentMutable(profileMedia.getProfileType(), profileMedia.getProfileId());
 		profileMediaRepository.delete(profileMedia);
+	}
+
+	private void assertProfileContentMutable(ProfileType profileType, UUID profileId) {
+		if (profileType == ProfileType.LISTENER
+				&& listenerVisibilityPolicy.lockAndIsPubliclyRestrictedProfile(profileId)) {
+			throw new SoundConnectException(ErrorType.LISTENER_PROFILE_CONTENT_LOCKED);
+		}
 	}
 
 	private void assertCanManageProfile(UUID actingUserId, ProfileType profileType, UUID profileId) {

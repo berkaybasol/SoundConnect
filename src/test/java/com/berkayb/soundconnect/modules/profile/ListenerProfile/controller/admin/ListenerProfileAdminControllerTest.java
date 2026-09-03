@@ -18,6 +18,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -66,11 +67,11 @@ class ListenerProfileAdminControllerTest {
 	@Test
 	void updateListenerProfileByUserId_ok() throws Exception {
 		UUID userId = UUID.randomUUID();
-		UUID newPpId = UUID.randomUUID();
+		UUID currentPpId = UUID.randomUUID();
 		
-		var body = new ListenerSaveRequestDto("upd", newPpId);
+		var body = new ListenerSaveRequestDto("upd", currentPpId);
 		var dto = new ListenerProfileResponseDto(
-				UUID.randomUUID(), userId, "listener", "upd", newPpId,
+				UUID.randomUUID(), userId, "listener", "upd", currentPpId,
 				"https://cdn.example.com/profile.jpg", 0, 0);
 		
 		when(listenerProfileService.updateProfile(userId, body)).thenReturn(dto);
@@ -84,6 +85,23 @@ class ListenerProfileAdminControllerTest {
 		       .andExpect(jsonPath("$.success", is(true)))
 		       .andExpect(jsonPath("$.code", is(200)))
 		       .andExpect(jsonPath("$.data.bio").value("upd"))
-		       .andExpect(jsonPath("$.data.profilePictureMediaId").value(newPpId.toString()));
+		       .andExpect(jsonPath("$.data.profilePictureMediaId").value(currentPpId.toString()));
+	}
+
+	@Test
+	void updateListenerProfileByUserIdRejectsOversizedDescription() throws Exception {
+		UUID userId = UUID.randomUUID();
+		var body = new ListenerSaveRequestDto(
+				"x".repeat(ListenerSaveRequestDto.DESCRIPTION_MAX_LENGTH + 1),
+				null);
+
+		mockMvc.perform(
+				put("/api/v1/admin/listener-profiles/by-user/{userId}/update", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(om.writeValueAsString(body))
+			)
+				.andExpect(status().isBadRequest());
+
+		verifyNoInteractions(listenerProfileService);
 	}
 }

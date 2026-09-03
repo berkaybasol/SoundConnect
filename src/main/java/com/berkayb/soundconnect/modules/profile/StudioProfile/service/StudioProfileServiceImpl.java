@@ -9,6 +9,8 @@ import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.Studi
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.mapper.StudioProfileMapper;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.spotify.service.SpotifyService;
 import com.berkayb.soundconnect.modules.studio.room.repository.StudioRoomRepository;
@@ -59,6 +61,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 	private final SpotifyService spotifyService;
 	private final StudioProfileTransactionExecutor transactionExecutor;
 	private final LocationEntityFinder locationEntityFinder;
+	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 
 	@Override
 	public StudioProfileResponseDto createProfile(UUID userId, StudioProfileSaveRequestDto dto) {
@@ -76,7 +79,8 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 		if (command == null || command.userId() == null) {
 			throw new SoundConnectException(ErrorType.BAD_REQUEST);
 		}
-		User user = userEntityFinder.getUser(command.userId());
+		User user = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				command.userId(), RoleEnum.ROLE_STUDIO);
 		if (studioProfileRepository.findByUserId(command.userId()).isPresent()) {
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
 		}
@@ -107,7 +111,8 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 			List<String> spotifyTrackIds,
 			List<SpotifyTrackItemDto> spotifyTracks
 	) {
-		User user = userEntityFinder.getUser(userId);
+		User user = personalProfileTypePolicy.lockAndAssertCanAcquire(
+				userId, RoleEnum.ROLE_STUDIO);
 		if (studioProfileRepository.findByUserId(userId).isPresent()) {
 			throw new SoundConnectException(ErrorType.PROFILE_ALREADY_EXISTS);
 		}

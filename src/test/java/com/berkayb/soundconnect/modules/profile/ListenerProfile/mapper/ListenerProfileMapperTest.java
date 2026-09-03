@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.ListenerProfile.mapper;
 
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,8 @@ class ListenerProfileMapperTest {
 		                                        .user(u)
 		                                        .description("about me")
 		                                        .profilePictureMediaId(ppId)
+		                                        .visibilityMode(ListenerVisibilityMode.GHOST)
+		                                        .version(7L)
 		                                        .build();
 		
 		ListenerProfileResponseDto dto = mapper.toDto(entity);
@@ -40,5 +43,7 @@ class ListenerProfileMapperTest {
 		assertThat(dto.userId()).isEqualTo(userId);
 		assertThat(dto.profilePictureMediaId()).isEqualTo(ppId);
 		assertThat(dto.bio()).isEqualTo("about me"); // description -> bio
+		assertThat(dto.visibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
+		assertThat(dto.version()).isEqualTo(7L);
 	}
 }

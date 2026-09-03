@@ -35,7 +35,7 @@ public class AuthControllerImpl implements AuthController {
 	
 	@PostMapping(VERIFY_CODE)
 	@Override
-	public ResponseEntity<BaseResponse<Void>> verifyEmail(@RequestBody @Valid VerifyCodeRequestDto dto) {
+	public ResponseEntity<BaseResponse<LoginResponse>> verifyEmail(@RequestBody @Valid VerifyCodeRequestDto dto) {
 		return ResponseEntity.ok(authService.verifyCode(dto));
 	}
 	

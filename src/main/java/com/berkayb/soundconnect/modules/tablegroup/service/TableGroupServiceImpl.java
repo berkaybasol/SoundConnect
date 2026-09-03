@@ -9,6 +9,9 @@ import com.berkayb.soundconnect.modules.location.repository.NeighborhoodReposito
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarBatchResolver;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.tablegroup.abuse.TableGroupRateLimitGuard;
 import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
@@ -97,6 +100,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final TableGroupChatUnreadHelper unreadHelper;
 	private final UserRepository userRepository;
 	private final PersonalProfileAvatarBatchResolver personalProfileAvatarBatchResolver;
+	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	private final StudioProfileRepository studioProfileRepository;
 	private final VenueRepository venueRepository;
 	private final MediaAssetService mediaAssetService;
@@ -907,7 +911,13 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.build())
 				.collect(Collectors.toCollection(LinkedHashSet::new));
 
-		return copyResponse(dto, dto.ownerUsername(), dto.ownerProfileImageUrl(), projectedParticipants);
+		return copyResponse(
+				dto,
+				dto.ownerUsername(),
+				dto.ownerProfileImageUrl(),
+				dto.ownerVisibilityMode(),
+				projectedParticipants
+		);
 	}
 
 	private boolean isVisibleParticipant(
@@ -960,7 +970,24 @@ public class TableGroupServiceImpl implements TableGroupService{
 			// avatars with one profile projection plus one media batch query.
 			profileImages.putAll(resolveOwnerAvatarsSafely(ownerUserIds));
 		}
-		return new UserMetadata(usernames, profileImages);
+
+		Map<UUID, ListenerVisibilityMode> visibilityModes = new HashMap<>();
+		Map<UUID, GhostListenerIdentity> ghostIdentities =
+				ghostListenerIdentityBatchResolver.resolve(visibleUserIds);
+		if (ghostIdentities != null) {
+			for (GhostListenerIdentity identity : ghostIdentities.values()) {
+				if (identity == null || identity.userId() == null) continue;
+				usernames.put(identity.userId(), identity.username());
+				// Never retain an alternate-profile avatar for a ghost listener.
+				profileImages.remove(identity.userId());
+				if (identity.profilePictureUrl() != null
+						&& (includeProfileImages || ownerUserIds.contains(identity.userId()))) {
+					profileImages.put(identity.userId(), identity.profilePictureUrl());
+				}
+				visibilityModes.put(identity.userId(), ListenerVisibilityMode.GHOST);
+			}
+		}
+		return new UserMetadata(usernames, profileImages, visibilityModes);
 	}
 
 	private Map<UUID, String> resolveOwnerAvatarsSafely(Set<UUID> ownerUserIds) {
@@ -1013,6 +1040,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.profilePictureUrl(includeParticipantProfileImages
 								? metadata.profileImages().get(participant.userId())
 								: null)
+						.visibilityMode(metadata.visibilityModes().get(participant.userId()))
 						.build())
 				.collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -1020,6 +1048,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				dto,
 				metadata.usernames().get(dto.ownerId()),
 				metadata.profileImages().get(dto.ownerId()),
+				metadata.visibilityModes().get(dto.ownerId()),
 				participants
 		);
 	}
@@ -1028,6 +1057,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			TableGroupResponseDto dto,
 			String ownerUsername,
 			String ownerProfileImageUrl,
+			ListenerVisibilityMode ownerVisibilityMode,
 			Set<TableGroupParticipantDto> participants
 	) {
 		return new TableGroupResponseDto(
@@ -1049,7 +1079,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				participants,
 				dto.city(),
 				dto.district(),
-				dto.neighborhood()
+				dto.neighborhood(),
+				ownerVisibilityMode
 		);
 	}
 
@@ -1455,7 +1486,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		digest.update(valueBytes);
 	}
 
-	private record UserMetadata(Map<UUID, String> usernames, Map<UUID, String> profileImages) {}
+	private record UserMetadata(
+			Map<UUID, String> usernames,
+			Map<UUID, String> profileImages,
+			Map<UUID, ListenerVisibilityMode> visibilityModes
+	) {}
 	
 	private Map<String, Object> tablePayload(UUID tableGroupId, String action, Map<String, Object> extraPayload) {
 		Map<String, Object> payload = new HashMap<>();

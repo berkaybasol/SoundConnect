@@ -5,7 +5,9 @@ import com.berkayb.soundconnect.auth.model.VerifiedGoogleIdentity;
 import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.GoogleIdTokenValidator;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -40,6 +42,7 @@ class GoogleAuthServiceTest {
 	@Mock GoogleIdTokenValidator googleIdTokenValidator;
 	@Mock PasswordEncoder passwordEncoder;
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
+	@Mock ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	@InjectMocks GoogleAuthService googleAuthService;
 
 	@Test
@@ -72,6 +75,27 @@ class GoogleAuthServiceTest {
 		assertThat(saved.getRoles()).isEmpty();
 		assertThat(response.getData().token()).isEqualTo("soundconnect-token");
 		assertThat(response.getData().roles()).isEmpty();
+		assertThat(response.getData().requiresListenerProfileChoice()).isFalse();
+	}
+
+	@Test
+	void existingListenerGoogleLoginCarriesTheServerAuthoritativeChooserDecision() {
+		Role listenerRole = Role.builder().name(RoleEnum.ROLE_LISTENER.name()).build();
+		User existing = googleUser(Set.of(listenerRole));
+		existing.setProviderSubject("listener-subject");
+		when(googleIdTokenValidator.verify("google-token"))
+				.thenReturn(new VerifiedGoogleIdentity(
+						"listener-subject", existing.getEmail(), "Listener"));
+		when(userRepository.findByProviderAndProviderSubject(
+				AuthProvider.GOOGLE, "listener-subject"))
+				.thenReturn(Optional.of(existing));
+		when(jwtTokenProvider.generateToken(any())).thenReturn("token");
+		when(listenerProfileChoiceStatusReader.requiresChoice(existing)).thenReturn(true);
+
+		var response = googleAuthService.loginWithGoogle(new GoogleAuthRequestDto("google-token"));
+
+		assertThat(response.getData().requiresListenerProfileChoice()).isTrue();
+		verify(listenerProfileChoiceStatusReader).requiresChoice(existing);
 	}
 
 	@Test

@@ -2,6 +2,9 @@ package com.berkayb.soundconnect.modules.studio.reservation.service;
 
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
+import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioReservationCreateRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockCreateRequest;
 import com.berkayb.soundconnect.modules.studio.reservation.dto.request.StudioManualBlockReleaseRequest;
@@ -15,6 +18,8 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomOccupancyRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.repository.StudioRoomReservationRepository;
 import com.berkayb.soundconnect.modules.studio.reservation.support.StudioBookingWindow;
+import com.berkayb.soundconnect.modules.studio.reservation.support.StudioBookingClock;
+import com.berkayb.soundconnect.modules.studio.reservation.support.StudioDateRange;
 import com.berkayb.soundconnect.modules.studio.reservation.support.StudioReservationTimeProvider;
 import com.berkayb.soundconnect.modules.studio.room.entity.StudioRoom;
 import com.berkayb.soundconnect.modules.studio.room.mapper.StudioRoomMapper;
@@ -34,12 +39,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageImpl;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -63,6 +71,7 @@ class StudioReservationServiceTest {
     @Mock StudioRoomMapper roomMapper;
     @Mock StudioRoomDailyMetricsService dailyMetricsService;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
     @InjectMocks StudioReservationService service;
 
     private UUID requesterId;
@@ -98,6 +107,7 @@ class StudioReservationServiceTest {
         );
         lenient().when(timeProvider.zoneOf(any())).thenReturn(ZoneId.of("Europe/Istanbul"));
         lenient().when(timeProvider.now()).thenReturn(Instant.parse("2026-07-21T10:00:00Z"));
+        lenient().when(ghostListenerIdentityBatchResolver.resolve(any())).thenReturn(Map.of());
     }
 
     @Test
@@ -515,6 +525,82 @@ class StudioReservationServiceTest {
         verify(timeProvider, never()).validateOwnerRange(any(), any(), any());
         verify(reservationRepository, never()).findRoomReservationsInRange(
                 any(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void ownerScheduleResolvesGhostRequesterIdentityOnceForTheWholePage() {
+        LocalDate scheduleDate = LocalDate.of(2026, 7, 22);
+        StudioDateRange range = new StudioDateRange(
+                scheduleDate,
+                scheduleDate,
+                window.startsAt(),
+                window.endsAt()
+        );
+        requester.setUsername("legacy-ghost-name");
+        requester.setProfilePicture("https://legacy.example/ghost.jpg");
+        User standardRequester = User.builder()
+                .id(UUID.randomUUID())
+                .username("standard-user")
+                .profilePicture("https://cdn.example/standard.jpg")
+                .build();
+        StudioRoomReservation ghostReservation = pendingReservation(UUID.randomUUID(), requester);
+        StudioRoomReservation standardReservation = pendingReservation(UUID.randomUUID(), standardRequester);
+
+        when(studioProfileRepository.findByUserId(ownerId)).thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileId(roomId, profile.getId()))
+                .thenReturn(Optional.of(room));
+        when(timeProvider.validateOwnerRange(profile, scheduleDate, scheduleDate)).thenReturn(range);
+        when(reservationRepository.findRoomReservationsInRange(
+                org.mockito.ArgumentMatchers.eq(roomId),
+                org.mockito.ArgumentMatchers.eq(window.startsAt()),
+                org.mockito.ArgumentMatchers.eq(window.endsAt()),
+                any()
+        )).thenReturn(new PageImpl<>(List.of(ghostReservation, standardReservation)));
+        when(ghostListenerIdentityBatchResolver.resolve(any())).thenReturn(Map.of(
+                requesterId,
+                new GhostListenerIdentity(
+                        requesterId,
+                        "canonical-ghost",
+                        "https://cdn.example/listener-avatar.jpg",
+                        ListenerVisibilityMode.GHOST
+                )
+        ));
+        when(occupancyRepository.findActiveByRoomInRange(
+                roomId, window.startsAt(), window.endsAt()
+        )).thenReturn(List.of());
+        when(dailyMetricsService.load(profile, List.of(roomId))).thenReturn(Map.of());
+        when(timeProvider.bookingClock(profile)).thenReturn(new StudioBookingClock(
+                scheduleDate,
+                LocalTime.of(12, 0),
+                LocalDateTime.of(2026, 8, 5, 23, 0)
+        ));
+
+        var response = service.ownerSchedule(
+                ownerId,
+                roomId,
+                scheduleDate,
+                scheduleDate,
+                0,
+                20
+        );
+
+        assertThat(response.reservations().content()).hasSize(2);
+        assertThat(response.reservations().content().get(0)).satisfies(ghost -> {
+            assertThat(ghost.requesterUsername()).isEqualTo("canonical-ghost");
+            assertThat(ghost.requesterAvatarUrl()).isEqualTo("https://cdn.example/listener-avatar.jpg");
+            assertThat(ghost.requesterVisibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
+        });
+        assertThat(response.reservations().content().get(1)).satisfies(standard -> {
+            assertThat(standard.requesterUsername()).isEqualTo("standard-user");
+            assertThat(standard.requesterAvatarUrl()).isEqualTo("https://cdn.example/standard.jpg");
+            assertThat(standard.requesterVisibilityMode()).isNull();
+        });
+        verify(ghostListenerIdentityBatchResolver).resolve(
+                org.mockito.ArgumentMatchers.argThat(ids ->
+                        ids.size() == 2
+                                && ids.contains(requesterId)
+                                && ids.contains(standardRequester.getId()))
         );
     }
 

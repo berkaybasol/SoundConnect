@@ -156,6 +156,23 @@ class FollowRepositoryTest {
 		assertEquals(2L, followRepository.countByFollower(u1));
 		assertEquals(2L, followRepository.countByFollowing(u2));
 	}
+
+	@Test
+	void deleteAllIncomingByUserId_removes_only_incoming_relationships() {
+		followRepository.saveAndFlush(Follow.builder()
+				.follower(u1).following(u2).followedAt(LocalDateTime.now()).build());
+		followRepository.saveAndFlush(Follow.builder()
+				.follower(u3).following(u2).followedAt(LocalDateTime.now()).build());
+		Follow outgoing = followRepository.saveAndFlush(Follow.builder()
+				.follower(u2).following(u3).followedAt(LocalDateTime.now()).build());
+
+		assertEquals(2, followRepository.deleteAllIncomingByUserId(u2.getId()));
+		followRepository.flush();
+
+		assertEquals(0L, followRepository.countByFollowing(u2));
+		assertTrue(followRepository.findById(outgoing.getId()).isPresent(),
+				"Ghost activation must preserve the user's outgoing follows");
+	}
 	
 	@Test
 	void unique_constraint_should_prevent_duplicate_follow() {

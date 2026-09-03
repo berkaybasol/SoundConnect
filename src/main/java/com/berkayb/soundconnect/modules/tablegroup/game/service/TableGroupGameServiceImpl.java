@@ -654,13 +654,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		game.setSelectedUserId(selected.getUserId());
 		game.setSelectedUsername(selected.getUsername());
 		game.setOutcome(volunteer ? TableGroupGameOutcome.VOLUNTEER : TableGroupGameOutcome.ASSIGNED);
-		String selectedMention = TableGroupGameMentionFormatter.mention(selected.getUsername());
-		game.setResultMessage(volunteer
-				? "SoundConnect ve masan, sadakatini takdir ediyor! " + selectedMention
-						+ " hesabı gönüllü olarak üstlendi. 😎"
-				: "Geçmiş olsun " + selectedMention
-						+ "! Masan tarafından hesabı ödemekle cezalandırıldın. "
-						+ "Umarız ipin ucu çok kaçmamıştır. 😄");
+		game.setResultMessage(TableGroupGameMentionFormatter.resultMessage(
+				game.getOutcome(),
+				selected.getUsername()
+		));
 		game.setCancellationReason(null);
 		metricAfterCommit(metrics::gameCompleted);
 	}

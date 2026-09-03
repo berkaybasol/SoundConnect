@@ -1,12 +1,14 @@
 package com.berkayb.soundconnect.shared.config;
 
 import jakarta.annotation.PostConstruct;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,6 +35,7 @@ public class ProductionSafetyValidator {
 			new RequiredSetting("spring.datasource.hikari.connection-init-sql", "SET TIME ZONE 'UTC'"),
 			new RequiredSetting("server.forward-headers-strategy", "none"),
 			new RequiredSetting("app.security.auth-rate-limit.enabled", "true"),
+			new RequiredSetting("app.listener-profile.visibility-rate-limit.enabled", "true"),
 			new RequiredSetting("app.table-group.rate-limit.enabled", "true"),
 			new RequiredSetting("app.websocket.broker-relay.enabled", "true"),
 			new RequiredSetting("app.data.init.enabled", "false"),
@@ -113,6 +116,8 @@ public class ProductionSafetyValidator {
 		}
 
 		validateTempCapacity(violations);
+		validateBoundedDuration("spring.data.redis.connect-timeout", Duration.ofSeconds(2), violations);
+		validateBoundedDuration("spring.data.redis.timeout", Duration.ofSeconds(3), violations);
 
 		if (!violations.isEmpty()) {
 			throw new IllegalStateException(
@@ -143,6 +148,18 @@ public class ProductionSafetyValidator {
 		} catch (NumberFormatException invalid) {
 			violations.add(key + " must be a positive byte count");
 			return null;
+		}
+	}
+
+	private void validateBoundedDuration(String key, Duration maximum, List<String> violations) {
+		String raw = environment.getProperty(key);
+		try {
+			Duration parsed = DurationStyle.detectAndParse(raw != null ? raw.trim() : "");
+			if (parsed.isZero() || parsed.isNegative() || parsed.compareTo(maximum) > 0) {
+				throw new IllegalArgumentException("duration outside safe range");
+			}
+		} catch (RuntimeException invalid) {
+			violations.add(key + " must be greater than zero and at most " + maximum);
 		}
 	}
 

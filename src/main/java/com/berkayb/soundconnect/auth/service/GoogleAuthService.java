@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.GoogleIdTokenValidator;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
@@ -43,6 +44,7 @@ public class GoogleAuthService {
 	private final GoogleIdTokenValidator googleIdTokenValidator;
 	private final PasswordEncoder passwordEncoder;
 	private final AuthAccountRateLimitGuard accountRateLimitGuard;
+	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 
 	@Transactional
 	public BaseResponse<LoginResponse> loginWithGoogle(GoogleAuthRequestDto dto) {
@@ -85,7 +87,11 @@ public class GoogleAuthService {
 				.success(true)
 				.message("Google ile giris basarili")
 				.code(200)
-				.data(LoginResponse.fromUser(token, user))
+				.data(LoginResponse.fromUser(
+						token,
+						user,
+						listenerProfileChoiceStatusReader.requiresChoice(user)
+				))
 				.build();
 	}
 
