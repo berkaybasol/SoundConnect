@@ -10,15 +10,18 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.List
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerVisibilityUpdateRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerSpotifyPlaylist;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.mapper.ListenerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerSpotifyPlaylistRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileProvisioner;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityTimeProvider;
 import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyPlaylistMetadataDto;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +63,7 @@ class ListenerProfileServiceImplTest {
 	@Mock ListenerVisibilityTimeProvider visibilityTimeProvider;
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Mock ListenerProfileProvisioner listenerProfileProvisioner;
+	@Mock ListenerSpotifyPlaylistRepository listenerSpotifyPlaylistRepository;
 
 	@InjectMocks ListenerProfileServiceImpl service;
 
@@ -94,6 +98,7 @@ class ListenerProfileServiceImplTest {
 		assertThat(result.profileContentEditable()).isFalse();
 		assertThat(result.avatarEditable()).isTrue();
 		assertThat(result.canReceiveFollowers()).isFalse();
+		assertThat(result.playlists()).isEmpty();
 		verify(mediaAssetService).validateAssignableMedia(
 				userId, ppId, MediaOwnerType.USER, userId, MediaKind.IMAGE);
 
@@ -150,7 +155,7 @@ class ListenerProfileServiceImplTest {
 		assertThat(result.profileContentEditable()).isFalse();
 		assertThat(result.avatarEditable()).isTrue();
 		assertThat(result.canReceiveFollowers()).isFalse();
-		verifyNoInteractions(followService);
+		verifyNoInteractions(followService, listenerSpotifyPlaylistRepository);
 	}
 
 	@Test
@@ -168,7 +173,41 @@ class ListenerProfileServiceImplTest {
 		assertThat(result.followingCount()).isNull();
 		assertThat(result.canFollow()).isFalse();
 		assertThat(result.canMessage()).isTrue();
-		verifyNoInteractions(followService);
+		assertThat(result.playlists()).isEmpty();
+		verifyNoInteractions(followService, listenerSpotifyPlaylistRepository);
+	}
+
+	@Test
+	void standardOwnerProjectionContainsOrderedServerStoredPlaylists() {
+		ListenerProfile profile = profile(ListenerVisibilityMode.STANDARD, 2);
+		String spotifyId = "37i9dQZF1DXcBWIGoYBM5M";
+		String spotifyUrl = "https://open.spotify.com/playlist/" + spotifyId;
+		ListenerSpotifyPlaylist playlist = ListenerSpotifyPlaylist.create(
+				profile,
+				new SpotifyPlaylistMetadataDto(
+						spotifyId,
+						"Today's Top Hits",
+						"https://i.scdn.co/image/cover",
+						spotifyUrl),
+				0);
+		UUID playlistId = UUID.randomUUID();
+		playlist.setId(playlistId);
+		when(userFinder.getUser(userId)).thenReturn(user);
+		when(repo.findByUserIdForVisibilityRead(userId)).thenReturn(Optional.of(profile));
+		when(listenerSpotifyPlaylistRepository
+				.findAllByListenerProfileIdOrderByPositionAsc(profile.getId()))
+				.thenReturn(List.of(playlist));
+
+		var result = service.getMyProfile(userId);
+
+		assertThat(result.playlists()).singleElement().satisfies(item -> {
+			assertThat(item.id()).isEqualTo(playlistId);
+			assertThat(item.spotifyPlaylistId()).isEqualTo(spotifyId);
+			assertThat(item.title()).isEqualTo("Today's Top Hits");
+			assertThat(item.coverImageUrl()).isEqualTo("https://i.scdn.co/image/cover");
+			assertThat(item.spotifyUrl()).isEqualTo(spotifyUrl);
+			assertThat(item.position()).isZero();
+		});
 	}
 
 	@Test

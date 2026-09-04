@@ -21,6 +21,16 @@ class ProductionConfigurationTest {
 
 		assertThat(property(sources, "spring.jackson.time-zone")).isEqualTo("UTC");
 		assertThat(property(sources, "spring.jpa.properties.hibernate.jdbc.time_zone")).isEqualTo("UTC");
+		assertThat(property(sources, "soundconnect.spotify.o-embed-base-url"))
+				.isEqualTo("https://open.spotify.com");
+		assertThat(property(sources, "soundconnect.spotify.http.o-embed-max-connections"))
+				.isEqualTo("${SPOTIFY_OEMBED_MAX_CONNECTIONS:32}");
+		assertThat(property(sources, "soundconnect.spotify.http.o-embed-pending-acquire-max-count"))
+				.isEqualTo("${SPOTIFY_OEMBED_PENDING_ACQUIRE_MAX_COUNT:64}");
+		assertThat(property(sources, "soundconnect.spotify.http.o-embed-pending-acquire-timeout-ms"))
+				.isEqualTo("${SPOTIFY_OEMBED_PENDING_ACQUIRE_TIMEOUT_MS:750}");
+		assertThat(property(sources, "soundconnect.spotify.http.o-embed-max-response-bytes"))
+				.isEqualTo("${SPOTIFY_OEMBED_MAX_RESPONSE_BYTES:65536}");
 	}
 
 	@Test
@@ -47,6 +57,8 @@ class ProductionConfigurationTest {
 		assertThat(property(sources, "management.endpoint.health.show-details")).isEqualTo("never");
 		assertThat(property(sources, "management.endpoint.health.probes.enabled")).isEqualTo(true);
 		assertThat(property(sources, "app.websocket.broker-relay.enabled")).isEqualTo(true);
+		assertThat(property(sources, "app.listener-profile.visibility-rate-limit.enabled")).isEqualTo(true);
+		assertThat(property(sources, "app.listener-profile.playlist-rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "app.table-group.rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "management.endpoint.health.group.readiness.include"))
 				.isEqualTo("readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth");

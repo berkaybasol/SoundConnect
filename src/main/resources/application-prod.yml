@@ -47,6 +47,8 @@ app:
   listener-profile:
     visibility-rate-limit:
       enabled: true
+    playlist-rate-limit:
+      enabled: true
   table-group:
     rate-limit:
       enabled: true

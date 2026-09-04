@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVi
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -28,6 +29,7 @@ public record ListenerProfileOwnerResponseDto(
 		boolean profileContentVisible,
 		boolean profileContentEditable,
 		boolean avatarEditable,
-		boolean canReceiveFollowers
+		boolean canReceiveFollowers,
+		List<ListenerPlaylistResponseDto> playlists
 ) {
 }

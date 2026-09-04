@@ -35,6 +35,16 @@ public class ListenerProfile extends BaseProfile {
 	@Column(nullable = false)
 	private long version;
 
+	/**
+	 * Scalar mutation marker for the child playlist aggregate. JPA collection
+	 * changes do not portably advance an inverse owner's optimistic version, so
+	 * every effective playlist replacement increments this value and therefore
+	 * the listener profile version as part of the same transaction.
+	 */
+	@Builder.Default
+	@Column(name = "playlist_revision", nullable = false)
+	private long playlistRevision = 0;
+
 	@PrePersist
 	void applyVisibilityDefault() {
 		if (visibilityMode == null) {
@@ -52,5 +62,9 @@ public class ListenerProfile extends BaseProfile {
 	 */
 	public boolean isPubliclyRestricted() {
 		return !visibilityChoiceCompleted || isGhost();
+	}
+
+	public void recordPlaylistMutation() {
+		playlistRevision = Math.incrementExact(playlistRevision);
 	}
 }

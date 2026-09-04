@@ -48,6 +48,9 @@ public enum ErrorType {
 	LISTENER_PROFILE_VISIBILITY_RATE_LIMITED(1306, "Too many listener visibility requests", HttpStatus.TOO_MANY_REQUESTS, "Görünürlük ayarını çok sık değiştirmeye çalıştınız. Lütfen kısa süre sonra tekrar deneyin."),
 	LISTENER_PROFILE_VISIBILITY_RATE_LIMIT_UNAVAILABLE(1307, "Listener visibility protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Görünürlük ayarı geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."),
 	LISTENER_PROFILE_CHOICE_REQUIRED(1308, "Listener profile visibility choice is required", HttpStatus.PRECONDITION_REQUIRED, "Devam etmek için profil görünürlüğü seçimini tamamlamalısınız."),
+	LISTENER_PLAYLIST_DUPLICATE(1309, "Duplicate Spotify playlist", HttpStatus.BAD_REQUEST, "Aynı Spotify çalma listesi bir profilde yalnızca bir kez paylaşılabilir."),
+	LISTENER_PLAYLIST_RATE_LIMITED(1310, "Too many listener playlist update requests", HttpStatus.TOO_MANY_REQUESTS, "Çalma listelerini çok sık güncellemeye çalıştınız. Lütfen kısa süre sonra tekrar deneyin."),
+	LISTENER_PLAYLIST_RATE_LIMIT_UNAVAILABLE(1311, "Listener playlist protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Çalma listesi güncelleme işlemi geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
@@ -274,6 +277,8 @@ public enum ErrorType {
 	SPOTIFY_TIMEOUT(9655, "Spotify timeout", HttpStatus.GATEWAY_TIMEOUT, "Spotify yanıt vermedi. Lütfen tekrar dene."),
 	SPOTIFY_UNEXPECTED_ERROR(9656, "Spotify unexpected error", HttpStatus.INTERNAL_SERVER_ERROR, "Spotify işlemi sırasında beklenmeyen bir hata oluştu."),
 	SPOTIFY_FORBIDDEN(9657, "Spotify forbidden", HttpStatus.FORBIDDEN, "Spotify bu isteğe izin vermedi."),
+	SPOTIFY_PLAYLIST_URL_INVALID(9658, "Spotify playlist URL is invalid", HttpStatus.BAD_REQUEST, "Geçerli bir Spotify çalma listesi bağlantısı girin."),
+	SPOTIFY_PLAYLIST_METADATA_INVALID(9659, "Spotify playlist metadata is incomplete", HttpStatus.BAD_GATEWAY, "Spotify çalma listesi kapağı veya adı alınamadı. Lütfen tekrar deneyin."),
 	
 	// ENGAGEMENT (9700 - 9749)
 	ENGAGEMENT_NOT_FOUND(9700,"target not found", HttpStatus.NOT_FOUND, "target bulunamadi"),

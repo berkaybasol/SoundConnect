@@ -26,6 +26,8 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				"2026-09-02-tablegroup-create-contract-strict.sql";
 		String listenerGhostProfile =
 				"2026-09-03-listener-ghost-profile.sql";
+		String listenerSpotifyPlaylists =
+				"2026-09-04-listener-spotify-playlists.sql";
 
 		assertThat(devScript).contains(
 				hardening,
@@ -37,7 +39,8 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				chatIdempotency,
 				notificationTypeSpelling,
 				strictCreateContract,
-				listenerGhostProfile
+				listenerGhostProfile,
+				listenerSpotifyPlaylists
 		);
 		assertThat(devScript.indexOf(hardening)).isLessThan(devScript.indexOf(game));
 		assertThat(devScript.indexOf(game)).isLessThan(devScript.indexOf(globalFeed));
@@ -51,6 +54,8 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				.isLessThan(devScript.indexOf(strictCreateContract));
 		assertThat(devScript.indexOf(strictCreateContract))
 				.isLessThan(devScript.indexOf(listenerGhostProfile));
+		assertThat(devScript.indexOf(listenerGhostProfile))
+				.isLessThan(devScript.indexOf(listenerSpotifyPlaylists));
 		assertThat(devScript).contains(
 				"Local Studio, Collab, TableGroup, and listener-profile schemas are ready.");
 	}

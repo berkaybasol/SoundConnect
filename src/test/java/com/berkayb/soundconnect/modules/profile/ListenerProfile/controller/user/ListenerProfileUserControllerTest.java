@@ -1,13 +1,17 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.controller.user;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.abuse.ListenerPlaylistRateLimitGuard;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.abuse.ListenerVisibilityRateLimitGuard;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerAvatarUpdateRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerVisibilityUpdateRequestDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerPlaylistsUpdateRequestDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerPlaylistResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileOwnerResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerPlaylistService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
@@ -45,6 +49,12 @@ class ListenerProfileUserControllerTest {
 	
 	@MockitoBean
 	ListenerProfileService listenerProfileService;
+
+	@MockitoBean
+	ListenerPlaylistService listenerPlaylistService;
+
+	@MockitoBean
+	ListenerPlaylistRateLimitGuard playlistRateLimitGuard;
 
 	@MockitoBean
 	ListenerVisibilityRateLimitGuard visibilityRateLimitGuard;
@@ -177,7 +187,9 @@ class ListenerProfileUserControllerTest {
 		       .andExpect(jsonPath("$.data.canReceiveFollowers", is(false)))
 		       .andExpect(jsonPath("$.data.bio").doesNotExist())
 		       .andExpect(jsonPath("$.data.followerCount").doesNotExist())
-		       .andExpect(jsonPath("$.data.followingCount").doesNotExist());
+		       .andExpect(jsonPath("$.data.followingCount").doesNotExist())
+		       .andExpect(jsonPath("$.data.playlists").isArray())
+		       .andExpect(jsonPath("$.data.playlists").isEmpty());
 
 		Mockito.verify(visibilityRateLimitGuard).check(userId);
 		Mockito.verify(listenerProfileService).updateVisibility(userId, body);
@@ -200,6 +212,69 @@ class ListenerProfileUserControllerTest {
 		Mockito.verifyNoInteractions(listenerProfileService);
 	}
 
+	@Test
+	void replaceMyPlaylistsUsesTheAuthenticatedListenerAndReturnsTheFullOwnerProfile() throws Exception {
+		String playlistId = "37i9dQZF1DXcBWIGoYBM5M";
+		String playlistUrl = "https://open.spotify.com/playlist/" + playlistId;
+		var body = new ListenerPlaylistsUpdateRequestDto(java.util.List.of(playlistUrl), 4L);
+		var playlist = new ListenerPlaylistResponseDto(
+				UUID.randomUUID(), playlistId, "Today's Top Hits",
+				"https://i.scdn.co/image/cover", playlistUrl, 0);
+		var response = new ListenerProfileOwnerResponseDto(
+				UUID.randomUUID(), userId, "testuser", ListenerVisibilityMode.STANDARD,
+				true, 5L, null, "bio", null, null, 0L, 0L,
+				true, true, true, true, java.util.List.of(playlist));
+		when(listenerPlaylistService.replacePlaylists(userId, body)).thenReturn(response);
+
+		mockMvc.perform(put("/api/v1/user/listener-profiles/me/playlists")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(om.writeValueAsString(body)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.version", is(5)))
+				.andExpect(jsonPath("$.data.playlists[0].spotifyPlaylistId").value(playlistId))
+				.andExpect(jsonPath("$.data.playlists[0].title").value("Today's Top Hits"))
+				.andExpect(jsonPath("$.data.playlists[0].position", is(0)));
+
+		var inOrder = Mockito.inOrder(playlistRateLimitGuard, listenerPlaylistService);
+		inOrder.verify(playlistRateLimitGuard).check(userId);
+		inOrder.verify(listenerPlaylistService).replacePlaylists(userId, body);
+	}
+
+	@Test
+	void replaceMyPlaylistsIsRateLimitedBeforeSpotifyOrPersistenceOrchestration() throws Exception {
+		var body = new ListenerPlaylistsUpdateRequestDto(java.util.List.of(
+				"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"), 4L);
+		Mockito.doThrow(new RateLimitedException(
+				ErrorType.LISTENER_PLAYLIST_RATE_LIMITED, 37L))
+				.when(playlistRateLimitGuard).check(userId);
+
+		mockMvc.perform(put("/api/v1/user/listener-profiles/me/playlists")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(om.writeValueAsString(body)))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().string("Retry-After", "37"))
+				.andExpect(jsonPath("$.code", is(1310)))
+				.andExpect(jsonPath("$.details[0]").value(
+						"Çalma listelerini çok sık güncellemeye çalıştınız. Lütfen kısa süre sonra tekrar deneyin."));
+
+		Mockito.verifyNoInteractions(listenerPlaylistService);
+	}
+
+	@Test
+	void replaceMyPlaylistsRejectsMoreThanFourUrlsAtTheWebBoundary() throws Exception {
+		mockMvc.perform(put("/api/v1/user/listener-profiles/me/playlists")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "spotifyUrls":["a","b","c","d","e"],
+								  "expectedVersion":0
+								}
+								"""))
+				.andExpect(status().isBadRequest());
+
+		Mockito.verifyNoInteractions(playlistRateLimitGuard, listenerPlaylistService);
+	}
+
 	private ListenerProfileOwnerResponseDto ownerResponse(
 			String bio,
 			UUID profilePictureMediaId,
@@ -210,6 +285,6 @@ class ListenerProfileUserControllerTest {
 				UUID.randomUUID(), userId, "testuser", mode, true, 4L, null, bio,
 				profilePictureMediaId, "https://cdn.example.com/profile.jpg",
 				ghost ? null : 0L, ghost ? null : 0L,
-				!ghost, !ghost, true, !ghost);
+				!ghost, !ghost, true, !ghost, java.util.List.of());
 	}
 }

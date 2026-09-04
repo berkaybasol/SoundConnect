@@ -48,7 +48,8 @@ class ListenerProfilePublicControllerTest {
 				null,
 				true,
 				false,
-				true
+				true,
+				java.util.List.of()
 		);
 		when(listenerProfileService.getProfileByProfileId(profileId)).thenReturn(response);
 
@@ -63,6 +64,8 @@ class ListenerProfilePublicControllerTest {
 		       .andExpect(jsonPath("$.data.canMessage", is(true)))
 		       .andExpect(jsonPath("$.data.bio").doesNotExist())
 		       .andExpect(jsonPath("$.data.followerCount").doesNotExist())
-		       .andExpect(jsonPath("$.data.followingCount").doesNotExist());
+		       .andExpect(jsonPath("$.data.followingCount").doesNotExist())
+		       .andExpect(jsonPath("$.data.playlists").isArray())
+		       .andExpect(jsonPath("$.data.playlists").isEmpty());
 	}
 }

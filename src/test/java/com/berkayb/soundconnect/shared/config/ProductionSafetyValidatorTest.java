@@ -162,6 +162,27 @@ class ProductionSafetyValidatorTest {
 	}
 
 	@Test
+	void rejectsDisabledListenerPlaylistAbuseProtection() {
+		MockEnvironment environment = safeEnvironment()
+				.withProperty("app.listener-profile.playlist-rate-limit.enabled", "false");
+
+		assertThatThrownBy(new ProductionSafetyValidator(environment)::validate)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("app.listener-profile.playlist-rate-limit.enabled must be true");
+	}
+
+	@Test
+	void rejectsAnOverriddenSpotifyOEmbedOrigin() {
+		MockEnvironment environment = safeEnvironment()
+				.withProperty("soundconnect.spotify.o-embed-base-url", "https://attacker.test");
+
+		assertThatThrownBy(new ProductionSafetyValidator(environment)::validate)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining(
+						"soundconnect.spotify.o-embed-base-url must be https://open.spotify.com");
+	}
+
+	@Test
 	void rejectsUnboundedRedisTimeouts() {
 		MockEnvironment environment = safeEnvironment()
 				.withProperty("spring.data.redis.connect-timeout", "30s");
@@ -180,6 +201,8 @@ class ProductionSafetyValidatorTest {
 				.withProperty("spring.data.redis.timeout", "2s")
 				.withProperty("app.security.auth-rate-limit.enabled", "true")
 				.withProperty("app.listener-profile.visibility-rate-limit.enabled", "true")
+				.withProperty("app.listener-profile.playlist-rate-limit.enabled", "true")
+				.withProperty("soundconnect.spotify.o-embed-base-url", "https://open.spotify.com")
 				.withProperty("app.table-group.rate-limit.enabled", "true")
 				.withProperty("app.websocket.broker-relay.enabled", "true")
 				.withProperty("app.data.init.enabled", "false")

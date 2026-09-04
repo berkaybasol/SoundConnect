@@ -7,12 +7,15 @@ import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerSpotifyPlaylist;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyPlaylistMetadataDto;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -45,7 +48,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ListenerProfileRepositoryTest {
 	
 	@Autowired ListenerProfileRepository listenerRepo;
+	@Autowired ListenerSpotifyPlaylistRepository playlistRepo;
 	@Autowired UserRepository userRepo;
+	@Autowired EntityManager entityManager;
 	@Autowired RoleRepository roleRepo;
 	
 	// location gerekli alanları seed’lemek için
@@ -62,6 +67,7 @@ class ListenerProfileRepositoryTest {
 	@BeforeEach
 	void setup() {
 		// child -> parent temizliği
+		playlistRepo.deleteAll();
 		listenerRepo.deleteAll();
 		userRepo.deleteAll();
 		roleRepo.deleteAll();
@@ -277,5 +283,54 @@ class ListenerProfileRepositoryTest {
 		assertThat(listenerRepo.searchByUsernameOrBio("newname", "newname", PageRequest.of(0, 10)))
 				.extracting(ListenerProfile::getId)
 				.containsExactly(profile.getId());
+	}
+
+	@Test
+	void playlistChildRoundTripsInOrderAndScalarMarkerAdvancesProfileVersion() {
+		User user = userRepo.save(User.builder()
+				.username(randomUsername("playlist_"))
+				.email("playlist_" + UUID.randomUUID() + "@t.local")
+				.password("secret")
+				.provider(AuthProvider.LOCAL)
+				.emailVerified(true)
+				.city(city)
+				.build());
+		ListenerProfile profile = listenerRepo.saveAndFlush(ListenerProfile.builder()
+				.user(user)
+				.visibilityMode(ListenerVisibilityMode.STANDARD)
+				.visibilityChoiceCompleted(true)
+				.build());
+		long originalVersion = profile.getVersion();
+		var first = playlist(profile, "37i9dQZF1DXcBWIGoYBM5M", "First", 0);
+		var second = playlist(profile, "0vvXsWCC9xrXsKd4FyS8kM", "Second", 1);
+
+		playlistRepo.saveAll(List.of(first, second));
+		profile.recordPlaylistMutation();
+		listenerRepo.saveAndFlush(profile);
+		entityManager.clear();
+
+		ListenerProfile reloaded = listenerRepo.findById(profile.getId()).orElseThrow();
+		assertThat(reloaded.getVersion()).isEqualTo(originalVersion + 1);
+		assertThat(reloaded.getPlaylistRevision()).isEqualTo(1L);
+		assertThat(playlistRepo.findAllByListenerProfileIdOrderByPositionAsc(profile.getId()))
+				.extracting(ListenerSpotifyPlaylist::getSpotifyPlaylistId)
+				.containsExactly("37i9dQZF1DXcBWIGoYBM5M", "0vvXsWCC9xrXsKd4FyS8kM");
+	}
+
+	private ListenerSpotifyPlaylist playlist(
+			ListenerProfile profile,
+			String spotifyId,
+			String title,
+			int position
+	) {
+		return ListenerSpotifyPlaylist.create(
+				profile,
+				new SpotifyPlaylistMetadataDto(
+						spotifyId,
+						title,
+						"https://i.scdn.co/image/" + spotifyId,
+						"https://open.spotify.com/playlist/" + spotifyId),
+				position
+		);
 	}
 }

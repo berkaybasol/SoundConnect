@@ -2,36 +2,125 @@ package com.berkayb.soundconnect.modules.spotify.client;
 
 import com.berkayb.soundconnect.modules.spotify.config.SpotifyProperties;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyPlaylistMetadataDto;
 import com.berkayb.soundconnect.modules.spotify.service.SpotifyTokenService;
+import com.berkayb.soundconnect.modules.spotify.support.SpotifyPlaylistMetadataPolicy;
+import com.berkayb.soundconnect.modules.spotify.support.SpotifyPlaylistUrlParser;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.codec.CodecException;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.net.SocketTimeoutException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Component
 public class SpotifyApiClientImpl implements SpotifyApiClient {
+	private static final int MAX_PLAYLIST_METADATA_BATCH_SIZE = 4;
 	
 	private final SpotifyProperties props;
 	private final SpotifyTokenService tokenService;
 	private final WebClient spotifyApiWebClient;
+	private final WebClient spotifyOEmbedWebClient;
 	
 	public SpotifyApiClientImpl(
 			SpotifyProperties props,
 			SpotifyTokenService tokenService,
-			@Qualifier("spotifyApiWebClient") WebClient spotifyApiWebClient
+			@Qualifier("spotifyApiWebClient") WebClient spotifyApiWebClient,
+			@Qualifier("spotifyOEmbedWebClient") WebClient spotifyOEmbedWebClient
 	) {
 		this.props = props;
 		this.tokenService = tokenService;
 		this.spotifyApiWebClient = spotifyApiWebClient;
+		this.spotifyOEmbedWebClient = spotifyOEmbedWebClient;
+	}
+
+	@Override
+	public SpotifyPlaylistMetadataDto getPlaylistMetadata(String spotifyPlaylistId) {
+		SpotifyPlaylistUrlParser.canonicalUrl(spotifyPlaylistId);
+		return getPlaylistMetadataBatch(List.of(spotifyPlaylistId)).getFirst();
+	}
+
+	@Override
+	public List<SpotifyPlaylistMetadataDto> getPlaylistMetadataBatch(
+			List<String> spotifyPlaylistIds
+	) {
+		if (spotifyPlaylistIds == null
+				|| spotifyPlaylistIds.size() > MAX_PLAYLIST_METADATA_BATCH_SIZE) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+		if (spotifyPlaylistIds.isEmpty()) {
+			return List.of();
+		}
+		List<String> validatedIds = spotifyPlaylistIds.stream()
+				.peek(SpotifyPlaylistUrlParser::canonicalUrl)
+				.toList();
+		if (validatedIds.stream().distinct().count() != validatedIds.size()) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+
+		List<SpotifyPlaylistMetadataDto> snapshots = Flux.fromIterable(validatedIds)
+				.flatMapSequential(
+						this::requestPlaylistMetadata,
+						MAX_PLAYLIST_METADATA_BATCH_SIZE,
+						1
+				)
+				.collectList()
+				.block();
+		if (snapshots == null || snapshots.size() != validatedIds.size()) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_PLAYLIST_METADATA_INVALID);
+		}
+		return List.copyOf(snapshots);
+	}
+
+	private Mono<SpotifyPlaylistMetadataDto> requestPlaylistMetadata(String spotifyPlaylistId) {
+		String canonicalUrl = SpotifyPlaylistUrlParser.canonicalUrl(spotifyPlaylistId);
+		return spotifyOEmbedWebClient.get()
+				.uri(uriBuilder -> uriBuilder
+						.path("/oembed")
+						.queryParam("url", canonicalUrl)
+						.build())
+				.retrieve()
+				.bodyToMono(SpotifyOEmbedRawResponse.class)
+				.switchIfEmpty(Mono.error(
+						new SoundConnectException(ErrorType.SPOTIFY_PLAYLIST_METADATA_INVALID)))
+				.map(raw -> SpotifyPlaylistMetadataPolicy.validateAndNormalize(
+						new SpotifyPlaylistMetadataDto(
+								spotifyPlaylistId,
+								raw.title(),
+								raw.thumbnail_url(),
+								canonicalUrl
+						)))
+				.onErrorMap(
+						this::hasInvalidPayloadCause,
+						exception -> invalidSpotifyOEmbedPayload(spotifyPlaylistId, exception)
+				)
+				.onErrorMap(WebClientResponseException.class,
+						exception -> spotifyOEmbedHttpError(spotifyPlaylistId, exception))
+				.onErrorMap(WebClientRequestException.class,
+						exception -> spotifyOEmbedTransportError(spotifyPlaylistId, exception))
+				.onErrorMap(
+						exception -> !(exception instanceof SoundConnectException)
+								&& hasTimeoutCause(exception),
+						exception -> spotifyOEmbedTimeout(spotifyPlaylistId)
+				)
+				.onErrorMap(
+						exception -> !(exception instanceof SoundConnectException),
+						exception -> unexpectedSpotifyOEmbedError(spotifyPlaylistId, exception)
+				);
 	}
 	
 	@Override
@@ -59,8 +148,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 			          .toList();
 			
 		} catch (WebClientResponseException ex) {
-			handleSpotifyHttpError(ex);
-			throw new IllegalStateException("Unreachable code after Spotify HTTP error handling");
+			throw spotifyHttpError(ex);
 		} catch (Exception ex) {
 			log.error("[Spotify] Unexpected error while fetching tracks by ids. ids={}", ids, ex);
 			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
@@ -96,8 +184,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 			                       .toList();
 			
 		} catch (WebClientResponseException ex) {
-			handleSpotifyHttpError(ex);
-			throw new IllegalStateException("Unreachable code after Spotify HTTP error handling");
+			throw spotifyHttpError(ex);
 		} catch (Exception ex) {
 			log.error("[Spotify] Unexpected error while searching tracks. query={}, limit={}", query, limit, ex);
 			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
@@ -114,8 +201,7 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 			return fetchTrackById(trackId, token);
 			
 		}  catch (WebClientResponseException ex) {
-			handleSpotifyHttpError(ex);
-			throw new IllegalStateException("Unreachable code after Spotify HTTP error handling");
+			throw spotifyHttpError(ex);
 		} catch (Exception ex) {
 			log.error("[Spotify] Unexpected error while fetching track detail. trackId={}", trackId, ex);
 			throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
@@ -167,7 +253,9 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	
 	private String safeBody(WebClientResponseException ex) {
 		String b = ex.getResponseBodyAsString();
-		return (b == null || b.isBlank()) ? "-" : b;
+		if (b == null || b.isBlank()) return "-";
+		String singleLine = b.replace('\r', ' ').replace('\n', ' ');
+		return singleLine.length() <= 512 ? singleLine : singleLine.substring(0, 512);
 	}
 	
 	
@@ -192,8 +280,38 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 	private record SpotifyArtistRaw(String id, String name) {}
 	
 	private record SpotifyExternalUrls(String spotify) {}
+
+	private record SpotifyOEmbedRawResponse(
+			String title,
+			String thumbnail_url,
+			Integer thumbnail_width,
+			Integer thumbnail_height
+	) { }
+
+	private boolean hasTimeoutCause(Throwable throwable) {
+		Throwable current = throwable;
+		while (current != null) {
+			if (current instanceof TimeoutException || current instanceof SocketTimeoutException
+					|| current.getClass().getSimpleName().contains("Timeout")) {
+				return true;
+			}
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	private boolean hasInvalidPayloadCause(Throwable throwable) {
+		Throwable current = throwable;
+		while (current != null) {
+			if (current instanceof CodecException || current instanceof DataBufferLimitException) {
+				return true;
+			}
+			current = current.getCause();
+		}
+		return false;
+	}
 	
-	private void handleSpotifyHttpError(WebClientResponseException ex) {
+	private SoundConnectException spotifyHttpError(WebClientResponseException ex) {
 		int status = ex.getStatusCode().value();
 		
 		log.error("[Spotify] API error status={}, retryAfter={}, body={}",
@@ -202,30 +320,87 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 		          safeBody(ex));
 		
 		if (status == 401) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_AUTH_FAILED);
+			return new SoundConnectException(ErrorType.SPOTIFY_AUTH_FAILED);
 		}
 		
 		if (status == 403) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_FORBIDDEN);
+			return new SoundConnectException(ErrorType.SPOTIFY_FORBIDDEN);
 		}
 		
 		if (status == 404) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_NOT_FOUND);
+			return new SoundConnectException(ErrorType.SPOTIFY_NOT_FOUND);
 		}
 		
 		if (status == 429) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_RATE_LIMITED);
+			return new RateLimitedException(
+					ErrorType.SPOTIFY_RATE_LIMITED,
+					parseRetryAfterSeconds(ex.getHeaders().getFirst("Retry-After"))
+			);
 		}
 		
 		if (status >= 400 && status < 500) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+			return new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
 		}
 		
 		if (status >= 500) {
-			throw new SoundConnectException(ErrorType.SPOTIFY_UPSTREAM_ERROR);
+			return new SoundConnectException(ErrorType.SPOTIFY_UPSTREAM_ERROR);
 		}
 		
-		throw new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
+		return new SoundConnectException(ErrorType.SPOTIFY_UNEXPECTED_ERROR);
+	}
+
+	private SoundConnectException spotifyOEmbedHttpError(
+			String spotifyPlaylistId,
+			WebClientResponseException exception
+	) {
+		if (exception.getStatusCode().is2xxSuccessful()) {
+			return invalidSpotifyOEmbedPayload(spotifyPlaylistId, exception);
+		}
+		return spotifyHttpError(exception);
+	}
+
+	private SoundConnectException spotifyOEmbedTransportError(
+			String spotifyPlaylistId,
+			WebClientRequestException exception
+	) {
+		if (hasTimeoutCause(exception)) {
+			log.warn("[Spotify] oEmbed request timed out. playlistId={}", spotifyPlaylistId);
+			return new SoundConnectException(ErrorType.SPOTIFY_TIMEOUT);
+		}
+		log.error("[Spotify] oEmbed transport error. playlistId={}", spotifyPlaylistId, exception);
+		return new SoundConnectException(ErrorType.SPOTIFY_UPSTREAM_ERROR);
+	}
+
+	private SoundConnectException spotifyOEmbedTimeout(String spotifyPlaylistId) {
+		log.warn("[Spotify] oEmbed request timed out. playlistId={}", spotifyPlaylistId);
+		return new SoundConnectException(ErrorType.SPOTIFY_TIMEOUT);
+	}
+
+	private SoundConnectException unexpectedSpotifyOEmbedError(
+			String spotifyPlaylistId,
+			Throwable exception
+	) {
+		log.error("[Spotify] Unexpected oEmbed error. playlistId={}", spotifyPlaylistId, exception);
+		return new SoundConnectException(ErrorType.SPOTIFY_UPSTREAM_ERROR);
+	}
+
+	private SoundConnectException invalidSpotifyOEmbedPayload(
+			String spotifyPlaylistId,
+			Throwable exception
+	) {
+		log.warn("[Spotify] Invalid oEmbed payload. playlistId={}, cause={}",
+				spotifyPlaylistId,
+				exception.getClass().getSimpleName());
+		return new SoundConnectException(ErrorType.SPOTIFY_PLAYLIST_METADATA_INVALID);
+	}
+
+	private long parseRetryAfterSeconds(String value) {
+		if (value == null || value.isBlank()) return 5L;
+		try {
+			return Math.max(1L, Math.min(Long.parseLong(value.strip()), 3600L));
+		} catch (NumberFormatException exception) {
+			return 5L;
+		}
 	}
 	
 	private record SpotifyTracksItemsWrapper(List<SpotifyTrackRaw> items) { }

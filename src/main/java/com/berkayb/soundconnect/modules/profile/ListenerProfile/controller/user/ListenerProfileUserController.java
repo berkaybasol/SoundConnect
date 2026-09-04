@@ -1,11 +1,14 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.controller.user;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.abuse.ListenerPlaylistRateLimitGuard;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.abuse.ListenerVisibilityRateLimitGuard;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerAvatarUpdateRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerVisibilityUpdateRequestDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.request.ListenerPlaylistsUpdateRequestDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileOwnerResponseDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerPlaylistService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.service.ListenerProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,6 +47,8 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ListenerProfile
 		"profile")
 public class ListenerProfileUserController {
 	private final ListenerProfileService listenerProfileService;
+	private final ListenerPlaylistService listenerPlaylistService;
+	private final ListenerPlaylistRateLimitGuard playlistRateLimitGuard;
 	private final ListenerVisibilityRateLimitGuard visibilityRateLimitGuard;
 	
 	// getir
@@ -98,6 +103,25 @@ public class ListenerProfileUserController {
 		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
 		                                     .success(true).code(200).message("Profil görünürlüğü güncellendi")
 		                                     .data(response).build());
+	}
+
+	@PutMapping(PLAYLISTS)
+	public ResponseEntity<BaseResponse<ListenerProfileOwnerResponseDto>> replaceMyPlaylists(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody ListenerPlaylistsUpdateRequestDto dto
+	) {
+		UUID userId = userDetails.getUser().getId();
+		playlistRateLimitGuard.check(userId);
+		ListenerProfileOwnerResponseDto response = listenerPlaylistService.replacePlaylists(
+				userId,
+				dto
+		);
+		return ResponseEntity.ok(BaseResponse.<ListenerProfileOwnerResponseDto>builder()
+				.success(true)
+				.code(200)
+				.message("Çalma listeleri güncellendi")
+				.data(response)
+				.build());
 	}
 	
 }

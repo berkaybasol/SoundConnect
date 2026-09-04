@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.spotify.service;
 import com.berkayb.soundconnect.modules.spotify.client.SpotifyApiClient;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackSearchResponseDto;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyPlaylistMetadataDto;
+import com.berkayb.soundconnect.modules.spotify.support.SpotifyPlaylistUrlParser;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -50,5 +52,31 @@ public class SpotifyServiceImpl implements SpotifyService {
 			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
 		}
 		return spotifyApiClient.getTracksByIds(trackIds.stream().map(String::strip).distinct().toList());
+	}
+
+	@Override
+	public SpotifyPlaylistMetadataDto getPlaylistMetadata(String spotifyPlaylistUrl) {
+		var reference = SpotifyPlaylistUrlParser.parse(spotifyPlaylistUrl);
+		return spotifyApiClient.getPlaylistMetadata(reference.playlistId());
+	}
+
+	@Override
+	public List<SpotifyPlaylistMetadataDto> getPlaylistMetadataBatch(
+			List<String> spotifyPlaylistUrls
+	) {
+		if (spotifyPlaylistUrls == null || spotifyPlaylistUrls.size() > 4) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+		if (spotifyPlaylistUrls.isEmpty()) {
+			return List.of();
+		}
+		List<String> playlistIds = spotifyPlaylistUrls.stream()
+				.map(SpotifyPlaylistUrlParser::parse)
+				.map(SpotifyPlaylistUrlParser.SpotifyPlaylistReference::playlistId)
+				.toList();
+		if (playlistIds.stream().distinct().count() != playlistIds.size()) {
+			throw new SoundConnectException(ErrorType.SPOTIFY_BAD_REQUEST);
+		}
+		return spotifyApiClient.getPlaylistMetadataBatch(playlistIds);
 	}
 }

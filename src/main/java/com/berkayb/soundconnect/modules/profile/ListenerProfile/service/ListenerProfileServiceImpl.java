@@ -12,10 +12,13 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.Lis
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfilePublicResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerProfileSearchItemDto;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.dto.response.ListenerPlaylistResponseDto;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerSpotifyPlaylist;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.mapper.ListenerProfileMapper;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerSpotifyPlaylistRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileProvisioner;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityTimeProvider;
 import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
@@ -55,6 +58,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	private final ListenerVisibilityTimeProvider visibilityTimeProvider;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	private final ListenerProfileProvisioner listenerProfileProvisioner;
+	private final ListenerSpotifyPlaylistRepository listenerSpotifyPlaylistRepository;
 
 	@Override
 	@Transactional
@@ -320,7 +324,8 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 				!restricted,
 				!restricted,
 				true,
-				!restricted
+				!restricted,
+				toPlaylistResponses(profile, restricted)
 		);
 	}
 
@@ -338,7 +343,8 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 				ghost ? null : followService.countFollowing(profile.getUser()),
 				ghost,
 				!ghost,
-				true
+				true,
+				toPlaylistResponses(profile, ghost)
 		);
 	}
 
@@ -399,5 +405,28 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 			log.warn("Listener profile picture resolve failed. mediaAssetId={}", mediaAssetId);
 			return null;
 		}
+	}
+
+	private List<ListenerPlaylistResponseDto> toPlaylistResponses(
+			ListenerProfile profile,
+			boolean restricted
+	) {
+		if (restricted) return List.of();
+		return listenerSpotifyPlaylistRepository
+				.findAllByListenerProfileIdOrderByPositionAsc(profile.getId())
+				.stream()
+				.map(this::toPlaylistResponse)
+				.toList();
+	}
+
+	private ListenerPlaylistResponseDto toPlaylistResponse(ListenerSpotifyPlaylist playlist) {
+		return new ListenerPlaylistResponseDto(
+				playlist.getId(),
+				playlist.getSpotifyPlaylistId(),
+				playlist.getTitle(),
+				playlist.getCoverImageUrl(),
+				playlist.getSpotifyUrl(),
+				playlist.getPosition()
+		);
 	}
 }

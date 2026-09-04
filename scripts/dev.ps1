@@ -28,7 +28,8 @@ $LocalSchemaMigrations = @(
     @{ Name = "TableGroup chat idempotency"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-chat-idempotency.sql" },
     @{ Name = "TableGroup notification type spelling"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-notification-type-spelling.sql" },
     @{ Name = "TableGroup strict create contract"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-02-tablegroup-create-contract-strict.sql" },
-    @{ Name = "Listener ghost profile"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-03-listener-ghost-profile.sql" }
+    @{ Name = "Listener ghost profile"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-03-listener-ghost-profile.sql" },
+    @{ Name = "Listener Spotify playlists"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-04-listener-spotify-playlists.sql" }
 )
 
 function Assert-Command([string]$Name) {

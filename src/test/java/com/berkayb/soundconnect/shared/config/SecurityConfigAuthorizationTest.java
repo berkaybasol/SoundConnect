@@ -122,7 +122,7 @@ class SecurityConfigAuthorizationTest {
 		when(listenerProfileService.getProfileByProfileId(profileId)).thenReturn(
 				new ListenerProfilePublicResponseDto(
 						profileId, userId, "listener", ListenerVisibilityMode.GHOST,
-						null, null, null, null, null, true, false, true));
+						null, null, null, null, null, true, false, true, java.util.List.of()));
 
 		mockMvc.perform(get("/api/v1/public/listener-profiles/{profileId}", profileId))
 				.andExpect(status().isOk());

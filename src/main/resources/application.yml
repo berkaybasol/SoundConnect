@@ -135,6 +135,11 @@ app:
       key-prefix: ${LISTENER_VISIBILITY_RATE_LIMIT_KEY_PREFIX:soundconnect:listener-profile:visibility-rate-limit}
       burst-capacity: ${LISTENER_VISIBILITY_RATE_LIMIT_BURST_CAPACITY:3}
       refill-period: ${LISTENER_VISIBILITY_RATE_LIMIT_REFILL_PERIOD:10s}
+    playlist-rate-limit:
+      enabled: ${LISTENER_PLAYLIST_RATE_LIMIT_ENABLED:true}
+      key-prefix: ${LISTENER_PLAYLIST_RATE_LIMIT_KEY_PREFIX:soundconnect:listener-profile:playlist-rate-limit}
+      limit: ${LISTENER_PLAYLIST_RATE_LIMIT:10}
+      window: ${LISTENER_PLAYLIST_RATE_LIMIT_WINDOW:1m}
   table-group:
     chat:
       unread-ttl: ${TABLE_GROUP_CHAT_UNREAD_TTL:PT720H}
@@ -529,6 +534,7 @@ soundconnect:
     client-secret: ${SPOTIFY_CLIENT_SECRET}
     token-url: https://accounts.spotify.com/api/token
     api-base-url: https://api.spotify.com/v1
+    o-embed-base-url: https://open.spotify.com
     market: TR
 
     # prod için kritik:
@@ -537,3 +543,7 @@ soundconnect:
       response-timeout-ms: 3500
       read-timeout-ms: 3500
       write-timeout-ms: 3500
+      o-embed-max-connections: ${SPOTIFY_OEMBED_MAX_CONNECTIONS:32}
+      o-embed-pending-acquire-max-count: ${SPOTIFY_OEMBED_PENDING_ACQUIRE_MAX_COUNT:64}
+      o-embed-pending-acquire-timeout-ms: ${SPOTIFY_OEMBED_PENDING_ACQUIRE_TIMEOUT_MS:750}
+      o-embed-max-response-bytes: ${SPOTIFY_OEMBED_MAX_RESPONSE_BYTES:65536}

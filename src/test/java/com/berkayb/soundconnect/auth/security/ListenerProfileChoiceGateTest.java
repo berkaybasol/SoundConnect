@@ -37,6 +37,18 @@ class ListenerProfileChoiceGateTest {
 	}
 
 	@Test
+	void pendingListenerCannotWritePlaylistsBeforeChoosingVisibility() {
+		User listener = userWithRole("ROLE_LISTENER");
+		when(choiceStatusReader.requiresChoice(listener)).thenReturn(true);
+		ListenerProfileChoiceGate gate = new ListenerProfileChoiceGate(choiceStatusReader);
+
+		assertThat(gate.shouldReject(
+				new MockHttpServletRequest("PUT", "/api/v1/user/listener-profiles/me/playlists"),
+				authentication(listener)
+		)).isTrue();
+	}
+
+	@Test
 	void pendingListenerCanReadOwnerProfileAndCompleteChoiceWithoutAStateQuery() {
 		User listener = userWithRole("ROLE_LISTENER");
 		Authentication authentication = authentication(listener);
