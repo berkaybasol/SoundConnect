@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.repository;
 
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -8,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -33,6 +36,9 @@ class MusicianProfileRepositoryTest {
 	
 	@Autowired
 	MusicianProfileRepository repository;
+
+	@Autowired
+	BandRepository bandRepository;
 	
 	@DynamicPropertySource
 	static void props(DynamicPropertyRegistry r) {
@@ -61,5 +67,29 @@ class MusicianProfileRepositoryTest {
 		
 		var found = repository.findByUserId(user.getId());
 		assertThat(found).isPresent();
+	}
+
+	@Test
+	void performerSearchFoldsTurkishDiacriticsForMusiciansAndBands() {
+		User user = em.persistFlushFind(User.builder()
+				.username("bugrasahin")
+				.email("bugrasahin@example.com")
+				.password("pwd")
+				.build());
+		MusicianProfile musician = em.persistAndFlush(MusicianProfile.builder()
+				.user(user)
+				.stageName("Çağrı Şahin")
+				.build());
+		Band band = em.persistAndFlush(Band.builder().name("Şahbaz").build());
+		em.clear();
+
+		assertThat(repository.searchByStageNameOrUsername(
+				"cagri sah",
+				"cagri sah",
+				PageRequest.of(0, 10)
+		)).extracting(MusicianProfile::getId).containsExactly(musician.getId());
+		assertThat(bandRepository.searchByName("sah", PageRequest.of(0, 10)))
+				.extracting(Band::getId)
+				.containsExactly(band.getId());
 	}
 }

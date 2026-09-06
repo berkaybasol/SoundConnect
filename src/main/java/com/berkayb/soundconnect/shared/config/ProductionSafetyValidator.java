@@ -37,6 +37,7 @@ public class ProductionSafetyValidator {
 			new RequiredSetting("app.security.auth-rate-limit.enabled", "true"),
 			new RequiredSetting("app.listener-profile.visibility-rate-limit.enabled", "true"),
 			new RequiredSetting("app.listener-profile.playlist-rate-limit.enabled", "true"),
+			new RequiredSetting("app.musician-profile.calendar-rate-limit.enabled", "true"),
 			new RequiredSetting("soundconnect.spotify.o-embed-base-url", "https://open.spotify.com"),
 			new RequiredSetting("app.table-group.rate-limit.enabled", "true"),
 			new RequiredSetting("app.websocket.broker-relay.enabled", "true"),
@@ -64,7 +65,7 @@ public class ProductionSafetyValidator {
 			new RequiredSetting("cloud.storage.aclPublicReadOnPut", "false"),
 			new RequiredSetting(
 					"management.endpoint.health.group.readiness.include",
-					"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth"
+					"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth,eventPerformerNotificationOutboxHealth"
 			)
 	);
 

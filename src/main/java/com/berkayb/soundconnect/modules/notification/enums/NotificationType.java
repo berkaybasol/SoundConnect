@@ -44,6 +44,15 @@ public enum NotificationType {
 	ARTIST_VENUE_LINK_APPLICATION_REQUEST("ARTIST_VENUE", "Bağlanma isteği gönderildi", false),
 	ARTIST_VENUE_LINK_APPLICATION_ACCEPT("ARTIST_VENUE", "Bağlanma isteğin onaylandı", false),
 	ARTIST_VENUE_LINK_APPLICATION_REJECT("ARTIST_VENUE", "Bağlanma isteğin reddedildi", false),
+
+	// EVENT PERFORMER CONSENT
+	EVENT_PERFORMER_ADDED("EVENT", "Bir etkinliğe eklendin", false),
+	EVENT_PERFORMER_APPROVAL_REQUESTED("EVENT", "Etkinlik katılım onayı", false),
+	EVENT_PERFORMER_APPROVED("EVENT", "Etkinlik katılımı onaylandı", false),
+	EVENT_PERFORMER_REJECTED("EVENT", "Etkinlik katılımı reddedildi", false),
+	EVENT_VENUE_APPROVAL_REQUESTED("EVENT", "Etkinlik mekân onayı", false),
+	EVENT_VENUE_APPROVED("EVENT", "Etkinlik mekânı onaylandı", false),
+	EVENT_VENUE_REJECTED("EVENT", "Etkinlik mekânı reddedildi", false),
 	
 	// TABLE GROUP (Muzik birlestirir)
 	TABLE_JOIN_REQUEST_RECEIVED("TABLE","Yeni başvuru isteği", false),

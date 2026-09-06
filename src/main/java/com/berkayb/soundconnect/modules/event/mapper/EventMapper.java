@@ -3,15 +3,17 @@ package com.berkayb.soundconnect.modules.event.mapper;
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.enums.PerformerType;
+import com.berkayb.soundconnect.modules.event.enums.EventOrigin;
+import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.event.support.EventShareUrlBuilder; //eklendi
-import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.event.support.EventPosterResolver;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
@@ -25,6 +27,8 @@ public class EventMapper {
 		if (event == null) {
 			return null;
 		}
+		boolean publicVenue = event.getVenue() != null && (event.getEventOrigin() == EventOrigin.VENUE
+				|| event.getVenue().getStatus() == VenueStatus.APPROVED);
 		
 		return new EventResponseDto(
 				event.getId(),
@@ -32,44 +36,33 @@ public class EventMapper {
 				resolvePosterImage(event),
 				resolvePerformerName(event),
 				event.getMusicianProfile() != null ? event.getMusicianProfile().getId() : null,
+				event.getBand() != null ? event.getBand().getId() : null,
 				resolvePerformerType(event),
 				resolveBandMembers(event),
-				event.getVenue() != null ? event.getVenue().getId() : null,
-				event.getVenue() != null ? event.getVenue().getName() : null,
-				event.getVenue() != null && event.getVenue().getCity() != null
+				publicVenue ? event.getVenue().getId() : null,
+				publicVenue ? event.getVenue().getName() : event.getVenueNameSnapshot(),
+				publicVenue && event.getVenue().getCity() != null
 						? event.getVenue().getCity().getName()
 						: null,
-				event.getVenue() != null && event.getVenue().getDistrict() != null
+				publicVenue && event.getVenue().getDistrict() != null
 						? event.getVenue().getDistrict().getName()
 						: null,
-				event.getVenue() != null && event.getVenue().getNeighborhood() != null
+				publicVenue && event.getVenue().getNeighborhood() != null
 						? event.getVenue().getNeighborhood().getName()
 						: null,
 				event.getEventDate(),
 				event.getStartTime(),
 				event.getEndTime(),
 				event.getDescription(),
-				eventShareUrlBuilder.buildEventShareUrl(event.getId()) //eklendi
+				eventShareUrlBuilder.buildEventShareUrl(event.getId()),
+				event.getEventOrigin(),
+				event.getVenueApprovalStatus(),
+				event.isVenueCalendarApproved()
 		);
 	}
 	
 	private String resolvePosterImage(Event event) {
-		final String raw = event.getPosterImage();
-		if (raw == null || raw.isBlank()) {
-			return null;
-		}
-		
-		final UUID assetId;
-		try {
-			assetId = UUID.fromString(raw);
-		} catch (IllegalArgumentException ignored) {
-			return raw;
-		}
-		try {
-			return mediaAssetService.getDisplayUrl(assetId);
-		} catch (Exception ignored) {
-			return null;
-		}
+		return EventPosterResolver.resolve(event.getPosterImage(), mediaAssetService);
 	}
 	
 	private String resolvePerformerName(Event event) {
@@ -95,7 +88,7 @@ public class EventMapper {
 			return event.getManualPerformerName();
 		}
 		
-		return "Yakinda aciklanacak";
+		return "Belirtilmemiş";
 	}
 	
 	private PerformerType resolvePerformerType(Event event) {
@@ -118,7 +111,9 @@ public class EventMapper {
 		}
 		
 		return event.getBand().getMembers().stream()
+		            .filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
 		            .map(BandMember::getUser)
+		            .filter(java.util.Objects::nonNull)
 		            .filter(user -> user.getMusicianProfile() != null)
 		            .map(user -> {
 			            final var profile = user.getMusicianProfile();

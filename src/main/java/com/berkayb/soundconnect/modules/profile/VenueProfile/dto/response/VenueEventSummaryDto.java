@@ -12,6 +12,7 @@ public record VenueEventSummaryDto(
 		String posterImage,
 		String performerName,
 		UUID musicianProfileId,
+		UUID bandId,
 		PerformerType performerType,
 		LocalDate eventDate,
 		LocalTime startTime,

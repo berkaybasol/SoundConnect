@@ -84,6 +84,7 @@ class EventVenueOwnerControllerTest {
 				"poster.jpg",
 				"Berkay Başol",
 				musicianId,
+				null,
 				PerformerType.MUSICIAN,
 				Set.of(),
 				venueId,
@@ -142,6 +143,61 @@ class EventVenueOwnerControllerTest {
 		       .andExpect(jsonPath("$.message").value("Invalid performer selection"))
 		       .andExpect(jsonPath("$.httpStatus").value("BAD_REQUEST"))
 		       .andExpect(jsonPath("$.path").value(EndPoints.Event.OWNER_BASE));
+	}
+
+	@Test
+	@DisplayName("POST /api/v1/venue-owner/events -> Manuel sanatçı adı sınırı API katmanında doğrulanır")
+	void createEvent_shouldReturnBadRequest_whenManualPerformerNameIsTooLong() throws Exception {
+		UUID userId = UUID.randomUUID();
+		authenticateVenueOwner(userId);
+		var dto = new EventCreateRequestDto(
+				"Concert",
+				"desc",
+				LocalDate.now(),
+				LocalTime.of(21, 0),
+				null,
+				null,
+				UUID.randomUUID(),
+				null,
+				null,
+				"x".repeat(121)
+		);
+
+		mockMvc.perform(post(EndPoints.Event.OWNER_BASE + EndPoints.Event.CREATE)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(dto)))
+				.andExpect(status().isBadRequest());
+		Mockito.verifyNoInteractions(eventService);
+	}
+
+	@Test
+	@DisplayName("POST /api/v1/venue-owner/events -> Persisted text column limits are validated before service invocation")
+	void createEvent_shouldReturnBadRequest_whenPersistedTextExceedsColumnLimits() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		authenticateVenueOwner(userId);
+		List<EventCreateRequestDto> invalidRequests = List.of(
+				new EventCreateRequestDto(
+						"x".repeat(256), null, LocalDate.now(), LocalTime.NOON,
+						null, null, venueId, null, null, null
+				),
+				new EventCreateRequestDto(
+						"Concert", "x".repeat(501), LocalDate.now(), LocalTime.NOON,
+						null, null, venueId, null, null, null
+				),
+				new EventCreateRequestDto(
+						"Concert", null, LocalDate.now(), LocalTime.NOON,
+						null, "x".repeat(256), venueId, null, null, null
+				)
+		);
+
+		for (EventCreateRequestDto request : invalidRequests) {
+			mockMvc.perform(post(EndPoints.Event.OWNER_BASE + EndPoints.Event.CREATE)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(objectMapper.writeValueAsString(request)))
+					.andExpect(status().isBadRequest());
+		}
+		Mockito.verifyNoInteractions(eventService);
 	}
 
 	private void authenticateVenueOwner(UUID userId) {

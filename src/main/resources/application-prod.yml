@@ -38,7 +38,7 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth
+          include: readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth,eventPerformerNotificationOutboxHealth
 
 app:
   websocket:
@@ -48,6 +48,9 @@ app:
     visibility-rate-limit:
       enabled: true
     playlist-rate-limit:
+      enabled: true
+  musician-profile:
+    calendar-rate-limit:
       enabled: true
   table-group:
     rate-limit:

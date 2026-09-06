@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.event.repository;
 
 import com.berkayb.soundconnect.modules.event.entity.Event;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
@@ -40,6 +41,8 @@ class EventRepositoryTest {
 	
 	@BeforeEach
 	void setUp() {
+		User owner = User.builder().username("event_owner").email("eventowner@example.test").password("unused").build();
+		entityManager.persist(owner);
 		
 		// -----------------------------
 		// CITY
@@ -71,6 +74,7 @@ class EventRepositoryTest {
 		// VENUE #1
 		// -----------------------------
 		venue = Venue.builder()
+		             .owner(owner)
 		             .name("Test Venue")
 		             .address("Adres 1")                     // zorunlu
 		             .phone("05000000000")                  // zorunlu
@@ -88,6 +92,7 @@ class EventRepositoryTest {
 		// VENUE #2
 		// -----------------------------
 		otherVenue = Venue.builder()
+		                  .owner(owner)
 		                  .name("Other Venue")
 		                  .address("Adres 2")
 		                  .phone("05000000001")

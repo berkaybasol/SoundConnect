@@ -51,6 +51,11 @@ public enum ErrorType {
 	LISTENER_PLAYLIST_DUPLICATE(1309, "Duplicate Spotify playlist", HttpStatus.BAD_REQUEST, "Aynı Spotify çalma listesi bir profilde yalnızca bir kez paylaşılabilir."),
 	LISTENER_PLAYLIST_RATE_LIMITED(1310, "Too many listener playlist update requests", HttpStatus.TOO_MANY_REQUESTS, "Çalma listelerini çok sık güncellemeye çalıştınız. Lütfen kısa süre sonra tekrar deneyin."),
 	LISTENER_PLAYLIST_RATE_LIMIT_UNAVAILABLE(1311, "Listener playlist protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Çalma listesi güncelleme işlemi geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin."),
+	MUSICIAN_CALENDAR_VERSION_CONFLICT(1312, "Event profile publication changed", HttpStatus.CONFLICT, "Etkinlik görünürlüğü başka bir işlem tarafından değiştirildi. Yenileyip tekrar dene."),
+	MUSICIAN_CALENDAR_RATE_LIMITED(1313, "Too many event profile publication requests", HttpStatus.TOO_MANY_REQUESTS, "Etkinlik görünürlüğünü çok sık değiştirmeye çalıştın. Kısa süre sonra tekrar dene."),
+	MUSICIAN_CALENDAR_RATE_LIMIT_UNAVAILABLE(1314, "Event profile publication protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik görünürlüğü şu an değiştirilemiyor. Kısa süre sonra tekrar dene."),
+	MUSICIAN_CALENDAR_QUERY_INVALID(1315, "Invalid musician calendar range or pagination", HttpStatus.BAD_REQUEST, "Takvim için en fazla 31 günlük geçerli bir tarih aralığı seçin."),
+	EVENT_CALENDAR_SETTINGS_RETIRED(1316, "Global calendar settings retired", HttpStatus.GONE, "Profil görünürlüğü artık her etkinlik için ayrı yönetiliyor. Uygulamayı güncelleyin."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
@@ -208,6 +213,10 @@ public enum ErrorType {
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
 	INVALID_PARAMETER(9251,"Invalid parameter", HttpStatus.BAD_REQUEST, "Parametre geçersiz."),
+	EVENT_PERFORMER_REQUEST_NOT_FOUND(9252, "Event performer request not found", HttpStatus.NOT_FOUND, "Etkinlik katılım isteği bulunamadı."),
+	EVENT_PERFORMER_REQUEST_FINALIZED(9253, "Event performer request already finalized", HttpStatus.CONFLICT, "Etkinlik katılım isteği daha önce farklı bir kararla sonuçlandırılmış."),
+	EVENT_PERFORMER_REQUEST_INVALID(9254, "Event performer request is no longer valid", HttpStatus.CONFLICT, "Etkinlik katılım isteği artık geçerli değil."),
+	EVENT_PERFORMER_REQUEST_EXPIRED(9255, "Event invitation decision deadline has passed", HttpStatus.CONFLICT, "Etkinlik başladığı için davet kararını artık değiştiremezsin."),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND(9300, "Collab listing not found", HttpStatus.NOT_FOUND, "İlan bulunamadı."),

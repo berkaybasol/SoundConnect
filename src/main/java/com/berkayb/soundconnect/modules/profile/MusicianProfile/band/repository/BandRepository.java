@@ -29,11 +29,18 @@ public interface BandRepository extends JpaRepository<Band, UUID> {
 		from Band b
 		where
 			(:q is null or trim(:q) = '')
-			or locate(lower(:q), lower(coalesce(b.name, ''))) > 0
+			or locate(
+				lower(function('translate', :q, 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu')),
+				lower(function('translate', coalesce(b.name, ''), 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu'))
+			) > 0
 		order by
 			case
-				when lower(coalesce(b.name, '')) = lower(:q) then 0
-				when locate(lower(:q), lower(coalesce(b.name, ''))) = 1 then 1
+				when lower(function('translate', coalesce(b.name, ''), 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu'))
+					= lower(function('translate', :q, 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu')) then 0
+				when locate(
+					lower(function('translate', :q, 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu')),
+					lower(function('translate', coalesce(b.name, ''), 'ÇĞİIÖŞÜçğıöşü', 'CGIIOSUcgiosu'))
+				) = 1 then 1
 				else 2
 			end,
 			lower(coalesce(b.name, '')),

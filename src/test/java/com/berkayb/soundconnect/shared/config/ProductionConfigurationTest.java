@@ -59,9 +59,10 @@ class ProductionConfigurationTest {
 		assertThat(property(sources, "app.websocket.broker-relay.enabled")).isEqualTo(true);
 		assertThat(property(sources, "app.listener-profile.visibility-rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "app.listener-profile.playlist-rate-limit.enabled")).isEqualTo(true);
+		assertThat(property(sources, "app.musician-profile.calendar-rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "app.table-group.rate-limit.enabled")).isEqualTo(true);
 		assertThat(property(sources, "management.endpoint.health.group.readiness.include"))
-				.isEqualTo("readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth");
+				.isEqualTo("readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth,eventPerformerNotificationOutboxHealth");
 	}
 
 	private Object property(List<PropertySource<?>> sources, String key) {

@@ -17,10 +17,22 @@ import java.util.UUID;
 
 public interface VenueRepository extends JpaRepository<Venue, UUID> {
 
-
 List<Venue> findAllByOwnerId(UUID ownerId);
 Optional<Venue> findByIdAndOwnerId(UUID venueId, UUID ownerId);
 boolean existsByOwner_Id(UUID ownerId);
+
+	/** See MusicianProfileRepository#lockActiveVenueConnection. */
+	@Query(value = """
+			select 1
+			from venue_active_bands connection
+			where connection.venue_id = :venueId
+			  and connection.band_id = :bandId
+			for key share
+			""", nativeQuery = true)
+	Optional<Integer> lockActiveBandConnection(
+			@Param("venueId") UUID venueId,
+			@Param("bandId") UUID bandId
+	);
 
 	@Query("""
 			select

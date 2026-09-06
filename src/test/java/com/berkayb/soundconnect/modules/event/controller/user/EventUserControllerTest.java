@@ -48,12 +48,14 @@ class EventUserControllerTest {
 	@Test
 	@DisplayName("GET /api/v1/events/today -> Günün etkinlikleri listelenmeli")
 	void getTodayEvents_shouldReturnOk() throws Exception {
+		UUID bandId = UUID.randomUUID();
 		var event1 = new EventResponseDto(
 				UUID.randomUUID(),
 				"Rock Night",
 				"poster-1.jpg",
 				"Rockers",
 				null,
+				bandId,
 				PerformerType.BAND,
 				Set.of("Ali", "Veli"),
 				UUID.randomUUID(),
@@ -74,6 +76,7 @@ class EventUserControllerTest {
 				"poster-2.jpg",
 				"Solo Berkay",
 				UUID.randomUUID(),
+				null,
 				PerformerType.MUSICIAN,
 				Set.of(),
 				UUID.randomUUID(),
@@ -96,6 +99,7 @@ class EventUserControllerTest {
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data[0].performerName").value("Rockers"))
+		       .andExpect(jsonPath("$.data[0].bandId").value(bandId.toString()))
 		       .andExpect(jsonPath("$.data[1].venueName").value("Jolly Joker"))
 		       .andExpect(jsonPath("$.data.length()").value(2));
 	}

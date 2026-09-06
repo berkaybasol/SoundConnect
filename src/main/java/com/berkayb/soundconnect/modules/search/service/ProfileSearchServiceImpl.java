@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.Music
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.search.dto.ProfileSearchItemDto;
+import com.berkayb.soundconnect.modules.search.enums.ProfileSearchType;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -19,8 +20,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -51,6 +54,16 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	@Override
 	@Transactional
 	public List<ProfileSearchItemDto> searchProfiles(String query, int limit) {
+		return searchProfiles(query, limit, null);
+	}
+
+	@Override
+	@Transactional
+	public List<ProfileSearchItemDto> searchProfiles(
+			String query,
+			int limit,
+			Set<ProfileSearchType> types
+	) {
 		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query);
 		if (q.length() < MIN_QUERY_LENGTH) return List.of();
 		if (q.length() > MAX_QUERY_LENGTH) {
@@ -64,9 +77,11 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		int safeLimit = clampLimit(limit);
 		int perTypeLimit = Math.max(5, safeLimit);
 		PageRequest perTypePage = PageRequest.of(0, perTypeLimit);
+		Set<ProfileSearchType> requestedTypes = normalizeTypes(types);
 		List<SearchCandidate> candidates = new ArrayList<>();
 
-		musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery, perTypePage)
+		if (requestedTypes.contains(ProfileSearchType.MUSICIAN)) {
+			musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery, perTypePage)
 		                         .stream()
 		                         .limit(perTypeLimit)
 		                         .map(profile -> new SearchCandidate(
@@ -80,8 +95,10 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 					                         null
 		                         ))
 		                         .forEach(candidates::add);
+		}
 
-		listenerProfileRepository.searchForPublicDiscovery(
+		if (requestedTypes.contains(ProfileSearchType.LISTENER)) {
+			listenerProfileRepository.searchForPublicDiscovery(
 						 q,
 						 usernameQuery,
 						 ListenerVisibilityMode.GHOST,
@@ -102,8 +119,10 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 					                         profile.isGhost() ? ListenerVisibilityMode.GHOST : null
 		                         ))
 		                         .forEach(candidates::add);
+		}
 
-		bandRepository.searchByName(q, perTypePage)
+		if (requestedTypes.contains(ProfileSearchType.BAND)) {
+			bandRepository.searchByName(q, perTypePage)
 		              .stream()
 		              .limit(perTypeLimit)
 		              .map(band -> new SearchCandidate(
@@ -117,8 +136,10 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 					              null
 		              ))
 		              .forEach(candidates::add);
+		}
 
-		studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, perTypePage)
+		if (requestedTypes.contains(ProfileSearchType.STUDIO)) {
+			studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, perTypePage)
 		                       .stream()
 		                       .limit(perTypeLimit)
 		                       .map(profile -> new SearchCandidate(
@@ -132,8 +153,10 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 					                       null
 		                       ))
 		                       .forEach(candidates::add);
+		}
 
-		venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, perTypePage)
+		if (requestedTypes.contains(ProfileSearchType.VENUE)) {
+			venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, perTypePage)
 		               .stream()
 		               .map(venue -> new SearchCandidate(
 				               "VENUE",
@@ -148,6 +171,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 					               null
 		               ))
 		               .forEach(candidates::add);
+		}
 
 		ListenerVisibilityPolicy.PublicVisibilityRestrictions restrictions = Objects.requireNonNull(
 				listenerVisibilityPolicy.publicVisibilityRestrictions(
@@ -186,12 +210,32 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		return Math.min(limit, MAX_LIMIT);
 	}
 
+	private Set<ProfileSearchType> normalizeTypes(Set<ProfileSearchType> types) {
+		return types == null || types.isEmpty()
+				? EnumSet.allOf(ProfileSearchType.class)
+				: EnumSet.copyOf(types);
+	}
+
 	private int rank(String value, String query) {
-		String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
-		String q = query.trim().toLowerCase(Locale.ROOT);
+		String normalized = foldForSearch(value);
+		String q = foldForSearch(query);
 		if (normalized.equals(q)) return 0;
 		if (normalized.startsWith(q)) return 1;
 		return 2;
+	}
+
+	private String foldForSearch(String value) {
+		if (value == null) return "";
+		String decomposed = Normalizer.normalize(value.trim(), Normalizer.Form.NFD);
+		StringBuilder folded = new StringBuilder(decomposed.length());
+		for (int offset = 0; offset < decomposed.length(); ) {
+			int codePoint = decomposed.codePointAt(offset);
+			offset += Character.charCount(codePoint);
+			if (Character.getType(codePoint) == Character.NON_SPACING_MARK) continue;
+			if (codePoint == '\u0131') codePoint = 'i';
+			folded.appendCodePoint(Character.toLowerCase(codePoint));
+		}
+		return folded.toString().toLowerCase(Locale.ROOT);
 	}
 
 	private String firstNotBlank(String... values) {

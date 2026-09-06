@@ -1,8 +1,8 @@
 package com.berkayb.soundconnect.modules.engagement.service;
 
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.event.enums.EventOrigin;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
-import com.berkayb.soundconnect.modules.event.service.EventService;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
@@ -35,7 +35,8 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
 		boolean exists = switch (targetType) {
 			case OVERTHINKING -> overthinkingPostRepository.existsById(targedId);
 			case MEDIA -> lockPublicReadyMedia(targedId);
-			case EVENT -> eventRepository.existsById(targedId);
+			// Retained reciprocal rows are not public targets in the venue-only flow.
+			case EVENT -> eventRepository.existsByIdAndEventOrigin(targedId, EventOrigin.VENUE);
 		};
 		
 		if (!exists) {

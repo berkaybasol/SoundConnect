@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.notification.config;
 
 import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxProperties;
+import com.berkayb.soundconnect.modules.event.performer.outbox.EventPerformerNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.tablegroup.notification.outbox.TableGroupNotificationOutboxProperties;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import jakarta.annotation.PostConstruct;
@@ -18,6 +19,7 @@ public class NotificationOutboxLeaseConfigurationValidator {
     private final NotificationPublisherProperties publisherProperties;
     private final CollabNotificationOutboxProperties collabOutboxProperties;
     private final TableGroupNotificationOutboxProperties tableGroupOutboxProperties;
+    private final EventPerformerNotificationOutboxProperties eventPerformerOutboxProperties;
 
     @PostConstruct
     void validateConfiguration() {
@@ -36,6 +38,11 @@ public class NotificationOutboxLeaseConfigurationValidator {
         validateLease(
                 "app.notification.table-group-outbox.lease-duration",
                 tableGroupOutboxProperties.getLeaseDuration(),
+                minimumLease
+        );
+        validateLease(
+                "app.notification.event-performer-outbox.lease-duration",
+                eventPerformerOutboxProperties.getLeaseDuration(),
                 minimumLease
         );
     }

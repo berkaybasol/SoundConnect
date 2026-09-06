@@ -3,6 +3,9 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus;
+import com.berkayb.soundconnect.modules.event.performer.service.EventPerformerRequestService;
+import com.berkayb.soundconnect.modules.event.publication.EventMemberPublicationRepository;
 import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
@@ -62,6 +65,8 @@ public class BandServiceImpl implements BandService {
 	private final SetlistRepository setlistRepository;
 	private final EventRepository eventRepository;
 	private final TrackRepository trackRepository;
+	private final EventPerformerRequestService eventPerformerRequestService;
+	private final EventMemberPublicationRepository eventMemberPublicationRepository;
 	
 	
 	@Override
@@ -74,8 +79,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void inviteMember(UUID bandId, UUID inviterId, UUID invitedUserId, String message) {
-		// bandi getir
-		Band band = bandEntityFinder.getBand(bandId);
+		Band band = lockBandForMembershipChange(bandId);
 		
 		// davet eden ve davet edilen user'lari getir
 		User inviter = userEntityFinder.getUser(inviterId);
@@ -102,6 +106,9 @@ public class BandServiceImpl implements BandService {
 				throw new SoundConnectException(ErrorType.BAND_MEMBER_ALREADY_EXISTS);
 			}
 			
+			// A new membership invitation cannot revive the previous membership's
+			// event publication choices. Preserve version tombstones for old clients.
+			eventMemberPublicationRepository.hideForBandMember(bandId, invitedUserId);
 			existingMember.setStatus(BandMemberShipStatus.PENDING);
 			existingMember.setBandRole(BandRole.MEMBER);
 			bandMemberRepository.save(existingMember);
@@ -143,10 +150,14 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void acceptInvite(UUID bandId, UUID userId) {
+		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		if (member.getStatus() != BandMemberShipStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_STATUS_INVALID);
 		}
+		// Explicitly reset publication before reactivating membership. This also
+		// covers pending invitations created by an older application version.
+		eventMemberPublicationRepository.hideForBandMember(bandId, userId);
 		member.setStatus(BandMemberShipStatus.ACTIVE);
 		bandMemberRepository.save(member);
 		
@@ -164,6 +175,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void rejectInvite(UUID bandId, UUID userId) {
+		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		if (member.getStatus() != BandMemberShipStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_STATUS_INVALID);
@@ -185,6 +197,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void removeMember(UUID bandId, UUID requesterId, UUID targetUserId) {
+		lockBandForMembershipChange(bandId);
 		// sadece founder uyeleri cikarabilir
 		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, requesterId)
 		                                           .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
@@ -206,6 +219,7 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.BAND_CANNOT_REMOVE_FOUNDER);
 		}
 		
+		eventMemberPublicationRepository.hideForBandMember(bandId, targetUserId);
 		member.setStatus(BandMemberShipStatus.LEFT);
 		bandMemberRepository.save(member);
 		
@@ -223,6 +237,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void leaveBand(UUID bandId, UUID userId) {
+		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		
 		if (member.getStatus() != BandMemberShipStatus.ACTIVE) {
@@ -234,6 +249,7 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.BAND_FOUNDER_CANNOT_LEAVE);
 		}
 		
+		eventMemberPublicationRepository.hideForBandMember(bandId, userId);
 		member.setStatus(BandMemberShipStatus.LEFT);
 		bandMemberRepository.save(member);
 		
@@ -250,7 +266,11 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public void deleteBand(UUID bandId, UUID userId) {
-		Band band = bandEntityFinder.getBand(bandId);
+		// This is the aggregate fence shared with event creation and performer
+		// decisions. Holding it prevents a request from acquiring a soon-to-be
+		// deleted band target after invalidation has already scanned the requests.
+		Band band = bandRepository.findByIdForUpdate(bandId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
 		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, userId)
 		                                           .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
 
@@ -270,13 +290,16 @@ public class BandServiceImpl implements BandService {
 		}
 		band.getActiveVenues().clear();
 
-		for (Event event : eventRepository.findAllByBand_Id(bandId)) {
+		for (Event event : eventRepository.findAllByBandIdForUpdate(bandId)) {
 			if (event.getManualPerformerName() == null || event.getManualPerformerName().isBlank()) {
 				event.setManualPerformerName(deletedBandName);
 			}
 			event.setBand(null);
+			event.setPerformerApprovalStatus(EventPerformerApprovalStatus.NOT_REQUIRED);
+			event.setProfileCalendarApproved(false);
 		}
 
+		eventPerformerRequestService.invalidateForBand(bandId);
 		artistVenueConnectionRequestRepository.deleteAllByBandId(bandId);
 		setlistRepository.deleteAllByBand_Id(bandId);
 		trackRepository.deleteAllByOwnerIdAndOwnerType(bandId, TrackOwnerType.BAND);
@@ -447,6 +470,16 @@ public class BandServiceImpl implements BandService {
 		                     .toList(); //eklendi
 	} //eklendi
 	
+	/**
+	 * Acquire the aggregate fence before loading any mutable membership state.
+	 * Publication changes and public calendar reads lock this same band parent,
+	 * so a member cannot publish concurrently with leaving or being removed.
+	 */
+	private Band lockBandForMembershipChange(UUID bandId) {
+		return bandRepository.findByIdForUpdate(bandId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+	}
+
 	private void notifyActiveFounders(
 			Band band,
 			UUID actorId,

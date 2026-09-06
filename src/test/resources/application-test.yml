@@ -75,6 +75,10 @@ app:
     playlist-rate-limit:
       enabled: false
 
+  musician-profile:
+    calendar-rate-limit:
+      enabled: false
+
   data:
     init:
       enabled: false

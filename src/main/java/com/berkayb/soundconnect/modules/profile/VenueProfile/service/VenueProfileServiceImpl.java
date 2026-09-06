@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
 import com.berkayb.soundconnect.modules.event.entity.Event; //eklendi
+import com.berkayb.soundconnect.modules.event.support.EventPosterResolver;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository; //eklendi
 import com.berkayb.soundconnect.modules.event.enums.PerformerType; //eklendi
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -362,9 +363,10 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		return new VenueEventSummaryDto(
 				event.getId(),
 				event.getTitle(),
-				event.getPosterImage(),
+				EventPosterResolver.resolve(event.getPosterImage(), mediaAssetService),
 				resolvePerformerName(event),
 				event.getMusicianProfile() != null ? event.getMusicianProfile().getId() : null, //eklendi
+				event.getBand() != null ? event.getBand().getId() : null,
 				resolvePerformerType(event),
 				event.getEventDate(),
 				event.getStartTime(),
@@ -377,17 +379,33 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		if (event.getBand() != null && event.getBand().getName() != null && !event.getBand().getName().isBlank()) { //eklendi
 			return event.getBand().getName(); //eklendi
 		}
-		if (event.getMusicianProfile() != null && event.getMusicianProfile().getStageName() != null && !event.getMusicianProfile().getStageName().isBlank()) { //eklendi
-			return event.getMusicianProfile().getStageName(); //eklendi
+		if (event.getMusicianProfile() != null) {
+			if (event.getMusicianProfile().getUser() != null
+					&& event.getMusicianProfile().getUser().getUsername() != null
+					&& !event.getMusicianProfile().getUser().getUsername().isBlank()) {
+				return event.getMusicianProfile().getUser().getUsername();
+			}
+			if (event.getMusicianProfile().getStageName() != null && !event.getMusicianProfile().getStageName().isBlank()) {
+				return event.getMusicianProfile().getStageName();
+			}
 		}
-		return "Performer"; //eklendi
+		if (event.getManualPerformerName() != null && !event.getManualPerformerName().isBlank()) {
+			return event.getManualPerformerName();
+		}
+		return "Belirtilmemiş";
 	}
 	
 	private PerformerType resolvePerformerType(Event event) { //eklendi
 		if (event.getBand() != null) { //eklendi
 			return PerformerType.BAND; //eklendi
 		}
-		return PerformerType.MUSICIAN; //eklendi
+		if (event.getMusicianProfile() != null) {
+			return PerformerType.MUSICIAN;
+		}
+		if (event.getManualPerformerName() != null && !event.getManualPerformerName().isBlank()) {
+			return PerformerType.MANUAL;
+		}
+		return null;
 	}
 	
 	private String resolveProfilePictureUrl(UUID mediaId) { //degisti

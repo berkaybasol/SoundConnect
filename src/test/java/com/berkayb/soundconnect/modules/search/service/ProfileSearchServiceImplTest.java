@@ -14,6 +14,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.search.enums.ProfileSearchType;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
@@ -196,6 +197,25 @@ class ProfileSearchServiceImplTest {
 				eq("test"),
 				argThat(page -> page.getPageNumber() == 0 && page.getPageSize() == 30)
 		);
+	}
+
+	@Test
+	void performerScopeQueriesOnlyMusiciansAndBandsBeforeApplyingGlobalLimit() {
+		Band band = Band.builder().id(UUID.randomUUID()).name("Şahbaz").build();
+		when(musicianProfileRepository.searchByStageNameOrUsername(anyString(), anyString(), any()))
+				.thenReturn(List.of());
+		when(bandRepository.searchByName(eq("sah"), any())).thenReturn(List.of(band));
+
+		assertThat(service.searchProfiles(
+				"sah",
+				1,
+				Set.of(ProfileSearchType.MUSICIAN, ProfileSearchType.BAND)
+		)).singleElement().satisfies(item -> {
+			assertThat(item.type()).isEqualTo("BAND");
+			assertThat(item.title()).isEqualTo("Şahbaz");
+		});
+
+		verifyNoInteractions(listenerProfileRepository, studioProfileRepository, venueRepository);
 	}
 
 	@Test

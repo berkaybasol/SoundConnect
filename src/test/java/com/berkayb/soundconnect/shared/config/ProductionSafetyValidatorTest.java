@@ -183,6 +183,15 @@ class ProductionSafetyValidatorTest {
 	}
 
 	@Test
+	void rejectsDisabledMusicianCalendarAbuseProtection() {
+		MockEnvironment environment = safeEnvironment()
+				.withProperty("app.musician-profile.calendar-rate-limit.enabled", "false");
+		assertThatThrownBy(new ProductionSafetyValidator(environment)::validate)
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("app.musician-profile.calendar-rate-limit.enabled must be true");
+	}
+
+	@Test
 	void rejectsUnboundedRedisTimeouts() {
 		MockEnvironment environment = safeEnvironment()
 				.withProperty("spring.data.redis.connect-timeout", "30s");
@@ -202,6 +211,7 @@ class ProductionSafetyValidatorTest {
 				.withProperty("app.security.auth-rate-limit.enabled", "true")
 				.withProperty("app.listener-profile.visibility-rate-limit.enabled", "true")
 				.withProperty("app.listener-profile.playlist-rate-limit.enabled", "true")
+				.withProperty("app.musician-profile.calendar-rate-limit.enabled", "true")
 				.withProperty("soundconnect.spotify.o-embed-base-url", "https://open.spotify.com")
 				.withProperty("app.table-group.rate-limit.enabled", "true")
 				.withProperty("app.websocket.broker-relay.enabled", "true")
@@ -235,7 +245,7 @@ class ProductionSafetyValidatorTest {
 				.withProperty("cloud.storage.cdnBaseUrl", "https://cdn.api.test.invalid")
 				.withProperty(
 						"management.endpoint.health.group.readiness.include",
-						"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth"
+						"readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth,eventPerformerNotificationOutboxHealth"
 				);
 	}
 }
