@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.UUID;
 
 public interface LikeService {
+	com.berkayb.soundconnect.modules.like.dto.CommentLikeState setCommentLike(UUID userId,UUID commentId,boolean liked);
+	com.berkayb.soundconnect.modules.like.dto.CommentLikeState readCommentLike(UUID userId,UUID commentId);
 	
 	// begen (idempotent)
 	void like (UUID userId, EngagementTargetType targetType, UUID targetId);

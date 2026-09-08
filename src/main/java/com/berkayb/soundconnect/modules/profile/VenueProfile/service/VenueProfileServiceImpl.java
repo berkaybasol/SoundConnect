@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
 import com.berkayb.soundconnect.modules.event.entity.Event; //eklendi
 import com.berkayb.soundconnect.modules.event.support.EventPosterResolver;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository; //eklendi
 import com.berkayb.soundconnect.modules.event.enums.PerformerType; //eklendi
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -49,6 +50,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private final EventRepository eventRepository;
 	private final MediaAssetService mediaAssetService;
 	private final MediaAssetRepository mediaAssetRepository;
+	private final EventScheduleClock scheduleClock;
 	
 	@Override
 	public List<VenueProfileResponseDto> getProfilesByUserId(UUID userId) {
@@ -349,7 +351,9 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	
 	
 	private List<VenueEventSummaryDto> mapWeeklyEvents(Venue venue) { //degisti
-		LocalDate today = LocalDate.now(); //degisti
+		// Weekly profiles follow the event's Istanbul calendar day. An event
+		// that ended earlier today remains until the next business date.
+		LocalDate today = scheduleClock.localNow().toLocalDate();
 		LocalDate endDate = today.plusDays(6); //degisti
 		
 		return eventRepository.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, today, endDate) //degisti

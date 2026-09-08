@@ -37,6 +37,8 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
 			case MEDIA -> lockPublicReadyMedia(targedId);
 			// Retained reciprocal rows are not public targets in the venue-only flow.
 			case EVENT -> eventRepository.existsByIdAndEventOrigin(targedId, EventOrigin.VENUE);
+			// Comment likes require their own parent-content/privacy and deletion fence.
+			case COMMENT -> false;
 		};
 		
 		if (!exists) {

@@ -94,6 +94,7 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/venues/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/venue-suggestions").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/analytics/observations").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/cities/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/districts/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/neighborhoods/**").permitAll()

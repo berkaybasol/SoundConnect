@@ -261,6 +261,10 @@ public enum ErrorType {
 	COMMENT_PARENT_TARGET_MISMATCH(9352,"Comment parent target mismatch",HttpStatus.BAD_REQUEST,"yorum yanit hedefi hatali"),
 	COMMENT_FORBIDDEN(9353,"COMMENT_FORBIDDEN",HttpStatus.FORBIDDEN,"Bu yorumu silme yetkiniz yok"),
 	COMMENT_PARENT_DELETED(9355,"Comment parent is deleted.", HttpStatus.CONFLICT,"Silinmis yoruma yanit verilemez"),
+	COMMENT_BURST_RATE_LIMITED(9356, "Comment same-content burst limit reached", HttpStatus.TOO_MANY_REQUESTS,
+			"Bu içerikte art arda birkaç yorum gönderdin. Biraz bekleyip tekrar deneyebilirsin."),
+	COMMENT_BURST_UNAVAILABLE(9357, "Comment burst protection unavailable", HttpStatus.SERVICE_UNAVAILABLE,
+			"Yorum şu anda gönderilemiyor. Biraz sonra tekrar deneyebilirsin."),
 	COMMENT_REPLY_DEPTH_NOT_ALLOWED(9354,"Comment reply depth not allowed", HttpStatus.CONFLICT,"yanita yanit " +
 			"verilemez"),
 	
@@ -339,7 +343,20 @@ public enum ErrorType {
 	VENUE_SUGGESTION_UNAVAILABLE(9903, "Venue suggestion temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Önerin şu anda alınamıyor. Biraz sonra tekrar dene."),
 	VENUE_SUGGESTION_TOO_LARGE(9904, "Venue suggestion body too large", HttpStatus.PAYLOAD_TOO_LARGE, "Öneri bilgileri izin verilen boyutu aşıyor."),
 
+	ANALYTICS_INVALID(9910, "Invalid analytics request", HttpStatus.BAD_REQUEST, "İstatistik isteği geçersiz."),
+	ANALYTICS_CONFLICT(9911, "Observation identity conflict", HttpStatus.CONFLICT, "İstatistik kaydının kimliği farklı bir istekle eşleşiyor."),
+	ANALYTICS_RATE_LIMITED(9912, "Analytics rate limited", HttpStatus.TOO_MANY_REQUESTS, "İstatistik istekleri çok sık. Biraz sonra tekrar dene."),
+	ANALYTICS_UNAVAILABLE(9913, "Analytics temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "İstatistikler şu anda kullanılamıyor."),
+	ANALYTICS_TOO_LARGE(9914, "Analytics request too large", HttpStatus.PAYLOAD_TOO_LARGE, "İstatistik isteği izin verilen boyutu aşıyor."),
+
+	// PERSONAL EVENT INTENT (9920-9924)
+	EVENT_INTENT_INVALID(9920, "Invalid event intent", HttpStatus.BAD_REQUEST, "Etkinlik planı veya paylaşım bilgileri geçersiz."),
+	EVENT_INTENT_VERSION_CONFLICT(9921, "Event intent changed", HttpStatus.CONFLICT, "Planın başka bir oturumda değişti. Yenileyip tekrar dene."),
+	EVENT_INTENT_CLOSED(9922, "Event intent window closed", HttpStatus.CONFLICT, "Geçmiş etkinlik için yeni plan veya paylaşım oluşturulamaz."),
+	EVENT_INTENT_RATE_LIMITED(9923, "Event intent rate limited", HttpStatus.TOO_MANY_REQUESTS, "Planlarını çok sık değiştiriyorsun. Biraz sonra tekrar dene."),
+	EVENT_INTENT_UNAVAILABLE(9924, "Event intent temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik planları şu anda kullanılamıyor."),
 	// GENEL (9999)
+
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),
 	INTERNAL_ERROR(9999, "Internal error", HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir sunucu hatası oluştu.");
 	

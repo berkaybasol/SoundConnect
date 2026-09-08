@@ -37,6 +37,18 @@ class ListenerProfileChoiceGateTest {
 	}
 
 	@Test
+	void pendingListenerCannotBypassOnboardingThroughAnyAudienceEndpoint() {
+		User listener = userWithRole("ROLE_LISTENER");
+		when(choiceStatusReader.requiresChoice(listener)).thenReturn(true);
+		ListenerProfileChoiceGate gate = new ListenerProfileChoiceGate(choiceStatusReader);
+		for (String path : java.util.List.of("/api/v1/user/event-intents", "/api/v1/user/event-intents/" + UUID.randomUUID(),
+				"/api/v1/public/listener-profiles/" + UUID.randomUUID() + "/event-posts")) {
+			assertThat(gate.shouldReject(new MockHttpServletRequest("GET", path), authentication(listener))).isTrue();
+		}
+		assertThat(gate.shouldReject(new MockHttpServletRequest("PUT", "/api/v1/user/event-intents/" + UUID.randomUUID()), authentication(listener))).isTrue();
+	}
+
+	@Test
 	void pendingListenerCannotWritePlaylistsBeforeChoosingVisibility() {
 		User listener = userWithRole("ROLE_LISTENER");
 		when(choiceStatusReader.requiresChoice(listener)).thenReturn(true);

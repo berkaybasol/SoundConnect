@@ -121,6 +121,10 @@ management:
           degraded: 200
 
 app:
+  venue-analytics:
+    enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_ENABLED:false}
+    reporting-enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_REPORTING_ENABLED:false}
+    hmac-secret: ${SOUNDCONNECT_VENUE_ANALYTICS_HMAC_SECRET:}
   websocket:
     broker-relay:
       enabled: ${SOUNDCONNECT_WEBSOCKET_BROKER_RELAY_ENABLED:false}

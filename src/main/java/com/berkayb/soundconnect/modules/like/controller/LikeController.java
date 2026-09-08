@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.like.controller;
 
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.like.service.LikeService;
+import com.berkayb.soundconnect.modules.like.dto.CommentLikeState;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -28,19 +29,22 @@ public class LikeController {
 	@PostMapping(LIKE)
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary ="bir icerigi begen (idempotent)")
-	public ResponseEntity<BaseResponse<Void>> like(
+	public ResponseEntity<BaseResponse<Object>> like(
 			@AuthenticationPrincipal(expression = "id")UUID userId,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId) {
 		log.info("[LikeController] User {} liked {}:{}", userId, targetType, targetId);
 		
-		likeService.like(userId, targetType, targetId);
+		Object result=null;
+		if(targetType==EngagementTargetType.COMMENT) result=likeService.setCommentLike(userId,targetId,true);
+		else likeService.like(userId, targetType, targetId);
 		
 		return ResponseEntity.ok(
-				BaseResponse.<Void>builder()
+				BaseResponse.<Object>builder()
 						.success(true)
 						.message("Begeni eklendi")
 						.code(200)
+						.data(result)
 						.build()
 		);
 	}
@@ -48,20 +52,31 @@ public class LikeController {
 	@DeleteMapping(UNLIKE)
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Begenemekten vazgec (idepotent)")
-	public ResponseEntity<BaseResponse<Void>> unlike(
+	public ResponseEntity<BaseResponse<Object>> unlike(
 			@AuthenticationPrincipal(expression = "id")UUID userId,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId
 	) {
 		log.info("[LikeController] User {} unlikes {}:{}", userId, targetType, targetId);
 		
-		likeService.unlike(userId, targetType, targetId);
+		Object result=null;
+		if(targetType==EngagementTargetType.COMMENT) result=likeService.setCommentLike(userId,targetId,false);
+		else likeService.unlike(userId, targetType, targetId);
 		
-		return ResponseEntity.ok(BaseResponse.<Void>builder()
+		return ResponseEntity.ok(BaseResponse.<Object>builder()
 				                         .success(true)
 				                         .message("Begeni kaldirildi")
 				                         .code(200)
+				                         .data(result)
 				                         .build());
+	}
+
+	@GetMapping("/COMMENT/{commentId}/state")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<BaseResponse<CommentLikeState>> commentState(
+			@AuthenticationPrincipal(expression = "id") UUID userId,@PathVariable UUID commentId) {
+		return ResponseEntity.ok(BaseResponse.<CommentLikeState>builder().success(true).code(200)
+				.message("Yorum beğeni durumu getirildi").data(likeService.readCommentLike(userId,commentId)).build());
 	}
 	
 	@GetMapping(COUNT)

@@ -126,7 +126,25 @@ test {
 
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'analytics-load'
+    }
+}
+
+// Explicit, isolated database contention check. Never connects to the application
+// database or imports application.yml/.env.local; not a production capacity SLA.
+tasks.register('venueAnalyticsLoadTest', Test) {
+    group = 'verification'
+    description = 'Runs bounded venue-reporting concurrency against disposable PostgreSQL.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'analytics-load'
+    }
+    maxParallelForks = 1
+    maxHeapSize = '1g'
+    jvmArgs '-XX:+EnableDynamicAgentLoading'
+    outputs.upToDateWhen { false }
 }
 
 // Keep the developer/IDE default deterministic now that the repository also

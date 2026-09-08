@@ -20,6 +20,7 @@ import java.util.UUID;
 @SuperBuilder
 @Table(
 		name = "tbl_like",
+		indexes = @Index(name = "idx_like_target", columnList = "target_type,target_id"),
 		uniqueConstraints = {
 				@UniqueConstraint(
 						name = "uk_like_user_target",

@@ -5,7 +5,8 @@ public enum EngagementTargetType {
 	
 	OVERTHINKING,
 	MEDIA,
-	EVENT
+	EVENT,
+	COMMENT
 	
 	//FIXME BASKA MODULE GEREKTIGI ZAMAN BURAYA EKLE
 }

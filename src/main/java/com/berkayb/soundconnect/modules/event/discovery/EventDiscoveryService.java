@@ -37,12 +37,18 @@ public class EventDiscoveryService {
             throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
         }
         var result = repository.findEvents(date, cityId, districtId, neighborhoodId, PageRequest.of(page, size));
-        var posterIds = result.stream().map(EventDiscoveryRow::posterImage)
-                .map(EventDiscoveryService::parseMediaId).filter(Objects::nonNull).distinct().toList();
-        Map<UUID, String> posters = posterIds.isEmpty() ? Map.of() : media.getDisplayUrlMap(posterIds);
-        var content = result.stream().map(row -> toDto(row, posters)).toList();
+        var content = present(result.getContent());
         return new EventDiscoveryPage(content, result.getNumber(), result.getSize(),
                 result.getTotalElements(), result.getTotalPages(), result.isLast());
+    }
+
+    /** Shared bounded public event-card decoration for discovery and audience plan/profile pages. */
+    public List<EventResponseDto> present(List<EventDiscoveryRow> rows) {
+        if (rows.size() > 50) throw new IllegalArgumentException("Event card pages are bounded to 50 items");
+        var posterIds = rows.stream().map(EventDiscoveryRow::posterImage)
+                .map(EventDiscoveryService::parseMediaId).filter(Objects::nonNull).distinct().toList();
+        Map<UUID, String> posters = posterIds.isEmpty() ? Map.of() : media.getDisplayUrlMap(posterIds);
+        return rows.stream().map(row -> toDto(row, posters)).toList();
     }
 
     /** Mirrors public names/links. Discovery does not use or expand a band's member list. */

@@ -31,6 +31,7 @@ public class MediaEngagementCleanupService {
 	@Transactional(propagation = Propagation.MANDATORY)
 	public void purgeForMedia(UUID mediaAssetId) {
 		int likes = likeRepository.deleteMediaTargetReferences(mediaAssetId);
+		likes += likeRepository.deleteMediaCommentReferences(mediaAssetId);
 		int replies = commentRepository.deleteRepliesByTarget(
 				EngagementTargetType.MEDIA, mediaAssetId);
 		int roots = commentRepository.deleteRootsByTarget(

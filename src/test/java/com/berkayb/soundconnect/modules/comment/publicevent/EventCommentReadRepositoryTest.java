@@ -1,12 +1,16 @@
 package com.berkayb.soundconnect.modules.comment.publicevent;
 
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
+import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.mapper.CommentMapper;
 import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
+import com.berkayb.soundconnect.modules.comment.repository.CommentAuthorRepository;
 import com.berkayb.soundconnect.modules.comment.service.CommentServiceImpl;
 import com.berkayb.soundconnect.modules.comment.support.CommentEntityFinder;
+import com.berkayb.soundconnect.modules.comment.support.CommentTargetAccessGuard;
+import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.engagement.service.EngagementTargetValidator;
 import com.berkayb.soundconnect.modules.event.entity.Event;
@@ -75,7 +79,7 @@ import static org.mockito.Mockito.*;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ContextConfiguration(classes = EventCommentReadRepositoryTest.RepositoryConfiguration.class)
 @Import({EventCommentReadService.class, CommentServiceImpl.class, CommentEntityFinder.class,
-        GhostListenerIdentityBatchResolver.class})
+        GhostListenerIdentityBatchResolver.class, CommentAuthorBatchResolver.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class EventCommentReadRepositoryTest {
     @Container
@@ -87,10 +91,12 @@ class EventCommentReadRepositoryTest {
     @Autowired EntityManager em;
     @Autowired EventCommentReadRepository repository;
     @Autowired EventCommentReadService readService;
-    @MockitoSpyBean ListenerProfileRepository identityLocks;
+    @MockitoSpyBean CommentAuthorRepository identityLocks;
     @MockitoBean CommentMapper mapper;
     @MockitoBean MediaAssetService media;
-    @MockitoBean EngagementTargetValidator validator;
+    @MockitoBean CommentTargetAccessGuard validator;
+    @MockitoBean CommentBurstGuard burstGuard;
+    @MockitoBean com.berkayb.soundconnect.modules.like.repository.LikeRepository likes;
     @MockitoBean UserEntityFinder users;
     @MockitoBean OverthinkingPostRepository posts;
     private Venue venue;
@@ -190,18 +196,18 @@ class EventCommentReadRepositoryTest {
         var root = comment(EngagementTargetType.EVENT, event.getId(), null, true);
         var reply = comment(EngagementTargetType.EVENT, event.getId(), root, true);
         UUID authorId = venue.getOwner().getId();
-        when(mapper.toCommentResponseDto(any(), anyInt(), anyBoolean(), any())).thenAnswer(invocation -> {
+        when(mapper.toResolvedComment(any(), anyInt(), anyBoolean(), any())).thenAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
             assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
             Comment comment = invocation.getArgument(0);
             return new CommentResponseDto(comment.getId(), null, false, comment.getText(), comment.isDeleted(),
-                    null, invocation.getArgument(1), comment.getCreatedAt());
+                    null, invocation.getArgument(1), comment.getCreatedAt().toInstant(java.time.ZoneOffset.UTC));
         });
-        when(mapper.toCommentReplyResponseDto(any(), anyBoolean(), any())).thenAnswer(invocation -> {
+        when(mapper.toResolvedReply(any(), anyBoolean(), any())).thenAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isCurrentTransactionReadOnly()).isFalse();
             Comment comment = invocation.getArgument(0);
             return new CommentReplyResponseDto(comment.getId(), null, false, comment.getText(), comment.isDeleted(),
-                    comment.getParentComment().getId(), comment.getCreatedAt());
+                    comment.getParentComment().getId(), comment.getCreatedAt().toInstant(java.time.ZoneOffset.UTC));
         });
         // Commit only into this class's disposable database, then let the actual adapter create its own transaction.
         // Remaining tests use independent UUID fixtures. Testcontainers removes this entire fixture database.
@@ -217,7 +223,7 @@ class EventCommentReadRepositoryTest {
                     assertThat(dto.id()).isEqualTo(reply.getId());
                     assertThat(dto.text()).isEqualTo("[Bu yorum silinmiştir]");
                 });
-        verify(identityLocks, times(2)).findAllByUserIdInForVisibilityRead(List.of(authorId));
+        verify(identityLocks, times(2)).lockListenerIdentities(java.util.Set.of(authorId));
     }
 
     private Comment comment(EngagementTargetType type, UUID target, Comment parent, boolean deleted) {

@@ -32,6 +32,7 @@ class MediaEngagementCleanupServiceTest {
 
 		InOrder order = inOrder(likeRepository, commentRepository);
 		order.verify(likeRepository).deleteMediaTargetReferences(assetId);
+		order.verify(likeRepository).deleteMediaCommentReferences(assetId);
 		order.verify(commentRepository).deleteRepliesByTarget(
 				EngagementTargetType.MEDIA, assetId);
 		order.verify(commentRepository).deleteRootsByTarget(

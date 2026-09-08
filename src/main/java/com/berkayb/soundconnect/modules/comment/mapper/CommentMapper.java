@@ -4,20 +4,15 @@ import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyRespons
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
-import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
-import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
-import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
-import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import com.berkayb.soundconnect.modules.user.entity.User;
-import com.berkayb.soundconnect.modules.venue.entity.Venue;
-import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.beans.factory.annotation.Autowired;
-
-import java.util.List;
-import java.util.UUID;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Comment entity <-> DTO dönüşümleri için MapStruct mapper.
@@ -26,13 +21,7 @@ import java.util.UUID;
 public abstract class CommentMapper {
 	
 	@Autowired
-	protected MediaAssetService mediaAssetService;
-	
-	@Autowired
-	protected VenueRepository venueRepository;
-	
-	@Autowired
-	protected VenueProfileRepository venueProfileRepository;
+	protected CommentAuthorBatchResolver authorResolver;
 	
 	protected UserSummaryDto toUserSummaryDto(User user) {
 		return toUserSummaryDto(user, null);
@@ -51,11 +40,25 @@ public abstract class CommentMapper {
 			);
 		}
 		
-		return new UserSummaryDto(
-				user.getId(),
-				user.getUsername(),
-				resolveAvatarUrl(user)
-		);
+		return authorResolver.resolve(java.util.Set.of(user.getId())).get(user.getId());
+	}
+
+	/** Production page mapping supplies a pre-resolved author: never hydrate a user/profile graph here. */
+	public CommentResponseDto toResolvedComment(Comment comment, int replyCount, boolean anonymous, UserSummaryDto user) {
+		return new CommentResponseDto(comment.getId(), anonymous ? anonymousUserSummaryDto() : user, anonymous,
+				comment.getText(), comment.isDeleted(), comment.getParentComment() == null ? null : comment.getParentComment().getId(),
+				replyCount, toApiInstant(comment.getCreatedAt()));
+	}
+
+	public CommentReplyResponseDto toResolvedReply(Comment comment, boolean anonymous, UserSummaryDto user) {
+		return new CommentReplyResponseDto(comment.getId(), anonymous ? anonymousUserSummaryDto() : user, anonymous,
+				comment.getText(), comment.isDeleted(), comment.getParentComment() == null ? null : comment.getParentComment().getId(),
+				toApiInstant(comment.getCreatedAt()));
+	}
+
+	/** JpaAuditingConfig stores UTC wall-clock LocalDateTime; the wire contract must include its UTC offset. */
+	protected Instant toApiInstant(LocalDateTime utcDateTime) {
+		return utcDateTime == null ? null : utcDateTime.toInstant(ZoneOffset.UTC);
 	}
 	
 	/**
@@ -71,6 +74,9 @@ public abstract class CommentMapper {
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
 	@Mapping(target = "replyCount", source = "replyCount")
+	@Mapping(target = "likeCount", constant = "0L")
+	@Mapping(target = "likedByMe", constant = "false")
+	@Mapping(target = "createdAt", expression = "java(toApiInstant(comment.getCreatedAt()))")
 	public abstract CommentResponseDto toCommentResponseDto(
 			Comment comment,
 			int replyCount,
@@ -88,8 +94,11 @@ public abstract class CommentMapper {
 
 	@Mapping(target = "user", expression = "java(maskAuthor ? anonymousUserSummaryDto() : toUserSummaryDto(comment.getUser(), ghostIdentity))")
 	@Mapping(target = "anonymousAuthor", source = "maskAuthor")
+	@Mapping(target = "likeCount", constant = "0L")
+	@Mapping(target = "likedByMe", constant = "false")
 	@Mapping(target = "parentCommentId",
 			expression = "java(comment.getParentComment() != null ? comment.getParentComment().getId() : null)")
+	@Mapping(target = "createdAt", expression = "java(toApiInstant(comment.getCreatedAt()))")
 	public abstract CommentReplyResponseDto toCommentReplyResponseDto(
 			Comment comment,
 			boolean maskAuthor,
@@ -105,53 +114,7 @@ public abstract class CommentMapper {
 	}
 	
 	protected String resolveAvatarUrl(User user) {
-		if (user == null) return null;
-		
-		if (user.getMusicianProfile() != null &&
-				user.getMusicianProfile().getProfilePictureMediaId() != null) {
-			String musicianAvatar = resolveMediaUrl(user.getMusicianProfile().getProfilePictureMediaId());
-			if (musicianAvatar != null && !musicianAvatar.isBlank()) {
-				return musicianAvatar;
-			}
-		}
-		
-		List<Venue> ownedVenues = venueRepository.findAllByOwnerId(user.getId());
-		if (ownedVenues != null && !ownedVenues.isEmpty()) {
-			for (Venue venue : ownedVenues) {
-				VenueProfile venueProfile = venueProfileRepository.findByVenueId(venue.getId()).orElse(null);
-				if (venueProfile != null && venueProfile.getProfilePictureMediaId() != null) {
-					String venueAvatar = resolveMediaUrl(venueProfile.getProfilePictureMediaId());
-					if (venueAvatar != null && !venueAvatar.isBlank()) {
-						return venueAvatar;
-					}
-				}
-			}
-		}
-		
-		final String raw = user.getProfilePicture();
-		if (raw == null || raw.isBlank()) return null;
-		
-		if (raw.startsWith("http://") || raw.startsWith("https://")) {
-			return raw;
-		}
-		
-		try {
-			UUID assetId = UUID.fromString(raw);
-			return resolveMediaUrl(assetId);
-		} catch (Exception ignored) {
-		}
-		
-		return raw;
-	}
-	
-	protected String resolveMediaUrl(UUID mediaId) {
-		if (mediaId == null) return null;
-		
-		try {
-			return mediaAssetService.getDisplayUrl(mediaId);
-		} catch (Exception ignored) {
-		}
-		
-		return null;
+		UserSummaryDto summary = toUserSummaryDto(user);
+		return summary == null ? null : summary.avatarUrl();
 	}
 }

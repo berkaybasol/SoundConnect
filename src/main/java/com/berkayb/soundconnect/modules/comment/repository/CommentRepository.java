@@ -15,6 +15,33 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CommentRepository extends JpaRepository<Comment, UUID> {
+	@Query(value = """
+			select c.id,c.user_id as "userId",c.target_type as "targetType",c.target_id as "targetId",
+			       c.parent_comment_id as "parentId",c.is_deleted as "deleted"
+			from tbl_comment c where c.id=:id
+			""",nativeQuery = true)
+	java.util.Optional<LockedComment> findCommentTarget(@Param("id") UUID id);
+
+	@Query(value = """
+			select id,user_id as "userId",target_type as "targetType",target_id as "targetId",
+			       parent_comment_id as "parentId",is_deleted as "deleted"
+			from tbl_comment where id=:id for share
+			""",nativeQuery = true)
+	java.util.Optional<LockedComment> lockCommentForRead(@Param("id") UUID id);
+	@Query(value = """
+			select id, user_id as "userId", target_type as "targetType", target_id as "targetId",
+			parent_comment_id as "parentId", is_deleted as "deleted"
+			from tbl_comment where id=:id for update
+			""", nativeQuery = true)
+	java.util.Optional<LockedComment> lockComment(@Param("id") UUID id);
+	interface LockedComment {
+		UUID getId(); UUID getUserId(); String getTargetType(); UUID getTargetId();
+		UUID getParentId(); boolean getDeleted();
+	}
+
+	@Modifying
+	@Query("update Comment c set c.deleted=true,c.updatedAt=CURRENT_TIMESTAMP where c.id=:id")
+	int softDelete(@Param("id") UUID id);
 	
 	// belirli bir icerik uzerindeki root commentleri listeler. parentComment=null olan yorumlar rootdur
 	Page<Comment> findByTargetTypeAndTargetIdAndParentCommentIsNull(

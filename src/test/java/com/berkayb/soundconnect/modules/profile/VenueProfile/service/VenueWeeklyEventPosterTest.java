@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
@@ -29,6 +30,7 @@ class VenueWeeklyEventPosterTest {
     @Mock EventRepository events;
     @Mock MediaAssetService media;
     @Mock MediaAssetRepository mediaRepository;
+    @Spy EventScheduleClock scheduleClock = new EventScheduleClock();
     @InjectMocks VenueProfileServiceImpl service;
     Venue venue;
     Event event;
