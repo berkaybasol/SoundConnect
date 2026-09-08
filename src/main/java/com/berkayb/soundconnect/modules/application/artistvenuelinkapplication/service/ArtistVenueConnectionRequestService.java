@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestPageItemDto;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 
@@ -9,6 +11,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface ArtistVenueConnectionRequestService {
+	PageResponse<ArtistVenueConnectionRequestPageItemDto> getBandPage(UUID actorUserId, UUID bandId, RequestStatus status, Boolean incoming, int page, int size);
+	PageResponse<ArtistVenueConnectionRequestPageItemDto> getMusicianPage(UUID actorUserId, UUID musicianProfileId, RequestStatus status, Boolean incoming, int page, int size);
+	PageResponse<ArtistVenueConnectionRequestPageItemDto> getVenuePage(UUID actorUserId, UUID venueId, RequestStatus status, Boolean incoming, int page, int size);
 	// basvuru olustur (sanatci veya mekan baslatabilir)
 	ArtistVenueConnectionRequestResponseDto createRequest(UUID actorUserId, ArtistVenueConnectionRequestCreateDto dto, RequestByType requestType);
 	

@@ -59,6 +59,13 @@ public class NotificationProducer {
 	// NotificationInboundEvent mesajini RabbitMQ'ya publish eder.
 	
 	public void publish(NotificationInboundEvent event) {
+		Objects.requireNonNull(event, "event is required");
+		// Assign once at the publishing boundary, never at consumption. Broker
+		// redelivery then carries the same identity after inbox content is deleted.
+		if (event.eventId() == null) {
+			event = new NotificationInboundEvent(UUID.randomUUID(), event.recipientId(), event.type(),
+					event.title(), event.message(), event.payload(), event.emailForce(), event.occurredAt());
+		}
 		try{
 			rabbitTemplate.convertAndSend(exchange, publishRoutingKey, event);
 			log.info("Notification published to RabbitMQ. exchange={}, routingKey={}, eventId={}, type={}",

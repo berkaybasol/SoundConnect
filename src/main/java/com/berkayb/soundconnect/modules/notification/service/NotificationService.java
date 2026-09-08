@@ -10,6 +10,14 @@ import java.util.List;
 import java.util.UUID;
 
 public interface NotificationService {
+	static boolean requiresActorIdentityRefresh(NotificationType type) {
+		return type == NotificationType.DM_NEW_MESSAGE
+				|| type == NotificationType.SOCIAL_NEW_FOLLOWER
+				|| type == NotificationType.SOCIAL_NEW_BAND_FOLLOWER;
+	}
+
+	// Refresh privacy-sensitive actor snapshots immediately before realtime delivery.
+	NotificationResponseDto refreshActorIdentityForDelivery(NotificationResponseDto notification);
 	
 	// kullanicinin bildirimlerini yeniden eskiye sayfali getir
 	Page<NotificationResponseDto> getUserNotifications(UUID userId, int page, int size);

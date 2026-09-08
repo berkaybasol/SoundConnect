@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @org.junit.jupiter.api.extension.ExtendWith(MockitoExtension.class)
 class NotificationEventListenerTest {
@@ -35,6 +38,8 @@ class NotificationEventListenerTest {
 	@Mock private NotificationMapper notificationMapper;
 	@Mock private NotificationWebSocketService notificationWebSocketService;
 	@Mock private MailProducer mailProducer; // YENİ: MailProducer mock'u
+	@Mock private NotificationService notificationService;
+	@Mock private NotificationReceiptRepository receiptRepository;
 	
 	private NotificationEventListener listener;
 	
@@ -47,16 +52,21 @@ class NotificationEventListenerTest {
 				badgeCacheHelper,
 				notificationMapper,
 				notificationWebSocketService,
-				mailProducer   // YENİ: mailProducer eklendi
+				mailProducer,
+				notificationService,
+				receiptRepository
 		);
+		lenient().when(notificationService.refreshActorIdentityForDelivery(any()))
+				.thenAnswer(call -> call.getArgument(0));
 		userId = UUID.randomUUID();
+		lenient().when(receiptRepository.claim(any(), any())).thenReturn(1);
 	}
 	
 	@Test
 	@DisplayName("Invalid event: recipientId veya type yoksa erken return; hiçbir yan etki yok")
 	void handle_invalidEvent_skips() {
 		// recipient yok
-		NotificationInboundEvent e1 = NotificationInboundEvent.builder()
+		NotificationInboundEvent e1 = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                      .recipientId(null)
 		                                                      .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                                                      .title("x")
@@ -64,7 +74,7 @@ class NotificationEventListenerTest {
 		                                                      .build();
 		
 		// type yok
-		NotificationInboundEvent e2 = NotificationInboundEvent.builder()
+		NotificationInboundEvent e2 = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                      .recipientId(userId)
 		                                                      .type(null)
 		                                                      .title("x")
@@ -73,16 +83,19 @@ class NotificationEventListenerTest {
 		
 		listener.handle(e1);
 		listener.handle(e2);
+		assertThatThrownBy(() -> listener.handle(new NotificationInboundEvent(null, userId, NotificationType.BAND_INVITE_RECEIVED,
+				"Legacy event without replay identity", "message", Map.of(), false, Instant.now())))
+				.isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class);
 		
 		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
-		                     notificationWebSocketService, mailProducer); // YENİ: mailProducer eklendi
+		                     notificationWebSocketService, mailProducer, receiptRepository);
 	}
 	
 	@Test
 	@DisplayName("Happy path: save → unread count → cache set → WS notif+badge → mail pipeline'a gönderim")
 	void handle_happyPath() {
 		Instant occurredAt = Instant.parse("2026-08-11T09:15:00Z");
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                         .recipientId(userId)
 		                                                         .type(NotificationType.MEDIA_TRANSCODE_FAILED) // <-- emailRecommended=true
 		                                                         .title("Medya işleme başarısız")
@@ -146,7 +159,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("Notification WS ve mail hata atsa da DB badge push bağımsız çalışır")
 	void handle_swallowWsAndMailErrors() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                         .recipientId(userId)
 		                                                         .type(NotificationType.SOCIAL_NEW_FOLLOWER)
 		                                                         .title("Yeni takipçi")
@@ -200,9 +213,49 @@ class NotificationEventListenerTest {
 	}
 
 	@Test
+	@DisplayName("Gecikmiş takip bildirimi güncel güvenli kimlikle WebSocket üzerinden iletilir")
+	void delayedActorIdentityIsRefreshedBeforeRealtimePush() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_BAND_FOLLOWER).title("Old name").message("message")
+				.emailForce(false).occurredAt(Instant.now()).build();
+		Notification stored = Notification.builder().recipientId(userId).type(event.type())
+				.title(event.title()).message(event.message()).occurredAt(event.occurredAt()).build();
+		NotificationResponseDto stale = new NotificationResponseDto(UUID.randomUUID(), userId, event.type(),
+				"Old name", "message", false, event.occurredAt(), Map.of("followerUsername", "Old name"));
+		NotificationResponseDto safe = new NotificationResponseDto(stale.id(), userId, event.type(),
+				"ghost_alias", "message", false, event.occurredAt(), Map.of("followerUsername", "ghost_alias"));
+		when(notificationRepository.saveAndFlush(any())).thenReturn(stored);
+		when(notificationMapper.toDto(stored)).thenReturn(stale);
+		when(notificationService.refreshActorIdentityForDelivery(stale)).thenReturn(safe);
+
+		listener.handle(event);
+
+		verify(notificationWebSocketService).sendNotificationToUser(userId, safe);
+		verify(notificationWebSocketService, never()).sendNotificationToUser(userId, stale);
+	}
+
+	@Test
+	void bandNotificationDeliveryDoesNotOpenAnActorIdentityTransaction() {
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
+				.type(NotificationType.BAND_INVITE_RECEIVED).title("Grup daveti").message("message")
+				.emailForce(false).occurredAt(Instant.now()).build();
+		Notification stored = Notification.builder().recipientId(userId).type(event.type())
+				.title(event.title()).message(event.message()).occurredAt(event.occurredAt()).build();
+		NotificationResponseDto dto = new NotificationResponseDto(UUID.randomUUID(), userId, event.type(),
+				event.title(), event.message(), false, event.occurredAt(), Map.of());
+		when(notificationRepository.saveAndFlush(any())).thenReturn(stored);
+		when(notificationMapper.toDto(stored)).thenReturn(dto);
+
+		listener.handle(event);
+
+		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
+		verifyNoInteractions(notificationService);
+	}
+
+	@Test
 	@DisplayName("Legacy event occurredAt taşımıyorsa tüketim zamanı audit fallback olarak kaydedilir")
 	void handle_legacyEventFallsBackToConsumptionTime() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("Yeni takipçi")
@@ -225,7 +278,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("Optional title/message DB NOT NULL sözleşmesine güvenli varsayılanlarla yazılır")
 	void handle_optionalTextUsesPersistenceSafeDefaults() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("  ")
@@ -249,7 +302,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("DB kolon sınırını aşan event poison retry yerine validation ile atlanır")
 	void handle_oversizedTextSkipsBeforePersistence() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("x".repeat(161))
@@ -265,7 +318,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("Redis projection fail/null olsa da WS badge DB fresh unread değerini kullanır")
 	void handle_cacheFailureStillBroadcastsDatabaseUnread() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("Yeni takipçi")
@@ -296,7 +349,7 @@ class NotificationEventListenerTest {
 	@DisplayName("DB transaction commit olmadan cache, WS veya mail yan etkisi oluşmaz")
 	void handle_defersExternalSideEffectsUntilCommit() {
 		Instant occurredAt = Instant.parse("2026-08-11T09:18:00Z");
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("Yeni takipçi")
@@ -331,7 +384,7 @@ class NotificationEventListenerTest {
 	@Test
 	@DisplayName("DB transaction rollback olursa cache, WS veya mail phantom side effect üretmez")
 	void handle_rollbackDoesNotDispatchExternalSideEffects() {
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
 				.title("Yeni takipçi")

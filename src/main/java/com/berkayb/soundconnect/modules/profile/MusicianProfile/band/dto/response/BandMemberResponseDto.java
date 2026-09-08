@@ -7,6 +7,12 @@ public record BandMemberResponseDto(
 		String username,
 		String profilePicture,
 		String role,
-		String status
+		String status,
+		String memberTitle,
+		long titleVersion
 ) {
+	public BandMemberResponseDto(UUID userId, String username, String profilePicture,
+	                             String role, String status) {
+		this(userId, username, profilePicture, role, status, null, 0L);
+	}
 }

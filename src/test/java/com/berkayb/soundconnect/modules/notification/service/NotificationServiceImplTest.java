@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
@@ -47,6 +48,7 @@ class NotificationServiceImplTest {
 
 	@Mock
 	private GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+	@Mock private NotificationReceiptRepository receiptRepository;
 	
 	private NotificationServiceImpl service;
 	
@@ -60,11 +62,48 @@ class NotificationServiceImplTest {
 				notificationMapper,
 				badgeCacheHelper,
 				notificationWebSocketService,
-				ghostListenerIdentityBatchResolver);
+				ghostListenerIdentityBatchResolver, receiptRepository);
 		userId = UUID.randomUUID();
 	}
 	
 	// ---------- getUserNotifications ----------
+	@Test
+	void realtimeDeliveryReplacesDelayedActorSnapshotWithCurrentGhostIdentity() {
+		UUID follower = UUID.randomUUID();
+		NotificationResponseDto stale = new NotificationResponseDto(UUID.randomUUID(), userId,
+				NotificationType.SOCIAL_NEW_BAND_FOLLOWER, "Old real name", "message", false, null,
+				Map.of("followerId", follower.toString(), "followerUsername", "Old real name",
+						"followerAvatarUrl", "https://cdn.test/old-real-face.jpg"));
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenReturn(Map.of(follower,
+				new GhostListenerIdentity(follower, "ghost_alias", null, ListenerVisibilityMode.GHOST)));
+
+		NotificationResponseDto result = service.refreshActorIdentityForDelivery(stale);
+
+		assertThat(result.title()).isEqualTo("ghost_alias bandını takip etmeye başladı");
+		assertThat(result.payload()).containsEntry("followerUsername", "ghost_alias")
+				.containsEntry("followerVisibilityMode", "GHOST").doesNotContainKey("followerAvatarUrl");
+		assertThat(stale.payload()).containsEntry("followerUsername", "Old real name");
+	}
+
+	@Test
+	void realtimeDeliveryFailsClosedIfCurrentIdentityCannotBeRead() throws Exception {
+		UUID sender = UUID.randomUUID();
+		NotificationResponseDto stale = new NotificationResponseDto(UUID.randomUUID(), userId,
+				NotificationType.DM_NEW_MESSAGE, "Old real name", "message", false, null,
+				Map.of("senderId", sender.toString(), "senderUsername", "Old real name",
+						"senderAvatarUrl", "https://cdn.test/old-real-face.jpg"));
+		when(ghostListenerIdentityBatchResolver.resolve(anyCollection())).thenThrow(new IllegalStateException("Unavailable"));
+
+		NotificationResponseDto result = service.refreshActorIdentityForDelivery(stale);
+
+		assertThat(result.title()).isEqualTo("Yeni mesaj");
+		assertThat(result.payload()).containsEntry("senderId", sender.toString())
+				.doesNotContainKeys("senderUsername", "senderAvatarUrl");
+		assertThat(NotificationServiceImpl.class.getMethod("refreshActorIdentityForDelivery", NotificationResponseDto.class)
+				.getAnnotation(Transactional.class).propagation())
+				.isEqualTo(org.springframework.transaction.annotation.Propagation.REQUIRES_NEW);
+	}
+
 	@Test
 	@DisplayName("getUserNotifications: repository page -> mapper.toDto ile dönmeli")
 	void getUserNotifications_ok() {

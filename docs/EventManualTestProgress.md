@@ -1,6 +1,459 @@
 # Etkinlik akışı — manuel test kaydı
 
-Son güncelleme: 6 Eylül 2026. Ana akış: `ReciprocalEventFlow.md`.
+Son güncelleme: 7 Eylül 2026. Ana akış: `ReciprocalEventFlow.md`.
+
+## Güncel — son iki manuel kontrol ertelendi, misafir keşif tasarımı
+
+Kullanıcı `QA - Tarih ve silme` etkinliğini kendisi oluşturduğunu ve Sahbaz
+tarafındaki daveti onayladığını bildirdi. Ardından manuel tekrarları sonlandırmayı
+tercih etti. Gerçek bitiş sonrası Geçmiş'e geçiş ve silme sonrası tüm ilgili
+profillerden temizlenme gözlemlenmedi. Bu iki başlık GEÇTİ değil, ERTELENDİ.
+Kişisel gösterimin bu yeni QA kaydı için ayrıca hazırlandığı doğrulanmadı.
+
+Kullanıcı daha sonra misafir girişindeki etkinlik keşfini bugün dahil yedi gün,
+Bugün / tarihli Yarın / sınırlı tarih seçimi düzenine çevirmeyi istedi. Tasarım
+denemesi eski ekrana tek ayarla dönülebilecek şekilde izole edildi. Bu çalışma
+mevcut etkinlik davet, bağlantı veya profil gösterim izinlerini değiştirmez.
+Otomatik test verileri canlı hesaplara/etkinliklere eklenmez.
+
+## Güncel — B-T2 geçti, bilgisayar üzerinden kalan kontroller
+
+Kullanıcı B-T2 bağlı grup akışını doğruladı: davet kararı öncesinde grup
+bağlantısı açık, gösterim daveti reddedildiğinde mekan etkinliği ve grup
+bağlantısı korunuyor. Sonradan grup gösterimi açılabiliyor. Kişisel gösterimi
+kapatmak grubu etkilemiyor, grup gösterimini kapatmak kişisel gösterimi de
+sınırlıyor, grup gösterimi yeniden açılınca açık kişisel tercih uygulanıyor.
+Bu manuel başlık GEÇTİ. Eski davet/tekrarlı işlem senaryolarının telefonda
+tekrarı kullanıcı tercihiyle atlandı, otomatik test kapsamına dayanılıyor.
+
+Asistan 7 Eylül 2026 yaklaşık 18:17'de scrcpy/V2206 üzerinden bugrasahin
+hesabının Etkinliklerim → Geçmiş ekranını açtı. Sekme açılıyor, mevcut liste
+boş. Bu yalnız boş durum kontrolüdür, zaman geçişi testi yapılmış sayılmaz.
+Hiçbir etkinlik oluşturulmadı, silinmedi veya gösterim tercihi değiştirilmedi.
+Gözlem anında B-T2 kişisel listede gizliydi. Önceki kullanıcı doğrulamalarını
+geri almıyoruz, tercih daha sonra değişmiş olabilir.
+
+Kalan işler: ayrı bir kısa süreli test etkinliğinin geçmişe geçmesi ve
+onaylı kişisel/grup geçmişlerinin kontrolü, ardından yalnız bu test kaydının
+silinmesiyle temizlenme ve mekan bağlantılarının korunması. Hesap girişini
+kullanıcı yapacak. Silme, Windows UI üzerinden yapılmadan hemen önce ayrıca
+onay istenecek. Hesap şifreleri bu kayda alınmadı. Alttaki B-T2 başlamadı
+notları artık tarihsel kayıttır.
+
+## Güncel — bağlı müzisyen testi geçti, B-T2 başlamadı
+
+Kullanıcı M-T5 — Bağlı müzisyen etkinliğini soundconnectankara hesabından
+bugrasahin seçerek oluşturdu. Davete yanıt verilmeden @bugrasahin açıldı.
+Etkinlik müzisyen profilinde otomatik görünmedi. Gösterim daveti reddedildiğinde
+mekan etkinliği ve profil bağlantısı korundu. Etkinliklerim'den sonradan
+Profilimde göster açıldığında etkinlik müzisyen takviminde göründü. GEÇTİ.
+
+Şahbaz ve soundconnectankara Bağlantılarım üzerinden bağlı. Sıradaki adım
+mekandan B-T2 — Bağlı grup oluşturmak, ancak kullanıcı henüz oluşturmadı.
+Önce Aktif Sanatçılar → Tümü ekranı eklenecek ve telefonda kontrol edilecek.
+Bu tasarım arası, sonraki grup/davet/tarih/silme kontrollerini tamamlanmış saymaz.
+
+## Güncel — müzisyen ve mekan bağlantısı doğrulandı
+
+bugrasahin isteği gönderdi. soundconnectankara hesabında Gelen İstekler'de
+göründü, kabul edildi ve Bağlantılarım'a geçti. Kullanıcı ayrıca müzisyen
+tarafındaki Bağlantılarım listesini, Çaldığı Mekanlar kartını ve mekanın
+Aktif Sanatçılar alanındaki bugrasahin kartını doğruladı. Bu ön koşul GEÇTİ.
+
+Testler, mekan/müzisyen/grup profillerindeki Türkçe metin düzeltmeleri için
+duraklatıldı. Sıradaki test bağlı müzisyenin etkinliğe eklenmesi ve profil
+gösterim davetidir. Henüz bu yeni etkinlik oluşturulmadı. Alttaki eski
+“bağlı değiller / istek gönder” yönlendirmeleri artık geçerli değil.
+
+Türkçe düzeltmeleri: profil/yönetim/bağlantı ve ortak medya ekranlarının
+görünen metinleri düzeltildi. Teknik kimlikler, arama normalizasyonu ve eski
+davet metnini ayrıştıran uyumluluk kodu korunuyor. `dart analyze lib test`
+temiz. Tam Flutter koşusunda 2394 test geçti, bir test eski yükleme metnini
+beklediği için takıldı. Bu beklenti düzeltildikten sonra ilgili profil ve
+bağlantı testlerinin 53'ü de geçti. İş akışı veya veritabanı değişikliği yok.
+
+## Güncel — bağlantı yönetimi menüsü ve sıradaki test
+
+Kullanıcı mekan B-T1'in korunduğunu ve @Şahbaz bağlantısının çalıştığını
+doğruladı. Aşağıdaki altı ana kontrolün ilki geçti, beş başlık kaldı.
+bugrasahin ile soundconnectankara henüz bağlı değil. Bağlantı oluşturma
+adımından önce menü düzeni revize edildi.
+
+Müzisyen/grupta **Mekan Bağlantıları**, mekanda **Sanatçı Bağlantıları**
+ortak yönetim menüsünü açar. Seçenekler **Bağlantılarım**, **Gelen İstekler**,
+**Gönderdiğim İstekler**. Ayrı gradient düğme **Mekan ekle / Sanatçı ekle**.
+Bağlantılarım iki yönden gelen ACCEPTED kayıtlarını sunucuda filtreleyip
+20'şer getirir. İstek listelerinin mevcut durum geçmişi korunur. Backend
+kontratı, veritabanı ve etkinlik onay/gösterim kuralları değişmedi.
+
+Doğrulama: ilgili dört Flutter dosyasında 91 test geçti, `dart analyze lib test`
+temiz. Tam süitte 2389 test geçti, yeni iki sayfalama testindeki yön beklentisi
+yanlıştı (connectionsOnly yönü yok sayar). Yalnız test beklentileri düzeltildi,
+ardından bu ikisini de içeren ilgili 91 testin tamamı yeniden geçti.
+
+Sıradaki manuel adım: bugrasahin → Yönetim Paneli → Mekan Bağlantıları →
+Mekan ekle üzerinden soundconnectankara'ya istek gönder. Henüz bu isteğin
+gönderildiği veya kabul edildiği doğrulanmadı. Ardından mekan hesabında
+Sanatçı Bağlantıları → Gelen İstekler ile kabul edip iki tarafın
+Bağlantılarım listesini kontrol edeceğiz. Bu bölüm önceki sıradaki-adım
+notlarının yerine geçer.
+
+## Güncel — kurucunun üye çıkarma adımı geçti
+
+Kullanıcı bugrasahin hesabında Şahbaz → Üyeleri Yönet üzerinden aedrum'u
+çıkardı. Başarı sonucu, aedrum'un aktif üyelerden kalkması, sayının 1 olması
+ve kurucu kartı/unvanının korunması kullanıcı tarafından doğrulandı.
+**Üye çıkarma ve aedrum tarafındaki yetki kaybı GEÇTİ.** Kullanıcı aedrum
+hesabında Şahbaz'ın Bandlerim'den, kişisel B-T1'in profilinden kalktığını
+doğruladı. Aramadan Şahbaz açıldığında ziyaretçi profili geliyor. Yönetim,
+düzenleme ve Gruptan ayrıl yok. Üyelerde yalnız bugrasahin var.
+
+Etkinlik manuel akışını kapatmak için kalan kontroller altı ana başlıkta
+toplandı (tek tek dokunma/adım sayısı değildir, yeni hata çıkarsa ek kontrol
+gerekebilir):
+
+1. Üye çıkarma sonrası mekan B-T1 ve onaylı grup profil bağlantısı korunuyor mu?
+2. Bağlı müzisyen için katılım ile profil yayınının ayrımı.
+3. Bağlı grup için aynı ayrım ve kişisel/grup gösterim bağımsızlığı.
+4. Yeni davet kimliği düzeninde eski davet/bildirim ve tekrar karar kontrolü.
+5. Geçmiş etkinlik listeleri ve tarih sınırları. Önceden geçen ileri tarih
+   bilgilendirmesi tekrar baştan alınmayacak.
+6. Etkinlik silinince ilgili listeler/gösterimler temizlenirken mekan
+   bağlantılarının korunması.
+
+Sıradaki tek adım 1: aedrum hesabından soundconnectankara profilindeki B-T1'i
+açıp etkinliğin durduğunu ve @Şahbaz bağlantısının grup profilini açtığını
+kontrol etmek. Etkinlik veya bağlantı henüz silinmeyecek.
+
+Kısa isimleri ortalama denemesi kullanıcı tarafından reddedildi ve tamamen
+geri alındı. Önceki 168 × 52 temel ölçülü, soldan hizalı ortak mini kart
+korunuyor. Grup üyeleri, grup/müzisyen mekanları ve mekanın aktif sanatçıları
+aynı önceki tasarımda. Denemeye özgü test beklentileri de geri alındı.
+Geri alma sonrası mevcut kart testleri 13/13 geçti, kartın Dart analizi temiz.
+Diğer düzeltmeler, üyelik/bağlantı/etkinlik kuralları ve test ilerlemesi
+korundu. Güncel ilerleme ve sıradaki adım yukarıda kayıtlıdır.
+
+## Güncel — yedekli bağlı modül geçişi tamamlandı
+
+7 Eylül 2026 15:18 +03:00: kullanıcı backend'i durdurdu. Tam yedek alınıp
+geçici PostgreSQL'de geri yüklendi, üç geçiş önce bu kopyada prova edildi ve
+sonra yerel DB'ye uygulandı. 84 iş tablosunun veri özetleri değişmedi.
+Davet kimliği, beş bağlantı indeksi ve 25 teknik bildirim kaydı doğrulandı.
+Backend asistan tarafından açılmadı. Kullanıcı güncel backend ve Flutter'ı
+yeniden çalıştırınca **kurucunun üyeyi çıkarması / yetki kaybı** adımına
+dönülecek. B-T1 ve aedrum üyeliği/gösterim tercihleri korunuyor.
+Yedek ve kontroller: `ConnectedModulesLocalMigration20260907.md`.
+
+## Son ara — ikinci bağlı modül denetimi
+
+Kullanıcı manuel testte kaçabilecek koşullar için bildirim/müzisyen/grup/mekan
+bağlantısı akışını yeniden ayrıntılı denetlemeyi istedi. Yeni denetim ve
+doğrulama `ConnectedModulesScenarioMatrix.md` içinde. Eski üyelik ekranının
+yeniden katılınmış üyeliği çıkarma/unvan/ayrılma ile değiştirememesi, yeni
+bağlantının iki tarafında aktif/doğrulanmış hesap şartı ve silinmiş bildirimin
+gecikmiş tekrarının engellenmesi kullanıcı tarafından onaylandı.
+
+İkinci tur düzeltmeleri uygulandı. Backend son izole koşu **902/902**, 0
+atlama, tam Flutter **2372/2372**. Son kaynakta `dart analyze lib test` temiz.
+Ayrıntılı kapsam ve kanıtlar senaryo raporunda kayıtlıdır. Bunlar gerçek telefonda
+yeni sürümün çalıştığı veya canlı veri geçişinin yapıldığı anlamına gelmez.
+
+Kod denetimi turunda gerçek hesap, davet, B-T1, üyelik veya bağlantı
+değiştirilmedi. O sırada bekleyen geçişler sonraki kullanıcı teyidiyle
+yukarıdaki yedekli adımda tamamlandı.
+Manuel durak değişmedi: aedrum yeniden katılmış durumda, kişisel B-T1'i
+göstermişti. Grup B-T1'i gizli tutuyor, mekan etkinliği ve @Şahbaz bağlantısı
+doğruydu. Sonraki manuel adım kurucunun üye çıkarması ve yetki kaybı kontrolü.
+
+## Güncel durak — yeni üyelikte kişisel gösterim geçti, tasarım ve çapraz modül denetimi
+
+Son teyit: yeni üyelikte aedrum B-T1'i kendi profilinde yeniden gösterdi.
+Kullanıcı ayrıca Şahbaz grup profilinde B-T1'in hâlâ gizli, mekan profilinde
+görünür ve @Şahbaz bağlantısının çalışır olduğunu doğruladı. Yeni üyelikte
+kişisel gösterim ve diğer profillerden bağımsızlığı GEÇTİ.
+
+Son tasarım kararı: kullanıcı 52 yüksekliğinde, 168 genişliğindeki kompakt
+yatay üye kartlarını onayladı. Aynı görünüm şimdi grup/müzisyen profillerindeki
+mekanlara ve mekan profilindeki aktif sanatçılara uygulanıyor. Bildirim,
+müzisyen, grup ve sanatçı–mekan bağlantısı modüllerinin çapraz denetimi sürüyor.
+Denetim sırasında gerçek üyelik, davet veya B-T1 verileri değiştirilmedi.
+Kullanıcı iki ürün kararını onayladı: eski grup daveti yeni davete karar
+veremez, grup oluşturma kotasında yalnız aktif kurucu olunan gruplar sayılır.
+Yeni invitationId geçişi ve sayfalama indeksleri henüz gerçek veritabanına
+uygulanmadı. Veri geçişi öncesi kullanıcı backend'i durdurmalı ve yedek alınmalı.
+Veritabanı sıfırlanmayacak. Ayrıntılı durum: `ConnectedProfileModulesAudit.md`.
+Denetim doğrulaması tamamlandı: tam Flutter **2.306/2.306**, backend
+**402/402** (atlanan yok), son odaklı Flutter **34/34**, statik analiz temiz.
+Telefon testine dönüş için yalnız yedekli geçiş ve yeni backend/Flutter
+sürümlerinin birlikte açılması bekleniyor. B-T1 ve aedrum üyeliği korunacak.
+
+Önceki görsel deneme (geri alındı): grup profilindeki üye önizleme kartları isteğe bağlı rolü olmayan
+üyelerde de dengeli görünmesi için dikey avatar/isim/caption düzenine alındı.
+Rol zorunlu yapılmadı, üyelik/etkinlik yetkileri değişmedi. Önceki üç kaynak
+dosya `.local-verification/band-member-card-before/` içinde karşılaştırma için
+saklandı. 72 odaklı Flutter testi geçti, değişen kaynakların analizi temiz.
+Bu tasarım artık kullanılmıyor.
+
+Kullanıcı aedrum hesabında Gelen Davetler üzerinden Şahbaz davetini kabul etti
+ve sonuçları doğruladı: Şahbaz gruplarına geri geldi, gelen davet listesinden
+kalktı, B-T1 kişisel profilde kendiliğinden görünmedi. Eski üyeliğin kişisel
+gösterim tercihi yeni üyelikte geri gelmedi. Bu manuel adım GEÇTİ.
+
+Bu kontrol tamamlandı: aedrum yeni üyelikte B-T1'i kendi profilinde gösterdi.
+Şahbaz'ın ayrı gösterim tercihi değişmedi. Yeni manuel adıma henüz geçilmedi.
+Denetim sonrasında aynı verilerle üye çıkarma ve yetki kaybı kontrollerinden
+devam edilebilir. Aşağıdaki eski duraklar tarihçedir, güncel bekleyen adım değildir.
+
+## Önceki durak — yeniden davet testinde bekleyen liste arası
+
+Yeni ara: kullanıcı davet ekranındaki metinleri onayladı, **aedrum hâlâ kabul
+etmedi**. Müzisyen Yönetim Paneli → Bandlerim ekranına **Gelen Davetler** bölümü
+eklendi. Backend yeniden başlatılıp Flutter Hot Restart sonrası mevcut Şahbaz
+daveti bu bölümden açılarak kabul edilecek. Eski daveti yeniden göndermek veya
+B-T1'i yeniden oluşturmak gerekmiyor. Ayrıntılar `BandReceivedInvitations.md`.
+Doğrulama tamam: backend **119/119**, tam Flutter **2.216/2.216**, statik analiz
+temiz. Altı dar ekran/tema önizlemesi üretildi. Telefonda önce yeni Gelen
+Davetler bölümündeki Şahbaz kartının görünümü kontrol edilecek. Kullanıcı
+teyidinden sonra aynı karttan kabul testine geçilecek, henüz kabul edilmedi.
+
+Son telefon teyidi: bekleyen aedrum fotoğrafı düzeldi. Kullanıcı daveti henüz
+kabul etmedi. Kabul ekranında metin arası verildi: “Grup Daveti”, “Sahbaz seni
+gruba davet etti”, “bugrasahin tarafından davet aldın.” Eski bildirim metni
+ekranda uyumlu gösterilir, yeni davetlerin backend şablonu da güncellendi.
+Üyelik veya kabul/ret akışı değiştirilmedi. Sıradaki test hâlâ daveti kabul
+edince üyeliğin geri gelmesi ama eski kişisel B-T1 gösteriminin geri gelmemesidir.
+
+7 Eylül'de kullanıcı şu telefon kontrollerinin tamamını doğruladı:
+
+- aedrum → Gruptan ayrıl → İptal üyeliği ve kişisel B-T1'i korudu.
+- Gerçek ayrılma onaylandı. Şahbaz aedrum'un Gruplarım listesinden kalktı.
+  B-T1 aedrum'un kişisel profilindeki takvimden kalktı.
+- Mekandaki B-T1 korundu. Onaylı `@Şahbaz` bağlantısı dokunulabilir kaldı
+  ve grup profilini açtı. Bireysel ayrılma grubun katılımını bozmadı.
+
+Sıradaki test eski kişisel yayın tercihinin yeni üyelikte geri gelmemesidir.
+**aedrum'un yeniden daveti gönderildi, durumu PENDING.** Kullanıcı bekleyen
+listeyi telefonda doğruladı, salt okunur yerel veritabanı kontrolü de PENDING
+durumunu doğruladı. Kabul henüz yapılmadı. aedrum kabul edince üyelik geri
+gelmeli ama B-T1 kişisel profilde otomatik görünmemeli.
+
+Bu adımda kullanıcı Üyeleri Yönet ekranında gönderilen, bekleyen davetleri
+görmek istedi. Bekleyen Davetler bölümü eklendi. Yeni ekran kontrolü için
+aedrum'un kabulünü şimdilik bekletmek uygun. Asıl test etkinliği silinmeyecek,
+üyelik/davet/etkinlik verisi geliştirme sırasında değiştirilmeyecek.
+
+Kullanıcı bekleyen liste tasarımını onayladı ancak aedrum'un fotoğrafı eksikti.
+Salt okunur teşhis: eski User.profilePicture boş, müzisyen profilinin medya
+kimliği dolu. Davetin eski olmasıyla ilgisi yok. Backend fotoğrafı artık
+güncel müzisyen profilinden sayfa başına tek medya sorgusuyla çözümler.
+**Veritabanı geçişi veya daveti tekrar gönderme gerekmez.** Bu düzeltme yalnız
+backend kaynaklarını değiştirir. Doğrulama tamamlandı, kullanıcı backend'i
+yeniden başlatıp Üyeleri Yönet sayfasını yenileyecek. Önce bekleyen aedrum
+fotoğrafı kontrol edilecek, sonra kabul ve eski kişisel B-T1 tercihinin geri
+gelmemesi testine dönülecek. Ayrıntılar `BandPendingInvitationsReview.md`.
+Fotoğraf düzeltmesi: backend **197 geçti, 0 hata** (76 bekleyen davet testi dahil,
+dört eski PostgreSQL başlık geçişi testi atlandı), mevcut Flutter bekleyen
+davet testleri **67/67** geçti. Fotoğrafın telefondaki kontrolü kullanıcıyı bekliyor.
+Fotoğraf düzeltmesinden önceki doğrulama: tam Flutter paketi **2.179/2.179**, odaklı paket **128/128**, yeni
+endpoint ve önceki backend regresyonları **174 geçti**. Dört eski Docker'a
+bağlı geçiş testi ortam nedeniyle atlandı. Altı gerçek-font görsel önizleme
+geçti. Bekleyen davet listesi telefonda onaylandı, fotoğraf düzeltmesinin telefon kontrolü henüz yapılmadı.
+Son statik analiz temiz.
+
+## Önceki durak — grup başlıkları geçişi tamam, telefon kontrolü
+
+7 Eylül görsel ara: kullanıcı başlıkların çalışıyor göründüğünü söyledi ve
+aedrum'un **Davul** başlığıyla göründüğü ekranı paylaştı. Tüm başlık sınırı,
+temizleme ve yetki senaryoları henüz telefonda geçti sayılmıyor. Dağınık
+profil oku/kalem/çıkarma ikonları yerine tek üç nokta menüsüne geçildi.
+Rol düzenleme ve çıkarma bu menüde, profil bağlantısı kartın isim/avatar
+alanında kaldı. Bu değişiklik backend veya veri geçişi gerektirmez.
+Menü/rol/çıkarma için 61 odaklı Flutter testi geçti. Normal ve büyük yazılı
+kart, menü ve editör önizlemeleri kontrol edildi. Etkinlik testinin durduğu
+yer değişmedi, mevcut üyelik/yayın verisine dokunulmadı.
+Bu sadeleştirmeden sonraki tam Flutter paketi **2.112/2.112** geçti, statik
+analiz temiz. Sıradaki görsel kontrol için yalnız Hot Restart yeterli.
+
+Kullanıcının isteğiyle kurucu ve aktif üyeler için gruba özel, serbest yazılan
+**20 karakterlik rol/başlık** eklendi. Kurucu rozeti yönetim yetkisinden bağımsız
+başlıkla birlikte korunur. Kurucu kendisinin ve üyelerin başlığını kalemden
+düzenler. Başlık üyelik veya etkinlik gösterim tercihini değiştirmez.
+
+Yeni frontend tam paketi **2.099/2.099** ve altı responsive önizleme testi geçti.
+Son statik analiz temiz.
+Backend odaklı paket **121 geçti**, dört PostgreSQL geçiş testi Docker olmadığı
+için atlandı. Doğrulama ayrıntıları ve derleme ortamı sınırı `BandMemberTitles.md`
+içinde kayıtlıdır. Başlık özelliğinin telefon testi henüz yapılmadı.
+
+**7 Eylül'de veri geçişi uygulandı.** Kullanıcı backend'i durdurduğunu teyit etti.
+Tam yedek alındı, ayrı PostgreSQL veritabanına geri yüklenerek geçiş iki kez
+denendi. Sonra yalnız `2026-09-06-band-member-titles.sql` yerel veritabanına
+uygulandı. 84 tablonun eski alanlarının tamamı önce/sonra aynı kaldı. Veritabanı
+sıfırlanmadı. Yedek ve doğrulama ayrıntıları `BandMemberTitles.md` başındadır.
+Backend'i kullanıcı başlatacak, uygulamada Hot Restart yapılacak.
+Aşağıdaki eski durakta yazan “backend yeniden başlatma/veri geçişi gerekmez”
+ifadesi yalnız önceki profil yönlendirmesi düzeltmesine aittir, bu yeni özellik
+için geçerli değildir.
+
+Etkinlik testindeki durak değişmedi: **aedrum aktif Şahbaz üyesi, B-T1 kişisel
+profilinde görünür, Şahbaz grup profilinde gizli. Gruptan ayrılma testi yapılmadı.**
+Bu geliştirme sırasında hesap, üyelik, etkinlik veya yayın verisi değiştirilmedi.
+
+Backend ve uygulama yenilemesi tamamlanınca ilk kısa kontrol: bugrasahin → Şahbaz
+→ Yönetim Paneli → Üyeleri Yönet → ilgili üyenin üç noktası → Rolü düzenle.
+Kurucuya ve aedrum'a başlık ekle, değiştir,
+20 karakter sınırını ve boş bırakarak kaldırmayı kontrol et. Kurucu rozeti kalmalı,
+aedrum başlık düzenleme yetkisi almamalı. Sonra aşağıdaki kendi profil bağlantısı
+ve gruptan ayrılma testine dönülecek. B-T1 silinmeyecek veya yeniden kurulmayacak.
+
+## Önceki durak — aedrum kişisel yayın testi geçti, ayrılma öncesi düzeltme
+
+Kullanıcı aedrum'un Şahbaz üyeliğini ve şu kontrolleri telefonda doğruladı:
+
+- B-T1 kişisel Etkinliklerim listesinde başlangıçta gizli ve tek kayıt olarak
+  göründü. Kişisel profile kendiliğinden eklenmedi.
+- aedrum kendi kişisel tercihinden **Profilimde göster** seçti. B-T1 kişisel
+  profilinde bir kez göründü. Şahbaz grubunun gizli tercihi değişmedi ve
+  bugrasahin'in kişisel profiline kendiliğinden eklenmedi.
+
+**Mevcut veri korunacak:** aedrum ACTIVE Şahbaz üyesi, B-T1 aedrum kişisel
+profilinde görünür ve Şahbaz grup profilinde gizli. Etkinlik silinmeyecek veya
+yeniden oluşturulmayacak. Ayrılma testi henüz yapılmadı.
+
+Bu noktada kullanıcı iki hata bildirdi: aedrum grup profilinin üye listesinden
+kendisine dokunduğunda public profil açılıyor ve gruptan ayrılma seçeneği yok.
+Ortak profil yönlendirmesi ve üye ayrılma arayüzü için teknik düzeltme tamamlandı.
+Kod testi telefon testinin yerine geçmez. Canlı backend/veritabanı veya üyelik
+bu düzeltme sırasında değiştirilmiyor.
+
+Doğrulama: tüm Flutter paketi **1.957/1.957**, izole backend üyelik/yayın/takvim
+paketi **35/35** GEÇTİ. Statik analiz temiz. İki gerçek Flutter önizleme testi
+de geçti ve normal/büyük yazılı profil ile ayrılma penceresinin dört görseli
+incelendi. Detaylar `ProfileNavigationAndBandMembershipReview.md` içindedir.
+Backend yeniden başlatma, APK kurulumu veya veri geçişi gerekmez. Hot Restart
+sonrasında aşağıdaki telefon kontrolüne devam edilecek.
+
+Sıradaki telefon kontrolü: Hot Restart sonrası aedrum → Şahbaz → Üyeler →
+aedrum ile kendi yönetilebilir müzisyen profilinin açıldığını doğrula. Sonra
+Şahbaz'a dön ve **Gruptan ayrıl** eylemini kontrol et. İlk kontrolde yalnız
+onay penceresi açılıp Vazgeç seçilebilir. Asıl ayrılma onayı ayrı test adımıdır.
+Başarılı ayrılma sonrası kişisel B-T1 yayını ve üyelik kalkmalı. Mekandaki B-T1,
+grubun katılım onayı ve diğer üyelerin tercihleri korunmalı.
+
+## Önceki durak — aedrum aktif üye, kişisel etkinlik listesi kontrolü
+
+Kullanıcı aedrum hesabının Şahbaz'a davet edildiğini ve üyelik davetini kabul
+ettiğini doğruladı. aedrum artık aktif grup üyesi. B-T1 grup profilinde gizli
+kalmaya devam ediyor, aedrum henüz kişisel etkinlik yayın tercihi yapmadı.
+
+Sıradaki kontrol aedrum'un kendi müzisyen Yönetim Paneli → Etkinlik Yönetimi →
+Etkinliklerim → Bu Haftaki bölümüdür. B-T1 bir kez gizli olarak listelenmeli
+ve “Profilimde göster” seçeneği olmalı. Kişisel profil takvimine otomatik
+eklenmemiş olmalı. Bu iki kontrol henüz GEÇTİ sayılmıyor. Grup yönetiminden
+veya etkinlik davetlerinden işlem yapılmayacak, yeni etkinlik oluşturulmayacak.
+
+## Önceki durak — ikinci grup üyesi hazırlanıyor, üye ekranında görsel ara
+
+Kullanıcı grup kurucusunun etkinlik detayından kendi grup profiline yönlendirme
+düzeltmesini doğruladı. B-T1'in gösterme/gizleme ve katılım bağlantısı kontrolleri
+GEÇTİ. B-T1 halen grup profilinde gizli tutuluyor.
+
+İkinci müzisyen hesabı **aedrum** oluşturuldu. Kullanıcı henüz Şahbaz'a davet
+etmedi veya üyeliği kabul etmedi. Şimdi Üyeleri Yönet ekranının tasarımı
+güncellendi. Etkinlik testleri ilerlemedi, B-T1 yeniden oluşturulmayacak.
+
+Üye ekranında sabit 460 px panel ve iç içe kaydırma kaldırıldı. Grup başlığı,
+gradient çerçeveli davet butonu, kompakt üye kartları ve kurucu rozeti kullanılır.
+Kurucuda çıkarma ikonu yok, diğer üyelerde mevcut onaylı çıkarma akışı korunur.
+İşlem kilidi ve parent ekran durum değişikliklerini dinleme ile yenileme/davet
+durumu anında yansır. Büyük yazıda yönetim paneli etiketlerinin taşması da
+düzeltildi. Backend/veritabanı değişmedi, Hot Restart yeterli.
+
+Doğrulama: 14 yeni üye ekranı testi ve tüm Flutter paketi 1.736/1.736 GEÇTİ.
+Statik analiz temiz. Üç tema, %200 yazı, 320 dp ekran, 100 üyeli tembel liste,
+boş liste, geç yükleme, yenileme hatası/tekrar deneme, çift davet tıklaması,
+çıkarma onayı/iptali test edildi. Gerçek Flutter önizlemeleri incelendi.
+Telefonda yeni tasarım henüz kullanıcı tarafından onaylanmadı.
+
+Görsel kontrol sonrası sıradaki adım: bugrasahin → Şahbaz → Yönetim Paneli →
+Üyeleri Yönet → Üye davet et ile aedrum davet edilecek. Ardından aedrum
+hesabında grup üyeliği daveti kabul edilecek. Etkinlik gösterim tercihlerine
+henüz dokunulmayacak. Sonraki test kişisel grup üyesi tercihinin grup ve diğer
+üyelerden bağımsızlığıdır.
+
+## Önceki durak — B-T1 gösterme/gizleme geçti, kurucu yönlendirmesi kontrolü
+
+En güncel durak burasıdır. Kullanıcı B-T1 için önce grupta **Profilimde göster**
+adımını doğruladı. Etkinlik grup takviminde bir kez göründü, kişisel müzisyen
+profiline kendiliğinden eklenmedi. Ardından **Profilimden gizle** adımı GEÇTİ:
+grup takviminden kalktı, mekan etkinliği korundu ve onaylı `@Şahbaz` bağlantısı
+grup profilini açmaya devam etti.
+
+Yeni yönlendirme hatası: grup kurucusu bu bağlantıya dokununca kendi grubunun
+public görünümü açılıyordu. Etkinlik detayı band rotasını koşulsuz public
+seçiyordu. Düzeltme, oturumu aktif müzisyenin sabit kullanıcı kimliği ile
+grubun ACTIVE FOUNDER üyesini eşleştirerek kendi grup rotasını seçer. Grup
+ekranı kendi mevcut yetki kontrolünü tekrar yapar. Diğer kullanıcılar ve
+kurucu olmayan üyeler public görünümde kalır. Katılım/yayın verisi değişmez.
+
+Otomatik doğrulama: 29 yeni grup yönlendirme regresyonuyla etkinlik detayının
+138 testi ve tüm Flutter paketi 1.722/1.722 GEÇTİ. Statik analiz temiz.
+Kurucu/üye/başkası ayrımı, rol ve durum kontrolü, yanlış band kimliği, başarısız
+istek ve tekrar deneme, çift dokunma, hesap değişimi, kapanan/örtülen ekran,
+geri dönüp yeniden açma ve onaysız bağlantının kapalı kalması kapsandı.
+
+Sıradaki telefon kontrolü: Hot Restart sonrası grubun kurucusu hesabındayken
+mevcut B-T1 detayından `@Şahbaz` adına dokun. Kendi grup profili ve Yönetim
+Paneli erişimi açılmalı. Geri dönünce etkinlik detayı korunmalı. Bu düzeltmenin
+telefon onayı henüz alınmadı. Gösterme/gizleme ve davet adımları baştan
+tekrarlanmayacak. Backend yeniden başlatma veya veri geçişi gerekmiyor.
+
+## Önceki durak — B-T1 katılımı onaylandı, grup profilinde gösterim sırada
+
+Bu bölüm en güncel manuel durumdur. Aşağıdaki duraklar geçmiş kayıtlarıdır.
+Kullanıcı önceki günün etkinliklerini sildi. Geçen test sonuçları korunur,
+eski etkinlikler yeniden oluşturulmayacak.
+
+`B-T1 — Grup katılımı` (7 Eylül 2026, 20:00–22:00) için kullanıcı doğruladı:
+
+- Sanatçı olarak kişisel müzisyen değil Şahbaz grubu seçildi. Grup sahibine
+  gruba yönelik bildirim geldi.
+- Şahbaz'ın daveti, “Bu etkinliği profilimde de göster” seçilmeden onaylandı.
+  Onay başarılı ve davet bekleyenlerden kalktı.
+- Mekan etkinlik detayındaki onaylı `@Şahbaz` bağlantısı grup profilini açıyor.
+- B-T1 grup profilinin takviminde yok.
+- Şahbaz → Etkinlik Yönetimi → Etkinliklerim → Bu Haftaki listesinde tek gizli
+  kayıt var. Kullanıcı bu üç son kontrolü de doğru olarak bildirdi.
+
+Görsel ara: etkinlik detayındaki sanatçı/grup ve mekan kutularının sabit 45/55
+oranı kaldırıldı. Kısa adlar doğal genişlikte kalır, uzun adlar aynı satırdaki
+alanı paylaşır ve gerektiğinde üç noktayla kısalır. Profil bağlantısı ve katılım
+yetkileri değiştirilmedi. Bu değişiklik için backend veya veri geçişi gerekmez.
+
+Otomatik doğrulama: 15 yeni yerleşim regresyonuyla tüm Flutter paketi
+1.693/1.693 GEÇTİ, statik analiz temiz. Etkinlik detayının 109 testi ve ayrı
+gerçek Flutter önizleme testi toplam 110 kontrolle GEÇTİ. Kısa/uzun isim,
+dar/yatay ekran, %200 yazı, kalın yazı tercihi, geç yüklenen avatar, tek satır,
+tam ad tooltip'i ve onay/yönlendirme davranışları kontrol edildi. Altı gerçek
+Flutter ekran görüntüsü görsel olarak incelendi. Telefonda yeni yerleşimin
+görsel onayı henüz alınmadı.
+
+Sıradaki manuel adım: Hot Restart ile kutuları kontrol ettikten sonra mevcut
+B-T1'in Şahbaz → Etkinliklerim kaydından **Profilimde göster** seçilecek.
+Grup takviminde tek kez görünmesi ve kişisel müzisyen profilinin otomatik
+yayınlanmaması kontrol edilecek. Bu gösterim adımı henüz GEÇTİ sayılmıyor.
+
+## Önceki durak — mola sonrası bağımsız kalite denetimi
+
+Alt bildirim raporu ve etkinlik akışı bağımsız incelendi. Yeni kurulum migration
+listesi, boşalan son takvim sayfası, eski davet callback'leri, sayfalama sınırı,
+alt bildirim erişilebilirliği ve geç WhatsApp hata sonuçları düzeltildi.
+Flutter tam paketi 1.678 test, backend ilgili geniş paket 408 test ile GEÇTİ.
+Ayrıntılar ve denetimin sınırları `EventProductionQualityReview.md` içindedir.
+
+Manuel ilerleme değişmedi: M-T5 ve kendi profiline yönlendirme GEÇTİ, B-T1
+henüz başlamadı. Hot Restart sonrası Şahbaz grup bildirimi kontrolü ile devam
+edilecek. Mevcut backend/veritabanı durdurulmadı veya değiştirilmedi.
 
 ## Mola kontrol noktası — M-T5 geçti, B-T1 henüz başlamadı
 

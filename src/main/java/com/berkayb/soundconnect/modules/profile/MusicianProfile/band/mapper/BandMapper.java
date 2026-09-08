@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 public interface BandMapper {
 	@Mapping(target = "members", source = "members", qualifiedByName = "mapMembers")
 	@Mapping(target = "profilePictureUrl", ignore = true) //eklendi
+	@Mapping(target = "countsTowardCreationLimit", ignore = true)
 	BandResponseDto toDto(Band band);
 	
 	@org.mapstruct.Named("mapMembers")
@@ -31,5 +32,7 @@ public interface BandMapper {
 	@Mapping(target = "profilePicture", expression = "java(member.getUser().getProfilePicture())")
 	@Mapping(target = "role", source = "bandRole")
 	@Mapping(target = "status", source = "status")
+	@Mapping(target = "memberTitle", source = "memberTitle")
+	@Mapping(target = "titleVersion", source = "titleVersion")
 	BandMemberResponseDto toMemberDto(BandMember member);
 }

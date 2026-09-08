@@ -27,6 +27,20 @@ import java.util.Set;
 @Entity
 @Table(name = "tbl_musician_profile")
 public class MusicianProfile extends BaseProfile {
+	/** Entity identity must not depend on mutable display fields or connection sets. */
+	@Override
+	public final boolean equals(Object other) {
+		if (this == other) return true;
+		if (!(other instanceof MusicianProfile profile)) return false;
+		return getId() != null && getId().equals(profile.getId());
+	}
+
+	/** Stable before/after persistence and identical for an unloaded Hibernate proxy. */
+	@Override
+	public final int hashCode() {
+		return MusicianProfile.class.hashCode();
+	}
+
 	@ManyToMany(fetch = FetchType.LAZY)
 	@JoinTable(
 			name = "musician_profile_instruments",

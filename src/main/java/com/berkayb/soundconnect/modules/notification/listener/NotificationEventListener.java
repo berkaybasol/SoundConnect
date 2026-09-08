@@ -4,6 +4,8 @@ import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
@@ -12,6 +14,7 @@ import com.berkayb.soundconnect.shared.messaging.events.notification.Notificatio
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,6 +44,8 @@ public class NotificationEventListener {
 	private final NotificationMapper notificationMapper;
 	private final NotificationWebSocketService notificationWebSocketService;
 	private final MailProducer mailProducer;
+	private final NotificationService notificationService;
+	private final NotificationReceiptRepository receiptRepository;
 	
 	
 	// RabbitMQ'dan notification queue'undan mesajlari dinler. her gelen event icin bu method cagrilir
@@ -60,7 +65,8 @@ public class NotificationEventListener {
 			return;
 		}
 
-		if (event.eventId() != null && notificationRepository.existsBySourceEventId(event.eventId())) {
+		if (receiptRepository.claim(event.eventId(), event.recipientId()) == 0 ||
+				notificationRepository.existsBySourceEventId(event.eventId())) {
 			log.debug(
 					"Duplicate NotificationInboundEvent skipped. eventId={}, type={}",
 					event.eventId(), event.type()
@@ -110,8 +116,12 @@ public class NotificationEventListener {
 		}
 
 		try {
+			var dto = notificationMapper.toDto(entity);
+			if (dto != null && NotificationService.requiresActorIdentityRefresh(dto.type())) {
+				dto = notificationService.refreshActorIdentityForDelivery(dto);
+			}
 			notificationWebSocketService.sendNotificationToUser(
-					entity.getRecipientId(), notificationMapper.toDto(entity));
+					entity.getRecipientId(), dto);
 		} catch (Exception e) {
 			log.warn("Notification WebSocket push failed. notifId={}, exceptionType={}",
 					entity.getId(), e.getClass().getSimpleName());
@@ -181,6 +191,11 @@ public class NotificationEventListener {
 	// event dogrulama methodu. Gerekli alanlar var mi? eksik varsa hata firlat
 	private void validate (NotificationInboundEvent e) {
 		if (e == null) throw new IllegalArgumentException("event=null");
+		if (e.eventId() == null) {
+			// Keep an old unidentified delivery in the existing DLQ for operator
+			// review. Never invent an ID, loop-requeue, or acknowledge it away.
+			throw new AmqpRejectAndDontRequeueException("Notification eventId required for durable replay protection");
+		}
 		if (e.recipientId() == null) throw new IllegalArgumentException("recipientId required");
 		if (e.type() == null) throw new IllegalArgumentException("type required");
 		if (e.title() != null && e.title().length() > MAX_TITLE_LENGTH) {

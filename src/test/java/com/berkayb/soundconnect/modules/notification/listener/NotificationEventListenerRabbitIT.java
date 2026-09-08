@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -86,10 +87,12 @@ class NotificationEventListenerRabbitIT {
 	@MockitoBean NotificationMapper notificationMapper;
 	@MockitoBean NotificationWebSocketService notificationWebSocketService;
 	@MockitoBean MailProducer mailProducer; // refactor sonrası
+	@MockitoBean NotificationService notificationService;
 	
 	@Test
 	@DisplayName("RabbitMQ → Listener: event tüketilir; save + cache + WS + mail tetiklenir")
 	void consume_event_from_queue_and_invoke_side_effects() {
+		when(notificationService.refreshActorIdentityForDelivery(any())).thenAnswer(call -> call.getArgument(0));
 		UUID userId = UUID.randomUUID();
 		Instant occurredAt = Instant.parse("2026-08-11T10:00:00Z");
 		
@@ -114,7 +117,7 @@ class NotificationEventListenerRabbitIT {
 		);
 		when(notificationMapper.toDto(persisted)).thenReturn(dto);
 		
-		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                         .recipientId(userId)
 		                                                         .type(NotificationType.MEDIA_TRANSCODE_FAILED) // mail gönderilmesi garanti
 		                                                         .title("Medya işleme başarısız")
@@ -152,7 +155,7 @@ class NotificationEventListenerRabbitIT {
 	@DisplayName("Geçersiz event (type=null) → hiçbir yan etki tetiklenmez")
 	void invalid_event_is_skipped() {
 		UUID userId = UUID.randomUUID();
-		NotificationInboundEvent bad = NotificationInboundEvent.builder()
+		NotificationInboundEvent bad = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                       .recipientId(userId)
 		                                                       .type(null)
 		                                                       .title("x").message("y").payload(Map.of()).build();

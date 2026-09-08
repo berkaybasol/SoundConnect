@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -46,6 +47,12 @@ class EventPerformerNotificationOutboxTransactionIT {
 	private EventPerformerNotificationOutboxPublisher publisher;
 
 	@Autowired
+	private EventPerformerNotificationOutboxService service;
+
+	@Autowired
+	private EventPerformerNotificationOutboxProperties properties;
+
+	@Autowired
 	private EventPerformerNotificationOutboxDispatcher dispatcher;
 
 	@Autowired
@@ -62,6 +69,7 @@ class EventPerformerNotificationOutboxTransactionIT {
 		reset(dispatcher);
 		timeProvider.set(Instant.parse("2026-09-04T12:00:00Z"));
 		transactions = new TransactionTemplate(transactionManager);
+		properties.setMaxAttempts(8);
 	}
 
 	@Test
@@ -94,6 +102,55 @@ class EventPerformerNotificationOutboxTransactionIT {
 		assertThat(repository.findById(notification.eventId())).isEmpty();
 		assertThat(repository.count()).isZero();
 		verifyNoInteractions(dispatcher);
+	}
+
+	@Test
+	void expiredLeaseCannotAcknowledgeOrRescheduleAClaimRecoveredByAnotherWorker() {
+		NotificationInboundEvent notification = notification();
+		transactions.executeWithoutResult(status -> publisher.enqueueAll(List.of(notification)));
+		var first = service.claim(notification.eventId(), "node:first").orElseThrow();
+		assertThat(first.attemptCount()).isEqualTo(1);
+		assertThat(service.claim(notification.eventId(), "node:early")).isEmpty();
+		timeProvider.set(Instant.parse("2026-09-04T12:00:00Z").plus(properties.getLeaseDuration()));
+		var recovered = service.claim(notification.eventId(), "node:recovered").orElseThrow();
+		assertThat(recovered.attemptCount()).isEqualTo(2);
+		assertThat(service.markPublished(first)).isFalse();
+		assertThat(service.markFailed(first, "StaleFailure"))
+				.isEqualTo(EventPerformerNotificationOutboxService.FailureDisposition.LEASE_LOST);
+		assertThat(service.markPublished(recovered)).isTrue();
+		assertThat(service.claim(notification.eventId(), "node:late")).isEmpty();
+		EventPerformerNotificationOutbox stored = repository.findById(notification.eventId()).orElseThrow();
+		assertThat(stored.getStatus()).isEqualTo(EventPerformerNotificationOutboxStatus.PUBLISHED);
+		assertThat(stored.getLeaseOwner()).isNull();
+		assertThat(stored.getLeaseUntil()).isNull();
+	}
+
+	@Test
+	void backoffAndAttemptLimitAreEnforcedByPersistedOutboxState() {
+		properties.setMaxAttempts(2);
+		NotificationInboundEvent notification = notification();
+		transactions.executeWithoutResult(status -> publisher.enqueueAll(List.of(notification)));
+		var first = service.claim(notification.eventId(), "node:first").orElseThrow();
+		assertThat(service.markFailed(first, "BrokerNack"))
+				.isEqualTo(EventPerformerNotificationOutboxService.FailureDisposition.RETRY_SCHEDULED);
+		assertThat(service.claim(notification.eventId(), "node:tooSoon")).isEmpty();
+		timeProvider.set(Instant.parse("2026-09-04T12:00:00Z").plus(properties.getRetryInitialDelay()));
+		var second = service.claim(notification.eventId(), "node:second").orElseThrow();
+		assertThat(service.markFailed(second, "BrokerNack"))
+				.isEqualTo(EventPerformerNotificationOutboxService.FailureDisposition.DEAD_LETTER);
+		assertThat(service.claim(notification.eventId(), "node:afterLimit")).isEmpty();
+		assertThat(repository.findById(notification.eventId()).orElseThrow().getStatus())
+				.isEqualTo(EventPerformerNotificationOutboxStatus.DEAD_LETTER);
+	}
+
+	@Test
+	void immediateDispatchFailureCannotUndoCommitOrLoseDurableRecovery() {
+		NotificationInboundEvent notification = notification();
+		doThrow(new IllegalStateException("Simulated dispatcher outage")).when(dispatcher).dispatch(notification.eventId());
+		transactions.executeWithoutResult(status -> publisher.enqueueAll(List.of(notification)));
+		assertThat(repository.findById(notification.eventId()).orElseThrow().getStatus())
+				.isEqualTo(EventPerformerNotificationOutboxStatus.PENDING);
+		assertThat(service.claim(notification.eventId(), "scheduler:recovery")).isPresent();
 	}
 
 	private static NotificationInboundEvent notification() {

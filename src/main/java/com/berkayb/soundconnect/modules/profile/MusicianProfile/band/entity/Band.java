@@ -20,7 +20,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@EqualsAndHashCode(callSuper = true, exclude = {"members"})
 @Table(name = "tbl_band", uniqueConstraints = {
 		@UniqueConstraint(name = "uk_band_name", columnNames = "name")
 }
@@ -55,6 +54,18 @@ public class Band extends BaseEntity {
 	@Builder.Default //eklendi
 	@ManyToMany(mappedBy = "activeBands", fetch = FetchType.LAZY) //eklendi
 	private Set<Venue> activeVenues = new HashSet<>(); //eklendi
-	
-	
+
+	// A band remains the same persistent entity when renamed or connected to
+	// another venue. Mutable fields must not change its owning Set's bucket.
+	@Override
+	public final boolean equals(Object other) {
+		return this == other || other instanceof Band band &&
+				getId() != null && getId().equals(band.getId());
+	}
+
+	@Override
+	public final int hashCode() {
+		// Stable before/after generated-ID assignment and for Hibernate proxies.
+		return Band.class.hashCode();
+	}
 }

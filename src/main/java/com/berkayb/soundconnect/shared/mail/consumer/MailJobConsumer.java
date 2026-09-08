@@ -23,6 +23,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class MailJobConsumer {
+	// Optional injection preserves the isolated generic mail consumer's existing wiring/tests.
+	private com.berkayb.soundconnect.modules.venue.suggestion.VenueSuggestionMailDelivery venueSuggestionDelivery;
+
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	public void setVenueSuggestionDelivery(com.berkayb.soundconnect.modules.venue.suggestion.VenueSuggestionMailDelivery delivery) {
+		this.venueSuggestionDelivery = delivery;
+	}
 	
 	private final MailSenderClient mailSenderClient;
 	private final MailJobHelper helper;
@@ -60,6 +67,16 @@ public class MailJobConsumer {
 	                           @Header(AmqpHeaders.DELIVERY_TAG) long tag,
 	                           @Headers Map<String, Object> headers,
 	                           Channel channel) {
+		if (request != null && request.kind() == com.berkayb.soundconnect.shared.mail.enums.MailKind.VENUE_SUGGESTION_ADMIN) {
+			if (venueSuggestionDelivery != null) {
+				venueSuggestionDelivery.consume(request, tag, headers, channel);
+			} else {
+				// Never fall back to the generic Redis-only sender for durable suggestion jobs.
+				try { channel.basicReject(tag, false); } // Durable outbox watchdog recovers; avoid a hot missing-handler loop.
+				catch (Exception unavailable) { log.error("Venue suggestion delivery handler unavailable"); }
+			}
+			return;
+		}
 		final String maskedTo = helper.maskEmail(request.to());
 		
 		final String idKey  = helper.buildIdemKey(request);

@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.notification.service;
 
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ class NotificationCleanupServiceTest {
     @Mock NotificationRepository notificationRepository;
     @Mock NotificationBadgeCacheHelper badgeCacheHelper;
     @Mock NotificationWebSocketService notificationWebSocketService;
+    @Mock NotificationReceiptRepository receiptRepository;
 
     @InjectMocks NotificationCleanupService service;
 
@@ -43,6 +45,10 @@ class NotificationCleanupServiceTest {
         TransactionSynchronizationManager.initSynchronization();
         try {
             service.cleanupExpiredNotifications();
+
+            var ordered = org.mockito.Mockito.inOrder(receiptRepository, notificationRepository);
+            ordered.verify(receiptRepository).retainBeforeCutoff(any(LocalDateTime.class));
+            ordered.verify(notificationRepository).deleteByCreatedAtBefore(any(LocalDateTime.class));
 
             verify(notificationRepository, never()).countByRecipientIdAndReadIsFalse(any());
             verifyNoInteractions(badgeCacheHelper, notificationWebSocketService);

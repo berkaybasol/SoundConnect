@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
@@ -22,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -53,6 +55,16 @@ public class NotificationServiceImpl implements NotificationService {
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
 	private final NotificationWebSocketService notificationWebSocketService;
 	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+	private final NotificationReceiptRepository receiptRepository;
+
+	@Override
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public NotificationResponseDto refreshActorIdentityForDelivery(NotificationResponseDto notification) {
+		// Delivery runs after the inbox transaction commits. Resolve current
+		// privacy in a new transaction, not that transaction's stale snapshot.
+		if (notification == null) return null;
+		return rehydrateActorIdentities(List.of(notification)).getFirst();
+	}
 	
 	
 	// kullaniciya ait tum bilgileri getir (yeniden eskiye)
@@ -314,9 +326,7 @@ public class NotificationServiceImpl implements NotificationService {
 	}
 
 	private boolean hasActorIdentity(NotificationType type) {
-		return type == NotificationType.DM_NEW_MESSAGE
-				|| type == NotificationType.SOCIAL_NEW_FOLLOWER
-				|| type == NotificationType.SOCIAL_NEW_BAND_FOLLOWER;
+		return NotificationService.requiresActorIdentityRefresh(type);
 	}
 
 	private String ghostFollowerTitle(NotificationType type, String username) {
@@ -407,6 +417,7 @@ public class NotificationServiceImpl implements NotificationService {
 		Notification notification = opt.get();
 		try {
 			// bildirimi sil
+			receiptRepository.retainForNotification(notificationId, userId);
 			notificationRepository.delete(notification);
 		} catch (EmptyResultDataAccessException e) {
 			// zaten islinmisse logla veya hata firlat
@@ -420,6 +431,7 @@ public class NotificationServiceImpl implements NotificationService {
 	@Override
 	@Transactional
 	public int clearAll(UUID userId) {
+		receiptRepository.retainForRecipient(userId);
 		int deleted = notificationRepository.deleteByRecipientId(userId);
 		projectUnreadAfterCommit(userId);
 		return deleted;

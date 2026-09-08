@@ -6,6 +6,11 @@ Current contract, 2026-09-06. This change needs an application restart, not a da
 
 `GET /api/v1/event-performer-requests/mine` retains the stable `PageResponse` envelope. Use paired `targetType=MUSICIAN|BAND` and `targetId`, `status=PENDING` for invitations and `status=REJECTED` for rejected invitations. Scope is authorized server-side. Pagination is bounded to page 0–100, size 1–50 (default 20), ordered by creation time and request UUID descending.
 
+Client invitation/publication lists respect the same page cap even if the true
+total advertises later pages. They preserve the current rows and show an explicit
+viewing-limit notice instead of requesting page 101 or claiming the archive is
+exhausted. Refresh and existing period/previous-page navigation remain available.
+
 Pending and rejected historical rows remain queryable. Passing the event start does not rewrite a request status or send a synthetic decision notification.
 
 Every request DTO includes:

@@ -3,6 +3,13 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.controller
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandMemberTitleUpdateDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandMemberResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandPendingInvitationResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandReceivedInvitationResponseDto;
+import com.berkayb.soundconnect.shared.response.PageResponse;
+import jakarta.validation.Valid;
+import org.springframework.http.CacheControl;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +32,59 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Band.*;
 public class BandUserController {
 	
 	private final BandService bandService;
+
+	@PreAuthorize("hasRole('MUSICIAN') and principal.enabled")
+	@GetMapping("/{bandId}/invitations/received/current")
+	@Operation(summary = "Oturumdaki müzisyenin bu gruptaki güncel bekleyen davetini getirir")
+	public ResponseEntity<BaseResponse<BandReceivedInvitationResponseDto>> getCurrentReceivedInvitation(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@PathVariable UUID bandId) {
+		var invitation = bandService.getCurrentReceivedInvitation(bandId, userDetails.getUser().getId());
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+				.body(BaseResponse.<BandReceivedInvitationResponseDto>builder()
+						.success(true).code(200).message("Güncel davet getirildi.").data(invitation).build());
+	}
+
+	@PreAuthorize("hasRole('MUSICIAN') and principal.enabled")
+	@GetMapping("/invitations/received")
+	@Operation(summary = "Oturumdaki müzisyenin gelen grup davetlerini sayfalı listeler")
+	public ResponseEntity<BaseResponse<PageResponse<BandReceivedInvitationResponseDto>>> getReceivedInvitations(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size) {
+		var invitations = bandService.getReceivedInvitations(userDetails.getUser().getId(), page, size);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+				.body(BaseResponse.<PageResponse<BandReceivedInvitationResponseDto>>builder()
+						.success(true).code(200).message("Gelen davetler listelendi.").data(invitations).build());
+	}
+
+	@PreAuthorize("hasRole('MUSICIAN') and principal.enabled")
+	@GetMapping("/{bandId}/invitations/pending")
+	@Operation(summary = "Kurucunun onay bekleyen grup davetlerini sayfalı listeler")
+	public ResponseEntity<BaseResponse<PageResponse<BandPendingInvitationResponseDto>>> getPendingInvitations(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@PathVariable UUID bandId,
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size) {
+		var invitations = bandService.getPendingInvitations(bandId, userDetails.getUser().getId(), page, size);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+				.body(BaseResponse.<PageResponse<BandPendingInvitationResponseDto>>builder()
+						.success(true).code(200).message("Bekleyen davetler listelendi.").data(invitations).build());
+	}
+
+	@PreAuthorize("hasRole('MUSICIAN') and principal.enabled")
+	@PatchMapping("/{bandId}/members/{userId}/title")
+	@Operation(summary = "Aktif grup üyesinin görünen başlığını düzenler")
+	public ResponseEntity<BaseResponse<BandMemberResponseDto>> updateMemberTitle(
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@PathVariable UUID bandId,
+			@PathVariable UUID userId,
+			@Valid @RequestBody BandMemberTitleUpdateDto update) {
+		var member = bandService.updateMemberTitle(bandId, userDetails.getUser().getId(), userId, update);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+				.body(BaseResponse.<BandMemberResponseDto>builder().success(true).code(200)
+						.message("Üye başlığı güncellendi.").data(member).build());
+	}
 	
 	@PreAuthorize("hasRole('MUSICIAN')")
 	@PostMapping(CREATE)
@@ -127,9 +187,10 @@ public class BandUserController {
 	@PostMapping(ACCEPT_INVITE)
 	public ResponseEntity<BaseResponse<Void>> acceptInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@PathVariable UUID bandId
+			@PathVariable UUID bandId,
+			@RequestParam(required = false) UUID invitationId
 	) {
-		bandService.acceptInvite(bandId, userDetails.getUser().getId());
+		bandService.acceptInvite(bandId, userDetails.getUser().getId(), invitationId);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
 		                                     .code(200)
@@ -142,9 +203,10 @@ public class BandUserController {
 	@PostMapping(REJECT_INVITE)
 	public ResponseEntity<BaseResponse<Void>> rejectInvite(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@PathVariable UUID bandId
+			@PathVariable UUID bandId,
+			@RequestParam(required = false) UUID invitationId
 	) {
-		bandService.rejectInvite(bandId, userDetails.getUser().getId());
+		bandService.rejectInvite(bandId, userDetails.getUser().getId(), invitationId);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
 		                                     .code(200)
@@ -158,9 +220,10 @@ public class BandUserController {
 	public ResponseEntity<BaseResponse<Void>> removeMember(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID bandId,
-			@PathVariable UUID userId
+			@PathVariable UUID userId,
+			@RequestParam(required = false) Long expectedTitleVersion
 	) {
-		bandService.removeMember(bandId, userDetails.getUser().getId(), userId);
+		bandService.removeMember(bandId, userDetails.getUser().getId(), userId, expectedTitleVersion);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
 		                                     .code(200)
@@ -173,9 +236,10 @@ public class BandUserController {
 	@PatchMapping(LEAVE)
 	public ResponseEntity<BaseResponse<Void>> leaveBand(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@PathVariable UUID bandId
+			@PathVariable UUID bandId,
+			@RequestParam(required = false) Long expectedTitleVersion
 	) {
-		bandService.leaveBand(bandId, userDetails.getUser().getId());
+		bandService.leaveBand(bandId, userDetails.getUser().getId(), expectedTitleVersion);
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
 		                                     .code(200)
@@ -190,8 +254,9 @@ public class BandUserController {
 	@PutMapping(LEAVE)
 	public ResponseEntity<BaseResponse<Void>> leaveBandLegacy(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@PathVariable UUID bandId
+			@PathVariable UUID bandId,
+			@RequestParam(required = false) Long expectedTitleVersion
 	) {
-		return leaveBand(userDetails, bandId);
+		return leaveBand(userDetails, bandId, expectedTitleVersion);
 	}
 }

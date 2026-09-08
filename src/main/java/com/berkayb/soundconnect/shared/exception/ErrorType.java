@@ -72,6 +72,8 @@ public enum ErrorType {
 	REQUEST_DISCONNECT_NOT_ALLOWED(1507,"Only accepted requests can be disconnected",HttpStatus.CONFLICT,"Yalnızca kabul edilen isteklerin bağlantısı kesilebilir."),
 	REQUEST_BY_TYPE_REQUIRED(1508, "Request by type is required", HttpStatus.BAD_REQUEST, "İsteği başlatan taraf belirtilmelidir."
 	),
+	REQUEST_PAGE_INVALID(1509, "Invalid connection request pagination", HttpStatus.BAD_REQUEST, "Bağlantı listesi sayfa bilgisi geçersiz."),
+	REQUEST_PARTICIPANT_UNAVAILABLE(1510, "Both connection parties must have active verified accounts", HttpStatus.CONFLICT, "Bağlantı için iki tarafın da aktif ve doğrulanmış olması gerekir."),
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.CONFLICT, "Zaten basvuru yapilmis."),
@@ -209,6 +211,14 @@ public enum ErrorType {
 	INVALID_PERFORMER_SELECTION_V2(9211, "Performer selection is required", HttpStatus.BAD_REQUEST, "Etkinlik icin bir sanatci secilmelidir."),
 	MUSICIAN_NOT_FOUND(9212,"Musician not found", HttpStatus.NOT_FOUND, "Musician bulunamadi."),
 	BAND_CREATE_LIMIT_EXCEEDED(9213, "Band create limit exceeded", HttpStatus.CONFLICT, "En fazla 3 band oluşturabilirsin."),
+	BAND_MEMBER_TITLE_INVALID(9214, "Band member title is invalid", HttpStatus.BAD_REQUEST, "Üye başlığı tek satır ve en fazla 20 karakter olmalı."),
+	BAND_MEMBER_TITLE_VERSION_CONFLICT(9215, "Band member title has changed", HttpStatus.CONFLICT, "Üye başlığı değişti. Üyeleri yenileyip tekrar dene."),
+	BAND_MEMBER_VERSION_CONFLICT(9221, "Band membership has changed", HttpStatus.CONFLICT, "Üyelik bilgileri değişti. Üyeleri yenileyip tekrar seç."),
+	BAND_MEMBER_TITLE_UNAUTHORIZED(9216, "Band member title update is forbidden", HttpStatus.FORBIDDEN, "Üye başlıklarını yalnızca grubun kurucusu düzenleyebilir."),
+	BAND_PENDING_INVITATIONS_FORBIDDEN(9217, "Pending band invitations are private to the active founder", HttpStatus.FORBIDDEN, "Bekleyen davetleri yalnızca grubun kurucusu görebilir."),
+	BAND_PENDING_INVITATIONS_PAGE_INVALID(9218, "Pending band invitation pagination is invalid", HttpStatus.BAD_REQUEST, "Davet listesi sayfa bilgisi geçersiz."),
+	BAND_RECEIVED_INVITATIONS_FORBIDDEN(9219, "Received invitations require an active verified musician", HttpStatus.FORBIDDEN, "Gelen davetleri görmek için aktif müzisyen hesabınla giriş yap."),
+	BAND_INVITE_STALE(9220, "Band invitation has been replaced", HttpStatus.CONFLICT, "Bu davet artık geçerli değil. Güncel davetlerini açıp tekrar dene."),
 	
 	// EVENT (9250 - 9299)
 	EVENT_NOT_FOUND(9250,"Event not found", HttpStatus.NOT_FOUND, "Etkinlik bulunamadi."),
@@ -321,6 +331,13 @@ public enum ErrorType {
 	BACKLINE_CATEGORY_REQUEST_NOT_FOUND(9832, "Backline category request not found", HttpStatus.NOT_FOUND, "Kategori talebi bulunamadi."),
 	BACKLINE_CATEGORY_REQUEST_DUPLICATE(9833, "Backline category request duplicate", HttpStatus.CONFLICT, "Ayni kategori icin bekleyen bir talep zaten var."),
 	BACKLINE_CATEGORY_REQUEST_STATUS_INVALID(9834, "Backline category request status invalid", HttpStatus.CONFLICT, "Kategori talebi bu islem icin uygun durumda degil."),
+
+	// PUBLIC VENUE SUGGESTIONS (9900 - 9909)
+	VENUE_SUGGESTION_INVALID(9900, "Invalid venue suggestion", HttpStatus.BAD_REQUEST, "Mekan adı, şehir ve ilçe bilgilerini kontrol et."),
+	VENUE_SUGGESTION_CONFLICT(9901, "Suggestion request identity conflict", HttpStatus.CONFLICT, "Bu gönderim değişmiş. Formu yeniden açıp tekrar dene."),
+	VENUE_SUGGESTION_RATE_LIMITED(9902, "Venue suggestion rate limited", HttpStatus.TOO_MANY_REQUESTS, "Kısa sürede çok fazla öneri gönderdin. Biraz sonra tekrar dene."),
+	VENUE_SUGGESTION_UNAVAILABLE(9903, "Venue suggestion temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Önerin şu anda alınamıyor. Biraz sonra tekrar dene."),
+	VENUE_SUGGESTION_TOO_LARGE(9904, "Venue suggestion body too large", HttpStatus.PAYLOAD_TOO_LARGE, "Öneri bilgileri izin verilen boyutu aşıyor."),
 
 	// GENEL (9999)
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),

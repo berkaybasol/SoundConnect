@@ -11,7 +11,13 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.notification.service.TransactionalNotificationService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandCreateRequestDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandMemberTitleUpdateDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandMemberResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandPendingInvitationResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandReceivedInvitationResponseDto;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandReceivedInvitationRow;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandResponseDto;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.response.BandSearchItemDto; //eklendi
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
@@ -20,37 +26,46 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandM
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.mapper.BandMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandPendingInvitationRow;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandMemberTitle;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.setlistcreator.repository.SetlistRepository;
 import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class BandServiceImpl implements BandService {
-	private static final int MAX_ACTIVE_BANDS_PER_USER = 3;
+	private static final int MAX_FOUNDED_BANDS_PER_USER = 3;
+	private static final int MAX_PENDING_INVITATION_PAGE = 10_000;
+	private static final int MAX_PENDING_INVITATION_SIZE = 50;
+	private static final long MAX_PENDING_INVITATION_OFFSET = 100_000L;
 	
 	private final BandRepository bandRepository;
 	private final BandMemberRepository bandMemberRepository;
@@ -59,7 +74,7 @@ public class BandServiceImpl implements BandService {
 	private final BandMapper bandMapper;
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final MediaAssetService mediaAssetService;
-	private final NotificationProducer notificationProducer;
+	private final TransactionalNotificationService transactionalNotificationService;
 	private final BandFollowRepository bandFollowRepository;
 	private final ArtistVenueConnectionRequestRepository artistVenueConnectionRequestRepository;
 	private final SetlistRepository setlistRepository;
@@ -67,6 +82,7 @@ public class BandServiceImpl implements BandService {
 	private final TrackRepository trackRepository;
 	private final EventPerformerRequestService eventPerformerRequestService;
 	private final EventMemberPublicationRepository eventMemberPublicationRepository;
+	private final UserRepository userRepository;
 	
 	
 	@Override
@@ -77,13 +93,90 @@ public class BandServiceImpl implements BandService {
 	
 	
 	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public PageResponse<BandReceivedInvitationResponseDto> getReceivedInvitations(UUID requesterId, int page, int size) {
+		if (page < 0 || page > MAX_PENDING_INVITATION_PAGE || size < 1 ||
+				size > MAX_PENDING_INVITATION_SIZE || (long) page * size > MAX_PENDING_INVITATION_OFFSET) {
+			throw new SoundConnectException(ErrorType.BAND_PENDING_INVITATIONS_PAGE_INVALID);
+		}
+		assertCanReadReceivedInvitations(requesterId);
+		var invitations = bandMemberRepository.findReceivedInvitationSummaries(
+				requesterId, BandMemberShipStatus.PENDING, PageRequest.of(page, size));
+		var mediaIds = invitations.getContent().stream().map(BandReceivedInvitationRow::profilePictureMediaId)
+				.filter(Objects::nonNull).distinct().toList();
+		Map<UUID, String> urls = mediaIds.isEmpty() ? Map.of() : mediaAssetService.getDisplayUrlMap(mediaIds);
+		return PageResponse.from(invitations.map(row -> new BandReceivedInvitationResponseDto(
+				row.bandId(), row.bandName(), row.profilePictureMediaId() == null ? null : urls.get(row.profilePictureMediaId()),
+				BandMemberShipStatus.PENDING.name(), row.invitationId())));
+	}
+
+	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public BandReceivedInvitationResponseDto getCurrentReceivedInvitation(UUID bandId, UUID requesterId) {
+		assertCanReadReceivedInvitations(requesterId);
+		var row = bandMemberRepository.findCurrentReceivedInvitation(bandId, requesterId, BandMemberShipStatus.PENDING)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_INVITE_STATUS_INVALID));
+		Map<UUID, String> urls = row.profilePictureMediaId() == null ? Map.of()
+				: mediaAssetService.getDisplayUrlMap(List.of(row.profilePictureMediaId()));
+		return new BandReceivedInvitationResponseDto(row.bandId(), row.bandName(),
+				row.profilePictureMediaId() == null ? null : urls.get(row.profilePictureMediaId()),
+				BandMemberShipStatus.PENDING.name(), row.invitationId());
+	}
+
+	private void assertCanReadReceivedInvitations(UUID requesterId) {
+		User user = userEntityFinder.getUser(requesterId);
+		if (user.getStatus() != UserStatus.ACTIVE || !Boolean.TRUE.equals(user.getEmailVerified()) ||
+				user.getRoles() == null || user.getRoles().stream().filter(Objects::nonNull)
+						.noneMatch(role -> "ROLE_MUSICIAN".equals(role.getName()))) {
+			throw new SoundConnectException(ErrorType.BAND_RECEIVED_INVITATIONS_FORBIDDEN);
+		}
+	}
+
+	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public PageResponse<BandPendingInvitationResponseDto> getPendingInvitations(
+			UUID bandId, UUID requesterId, int page, int size) {
+		if (page < 0 || page > MAX_PENDING_INVITATION_PAGE || size < 1 ||
+				size > MAX_PENDING_INVITATION_SIZE || (long) page * size > MAX_PENDING_INVITATION_OFFSET) {
+			throw new SoundConnectException(ErrorType.BAND_PENDING_INVITATIONS_PAGE_INVALID);
+		}
+		// The current database membership/account is authoritative, not a cached
+		// founder badge or JWT claim. The same read snapshot covers gate and page.
+		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, requesterId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_PENDING_INVITATIONS_FORBIDDEN));
+		User user = requester.getUser();
+		if (requester.getStatus() != BandMemberShipStatus.ACTIVE ||
+				requester.getBandRole() != BandRole.FOUNDER || user == null ||
+				user.getStatus() != UserStatus.ACTIVE || !Boolean.TRUE.equals(user.getEmailVerified()) ||
+				user.getRoles() == null || user.getRoles().stream().filter(Objects::nonNull)
+						.noneMatch(role -> "ROLE_MUSICIAN".equals(role.getName()))) {
+			throw new SoundConnectException(ErrorType.BAND_PENDING_INVITATIONS_FORBIDDEN);
+		}
+		var invitations = bandMemberRepository.findPendingInvitationSummaries(
+				bandId, BandMemberShipStatus.PENDING, PageRequest.of(page, size));
+		// Resolve only this page's canonical musician photos in one bounded batch.
+		// Missing, private or unfinished media stays a placeholder, never a legacy avatar.
+		List<UUID> mediaIds = invitations.getContent().stream()
+				.map(BandPendingInvitationRow::profilePictureMediaId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList();
+		Map<UUID, String> avatarUrls = mediaIds.isEmpty()
+				? Map.of() : mediaAssetService.getDisplayUrlMap(mediaIds);
+		return PageResponse.from(invitations.map(invitation -> new BandPendingInvitationResponseDto(
+				invitation.userId(), invitation.username(),
+				invitation.profilePictureMediaId() == null
+						? null : avatarUrls.get(invitation.profilePictureMediaId()),
+				BandMemberShipStatus.PENDING.name())));
+	}
+
+	@Override
 	@Transactional
 	public void inviteMember(UUID bandId, UUID inviterId, UUID invitedUserId, String message) {
 		Band band = lockBandForMembershipChange(bandId);
 		
-		// davet eden ve davet edilen user'lari getir
+		// Resolve the requester before accessing any recipient data.
 		User inviter = userEntityFinder.getUser(inviterId);
-		User invited = userEntityFinder.getUser(invitedUserId);
 		
 		// davet eden kisinin yetkisi founder olmali
 		BandMember inviterMember = bandMemberRepository.findByBandIdAndUserId(bandId, inviterId)
@@ -97,6 +190,15 @@ public class BandServiceImpl implements BandService {
 			log.warn("Kullanıcı yetkisiz davet girişimi: inviterId={}, bandId={}", inviterId, bandId);
 			throw new SoundConnectException(ErrorType.BAND_INVITE_UNAUTHORIZED);
 		}
+		User invited = userEntityFinder.getUser(invitedUserId);
+		// A band invitation must be answerable by its recipient. The decision
+		// endpoints require an active, verified musician with a canonical profile.
+		if (invited.getStatus() != UserStatus.ACTIVE || !Boolean.TRUE.equals(invited.getEmailVerified()) ||
+				invited.getRoles() == null || invited.getRoles().stream().filter(Objects::nonNull)
+						.noneMatch(role -> "ROLE_MUSICIAN".equals(role.getName())) ||
+				musicianProfileRepository.findByUserId(invitedUserId).isEmpty()) {
+			throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		}
 		
 		BandMember existingMember = bandMemberRepository.findByBandIdAndUserId(bandId, invitedUserId).orElse(null);
 		
@@ -109,7 +211,9 @@ public class BandServiceImpl implements BandService {
 			// A new membership invitation cannot revive the previous membership's
 			// event publication choices. Preserve version tombstones for old clients.
 			eventMemberPublicationRepository.hideForBandMember(bandId, invitedUserId);
+			clearMemberTitleForNewTenure(existingMember);
 			existingMember.setStatus(BandMemberShipStatus.PENDING);
+			existingMember.setInvitationId(UUID.randomUUID());
 			existingMember.setBandRole(BandRole.MEMBER);
 			bandMemberRepository.save(existingMember);
 			
@@ -117,10 +221,11 @@ public class BandServiceImpl implements BandService {
 			publishBandNotification(
 					invited.getId(),
 					NotificationType.BAND_INVITE_RECEIVED,
-					safe(band.getName(), "Band") + " seni banda davet etti",
-					safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından band daveti aldın.",
+					safe(band.getName(), "Grup") + " seni gruba davet etti",
+					safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından davet aldın.",
 					band,
-					Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
+					Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString(),
+							"invitationId", existingMember.getInvitationId().toString())
 			);
 			return;
 		}
@@ -131,6 +236,7 @@ public class BandServiceImpl implements BandService {
 		                              .user(invited)
 		                              .bandRole(BandRole.MEMBER)
 		                              .status(BandMemberShipStatus.PENDING)
+		                              .invitationId(UUID.randomUUID())
 		                              .build();
 		
 		bandMemberRepository.save(invite);
@@ -140,24 +246,29 @@ public class BandServiceImpl implements BandService {
 		publishBandNotification(
 				invited.getId(),
 				NotificationType.BAND_INVITE_RECEIVED,
-				safe(band.getName(), "Band") + " seni banda davet etti",
-				safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından band daveti aldın.",
+				safe(band.getName(), "Grup") + " seni gruba davet etti",
+				safe(inviter.getUsername(), "Bir kullanıcı") + " tarafından davet aldın.",
 				band,
-				Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString())
+				Map.of("action", "INVITE_RECEIVED", "inviterId", inviter.getId().toString(),
+						"invitationId", invite.getInvitationId().toString())
 		);
 	}
 	
 	@Override
 	@Transactional
-	public void acceptInvite(UUID bandId, UUID userId) {
+	public void acceptInvite(UUID bandId, UUID userId, UUID invitationId) {
 		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		if (member.getStatus() != BandMemberShipStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_STATUS_INVALID);
 		}
+		assertCurrentInvitation(member, invitationId);
 		// Explicitly reset publication before reactivating membership. This also
 		// covers pending invitations created by an older application version.
 		eventMemberPublicationRepository.hideForBandMember(bandId, userId);
+		// Pending rows cannot be edited. Clear legacy pending titles as well,
+		// without touching an active member's title on duplicate acceptance.
+		clearMemberTitleForNewTenure(member);
 		member.setStatus(BandMemberShipStatus.ACTIVE);
 		bandMemberRepository.save(member);
 		
@@ -174,12 +285,13 @@ public class BandServiceImpl implements BandService {
 	
 	@Override
 	@Transactional
-	public void rejectInvite(UUID bandId, UUID userId) {
+	public void rejectInvite(UUID bandId, UUID userId, UUID invitationId) {
 		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		if (member.getStatus() != BandMemberShipStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_STATUS_INVALID);
 		}
+		assertCurrentInvitation(member, invitationId);
 		member.setStatus(BandMemberShipStatus.REJECTED);
 		bandMemberRepository.save(member);
 		
@@ -194,9 +306,15 @@ public class BandServiceImpl implements BandService {
 		);
 	}
 	
+	private static void assertCurrentInvitation(BandMember member, UUID invitationId) {
+		if (invitationId == null || !invitationId.equals(member.getInvitationId())) {
+			throw new SoundConnectException(ErrorType.BAND_INVITE_STALE);
+		}
+	}
+
 	@Override
 	@Transactional
-	public void removeMember(UUID bandId, UUID requesterId, UUID targetUserId) {
+	public void removeMember(UUID bandId, UUID requesterId, UUID targetUserId, Long expectedTitleVersion) {
 		lockBandForMembershipChange(bandId);
 		// sadece founder uyeleri cikarabilir
 		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, requesterId)
@@ -218,6 +336,19 @@ public class BandServiceImpl implements BandService {
 		if (member.getBandRole() == BandRole.FOUNDER) {
 			throw new SoundConnectException(ErrorType.BAND_CANNOT_REMOVE_FOUNDER);
 		}
+		// This version advances for title edits AND every invitation/acceptance
+		// boundary, including legacy null titles. An old roster must never remove
+		// a later membership; missing versions from older clients fail closed.
+		if (expectedTitleVersion == null || expectedTitleVersion < 0 ||
+				expectedTitleVersion != member.getTitleVersion()) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_VERSION_CONFLICT);
+		}
+		// Retried removals must not create another notification or advance the
+		// publication tombstones for a membership that has already ended.
+		if (member.getStatus() == BandMemberShipStatus.LEFT ||
+				member.getStatus() == BandMemberShipStatus.REJECTED) {
+			return;
+		}
 		
 		eventMemberPublicationRepository.hideForBandMember(bandId, targetUserId);
 		member.setStatus(BandMemberShipStatus.LEFT);
@@ -236,7 +367,58 @@ public class BandServiceImpl implements BandService {
 	
 	@Override
 	@Transactional
-	public void leaveBand(UUID bandId, UUID userId) {
+	public BandMemberResponseDto updateMemberTitle(UUID bandId, UUID requesterId, UUID targetUserId,
+	                                               BandMemberTitleUpdateDto update) {
+		if (update == null || update.expectedTitleVersion() == null || update.expectedTitleVersion() < 0) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_TITLE_INVALID);
+		}
+		String normalizedTitle = BandMemberTitle.normalize(update.memberTitle());
+		lockBandForMembershipChange(bandId);
+		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, requesterId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
+		if (requester.getStatus() != BandMemberShipStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_ACTIVE);
+		}
+		if (requester.getBandRole() != BandRole.FOUNDER || requester.getUser() == null ||
+				requester.getUser().getStatus() != UserStatus.ACTIVE ||
+				!Boolean.TRUE.equals(requester.getUser().getEmailVerified())) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_TITLE_UNAUTHORIZED);
+		}
+		BandMember target = requesterId.equals(targetUserId) ? requester :
+				bandMemberRepository.findByBandIdAndUserId(bandId, targetUserId)
+						.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
+		if (target.getStatus() != BandMemberShipStatus.ACTIVE) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_ACTIVE);
+		}
+		if (target.getTitleVersion() != update.expectedTitleVersion()) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_TITLE_VERSION_CONFLICT);
+		}
+		if (!Objects.equals(target.getMemberTitle(), normalizedTitle)) {
+			target.setTitleVersion(nextTitleVersion(target.getTitleVersion()));
+			target.setMemberTitle(normalizedTitle);
+			bandMemberRepository.save(target);
+		}
+		return bandMapper.toMemberDto(target);
+	}
+
+	private static long nextTitleVersion(long version) {
+		if (version < 0 || version == Long.MAX_VALUE) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_TITLE_VERSION_CONFLICT);
+		}
+		return version + 1;
+	}
+
+	private static void clearMemberTitleForNewTenure(BandMember member) {
+		// A null old title still has an optimistic version held by old editors.
+		// Advance on every new-tenure boundary so those editors cannot publish
+		// into a later membership. Duplicate ACTIVE acceptance is rejected above.
+		member.setTitleVersion(nextTitleVersion(member.getTitleVersion()));
+		member.setMemberTitle(null);
+	}
+
+	@Override
+	@Transactional
+	public void leaveBand(UUID bandId, UUID userId, Long expectedTitleVersion) {
 		lockBandForMembershipChange(bandId);
 		BandMember member = bandEntityFinder.getBandMember(bandId, userId);
 		
@@ -247,6 +429,10 @@ public class BandServiceImpl implements BandService {
 		// founder ise cikamasin once baska founder atanmasi gerek
 		if (member.getBandRole() == BandRole.FOUNDER) {
 			throw new SoundConnectException(ErrorType.BAND_FOUNDER_CANNOT_LEAVE);
+		}
+		if (expectedTitleVersion == null || expectedTitleVersion < 0 ||
+				expectedTitleVersion != member.getTitleVersion()) {
+			throw new SoundConnectException(ErrorType.BAND_MEMBER_VERSION_CONFLICT);
 		}
 		
 		eventMemberPublicationRepository.hideForBandMember(bandId, userId);
@@ -313,8 +499,10 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public BandResponseDto createBand(UUID userId, BandCreateRequestDto dto) {
-		// kullaniciyi getir
-		User user = userEntityFinder.getUser(userId);
+		// Serialize quota reads and founder insertion for this account. Two
+		// concurrent creates cannot both spend its final creation slot.
+		User user = userRepository.findByIdForUpdate(userId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
 		
 		// band sadece musician profile sahibi kullanici tarafindan olusturulabilir
 		if (musicianProfileRepository.findByUserId(userId).isEmpty()) {
@@ -322,9 +510,10 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		}
 
-		long activeBandCount = bandMemberRepository.countByUserIdAndStatus(userId, BandMemberShipStatus.ACTIVE);
-		if (activeBandCount >= MAX_ACTIVE_BANDS_PER_USER) {
-			log.warn("Band olusturma limiti asildi. userId={}, activeBandCount={}", userId, activeBandCount);
+		long foundedBandCount = bandMemberRepository.countByUserIdAndStatusAndBandRole(
+				userId, BandMemberShipStatus.ACTIVE, BandRole.FOUNDER);
+		if (foundedBandCount >= MAX_FOUNDED_BANDS_PER_USER) {
+			log.warn("Band olusturma limiti asildi. userId={}, foundedBandCount={}", userId, foundedBandCount);
 			throw new SoundConnectException(ErrorType.BAND_CREATE_LIMIT_EXCEEDED);
 		}
 		if (dto.profilePicture() != null) {
@@ -370,13 +559,15 @@ public class BandServiceImpl implements BandService {
 		log.info("Yeni band olusturuldu. [name: {}, founder: {}]", dto.name(), user.getId());
 		
 		// response DTO ile dondur
-		return toResponseDto(saved);
+		return toResponseDto(saved, true);
 	}
 	
 	@Override
 	@Transactional
 	public BandResponseDto updateBand(UUID bandId, UUID userId, BandCreateRequestDto dto) {
-		Band band = bandEntityFinder.getBand(bandId);
+		// Serialize profile changes with membership, connection and deletion
+		// snapshots; an unlocked stale entity must not race the aggregate fence.
+		Band band = lockBandForMembershipChange(bandId);
 		BandMember requester = bandMemberRepository.findByBandIdAndUserId(bandId, userId)
 		                                           .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_MEMBER_NOT_FOUND));
 		
@@ -427,8 +618,8 @@ public class BandServiceImpl implements BandService {
 		);
 		
 		return memberships.stream()
-		                  .map(BandMember::getBand)
-		                  .map(this::toResponseDto)
+		                  .map(member -> toResponseDto(member.getBand(),
+							member.getStatus() == BandMemberShipStatus.ACTIVE && member.getBandRole() == BandRole.FOUNDER))
 		                  .toList();
 	}
 	
@@ -504,28 +695,23 @@ public class BandServiceImpl implements BandService {
 			Band band,
 			Map<String, Object> extraPayload
 	) {
-		try {
-			Map<String, Object> payload = new HashMap<>();
-			payload.put("module", "BAND");
-			payload.put("bandId", band.getId().toString());
-			payload.put("bandName", safe(band.getName(), "Band"));
-			if (extraPayload != null) payload.putAll(extraPayload);
-			
-			notificationProducer.publish(
-					NotificationInboundEvent.builder()
-					                        .recipientId(recipientId)
-					                        .type(type)
-					                        .title(title)
-					                        .message(message)
-					                        .payload(payload)
-					                        .emailForce(false)
-					                        .occurredAt(Instant.now())
-					                        .build()
-			);
-		} catch (Exception e) {
-			log.warn("Band notification publish failed. recipient={}, band={}, type={}, err={}",
-			         recipientId, band.getId(), type, e.toString());
-		}
+		Map<String, Object> payload = new HashMap<>();
+		payload.put("module", "BAND");
+		payload.put("bandId", band.getId().toString());
+		payload.put("bandName", safe(band.getName(), "Band"));
+		if (extraPayload != null) payload.putAll(extraPayload);
+		transactionalNotificationService.persistInCurrentTransaction(
+				NotificationInboundEvent.builder()
+						.eventId(UUID.randomUUID())
+						.recipientId(recipientId)
+						.type(type)
+						.title(title)
+						.message(message)
+						.payload(payload)
+						.emailForce(false)
+						.occurredAt(Instant.now())
+						.build()
+		);
 	}
 	
 	private String safe(String value, String fallback) {
@@ -533,6 +719,10 @@ public class BandServiceImpl implements BandService {
 	}
 	
 	private BandResponseDto toResponseDto(Band band) {
+		return toResponseDto(band, null);
+	}
+
+	private BandResponseDto toResponseDto(Band band, Boolean countsTowardCreationLimit) {
 		var base = bandMapper.toDto(band);
 		String profilePictureUrl = resolveProfilePictureUrl(band.getProfilePictureMediaId());
 		
@@ -548,7 +738,8 @@ public class BandServiceImpl implements BandService {
 				base.spotifyEmbedUrl(),
 				base.spotifyArtistId(),
 				base.spotifyTrackIds(),
-				base.members()
+				base.members(),
+				countsTowardCreationLimit
 		);
 	}
 	

@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.notification.service;
 
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ public class NotificationCleanupService {
 	private final NotificationRepository notificationRepository;
 	private final NotificationBadgeCacheHelper badgeCacheHelper;
 	private final NotificationWebSocketService notificationWebSocketService;
+	private final NotificationReceiptRepository receiptRepository;
 	
 	@Value("${app.notification.retention-days:30}")
 	private long retentionDays;
@@ -43,6 +45,7 @@ public class NotificationCleanupService {
 			return;
 		}
 		
+		receiptRepository.retainBeforeCutoff(cutoff);
 		int deleted = notificationRepository.deleteByCreatedAtBefore(cutoff);
 		List<UUID> committedUsers = List.copyOf(affectedUsers);
 		runAfterCommit(() -> {

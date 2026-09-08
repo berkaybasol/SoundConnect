@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -21,6 +23,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.Map;
@@ -34,7 +38,15 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@DataJpaTest
+@DataJpaTest(properties = {
+        "spring.config.import=",
+        "spring.datasource.url=jdbc:h2:mem:notification-dedup-${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.datasource.username=sa", "spring.datasource.password=",
+        "spring.datasource.hikari.connection-init-sql=",
+        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
+        "spring.jpa.hibernate.ddl-auto=create-drop"
+})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -43,6 +55,8 @@ class NotificationEventDeduplicationIT {
 
     @Autowired
     private NotificationRepository notificationRepository;
+    @Autowired private NotificationReceiptRepository receiptRepository;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     private NotificationBadgeCacheHelper badgeCacheHelper;
     private NotificationWebSocketService webSocketService;
@@ -69,12 +83,16 @@ class NotificationEventDeduplicationIT {
                     notification.getPayload()
             );
         });
+        NotificationService notificationService = mock(NotificationService.class);
+        when(notificationService.refreshActorIdentityForDelivery(any())).thenAnswer(call -> call.getArgument(0));
         listener = new NotificationEventListener(
                 notificationRepository,
                 badgeCacheHelper,
                 mapper,
                 webSocketService,
-                mailProducer
+                mailProducer,
+                notificationService,
+                receiptRepository
         );
     }
 
@@ -97,8 +115,9 @@ class NotificationEventDeduplicationIT {
                 .occurredAt(Instant.parse("2026-08-11T00:00:00Z"))
                 .build();
 
-        listener.handle(event);
-        listener.handle(event);
+        var transactions = new TransactionTemplate(transactionManager);
+        transactions.executeWithoutResult(status -> listener.handle(event));
+        transactions.executeWithoutResult(status -> listener.handle(event));
 
         assertThat(notificationRepository.count()).isEqualTo(1);
         Notification stored = notificationRepository.findBySourceEventId(eventId).orElseThrow();

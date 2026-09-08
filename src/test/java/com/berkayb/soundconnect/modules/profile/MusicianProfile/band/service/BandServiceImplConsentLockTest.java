@@ -20,7 +20,8 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.Music
 import com.berkayb.soundconnect.modules.setlistcreator.repository.SetlistRepository;
 import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.notification.service.TransactionalNotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -45,7 +46,7 @@ class BandServiceImplConsentLockTest {
 	@Mock private BandMapper bandMapper;
 	@Mock private MusicianProfileRepository musicianProfileRepository;
 	@Mock private MediaAssetService mediaAssetService;
-	@Mock private NotificationProducer notificationProducer;
+	@Mock private TransactionalNotificationService notificationProducer;
 	@Mock private BandFollowRepository bandFollowRepository;
 	@Mock private ArtistVenueConnectionRequestRepository artistVenueConnectionRequestRepository;
 	@Mock private SetlistRepository setlistRepository;
@@ -53,6 +54,7 @@ class BandServiceImplConsentLockTest {
 	@Mock private TrackRepository trackRepository;
 	@Mock private EventPerformerRequestService eventPerformerRequestService;
 	@Mock private EventMemberPublicationRepository eventMemberPublicationRepository;
+	@Mock private UserRepository userRepository;
 
 	private BandServiceImpl service;
 
@@ -74,7 +76,8 @@ class BandServiceImplConsentLockTest {
 				eventRepository,
 				trackRepository,
 				eventPerformerRequestService,
-				eventMemberPublicationRepository
+				eventMemberPublicationRepository,
+				userRepository
 		);
 	}
 

@@ -2,13 +2,16 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestPageItemDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.entity.ArtistVenueConnectionRequest;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.mapper.ArtistVenueConnectionRequestMapper;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ConnectionRequestRow;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.notification.service.TransactionalNotificationService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
@@ -23,14 +26,22 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,7 +60,51 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private final BandMemberRepository bandMemberRepository;
 	private final VenueProfileRepository venueProfileRepository;
 	private final MediaAssetService mediaAssetService;
-	private final NotificationProducer notificationProducer;
+	private final TransactionalNotificationService transactionalNotificationService;
+
+	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public PageResponse<ArtistVenueConnectionRequestPageItemDto> getBandPage(UUID actorUserId, UUID bandId,
+			RequestStatus status, Boolean incoming, int page, int size) {
+		Band band = bandRepository.findById(bandId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+		assertIsActiveBandMember(actorUserId, band);
+		return mapPage(repository.findBandPage(bandId, status, directionTypes(RequestByType.BAND, incoming), pageRequest(page, size)));
+	}
+
+	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public PageResponse<ArtistVenueConnectionRequestPageItemDto> getMusicianPage(UUID actorUserId, UUID musicianProfileId,
+			RequestStatus status, Boolean incoming, int page, int size) {
+		MusicianProfile musician = musicianProfileRepository.findById(musicianProfileId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		assertCanActForMusician(actorUserId, musician);
+		return mapPage(repository.findMusicianPage(musicianProfileId, status,
+				directionTypes(RequestByType.ARTIST, incoming), pageRequest(page, size)));
+	}
+
+	@Override
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+	public PageResponse<ArtistVenueConnectionRequestPageItemDto> getVenuePage(UUID actorUserId, UUID venueId,
+			RequestStatus status, Boolean incoming, int page, int size) {
+		Venue venue = venueRepository.findById(venueId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+		assertCanActForVenue(actorUserId, venue);
+		return mapPage(repository.findVenuePage(venueId, status, directionTypes(RequestByType.VENUE, incoming), pageRequest(page, size)));
+	}
+
+	private PageRequest pageRequest(int page, int size) {
+		if (page < 0 || page > 10000 || size < 1 || size > 100) {
+			throw new SoundConnectException(ErrorType.REQUEST_PAGE_INVALID);
+		}
+		return PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+	}
+
+	private List<RequestByType> directionTypes(RequestByType outgoing, Boolean incoming) {
+		if (incoming == null) return List.of(RequestByType.ARTIST, RequestByType.BAND, RequestByType.VENUE);
+		if (!incoming) return List.of(outgoing);
+		return outgoing == RequestByType.VENUE ? List.of(RequestByType.ARTIST, RequestByType.BAND) : List.of(RequestByType.VENUE);
+	}
 
 	@Override
 	@Transactional(readOnly = true)
@@ -63,10 +118,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 						? repository.findAllByBandId(bandId)
 						: repository.findAllByBandIdAndStatus(bandId, status);
 
-		return requests.stream()
-		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields)
-		               .toList();
+		return mapRequests(requests);
 	}
 
 	@Transactional
@@ -126,6 +178,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
 
 			venue.getActiveBands().remove(band);
+			band.getActiveVenues().remove(venue);
 			venueRepository.save(venue);
 		}
 
@@ -144,8 +197,18 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		if (requestType == null) {
 			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
 		}
+		boolean hasMusicianTarget = dto.musicianProfileId() != null;
+		boolean hasBandTarget = dto.bandId() != null;
+		if (hasMusicianTarget == hasBandTarget
+				|| (requestType == RequestByType.ARTIST && !hasMusicianTarget)
+				|| (requestType == RequestByType.BAND && !hasBandTarget)) {
+			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
+		}
 
-		Venue venue = venueRepository.findById(dto.venueId())
+		// Band first: membership changes and band deletion use this same aggregate lock.
+		Band targetBand = hasBandTarget ? bandRepository.findByIdForUpdate(dto.bandId())
+				.orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND)) : null;
+		Venue venue = repository.findVenueByIdForUpdate(dto.venueId())
 		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
 
 		ArtistVenueConnectionRequest request = new ArtistVenueConnectionRequest();
@@ -155,59 +218,24 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		request.setMessage(dto.message());
 
 		if (requestType == RequestByType.ARTIST) {
-			if (dto.musicianProfileId() == null) {
-				throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
-			}
-
-			if (repository.existsByMusicianProfileIdAndVenueIdAndStatus(dto.musicianProfileId(), dto.venueId(), RequestStatus.PENDING)) {
-				throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
-			}
-
 			MusicianProfile musician = musicianProfileRepository.findById(dto.musicianProfileId())
 			                                                    .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
-			if (requestType == RequestByType.ARTIST) {
-				assertCanActForMusician(actorUserId, musician);
-			} else {
-				assertCanActForVenue(actorUserId, venue);
-			}
+			assertCanActForMusician(actorUserId, musician);
 
 			request.setMusicianProfile(musician);
 			request.setBand(null);
 		} else if (requestType == RequestByType.BAND) {
-			if (dto.bandId() == null) {
-				throw new SoundConnectException(ErrorType.BAND_NOT_FOUND);
-			}
+			assertCanManageBand(actorUserId, targetBand);
 
-			if (repository.existsByBandIdAndVenueIdAndStatus(dto.bandId(), dto.venueId(), RequestStatus.PENDING)) {
-				throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
-			}
-
-			Band band = bandRepository.findById(dto.bandId())
-			                          .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
-			assertCanManageBand(actorUserId, band);
-
-			request.setBand(band);
+			request.setBand(targetBand);
 			request.setMusicianProfile(null);
 		} else if (requestType == RequestByType.VENUE) {
 			assertCanActForVenue(actorUserId, venue);
-			boolean hasMusicianTarget = dto.musicianProfileId() != null;
-			boolean hasBandTarget = dto.bandId() != null;
-			if (hasMusicianTarget == hasBandTarget) {
-				throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
-			}
 
 			if (hasBandTarget) {
-				if (repository.existsByBandIdAndVenueIdAndStatus(dto.bandId(), dto.venueId(), RequestStatus.PENDING)) {
-					throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
-				}
-				Band band = bandRepository.findById(dto.bandId())
-				                          .orElseThrow(() -> new SoundConnectException(ErrorType.BAND_NOT_FOUND));
-				request.setBand(band);
+				request.setBand(targetBand);
 				request.setMusicianProfile(null);
 			} else {
-				if (repository.existsByMusicianProfileIdAndVenueIdAndStatus(dto.musicianProfileId(), dto.venueId(), RequestStatus.PENDING)) {
-					throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
-				}
 				MusicianProfile musician = musicianProfileRepository.findById(dto.musicianProfileId())
 				                                                    .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 				request.setMusicianProfile(musician);
@@ -217,6 +245,12 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			throw new SoundConnectException(ErrorType.REQUEST_BY_TYPE_REQUIRED);
 		}
 
+		// Authorize the caller before exposing whether this private pair has a request.
+		assertBothSidesCanConnect(actorUserId, request);
+		assertNotAlreadyConnected(request);
+		if (hasRequestWithStatus(request, RequestStatus.PENDING)) {
+			throw new SoundConnectException(ErrorType.REQUEST_PENDING_ALREADY);
+		}
 		ArtistVenueConnectionRequest saved = repository.save(request);
 
 		log.info("Baglanti basvurusu olusturuldu. requestId={}", saved.getId());
@@ -240,6 +274,8 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
 		}
 
+		assertBothSidesCanConnect(actorUserId, request);
+		assertNotAlreadyConnected(request);
 		request.setStatus(RequestStatus.ACCEPTED);
 
 		if (!targetsBand(request)) {
@@ -262,6 +298,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			if (venue == null) throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
 
 			venue.getActiveBands().add(band);
+			band.getActiveVenues().add(venue);
 			venueRepository.save(venue);
 		}
 
@@ -308,10 +345,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 				status == null
 						? repository.findAllByMusicianProfileId(musicianProfileId)
 						: repository.findAllByMusicianProfileIdAndStatus(musicianProfileId, status);
-		return requests.stream()
-		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields)
-		               .toList();
+		return mapRequests(requests);
 	}
 
 	@Override
@@ -326,15 +360,64 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 				status == null
 						? repository.findAllByVenueId(venueId)
 						: repository.findAllByVenueIdAndStatus(venueId, status);
-		return requests.stream()
-		               .map(artistVenueConnectionRequestMapper::toResponseDto)
-		               .map(this::enrichBandFields)
-		               .toList();
+		return mapRequests(requests);
 	}
 
 	private ArtistVenueConnectionRequest findRequest(UUID requestId) {
-		return repository.findById(requestId)
+		// Read only the scalar target before locking; never retain a stale request
+		// entity while waiting for the band membership/deletion fence.
+		repository.findBandIdByRequestId(requestId).ifPresent(bandId ->
+				bandRepository.findByIdForUpdate(bandId)
+						.orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND)));
+		ArtistVenueConnectionRequest request = repository.findByIdForUpdate(requestId)
 		                 .orElseThrow(() -> new SoundConnectException(ErrorType.REQUEST_NOT_FOUND));
+		if (request.getVenue() == null) {
+			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+		}
+		Venue venue = repository.findVenueByIdForUpdate(request.getVenue().getId())
+		                       .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+		request.setVenue(venue);
+		return request;
+	}
+
+	private void assertNotAlreadyConnected(ArtistVenueConnectionRequest request) {
+		if (hasRequestWithStatus(request, RequestStatus.ACCEPTED)) {
+			throw new SoundConnectException(ErrorType.REQUEST_ALREADY_ACCEPTED);
+		}
+	}
+
+	private void assertBothSidesCanConnect(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		UUID ownerId = request.getVenue() == null || request.getVenue().getOwner() == null
+				? null : request.getVenue().getOwner().getId();
+		Set<UUID> representatives = new HashSet<>();
+		if (targetsBand(request)) {
+			request.getBand().getMembers().stream()
+					.filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+					.filter(member -> member.getBandRole() == BandRole.FOUNDER || member.getBandRole() == BandRole.MANAGER)
+					.filter(member -> member.getUser() != null && member.getUser().getId() != null)
+					.forEach(member -> representatives.add(member.getUser().getId()));
+		} else if (request.getMusicianProfile() != null && request.getMusicianProfile().getUser() != null) {
+			representatives.add(request.getMusicianProfile().getUser().getId());
+		}
+		representatives.remove(null);
+		if (ownerId == null || actorUserId == null || representatives.isEmpty()) {
+			throw new SoundConnectException(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE);
+		}
+		Set<UUID> accountIds = new HashSet<>(representatives);
+		accountIds.add(ownerId);
+		accountIds.add(actorUserId);
+		Set<UUID> usable = new HashSet<>(repository.lockUsableAccountIds(accountIds));
+		if (!usable.contains(ownerId) || !usable.contains(actorUserId)
+				|| representatives.stream().noneMatch(usable::contains)) {
+			throw new SoundConnectException(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE);
+		}
+	}
+
+	private boolean hasRequestWithStatus(ArtistVenueConnectionRequest request, RequestStatus status) {
+		UUID venueId = request.getVenue().getId();
+		return targetsBand(request)
+				? repository.existsByBandIdAndVenueIdAndStatus(request.getBand().getId(), venueId, status)
+				: repository.existsByMusicianProfileIdAndVenueIdAndStatus(request.getMusicianProfile().getId(), venueId, status);
 	}
 
 	private void assertCanCancel(UUID actorUserId, ArtistVenueConnectionRequest request) {
@@ -443,6 +526,10 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 			venuePpUrl = venueProfilePictureUrl(dto.venueId());
 		}
 
+		return withAvatars(dto, bandPpUrl, venuePpUrl);
+	}
+
+	private ArtistVenueConnectionRequestResponseDto withAvatars(ArtistVenueConnectionRequestResponseDto dto, String bandPpUrl, String venuePpUrl) {
 		return new ArtistVenueConnectionRequestResponseDto(
 				dto.id(),
 				dto.musicianProfileId(),
@@ -460,52 +547,108 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		);
 	}
 
-	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request) {
-		try {
-			for (UUID recipientId : requestCreatedRecipientIds(request)) {
-				notificationProducer.publish(
-						NotificationInboundEvent.builder()
-						                        .recipientId(recipientId)
-						                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
-						                        .title(requestCreatedTitle(request))
-						                        .message(safe(request.getMessage()))
-						                        .payload(notificationPayload(request, "REQUEST_CREATED"))
-						                        .emailForce(false)
-						                        .occurredAt(Instant.now())
-						                        .build()
-				);
+	private List<ArtistVenueConnectionRequestResponseDto> mapRequests(List<ArtistVenueConnectionRequest> requests) {
+		AvatarUrls avatars = resolveAvatars(requests, false);
+		return requests.stream().map(artistVenueConnectionRequestMapper::toResponseDto)
+				.map(row -> withAvatars(row, avatars.bands().get(row.bandId()), avatars.venues().get(row.venueId())))
+				.toList();
+	}
+
+	private PageResponse<ArtistVenueConnectionRequestPageItemDto> mapPage(Page<ConnectionRequestRow> page) {
+		Set<UUID> mediaIds = new HashSet<>();
+		page.forEach(row -> {
+			mediaIds.add(row.musicianMediaId());
+			mediaIds.add(row.bandMediaId());
+			mediaIds.add(row.venueMediaId());
+		});
+		mediaIds.remove(null);
+		Map<UUID, String> urls = mediaIds.isEmpty() ? new HashMap<>() : new HashMap<>(mediaAssetService.getDisplayUrlMap(List.copyOf(mediaIds)));
+		List<ArtistVenueConnectionRequestPageItemDto> rows = new ArrayList<>(page.getNumberOfElements());
+		for (ConnectionRequestRow row : page.getContent()) {
+			String displayName = row.musicianProfileId() == null ? null
+					: hasText(row.musicianStageName()) ? row.musicianStageName().trim() : row.musicianUsername();
+			rows.add(new ArtistVenueConnectionRequestPageItemDto(row.id(), row.musicianProfileId(), row.bandId(), row.venueId(),
+					row.musicianStageName(), row.bandName(), urls.get(row.bandMediaId()), urls.get(row.venueMediaId()),
+					row.venueName(), row.message(), row.status().name(), row.requestByType(),
+					row.createdAt() == null ? null : row.createdAt().toString(),
+					urls.get(row.musicianMediaId()), row.musicianUsername(), displayName));
+		}
+		return PageResponse.from(new PageImpl<>(rows, page.getPageable(), page.getTotalElements()));
+	}
+
+	private AvatarUrls resolveAvatars(List<ArtistVenueConnectionRequest> requests, boolean includeMusicians) {
+		Map<UUID, UUID> bandMedia = new HashMap<>(), venueMedia = new HashMap<>(), musicianMedia = new HashMap<>();
+		Set<UUID> venueIds = new HashSet<>();
+		for (ArtistVenueConnectionRequest request : requests) {
+			if (request.getVenue() != null) venueIds.add(request.getVenue().getId());
+			if (request.getBand() != null) bandMedia.put(request.getBand().getId(), request.getBand().getProfilePictureMediaId());
+			if (includeMusicians && request.getMusicianProfile() != null) {
+				musicianMedia.put(request.getMusicianProfile().getId(), request.getMusicianProfile().getProfilePictureMediaId());
 			}
-		} catch (Exception e) {
-			log.warn("ArtistVenue notification request publish failed. requestId={}, err={}",
-			         request.getId(), e.toString());
+		}
+		if (!venueIds.isEmpty()) {
+			repository.findVenueAvatars(venueIds).forEach(avatar -> venueMedia.put(avatar.venueId(), avatar.mediaAssetId()));
+		}
+		Set<UUID> mediaIds = new HashSet<>(bandMedia.values());
+		mediaIds.addAll(venueMedia.values());
+		mediaIds.addAll(musicianMedia.values());
+		mediaIds.remove(null);
+		Map<UUID, String> urls = mediaIds.isEmpty() ? Map.of() : mediaAssetService.getDisplayUrlMap(List.copyOf(mediaIds));
+		return new AvatarUrls(resolveUrls(bandMedia, urls), resolveUrls(venueMedia, urls), resolveUrls(musicianMedia, urls));
+	}
+
+	private Map<UUID, String> resolveUrls(Map<UUID, UUID> profileMedia, Map<UUID, String> urls) {
+		Map<UUID, String> result = new HashMap<>();
+		profileMedia.forEach((id, mediaId) -> {
+			if (mediaId != null && urls.containsKey(mediaId)) result.put(id, urls.get(mediaId));
+		});
+		return result;
+	}
+
+	private record AvatarUrls(Map<UUID, String> bands, Map<UUID, String> venues, Map<UUID, String> musicians) {}
+
+	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request) {
+		for (UUID recipientId : requestCreatedRecipientIds(request)) {
+			transactionalNotificationService.persistInCurrentTransaction(
+					NotificationInboundEvent.builder()
+					                        .eventId(UUID.randomUUID())
+					                        .recipientId(recipientId)
+					                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
+					                        .title(notificationTitle(requestCreatedTitle(request)))
+					                        .message(safe(request.getMessage()))
+					                        .payload(notificationPayload(request, "REQUEST_CREATED"))
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
 		}
 	}
 
 	private void publishRequestDecisionNotification(ArtistVenueConnectionRequest request, boolean accepted) {
-		try {
-			NotificationType type = accepted
-					? NotificationType.ARTIST_VENUE_LINK_APPLICATION_ACCEPT
-					: NotificationType.ARTIST_VENUE_LINK_APPLICATION_REJECT;
-			String action = accepted ? "REQUEST_ACCEPTED" : "REQUEST_REJECTED";
-			String title = accepted ? requestAcceptedTitle(request) : requestRejectedTitle(request);
+		NotificationType type = accepted
+				? NotificationType.ARTIST_VENUE_LINK_APPLICATION_ACCEPT
+				: NotificationType.ARTIST_VENUE_LINK_APPLICATION_REJECT;
+		String action = accepted ? "REQUEST_ACCEPTED" : "REQUEST_REJECTED";
+		String title = accepted ? requestAcceptedTitle(request) : requestRejectedTitle(request);
 
-			for (UUID recipientId : requestDecisionRecipientIds(request)) {
-				notificationProducer.publish(
-						NotificationInboundEvent.builder()
-						                        .recipientId(recipientId)
-						                        .type(type)
-						                        .title(title)
-						                        .message(safe(request.getMessage()))
-						                        .payload(notificationPayload(request, action))
-						                        .emailForce(false)
-						                        .occurredAt(Instant.now())
-						                        .build()
-				);
-			}
-		} catch (Exception e) {
-			log.warn("ArtistVenue notification decision publish failed. requestId={}, accepted={}, err={}",
-			         request.getId(), accepted, e.toString());
+		for (UUID recipientId : requestDecisionRecipientIds(request)) {
+			transactionalNotificationService.persistInCurrentTransaction(
+					NotificationInboundEvent.builder()
+					                        .eventId(UUID.randomUUID())
+					                        .recipientId(recipientId)
+					                        .type(type)
+					                        .title(notificationTitle(title))
+					                        .message(safe(request.getMessage()))
+					                        .payload(notificationPayload(request, action))
+					                        .emailForce(false)
+					                        .occurredAt(Instant.now())
+					                        .build()
+			);
 		}
+	}
+
+	private String notificationTitle(String title) {
+		return title.length() <= 160 ? title : title.substring(0, 157) + "...";
 	}
 
 	private List<UUID> requestCreatedRecipientIds(ArtistVenueConnectionRequest request) {

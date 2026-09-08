@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestPageItemDto;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
@@ -62,6 +64,41 @@ class ArtistVenueConnectionRequestControllerTest {
 	UUID venueId;
 	UUID actingUserId;
 	ArtistVenueConnectionRequestResponseDto sample;
+
+	@Test
+	void overlongMessageIsRejectedBeforeTheServiceInsteadOfFailingDatabaseStorage() throws Exception {
+		var dto = new ArtistVenueConnectionRequestCreateDto(musicianProfileId, null, venueId, "x".repeat(256));
+		mockMvc.perform(post(BASE + "/request").param("requestByType", "ARTIST")
+					.contentType(MediaType.APPLICATION_JSON).content(om.writeValueAsString(dto)))
+				.andExpect(status().isBadRequest());
+		verifyNoInteractions(service);
+	}
+
+	@Test
+	void privatePageEndpointUsesStableEnvelopeAndForwardsDirectionAndBounds() throws Exception {
+		var row = ArtistVenueConnectionRequestPageItemDto.from(sample, "https://cdn.test/musician", "current_user", "Current Stage");
+		when(service.getMusicianPage(actingUserId, musicianProfileId, RequestStatus.PENDING, true, 2, 10))
+				.thenReturn(new PageResponse<>(List.of(row), 2, 10, 21, 3, false, true));
+		mockMvc.perform(get(BASE + "/musician/{id}/page", musicianProfileId)
+					.param("status", "PENDING").param("incoming", "true").param("page", "2").param("size", "10"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.page").value(2))
+				.andExpect(jsonPath("$.data.number").value(2))
+				.andExpect(jsonPath("$.data.totalElements").value(21))
+				.andExpect(jsonPath("$.data.last").value(true))
+				.andExpect(jsonPath("$.data.content[0].musicianDisplayName").value("Current Stage"))
+				.andExpect(jsonPath("$.data.content[0].musicianProfilePictureUrl").value("https://cdn.test/musician"));
+		verify(service).getMusicianPage(actingUserId, musicianProfileId, RequestStatus.PENDING, true, 2, 10);
+	}
+
+	@Test
+	void venuePageDefaultsPreserveBothDirections() throws Exception {
+		when(service.getVenuePage(actingUserId, venueId, null, null, 0, 20))
+				.thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0, true, true));
+		mockMvc.perform(get(BASE + "/venue/{id}/page", venueId))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.content").isEmpty());
+		verify(service).getVenuePage(actingUserId, venueId, null, null, 0, 20);
+	}
 	
 	@BeforeEach
 	void setUp() {

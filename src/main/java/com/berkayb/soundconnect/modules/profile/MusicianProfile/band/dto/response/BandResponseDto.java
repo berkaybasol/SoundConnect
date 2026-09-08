@@ -16,6 +16,7 @@ public record BandResponseDto(
 		String spotifyEmbedUrl,
 		String spotifyArtistId,
 		List<String> spotifyTrackIds,
-		Set<BandMemberResponseDto> members
+		Set<BandMemberResponseDto> members,
+		Boolean countsTowardCreationLimit
 ) {
 }

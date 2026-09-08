@@ -147,6 +147,67 @@ class VenueOnlyEventFlowPostgresTest {
         verify(notifications).enqueueAll(any());
     }
 
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void conflictingConcurrentReconsiderationCannotOverwriteTheCommittedChoice(boolean band) throws Exception {
+        Fixture f = fixture(false); UUID id = band ? f.bandRequest() : f.personalRequest();
+        invitations.reject(f.actor(), id);
+        reset(notifications);
+        CountDownLatch start = new CountDownLatch(1);
+        List<AcceptAttempt> attempts;
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> { assertThat(start.await(5, TimeUnit.SECONDS)).isTrue(); return reconsiderSelection(f.actor(), id, false); });
+            var second = pool.submit(() -> { assertThat(start.await(5, TimeUnit.SECONDS)).isTrue(); return reconsiderSelection(f.actor(), id, true); });
+            start.countDown();
+            attempts = List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+        }
+        assertThat(attempts.stream().filter(AcceptAttempt::accepted)).hasSize(1);
+        assertThat(attempts.stream().filter(attempt -> !attempt.accepted())).hasSize(1);
+        boolean chosen = attempts.stream().filter(AcceptAttempt::accepted).findFirst().orElseThrow().showOnProfile();
+        tx().executeWithoutResult(status -> {
+            EventPerformerRequest saved = em.find(EventPerformerRequest.class, id);
+            assertThat(saved.getStatus()).isEqualTo(EventPerformerRequestStatus.ACCEPTED);
+            assertThat(saved.getVersion()).isEqualTo(2);
+            assertThat(saved.getAcceptedProfilePublication()).isEqualTo(chosen);
+            assertThat(saved.getEvent().isProfileCalendarApproved()).isEqualTo(chosen);
+        });
+        verify(notifications).enqueueAll(any());
+    }
+
+    private AcceptAttempt reconsiderSelection(UUID actor, UUID request, boolean choice) {
+        try {
+            invitations.reconsider(actor, request, choice);
+            return new AcceptAttempt(true, choice);
+        } catch (SoundConnectException exception) {
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.EVENT_PERFORMER_REQUEST_FINALIZED);
+            return new AcceptAttempt(false, choice);
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+    void failedReconsiderNotificationPersistencePreservesThePreviousRejection(boolean band, boolean connected) {
+        Fixture f = fixture(connected); UUID id = band ? f.bandRequest() : f.personalRequest();
+        var rejection = invitations.reject(f.actor(), id);
+        reset(notifications);
+        doThrow(new IllegalStateException("Simulated reconsider outbox persistence failure"))
+                .when(notifications).enqueueAll(any());
+        assertThatThrownBy(() -> invitations.reconsider(f.actor(), id, true))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("outbox persistence failure");
+        tx().executeWithoutResult(status -> {
+            EventPerformerRequest saved = em.find(EventPerformerRequest.class, id);
+            assertThat(saved.getStatus()).isEqualTo(EventPerformerRequestStatus.REJECTED);
+            assertThat(saved.getVersion()).isEqualTo(1);
+            assertThat(saved.getAcceptedProfilePublication()).isNull();
+            assertThat(saved.getDecidedAt()).isEqualTo(rejection.decidedAt());
+            assertThat(saved.getDecidedByUserId()).isEqualTo(f.actor());
+            Event event = saved.getEvent();
+            assertThat(event.isProfileCalendarApproved()).isFalse();
+            assertThat(event.getProfilePublicationVersion()).isZero();
+            assertThat(event.getPerformerApprovalStatus()).isEqualTo(connected
+                    ? EventPerformerApprovalStatus.APPROVED : EventPerformerApprovalStatus.REJECTED);
+            assertThat(event.getMusicianProfile() != null || event.getBand() != null).isEqualTo(connected);
+        });
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false,true})
     void rejectedInvitationAuthorityIsRecheckedAndCannotBeUsedByBandMemberOrStranger(boolean band) {
         Fixture f = fixture(false); UUID id = band ? f.bandRequest() : f.personalRequest();

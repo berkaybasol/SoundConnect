@@ -57,6 +57,6 @@ class TableGroupLocalSchemaMigrationOrderTest {
 		assertThat(devScript.indexOf(listenerGhostProfile))
 				.isLessThan(devScript.indexOf(listenerSpotifyPlaylists));
 		assertThat(devScript).contains(
-				"Local Studio, Collab, TableGroup, and listener-profile schemas are ready.");
+				"Local Studio, Collab, TableGroup, listener-profile, event-consent, performer-calendar, and event-publication schemas are ready.");
 	}
 }

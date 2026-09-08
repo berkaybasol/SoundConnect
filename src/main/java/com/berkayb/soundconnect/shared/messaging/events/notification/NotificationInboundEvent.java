@@ -20,8 +20,8 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL) // JSON ciktisinda null alanlari gizler.
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record NotificationInboundEvent(
-		// Optional for legacy publishers; durable publishers must provide it so
-		// consumers can deduplicate at-least-once broker delivery.
+		// Required on the wire. Legacy publish() callers are assigned an ID at
+		// the producer boundary; consumers never invent IDs for malformed events.
 		UUID eventId,
 		UUID recipientId,
 		NotificationType type,

@@ -7,6 +7,8 @@ import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCac
 import com.berkayb.soundconnect.modules.notification.listener.NotificationEventListener;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
@@ -39,6 +41,8 @@ class MailNotificationServiceImplTest {
 	@Mock private NotificationMapper notificationMapper;
 	@Mock private NotificationWebSocketService notificationWebSocketService;
 	@Mock private MailProducer mailProducer;
+	@Mock private NotificationService notificationService;
+	@Mock private NotificationReceiptRepository receiptRepository;
 	
 	private NotificationEventListener listener;
 	private UUID userId;
@@ -50,9 +54,14 @@ class MailNotificationServiceImplTest {
 				badgeCacheHelper,
 				notificationMapper,
 				notificationWebSocketService,
-				mailProducer
+				mailProducer,
+				notificationService,
+				receiptRepository
 		);
+		lenient().when(notificationService.refreshActorIdentityForDelivery(any()))
+				.thenAnswer(call -> call.getArgument(0));
 		userId = UUID.randomUUID();
+		lenient().when(receiptRepository.claim(any(), any())).thenReturn(1);
 		
 		// Varsayılan ortak stub'lar (DB kaydı + badge hesapları akışı kırmasın)
 		when(notificationRepository.countByRecipientIdAndReadIsFalse(any())).thenReturn(1L);
@@ -72,7 +81,7 @@ class MailNotificationServiceImplTest {
 	}
 	
 	private NotificationInboundEvent evt(NotificationType t, String title, String msg, Map<String,Object> payload, Boolean emailForce) {
-		return NotificationInboundEvent.builder()
+		return NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                               .recipientId(userId)
 		                               .type(t)
 		                               .title(title)

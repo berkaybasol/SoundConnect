@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.notification.config.NotificationRabbitCo
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import org.junit.jupiter.api.BeforeEach;
@@ -107,9 +108,12 @@ class RabbitToDbE2E {
 	// WS & Mail’i mock’la (yan etkiyi doğrulamak istemiyoruz burada)
 	@MockitoBean NotificationWebSocketService ws;
 	@MockitoBean MailProducer mailProducer; // ✅ EKSİK OLAN MOCK (context için gerekli)
+	@MockitoBean NotificationService notificationService;
 	
 	@BeforeEach
 	void clean() {
+		org.mockito.Mockito.when(notificationService.refreshActorIdentityForDelivery(org.mockito.ArgumentMatchers.any()))
+				.thenAnswer(call -> call.getArgument(0));
 		repo.deleteAll();
 		redis.getConnectionFactory().getConnection().serverCommands().flushAll();
 	}
@@ -118,7 +122,7 @@ class RabbitToDbE2E {
 	void message_persisted_and_unread_cached() {
 		UUID user = UUID.randomUUID();
 		
-		var event = com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent.builder()
+		var event = com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                                                                  .recipientId(user)
 		                                                                                                  .type(NotificationType.MEDIA_UPLOAD_RECEVIED)
 		                                                                                                  .title("Yükleme alındı")

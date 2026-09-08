@@ -18,11 +18,15 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import org.mockito.ArgumentCaptor;
 
 class NotificationProducerTest {
     private RabbitTemplate rabbitTemplate;
@@ -110,6 +114,34 @@ class NotificationProducerTest {
         assertThatThrownBy(producer::validateConfiguration)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("app.messaging.notification.publisher-confirm-timeout must be between 1s and 30s");
+    }
+
+    @Test
+    void legacyPublishAssignsExactlyOneWireIdentityWithoutChangingThePayload() {
+        NotificationInboundEvent original = event();
+        NotificationInboundEvent legacy = new NotificationInboundEvent(null, original.recipientId(), original.type(),
+                original.title(), original.message(), original.payload(), original.emailForce(), original.occurredAt());
+
+        producer.publish(legacy);
+
+        ArgumentCaptor<NotificationInboundEvent> captured = ArgumentCaptor.forClass(NotificationInboundEvent.class);
+        verify(rabbitTemplate).convertAndSend(anyString(), anyString(), captured.capture());
+        NotificationInboundEvent wire = captured.getValue();
+        assertThat(wire.eventId()).isNotNull();
+        assertThat(wire.recipientId()).isEqualTo(legacy.recipientId());
+        assertThat(wire.payload()).isEqualTo(legacy.payload());
+        assertThat(wire.occurredAt()).isEqualTo(legacy.occurredAt());
+        assertThat(legacy.eventId()).isNull();
+    }
+
+    @Test
+    void alreadyIdentifiedEventsAndRetriesKeepTheExactWireId() {
+        NotificationInboundEvent identified = event();
+
+        producer.publish(identified);
+        producer.publish(identified);
+
+        verify(rabbitTemplate, times(2)).convertAndSend("notification.exchange", "notification.event", identified);
     }
 
     private static NotificationInboundEvent event() {

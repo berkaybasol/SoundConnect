@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.request.ArtistVenueConnectionRequestCreateDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
+import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestPageItemDto;
+import com.berkayb.soundconnect.shared.response.PageResponse;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestByType;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service.ArtistVenueConnectionRequestService;
@@ -29,6 +31,42 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.ArtistVenueConn
 public class ArtistVenueConnectionRequestControllerImpl implements ArtistVenueConnectionRequestController {
 
 	private final ArtistVenueConnectionRequestService service;
+
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE')")
+	@GetMapping(GET_REQUESTS_BY_BAND + "/page")
+	@Override
+	public ResponseEntity<BaseResponse<PageResponse<ArtistVenueConnectionRequestPageItemDto>>> getBandPage(
+			@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable UUID bandId,
+			@RequestParam(required = false) RequestStatus status, @RequestParam(required = false) Boolean incoming,
+			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+		return pageResponse(service.getBandPage(userId(userDetails), bandId, status, incoming, page, size));
+	}
+
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE')")
+	@GetMapping(GET_REQUESTS_BY_MUSICIAN + "/page")
+	@Override
+	public ResponseEntity<BaseResponse<PageResponse<ArtistVenueConnectionRequestPageItemDto>>> getMusicianPage(
+			@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable UUID musicianProfileId,
+			@RequestParam(required = false) RequestStatus status, @RequestParam(required = false) Boolean incoming,
+			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+		return pageResponse(service.getMusicianPage(userId(userDetails), musicianProfileId, status, incoming, page, size));
+	}
+
+	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE')")
+	@GetMapping(GET_REQUESTS_BY_VENUE + "/page")
+	@Override
+	public ResponseEntity<BaseResponse<PageResponse<ArtistVenueConnectionRequestPageItemDto>>> getVenuePage(
+			@AuthenticationPrincipal UserDetailsImpl userDetails, @PathVariable UUID venueId,
+			@RequestParam(required = false) RequestStatus status, @RequestParam(required = false) Boolean incoming,
+			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+		return pageResponse(service.getVenuePage(userId(userDetails), venueId, status, incoming, page, size));
+	}
+
+	private ResponseEntity<BaseResponse<PageResponse<ArtistVenueConnectionRequestPageItemDto>>> pageResponse(
+			PageResponse<ArtistVenueConnectionRequestPageItemDto> page) {
+		return ResponseEntity.ok(BaseResponse.<PageResponse<ArtistVenueConnectionRequestPageItemDto>>builder()
+				.success(true).message("Bağlantı istekleri getirildi.").data(page).build());
+	}
 
 	@PreAuthorize("hasAnyRole('MUSICIAN', 'VENUE')")
 	@GetMapping(GET_REQUESTS_BY_BAND)

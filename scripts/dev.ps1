@@ -34,7 +34,11 @@ $LocalSchemaMigrations = @(
     @{ Name = "Musician calendar"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-musician-calendar.sql" },
     @{ Name = "Performer calendar opt-in"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-performer-calendar-opt-in.sql" },
     @{ Name = "Event profile visibility consent"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-event-profile-visibility-consent.sql" },
-    @{ Name = "Reciprocal musician events"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-reciprocal-musician-events.sql" }
+    @{ Name = "Reciprocal musician events"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-reciprocal-musician-events.sql" },
+    @{ Name = "Event profile publications"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-06-event-profile-publications.sql" },
+    @{ Name = "Band member titles"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-06-band-member-titles.sql" },
+    @{ Name = "Band invitation identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-band-invitation-identity.sql" },
+    @{ Name = "Notification replay receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-notification-replay-receipts.sql" }
 )
 
 function Assert-Command([string]$Name) {
@@ -300,7 +304,7 @@ function Sync-LocalSchemas {
             throw "$($Migration.Name) migration failed with exit code $LASTEXITCODE."
         }
     }
-    Write-Host "Local Studio, Collab, TableGroup, listener-profile, event-consent, and performer-calendar schemas are ready." -ForegroundColor Green
+    Write-Host "Local Studio, Collab, TableGroup, listener-profile, event-consent, performer-calendar, and event-publication schemas are ready." -ForegroundColor Green
     return $true
 }
 
