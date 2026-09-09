@@ -36,6 +36,11 @@ public class EventAudienceController {
             @RequestParam(defaultValue = "20") int size) {
         return response(() -> service.mine(actor(principal), period, page, size));
     }
+    @DeleteMapping("/api/v1/user/event-posts/{postId}") @PreAuthorize("hasRole('LISTENER')")
+    public BaseResponse<EventIntentResponse.State> deletePost(@AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID postId) {
+        UUID actor = actor(principal);
+        return response(() -> { service.requireAuthority(actor); guard.check(actor); return service.deletePost(actor, postId); });
+    }
     @GetMapping("/api/v1/public/listener-profiles/{profileId}/event-posts") @PreAuthorize("isAuthenticated()")
     public BaseResponse<PageResponse<EventIntentResponse.Post>> posts(@AuthenticationPrincipal UserDetailsImpl principal,
             @PathVariable UUID profileId, @RequestParam(defaultValue = "ALL") EventIntentPeriod period,

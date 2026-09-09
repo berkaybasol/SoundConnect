@@ -22,8 +22,12 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
 import java.util.Set;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class EventMapperTest {
@@ -131,5 +135,52 @@ class EventMapperTest {
 		                 .status(status)
 		                 .bandRole(BandRole.MEMBER)
 		                 .build();
+	}
+
+	@Test
+	void listResolvesRepeatedPostersOnceAndPreservesOrderLegacyUrlsAndMissingMedia() {
+		UUID ready = UUID.randomUUID(), hidden = UUID.randomUUID();
+		List<Event> events = List.of(posterEvent(ready.toString()), posterEvent(ready.toString()),
+				posterEvent(" /legacy/poster.jpg "), posterEvent(hidden.toString()), posterEvent(null));
+		when(mediaAssetService.getDisplayUrlMap(List.of(ready, hidden))).thenReturn(Map.of(ready, "https://cdn.test/ready.jpg"));
+
+		var result = mapper.toDtos(events);
+
+		assertThat(result).extracting(EventResponseDto::id).containsExactlyElementsOf(events.stream().map(Event::getId).toList());
+		assertThat(result).extracting(EventResponseDto::posterImage).containsExactly("https://cdn.test/ready.jpg",
+				"https://cdn.test/ready.jpg", " /legacy/poster.jpg ", null, null);
+		verify(mediaAssetService).getDisplayUrlMap(List.of(ready, hidden));
+		verifyNoMoreInteractions(mediaAssetService);
+	}
+
+	@Test
+	void largeLegacyListUsesBoundedMediaBatchesAndAnUnavailablePosterBatchDoesNotFailTheList() {
+		List<Event> events = IntStream.range(0, 201).mapToObj(index -> posterEvent(UUID.randomUUID().toString())).toList();
+		List<UUID> firstBatch = events.subList(0, 200).stream().map(event -> UUID.fromString(event.getPosterImage())).toList();
+		UUID last = UUID.fromString(events.getLast().getPosterImage());
+		when(mediaAssetService.getDisplayUrlMap(firstBatch)).thenThrow(new IllegalStateException("Media unavailable"));
+		when(mediaAssetService.getDisplayUrlMap(List.of(last))).thenReturn(Map.of(last, "https://cdn.test/last.jpg"));
+
+		var result = mapper.toDtos(events);
+
+		assertThat(result).hasSize(201);
+		assertThat(result.subList(0, 200)).allSatisfy(event -> assertThat(event.posterImage()).isNull());
+		assertThat(result.getLast().posterImage()).isEqualTo("https://cdn.test/last.jpg");
+		verify(mediaAssetService).getDisplayUrlMap(firstBatch);
+		verify(mediaAssetService).getDisplayUrlMap(List.of(last));
+		verifyNoMoreInteractions(mediaAssetService);
+	}
+
+	@Test
+	void listsWithoutUuidPostersDoNotQueryMedia() {
+		assertThat(mapper.toDtos(List.of())).isEmpty();
+		assertThat(mapper.toDtos(List.of(posterEvent("/legacy/poster.jpg"), posterEvent(" ")))).hasSize(2);
+		verifyNoInteractions(mediaAssetService);
+	}
+
+	private Event posterEvent(String poster) {
+		Event event = Event.builder().title("Concert").posterImage(poster).build();
+		event.setId(UUID.randomUUID());
+		return event;
 	}
 }

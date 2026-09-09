@@ -15,6 +15,7 @@ public class EventAudienceIntent {
     @Column(nullable = false) private long version;
     @Column(name = "updated_at") private Instant updatedAt;
     @Column(name = "published_at") private Instant publishedAt;
+    @Column(name = "post_id", unique = true) private UUID postId;
     public EventAudienceIntent(UUID userId, UUID eventId) { id = new Id(userId, eventId); }
 
     @Embeddable @Getter @Setter @NoArgsConstructor @AllArgsConstructor @EqualsAndHashCode

@@ -192,6 +192,10 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	@Override
 	@Transactional
 	public ArtistVenueConnectionRequestResponseDto createRequest(UUID actorUserId, ArtistVenueConnectionRequestCreateDto dto, RequestByType requestType) {
+		if (actorUserId == null || dto == null || dto.venueId() == null
+				|| (dto.message() != null && dto.message().length() > 255)) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		}
 		log.info("Yeni artist-venue baglantisi baslatiliyor. musicianProfileId={}, bandId={}, venueId={}, requestBy={}",
 		         dto.musicianProfileId(), dto.bandId(), dto.venueId(), requestType);
 		if (requestType == null) {
@@ -387,6 +391,12 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	}
 
 	private void assertBothSidesCanConnect(UUID actorUserId, ArtistVenueConnectionRequest request) {
+		// The venue parent is already locked by create/accept. A pending,
+		// disabled or structurally invalid venue cannot acquire public artist links.
+		if (request.getVenue() == null
+				|| !venueRepository.existsPubliclyVisibleById(request.getVenue().getId())) {
+			throw new SoundConnectException(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE);
+		}
 		UUID ownerId = request.getVenue() == null || request.getVenue().getOwner() == null
 				? null : request.getVenue().getOwner().getId();
 		Set<UUID> representatives = new HashSet<>();

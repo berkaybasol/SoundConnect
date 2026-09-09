@@ -22,8 +22,8 @@ public enum NotificationType {
 	SOCIAL_NEW_FOLLOWER("SOCIAL", "Yeni takipçi", false),
 	SOCIAL_NEW_BAND_FOLLOWER("SOCIAL", "Yeni band takipçisi", false),
 	// SOCIAL_MENTION("SOCIAL", "Bahsedildin", false),
-	// SOCIAL_LIKE("SOCIAL", "İçeriğin beğenildi", false),
-	// SOCIAL_COMMENT("SOCIAL", "İçeriğine yorum geldi", false),
+	SOCIAL_LIKE("SOCIAL", "İçeriğin beğenildi", false),
+	SOCIAL_COMMENT("SOCIAL", "İçeriğine yorum geldi", false),
 	
 	
 	// DM

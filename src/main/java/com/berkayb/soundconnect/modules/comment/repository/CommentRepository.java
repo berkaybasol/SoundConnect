@@ -51,7 +51,11 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
 	);
 	
 	// belirli bir yorumun reply'lerini getirir.
-	Page<Comment> findByParentComment(Comment parentComment, Pageable pageable);
+	@Query("""
+			select c from Comment c where c.parentComment = :parent
+			and c.targetType = c.parentComment.targetType and c.targetId = c.parentComment.targetId
+			""")
+	Page<Comment> findByParentComment(@Param("parent") Comment parentComment, Pageable pageable);
 	
 	// bir icerikte toplam kac yorum oldugunu getirir.
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
@@ -92,6 +96,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
        select c.parentComment.id as parentCommentId, count(c) as replyCount
        from Comment c
        where c.parentComment.id in :parentIds
+       and c.targetType = c.parentComment.targetType and c.targetId = c.parentComment.targetId
        group by c.parentComment.id
        """)
 	List<CommentReplyCountProjection> countRepliesByParentIds(@Param("parentIds") List<UUID> parentIds);

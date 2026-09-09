@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueP
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -37,7 +38,7 @@ public class VenueProfileAdminController {
 	public ResponseEntity<BaseResponse<VenueProfileResponseDto>> updateVenueProfileByUserId(
 			@PathVariable UUID userId,
 			@PathVariable UUID venueId,
-			@RequestBody VenueProfileSaveRequestDto dto) {
+			@Valid @RequestBody VenueProfileSaveRequestDto dto) {
 		VenueProfileResponseDto response = venueProfileService.updateProfileByVenueId(userId, venueId, dto);
 		return ResponseEntity.ok(BaseResponse.<VenueProfileResponseDto>builder()
 		                                     .success(true).code(200).message("Venue profili güncellendi").data(response).build());
@@ -46,7 +47,7 @@ public class VenueProfileAdminController {
 	@PostMapping(ADMIN_CREATE)
 	public ResponseEntity<BaseResponse<VenueProfileResponseDto>> createVenueProfile(
 			@PathVariable UUID venueId,
-			@RequestBody VenueProfileSaveRequestDto dto) {
+			@Valid @RequestBody VenueProfileSaveRequestDto dto) {
 		VenueProfileResponseDto profile = venueProfileService.createProfile(venueId, dto);
 		return ResponseEntity.ok(BaseResponse.<VenueProfileResponseDto>builder()
 		                                     .success(true).code(201).message("Venue profili admin tarafından oluşturuldu").data(profile).build());

@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.dto.response.Mus
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,7 +41,7 @@ public class MusicianProfileAdminController {
 	@PutMapping(ADMIN_UPDATE)
 	public ResponseEntity<BaseResponse<MusicianProfileResponseDto>> updateMusicianProfileByUserId(
 			@PathVariable UUID userId,
-			@RequestBody MusicianProfileSaveRequestDto dto) {
+			@Valid @RequestBody MusicianProfileSaveRequestDto dto) {
 		var updated = musicianProfileService.updateProfile(userId, dto);
 		return ResponseEntity.ok(BaseResponse.<MusicianProfileResponseDto>builder()
 		                                     .success(true).code(200).message("Profil güncellendi").data(updated).build());

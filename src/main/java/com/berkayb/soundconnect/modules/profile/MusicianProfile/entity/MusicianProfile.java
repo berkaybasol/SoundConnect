@@ -70,6 +70,7 @@ public class MusicianProfile extends BaseProfile {
 	@ElementCollection
 	@CollectionTable(name = "musician_profile_spotify_tracks", joinColumns = @JoinColumn(name = "profile_id"))
 	@Column(name = "track_id")
+	@Builder.Default
 	private List<String> spotifyTrackIds = new ArrayList<>();
 	
 	// overthinking modulu icin gerekli belki baska seylerde de kullaniriz.
@@ -78,6 +79,7 @@ public class MusicianProfile extends BaseProfile {
 	
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(columnDefinition = "jsonb")
+	@Builder.Default
 	private List<SpotifyTrackItemDto> spotifyTracks = new ArrayList<>();
 	
 }

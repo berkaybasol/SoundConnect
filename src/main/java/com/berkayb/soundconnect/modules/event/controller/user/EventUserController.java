@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.event.controller.user;
 
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.service.EventService;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +30,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Event.*;
 public class EventUserController {
 	
 	private final EventService eventService;
+	private final EventScheduleClock scheduleClock;
 	
 	@GetMapping(USER_BY_ID)
 	@Operation(summary = "Etkinlik detayini getirir")
@@ -49,7 +51,7 @@ public class EventUserController {
 	@Operation(summary = "Bugun gerceklesen tum etkinlikleri getirir")
 	public ResponseEntity<BaseResponse<List<EventResponseDto>>> getTodayEvents(){
 		log.info("Bugunku etkinlikler listeleniyor");
-		var list = eventService.getEventsByDate(LocalDate.now());
+		var list = eventService.getEventsByDate(scheduleClock.localNow().toLocalDate());
 		
 		return ResponseEntity.ok(BaseResponse.<List<EventResponseDto>>builder()
 		                                     .success(true)

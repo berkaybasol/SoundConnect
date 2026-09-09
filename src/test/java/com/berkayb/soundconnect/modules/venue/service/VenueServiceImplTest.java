@@ -393,7 +393,7 @@ class VenueServiceImplTest {
 		                      .status(VenueStatus.APPROVED)
 		                      .build();
 		
-		when(venueEntityFinder.getVenue(venueId)).thenReturn(existing);
+		when(venueRepository.findPubliclyVisibleById(venueId)).thenReturn(java.util.Optional.of(existing));
 		when(venueMapper.toResponse(existing)).thenAnswer(inv -> {
 			Venue v = inv.getArgument(0);
 			return new VenueResponseDto(
@@ -417,7 +417,7 @@ class VenueServiceImplTest {
 		assertThat(res.cityName()).isEqualTo("Ankara");
 		assertThat(res.status()).isEqualTo(VenueStatus.APPROVED);
 		
-		verify(venueEntityFinder).getVenue(venueId);
+		verify(venueRepository).findPubliclyVisibleById(venueId);
 		verify(venueMapper).toResponse(existing);
 		verifyNoMoreInteractions(venueEntityFinder, venueMapper);
 	}
@@ -456,7 +456,7 @@ class VenueServiceImplTest {
 		// arrange
 		Venue v1 = Venue.builder().id(UUID.randomUUID()).name("KaraKedi").city(city).district(district).neighborhood(neighborhood).owner(owner).build();
 		Venue v2 = Venue.builder().id(UUID.randomUUID()).name("SiyahBeyaz").city(city).district(district).neighborhood(neighborhood).owner(owner).build();
-		when(venueRepository.findAll()).thenReturn(java.util.List.of(v1, v2));
+		when(venueRepository.findAllPubliclyVisible()).thenReturn(java.util.List.of(v1, v2));
 		when(venueMapper.toResponseList(anyList())).thenAnswer(inv -> {
 			@SuppressWarnings("unchecked")
 			java.util.List<Venue> list = (java.util.List<Venue>) inv.getArgument(0);
@@ -483,7 +483,7 @@ class VenueServiceImplTest {
 		assertThat(res.get(0).name()).isEqualTo("KaraKedi");
 		assertThat(res.get(1).name()).isEqualTo("SiyahBeyaz");
 		
-		verify(venueRepository).findAll();
+		verify(venueRepository).findAllPubliclyVisible();
 		verify(venueMapper).toResponseList(anyList());
 		verifyNoMoreInteractions(venueRepository, venueMapper);
 	}

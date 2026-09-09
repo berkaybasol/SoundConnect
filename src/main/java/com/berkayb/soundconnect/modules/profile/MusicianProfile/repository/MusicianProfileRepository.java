@@ -1,10 +1,13 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.repository;
 
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
+import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -14,6 +17,19 @@ import java.util.UUID;
 public interface MusicianProfileRepository extends JpaRepository<MusicianProfile, UUID> {
 	
 	Optional<MusicianProfile> findByUserId(UUID userId);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select profile from MusicianProfile profile where profile.user.id = :userId")
+	Optional<MusicianProfile> findByUserIdForUpdate(@Param("userId") UUID userId);
+
+	@Query("""
+			select new com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileVenueRow(
+				venue.id, venue.name, venueProfile.profilePictureMediaId)
+			from MusicianProfile musician join musician.activeVenues venue
+			left join VenueProfile venueProfile on venueProfile.venue.id = venue.id
+			where musician.id = :profileId and
+			""" + VenueRepository.PUBLIC_VISIBILITY + " order by lower(venue.name), venue.id")
+	List<MusicianProfileVenueRow> findPublicVenueConnections(@Param("profileId") UUID profileId);
 
 	Optional<MusicianProfile> findBySpotifyArtistId(String spotifyArtistId);
 

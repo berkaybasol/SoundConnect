@@ -96,6 +96,7 @@ class EventCommentReadRepositoryTest {
     @MockitoBean MediaAssetService media;
     @MockitoBean CommentTargetAccessGuard validator;
     @MockitoBean CommentBurstGuard burstGuard;
+    @MockitoBean com.berkayb.soundconnect.modules.engagement.service.MediaEngagementNotificationService notifications;
     @MockitoBean com.berkayb.soundconnect.modules.like.repository.LikeRepository likes;
     @MockitoBean UserEntityFinder users;
     @MockitoBean OverthinkingPostRepository posts;

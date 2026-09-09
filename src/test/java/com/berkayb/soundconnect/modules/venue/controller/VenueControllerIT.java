@@ -131,6 +131,7 @@ class VenueControllerIT {
 				    .email("b@b.com")
 				    .password("{noop}x")
 				    .status(UserStatus.PENDING_VENUE_REQUEST)
+				    .emailVerified(true)
 				    .roles(new HashSet<>())
 				    .build()
 		);
@@ -246,11 +247,11 @@ class VenueControllerIT {
 		       .andExpect(jsonPath("$.code").value(200));
 	}
 	
-	// ---------- (DEVRE DIŞI) FORBIDDEN ----------
-	@Disabled("Security filtreleri kapalı: @AutoConfigureMockMvc(addFilters=false)")
+	// Method security remains active even though servlet filters are disabled.
 	@Test
 	@Order(6)
-	void save_should_forbid_without_permission() throws Exception {
+	@WithMockUser(authorities = "USER")
+	void mutations_should_forbid_without_permission() throws Exception {
 		String body = """
         {
           "name": "Nope",
@@ -266,6 +267,13 @@ class VenueControllerIT {
 				                .contentType(APPLICATION_JSON)
 				                .content(body))
 		       .andExpect(status().isForbidden());
+		mockMvc.perform(put(BASE + UPDATE, UUID.randomUUID())
+				                .contentType(APPLICATION_JSON)
+				                .content(body))
+		       .andExpect(status().isForbidden());
+		mockMvc.perform(delete(BASE + DELETE, UUID.randomUUID()))
+		       .andExpect(status().isForbidden());
+		Assertions.assertEquals(0L, venueRepository.count());
 	}
 	
 	// ---- util ----

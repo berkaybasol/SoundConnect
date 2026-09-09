@@ -91,7 +91,7 @@ public class BandUserController {
 	@Operation(summary = "Yeni band (grup) oluşturur")
 	public ResponseEntity<BaseResponse<BandResponseDto>> createBand(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
-			@RequestBody BandCreateRequestDto dto
+			@Valid @RequestBody BandCreateRequestDto dto
 	) {
 		BandResponseDto created = bandService.createBand(userDetails.getUser().getId(), dto);
 		return ResponseEntity.ok(BaseResponse.<BandResponseDto>builder()
@@ -108,7 +108,7 @@ public class BandUserController {
 	public ResponseEntity<BaseResponse<BandResponseDto>> updateBand( //eklendi
 	                                                                 @AuthenticationPrincipal UserDetailsImpl userDetails, //eklendi
 	                                                                 @PathVariable UUID bandId, //eklendi
-	                                                                 @RequestBody BandCreateRequestDto dto //eklendi
+	                                                                 @Valid @RequestBody BandCreateRequestDto dto //eklendi
 	) { //eklendi
 		BandResponseDto updated = bandService.updateBand(bandId, userDetails.getUser().getId(), dto); //eklendi
 		return ResponseEntity.ok(BaseResponse.<BandResponseDto>builder() //eklendi

@@ -13,6 +13,9 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.NamedEntityGraph;
+import jakarta.persistence.NamedAttributeNode;
+import jakarta.persistence.NamedSubgraph;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -31,6 +34,15 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "tbl_event")
+@NamedEntityGraph(name = "event.card", attributeNodes = {
+		@NamedAttributeNode(value = "venue", subgraph = "event.card.venue"),
+		@NamedAttributeNode(value = "musicianProfile", subgraph = "event.card.musician"),
+		@NamedAttributeNode("band")
+}, subgraphs = {
+		@NamedSubgraph(name = "event.card.venue", attributeNodes = {
+				@NamedAttributeNode("city"), @NamedAttributeNode("district"), @NamedAttributeNode("neighborhood")}),
+		@NamedSubgraph(name = "event.card.musician", attributeNodes = @NamedAttributeNode("user"))
+})
 @Check(name = "ck_event_profile_publication_version", constraints = "profile_publication_version >= 0")
 @Check(name = "ck_event_origin_contract", constraints = """
         (event_origin = 'VENUE' and venue_id is not null and venue_approval_status = 'APPROVED' and venue_calendar_approved)

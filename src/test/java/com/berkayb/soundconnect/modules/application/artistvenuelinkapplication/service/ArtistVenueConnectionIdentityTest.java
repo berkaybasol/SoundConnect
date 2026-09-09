@@ -13,6 +13,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ArtistVenueConnectionIdentityTest {
     @Test
+    void venueEditsAndPersistenceNeverStrandAnActiveConnection() {
+        Venue venue = Venue.builder().name("Old name").build();
+        Set<Venue> connections = new HashSet<>(Set.of(venue));
+        venue.setId(UUID.randomUUID());
+        venue.setName("New name");
+        venue.setAddress("New address");
+        assertThat(connections.remove(venue)).isTrue();
+
+        Venue sameIdentity = Venue.builder().id(venue.getId()).name("Another snapshot").build();
+        assertThat(venue).isEqualTo(sameIdentity);
+        assertThat(venue.hashCode()).isEqualTo(sameIdentity.hashCode());
+        assertThat(Venue.builder().build()).isNotEqualTo(Venue.builder().build());
+    }
+
+    @Test
     void distinctMusiciansWithTheSameDisplayFieldsRemainDistinctVenueMembers() {
         MusicianProfile first = musician(), second = musician();
         Venue venue = Venue.builder().id(UUID.randomUUID()).name("Shared venue").build();

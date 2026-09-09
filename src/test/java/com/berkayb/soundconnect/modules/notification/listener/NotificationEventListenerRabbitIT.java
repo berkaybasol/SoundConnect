@@ -7,11 +7,13 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -26,6 +28,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -33,11 +36,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.util.Map;
 import java.util.UUID;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD;
+import static org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(classes = {
@@ -47,6 +52,10 @@ import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFOR
 })
 @ImportAutoConfiguration(RabbitAutoConfiguration.class)
 @TestPropertySource(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		"spring.autoconfigure.exclude=",
+		"spring.rabbitmq.listener.simple.auto-startup=true",
+		"spring.rabbitmq.listener.direct.auto-startup=true",
 		"app.messaging.notification.exchange=notification.exchange",
 		"app.messaging.notification.queue=notification.queue",
 		"app.messaging.notification.routingKey=notification.#",
@@ -56,7 +65,7 @@ import static org.springframework.test.annotation.DirtiesContext.ClassMode.BEFOR
 		"SOUNDCONNECT_JWT_SECRETKEY=test-jwt-secret-key-at-least-32-bytes-long",
 		"app.jwt.secret=test-jwt-secret-key-at-least-32-bytes-long"
 })
-@org.springframework.test.annotation.DirtiesContext(classMode = BEFORE_EACH_TEST_METHOD)
+@org.springframework.test.annotation.DirtiesContext(classMode = AFTER_EACH_TEST_METHOD)
 class NotificationEventListenerRabbitIT {
 	
 	@Container
@@ -83,16 +92,32 @@ class NotificationEventListenerRabbitIT {
 	
 	// Yan etkileri doğrulamak için mock’lar
 	@MockitoBean NotificationRepository notificationRepository;
+	@MockitoBean NotificationReceiptRepository receiptRepository;
 	@MockitoBean NotificationBadgeCacheHelper badgeCacheHelper;
 	@MockitoBean NotificationMapper notificationMapper;
 	@MockitoBean NotificationWebSocketService notificationWebSocketService;
 	@MockitoBean MailProducer mailProducer; // refactor sonrası
 	@MockitoBean NotificationService notificationService;
+	@MockitoSpyBean NotificationEventListener listener;
+	private CountDownLatch consumed;
+
+	@BeforeEach
+	void observeCompletedDelivery() {
+		consumed = new CountDownLatch(1);
+		doAnswer(invocation -> {
+			try {
+				return invocation.callRealMethod();
+			} finally {
+				consumed.countDown();
+			}
+		}).when(listener).handle(any(NotificationInboundEvent.class));
+	}
 	
 	@Test
 	@DisplayName("RabbitMQ → Listener: event tüketilir; save + cache + WS + mail tetiklenir")
-	void consume_event_from_queue_and_invoke_side_effects() {
+	void consume_event_from_queue_and_invoke_side_effects() throws InterruptedException {
 		when(notificationService.refreshActorIdentityForDelivery(any())).thenAnswer(call -> call.getArgument(0));
+		when(receiptRepository.claim(any(), any())).thenReturn(1);
 		UUID userId = UUID.randomUUID();
 		Instant occurredAt = Instant.parse("2026-08-11T10:00:00Z");
 		
@@ -128,6 +153,8 @@ class NotificationEventListenerRabbitIT {
 		                                                         .build();
 		
 		rabbitTemplate.convertAndSend("notification.exchange", "notification.media.failed", event);
+		assertThat(consumed.await(5, TimeUnit.SECONDS)).as("listener completed the broker delivery").isTrue();
+		verify(receiptRepository).claim(event.eventId(), userId);
 		
 		ArgumentCaptor<Notification> toSaveCap = ArgumentCaptor.forClass(Notification.class);
 		verify(notificationRepository, timeout(5000)).saveAndFlush(toSaveCap.capture());
@@ -153,7 +180,7 @@ class NotificationEventListenerRabbitIT {
 	
 	@Test
 	@DisplayName("Geçersiz event (type=null) → hiçbir yan etki tetiklenmez")
-	void invalid_event_is_skipped() {
+	void invalid_event_is_skipped() throws InterruptedException {
 		UUID userId = UUID.randomUUID();
 		NotificationInboundEvent bad = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                       .recipientId(userId)
@@ -161,8 +188,10 @@ class NotificationEventListenerRabbitIT {
 		                                                       .title("x").message("y").payload(Map.of()).build();
 		
 		rabbitTemplate.convertAndSend("notification.exchange", "notification.any", bad);
+		assertThat(consumed.await(5, TimeUnit.SECONDS)).as("invalid event was actually consumed").isTrue();
+		verify(listener).handle(bad);
 		
 		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
-		                     notificationWebSocketService, mailProducer);
+		                     notificationWebSocketService, mailProducer, receiptRepository, notificationService);
 	}
 }

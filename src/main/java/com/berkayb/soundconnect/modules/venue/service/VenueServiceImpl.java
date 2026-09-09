@@ -52,6 +52,7 @@ public class VenueServiceImpl implements VenueService {
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	
 	@Override
+	@Transactional(readOnly = true)
 	public Page<VenueResponseDto> searchByName(String q, Pageable pageable) {
 		String query = q == null ? "" : q.trim();
 		if (query.isEmpty()) {
@@ -199,14 +200,15 @@ public class VenueServiceImpl implements VenueService {
 	@Transactional(readOnly = true)
 	public List<VenueResponseDto> findAll() {
 		log.info("Retrieving all venues");
-		return venueMapper.toResponseList(venueRepository.findAll());
+		return venueMapper.toResponseList(venueRepository.findAllPubliclyVisible());
 	}
 	
 	@Override
 	@Transactional(readOnly = true)
 	public VenueResponseDto findById(UUID id) {
 		log.info("Finding venue by id: {}", id);
-		Venue venue = venueEntityFinder.getVenue(id);
+		Venue venue = venueRepository.findPubliclyVisibleById(id)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
 		return venueMapper.toResponse(venue);
 	}
 	

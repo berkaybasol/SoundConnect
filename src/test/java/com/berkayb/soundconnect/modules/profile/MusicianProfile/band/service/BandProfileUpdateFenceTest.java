@@ -68,4 +68,37 @@ class BandProfileUpdateFenceTest {
         verifyNoMoreInteractions(bands);
         verifyNoInteractions(members, finder, mapper);
     }
+
+    @Test
+    void caseOnlyRenameIsPersistedAndOptionalFieldsCanBeCleared() {
+        Band band = Band.builder().id(bandId).name("the band").description("Old bio")
+                .instagramUrl("https://instagram.com/band").build();
+        BandMember founder = BandMember.builder().band(band).bandRole(BandRole.FOUNDER)
+                .status(BandMemberShipStatus.ACTIVE).build();
+        when(bands.findByIdForUpdate(bandId)).thenReturn(Optional.of(band));
+        when(members.findByBandIdAndUserId(bandId, founderId)).thenReturn(Optional.of(founder));
+        when(bands.save(band)).thenReturn(band);
+
+        var result = service.updateBand(bandId, founderId, new BandCreateRequestDto(
+                "THE BAND", "", null, "", null, null, null, null, null));
+
+        assertThat(result.name()).isEqualTo("THE BAND");
+        assertThat(result.description()).isEmpty();
+        assertThat(result.instagramUrl()).isEmpty();
+        verify(bands).findByName("THE BAND");
+    }
+
+    @Test
+    void invalidNamesAndUnsafeLinksFailBeforeAccessingTheAggregate() {
+        for (String name : List.of("", "   ", "x".repeat(101))) {
+            var invalid = new BandCreateRequestDto(name, null, null, null, null, null, null, null, null);
+            assertThatThrownBy(() -> service.updateBand(bandId, founderId, invalid))
+                    .isInstanceOfSatisfying(SoundConnectException.class, exception ->
+                            assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR));
+        }
+        var unsafe = new BandCreateRequestDto("Band", null, null, "javascript:alert(1)",
+                null, null, null, null, null);
+        assertThatThrownBy(() -> service.createBand(founderId, unsafe)).isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(bands, members, finder);
+    }
 }

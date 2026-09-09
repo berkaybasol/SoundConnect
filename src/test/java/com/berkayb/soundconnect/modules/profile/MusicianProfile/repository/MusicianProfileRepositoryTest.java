@@ -4,6 +4,12 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.entity.District;
+import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -115,6 +121,40 @@ class MusicianProfileRepositoryTest {
 		assertThat(bandRepository.searchByName("sah", PageRequest.of(0, 10)))
 				.extracting(Band::getId)
 				.containsExactly(band.getId());
+	}
+
+	@Test
+	void linkedVenueProjectionDoesNotExposeUnavailableVenuesThroughTheMusicianProfile() {
+		User artist = em.persistAndFlush(User.builder().username("linkedartist").email("linkedartist@test.invalid")
+				.password("test-password").build());
+		User owner = em.persistAndFlush(User.builder().username("linkedowner").email("linkedowner@test.invalid")
+				.password("test-password").status(UserStatus.ACTIVE).emailVerified(true).build());
+		City city = em.persistAndFlush(City.builder().name("Ankara").build());
+		District district = em.persistAndFlush(District.builder().name("Cankaya").city(city).build());
+		Neighborhood neighborhood = em.persistAndFlush(Neighborhood.builder().name("Bahceli").district(district).build());
+		Venue venue = em.persistAndFlush(Venue.builder().name("Connected venue").address("Address")
+				.owner(owner).city(city).district(district).neighborhood(neighborhood).status(VenueStatus.APPROVED).build());
+		MusicianProfile musician = MusicianProfile.builder().user(artist).build();
+		musician.getActiveVenues().add(venue);
+		em.persistAndFlush(musician);
+		assertThat(repository.findPublicVenueConnections(musician.getId()))
+				.extracting(MusicianProfileVenueRow::venueId).containsExactly(venue.getId());
+		venue.setStatus(VenueStatus.PENDING);
+		em.flush();
+		assertThat(repository.findPublicVenueConnections(musician.getId())).isEmpty();
+		venue.setStatus(VenueStatus.APPROVED);
+		owner.setStatus(UserStatus.INACTIVE);
+		em.flush();
+		assertThat(repository.findPublicVenueConnections(musician.getId())).isEmpty();
+		owner.setStatus(UserStatus.ACTIVE);
+		owner.setEmailVerified(false);
+		em.flush();
+		assertThat(repository.findPublicVenueConnections(musician.getId())).isEmpty();
+		owner.setEmailVerified(true);
+		venue.setCity(em.persistAndFlush(City.builder().name("Another city").build()));
+		em.flush();
+		assertThat(repository.findPublicVenueConnections(musician.getId())).isEmpty();
+		assertThat(musician.getActiveVenues()).hasSize(1);
 	}
 
 	@Configuration(proxyBeanMethods = false)

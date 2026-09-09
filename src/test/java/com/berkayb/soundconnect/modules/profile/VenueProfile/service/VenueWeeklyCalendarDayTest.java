@@ -45,23 +45,23 @@ class VenueWeeklyCalendarDayTest {
     }
 
     @Test void publicCalendarRollsAtIstanbulMidnightAndKeepsTodayAfterEndTime() {
-        when(finder.getVenue(venue.getId())).thenReturn(venue);
+        when(venues.findPubliclyVisibleById(venue.getId())).thenReturn(Optional.of(venue));
         when(profiles.findByVenueId(venue.getId())).thenReturn(Optional.of(VenueProfile.builder().venue(venue).build()));
         LocalDate oldDay = LocalDate.of(2026, 9, 8);
         Event ended = Event.builder().venue(venue).title("Bugün")
                 .eventDate(oldDay).startTime(LocalTime.of(10, 0)).endTime(LocalTime.NOON).build();
         ended.setId(UUID.randomUUID());
-        when(events.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, oldDay, oldDay.plusDays(6)))
+        when(events.findPublicByVenueBetween(venue, oldDay, oldDay.plusDays(6)))
                 .thenReturn(List.of(ended));
-        when(events.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, oldDay.plusDays(1), oldDay.plusDays(7)))
+        when(events.findPublicByVenueBetween(venue, oldDay.plusDays(1), oldDay.plusDays(7)))
                 .thenReturn(List.of());
         clock.value = Instant.parse("2026-09-08T20:59:59.999Z");
         assertThat(service.getPublicProfileDetail(venue.getId()).weeklyEvents()).singleElement()
                 .satisfies(item -> assertThat(item.eventId()).isEqualTo(ended.getId()));
         clock.value = Instant.parse("2026-09-08T21:00:00Z");
         assertThat(service.getPublicProfileDetail(venue.getId()).weeklyEvents()).isEmpty();
-        verify(events).findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, oldDay, oldDay.plusDays(6));
-        verify(events).findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, oldDay.plusDays(1), oldDay.plusDays(7));
+        verify(events).findPublicByVenueBetween(venue, oldDay, oldDay.plusDays(6));
+        verify(events).findPublicByVenueBetween(venue, oldDay.plusDays(1), oldDay.plusDays(7));
         verifyNoMoreInteractions(events);
     }
 

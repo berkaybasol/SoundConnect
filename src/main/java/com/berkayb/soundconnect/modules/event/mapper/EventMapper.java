@@ -14,11 +14,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class EventMapper {
+	private static final int POSTER_BATCH_SIZE = 200;
 	
 	private final MediaAssetService mediaAssetService;
 	private final EventShareUrlBuilder eventShareUrlBuilder; //eklendi
@@ -27,13 +33,44 @@ public class EventMapper {
 		if (event == null) {
 			return null;
 		}
+		return toDto(event, resolvePosterImage(event));
+	}
+
+	/** Resolve shared posters once per bounded batch instead of a media query per event. */
+	public List<EventResponseDto> toDtos(List<Event> events) {
+		if (events.isEmpty()) return List.of();
+		List<UUID> ids = events.stream().map(Event::getPosterImage).map(EventMapper::posterId)
+				.filter(Objects::nonNull).distinct().toList();
+		Map<UUID, String> urls = new HashMap<>();
+		for (int start = 0; start < ids.size(); start += POSTER_BATCH_SIZE) {
+			try {
+				urls.putAll(mediaAssetService.getDisplayUrlMap(ids.subList(start, Math.min(ids.size(), start + POSTER_BATCH_SIZE))));
+			} catch (RuntimeException unavailable) {
+				// Match single-event resolution: unavailable decoration must not hide the event itself.
+			}
+		}
+		return events.stream().map(event -> {
+			String raw = event.getPosterImage();
+			UUID id = posterId(raw);
+			String poster = id != null ? urls.get(id) : raw == null || raw.isBlank() ? null : raw;
+			return toDto(event, poster);
+		}).toList();
+	}
+
+	private static UUID posterId(String raw) {
+		if (raw == null || raw.isBlank()) return null;
+		try { return UUID.fromString(raw); }
+		catch (IllegalArgumentException legacyReference) { return null; }
+	}
+
+	private EventResponseDto toDto(Event event, String posterImage) {
 		boolean publicVenue = event.getVenue() != null && (event.getEventOrigin() == EventOrigin.VENUE
 				|| event.getVenue().getStatus() == VenueStatus.APPROVED);
 		
 		return new EventResponseDto(
 				event.getId(),
 				event.getTitle(),
-				resolvePosterImage(event),
+				posterImage,
 				resolvePerformerName(event),
 				event.getMusicianProfile() != null ? event.getMusicianProfile().getId() : null,
 				event.getBand() != null ? event.getBand().getId() : null,

@@ -21,6 +21,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import jakarta.persistence.EntityManager;
 
 import java.util.*;
 
@@ -38,6 +39,7 @@ class MusicianProfileServiceImplTest {
 	@Mock BandService bandService;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
+	@Mock EntityManager entityManager;
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;
@@ -183,8 +185,7 @@ class MusicianProfileServiceImplTest {
 		var profile = MusicianProfile.builder().id(profileId).user(user).build();
 		
 		when(userFinder.getUser(userId)).thenReturn(user);
-		when(repo.findByUserId(userId)).thenReturn(Optional.of(profile));
-		when(instrumentRepo.findAllById(any())).thenReturn(Collections.emptyList());
+		when(repo.findByUserIdForUpdate(userId)).thenReturn(Optional.of(profile));
 		
 		when(repo.save(any(MusicianProfile.class))).thenAnswer(inv -> inv.getArgument(0));
 		

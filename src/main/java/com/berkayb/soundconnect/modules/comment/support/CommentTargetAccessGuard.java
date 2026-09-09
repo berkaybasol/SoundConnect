@@ -21,12 +21,25 @@ public class CommentTargetAccessGuard {
         if (type == null || id == null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
         boolean visible = switch (type) {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
+            case EVENT_POST -> readableEventPost(id);
             case OVERTHINKING -> repository.lockPost(id).isPresent();
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
             case COMMENT -> false;
         };
         if (!visible) throw new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
+    }
+
+    private boolean readableEventPost(UUID id) {
+        var owner = repository.eventPostOwner(id).orElse(null);
+        if (owner == null || owner.getUserId() == null || owner.getEventId() == null) return false;
+        // Account -> listener privacy -> event -> publication matches audience writes/removal.
+        // Every value is read under database fences; stale OSIV entities cannot expose ghost posts.
+        if (repository.lockEventPostAuthor(owner.getUserId()).isEmpty()
+                || !repository.eligibleEventPostAuthor(owner.getUserId())
+                || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
+                || repository.lockPublicEvent(owner.getEventId()).isEmpty()) return false;
+        return repository.lockPublishedEventPost(id, owner.getUserId(), owner.getEventId()).isPresent();
     }
 
     private boolean readableMedia(UUID id) {

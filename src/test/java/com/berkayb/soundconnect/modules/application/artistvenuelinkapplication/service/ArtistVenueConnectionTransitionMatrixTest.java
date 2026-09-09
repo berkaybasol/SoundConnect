@@ -146,6 +146,7 @@ class ArtistVenueConnectionTransitionMatrixTest {
         when(musician.getActiveVenues()).thenReturn(new HashSet<>());
         when(venue.getId()).thenReturn(venueId);
         when(venue.getOwner()).thenReturn(owner);
+        when(venues.existsPubliclyVisibleById(venueId)).thenReturn(true);
         when(venue.getActiveBands()).thenReturn(new HashSet<>());
         when(venue.getActiveMusicians()).thenReturn(new HashSet<>());
         when(band.getId()).thenReturn(bandId);

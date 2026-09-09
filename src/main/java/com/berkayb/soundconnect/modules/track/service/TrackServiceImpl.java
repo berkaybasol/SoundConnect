@@ -71,7 +71,14 @@ public class TrackServiceImpl implements TrackService {
 			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 		}
 		validateOwner(ownerId, userId, ownerType);
+		// Serialize with attachment and engagement operations before detaching.
+		mediaAssetRepository.findByIdAndOwnerForUpdate(track.getMediaAssetId(), mediaOwnerType(ownerType), ownerId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		trackRepository.delete(track);
+		trackRepository.flush();
+		// The reference guard now sees the detached track. Failure rolls back both
+		// operations; storage cleanup only starts after the transaction commits.
+		mediaAssetService.delete(track.getMediaAssetId(), userId, mediaOwnerType(ownerType), ownerId);
 		log.info("Track deleted trackId={} ownerId={} ownerType={} actor={}",
 				trackId, ownerId, ownerType, userId);
 	}

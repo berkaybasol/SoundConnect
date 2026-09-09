@@ -34,11 +34,23 @@ class CommentServiceImplTest {
     @Mock CommentAuthorBatchResolver authors;
     @Mock CommentBurstGuard burstGuard;
     @Mock com.berkayb.soundconnect.modules.like.repository.LikeRepository likes;
+    @Mock com.berkayb.soundconnect.modules.engagement.service.MediaEngagementNotificationService notifications;
     CommentServiceImpl service;
     final UUID actor = UUID.randomUUID(), target = UUID.randomUUID(), rootId = UUID.randomUUID();
 
     @BeforeEach void setup() {
-        service = new CommentServiceImpl(targets, repository, Mappers.getMapper(CommentMapper.class), finder, users, posts, authors, burstGuard,likes);
+        service = new CommentServiceImpl(targets, repository, Mappers.getMapper(CommentMapper.class), finder, users, posts, authors, burstGuard,likes,notifications);
+        lenient().when(likes.lockActiveActor(any())).thenAnswer(i -> Optional.of(i.getArgument(0)));
+    }
+
+    @Test void accountDisabledAfterAuthenticationCannotCreateOrDeleteComments() {
+        when(likes.lockActiveActor(actor)).thenReturn(Optional.empty());
+        assertError(() -> service.createComment(actor, EngagementTargetType.MEDIA, target,
+                new CommentCreateRequestDto("text", null)), ErrorType.UNAUTHORIZED);
+        assertError(() -> service.deleteComment(actor, rootId), ErrorType.UNAUTHORIZED);
+        assertError(() -> service.createComment(null, EngagementTargetType.MEDIA, target,
+                new CommentCreateRequestDto("text", null)), ErrorType.UNAUTHORIZED);
+        verifyNoInteractions(targets, repository, users, burstGuard);
     }
 
     @Test void rootReadRejectsHiddenTargetBeforeQueryingCommentsOrIdentity() {

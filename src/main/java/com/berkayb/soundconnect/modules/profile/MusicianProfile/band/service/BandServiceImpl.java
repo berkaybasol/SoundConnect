@@ -31,6 +31,8 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandMemberTitle;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.ProfileInputValidation;
+import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import com.berkayb.soundconnect.modules.setlistcreator.repository.SetlistRepository;
 import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
@@ -499,6 +501,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public BandResponseDto createBand(UUID userId, BandCreateRequestDto dto) {
+		validateContent(dto, true);
 		// Serialize quota reads and founder insertion for this account. Two
 		// concurrent creates cannot both spend its final creation slot.
 		User user = userRepository.findByIdForUpdate(userId)
@@ -535,11 +538,11 @@ public class BandServiceImpl implements BandService {
 		                .name(dto.name())
 		                .description(dto.description())
 		                .profilePictureMediaId(dto.profilePicture())
-		                .instagramUrl(dto.instagramUrl())
-		                .youtubeUrl(dto.youtubeUrl())
-		                .soundCloudUrl(dto.soundCloudUrl())
-		                .spotifyEmbedUrl(dto.spotifyEmbedUrl())
-		                .spotifyArtistId(dto.spotifyArtistId())
+		                .instagramUrl(ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl"))
+		                .youtubeUrl(ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl"))
+		                .soundCloudUrl(ProfileInputValidation.webUrl(dto.soundCloudUrl(), "soundCloudUrl"))
+		                .spotifyEmbedUrl(ProfileInputValidation.webUrl(dto.spotifyEmbedUrl(), "spotifyEmbedUrl"))
+		                .spotifyArtistId(ProfileInputValidation.optionalIdentifier(dto.spotifyArtistId()))
 		                .spotifyTrackIds(dto.spotifyTrackIds() != null ? dto.spotifyTrackIds() : List.of())
 		                .build();
 		
@@ -565,6 +568,7 @@ public class BandServiceImpl implements BandService {
 	@Override
 	@Transactional
 	public BandResponseDto updateBand(UUID bandId, UUID userId, BandCreateRequestDto dto) {
+		validateContent(dto, false);
 		// Serialize profile changes with membership, connection and deletion
 		// snapshots; an unlocked stale entity must not race the aggregate fence.
 		Band band = lockBandForMembershipChange(bandId);
@@ -579,7 +583,7 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_UNAUTHORIZED);
 		}
 		
-		if (dto.name() != null && !dto.name().equalsIgnoreCase(band.getName())) {
+		if (dto.name() != null && !dto.name().equals(band.getName())) {
 			bandRepository.findByName(dto.name()).ifPresent(existing -> {
 				if (!existing.getId().equals(bandId)) {
 					log.warn("Band adi daha once kullanilmis. Band: {}", dto.name());
@@ -596,11 +600,11 @@ public class BandServiceImpl implements BandService {
 			);
 			band.setProfilePictureMediaId(dto.profilePicture());
 		}
-		if (dto.instagramUrl() != null) band.setInstagramUrl(dto.instagramUrl());
-		if (dto.youtubeUrl() != null) band.setYoutubeUrl(dto.youtubeUrl());
-		if (dto.soundCloudUrl() != null) band.setSoundCloudUrl(dto.soundCloudUrl());
-		if (dto.spotifyEmbedUrl() != null) band.setSpotifyEmbedUrl(dto.spotifyEmbedUrl());
-		if (dto.spotifyArtistId() != null) band.setSpotifyArtistId(dto.spotifyArtistId());
+		if (dto.instagramUrl() != null) band.setInstagramUrl(ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl"));
+		if (dto.youtubeUrl() != null) band.setYoutubeUrl(ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl"));
+		if (dto.soundCloudUrl() != null) band.setSoundCloudUrl(ProfileInputValidation.webUrl(dto.soundCloudUrl(), "soundCloudUrl"));
+		if (dto.spotifyEmbedUrl() != null) band.setSpotifyEmbedUrl(ProfileInputValidation.webUrl(dto.spotifyEmbedUrl(), "spotifyEmbedUrl"));
+		if (dto.spotifyArtistId() != null) band.setSpotifyArtistId(ProfileInputValidation.optionalIdentifier(dto.spotifyArtistId()));
 		if (dto.spotifyTrackIds() != null) band.setSpotifyTrackIds(dto.spotifyTrackIds());
 		
 		Band updated = bandRepository.save(band);
@@ -647,8 +651,9 @@ public class BandServiceImpl implements BandService {
 	@Override //eklendi
 	@Transactional(readOnly = true) //eklendi
 	public List<BandSearchItemDto> searchBands(String query) { //eklendi
-		String q = query == null ? "" : query.trim(); //eklendi
+		String q = query == null ? "" : UsernameUtils.stripBoundaryWhitespace(query); //eklendi
 		if (q.isEmpty()) return List.of(); //eklendi
+		ProfileInputValidation.text(q, 100, "query");
 		
 		return bandRepository.searchByName(q, PageRequest.of(0, 10)) //eklendi
 		                     .stream() //eklendi
@@ -661,6 +666,22 @@ public class BandServiceImpl implements BandService {
 		                     .toList(); //eklendi
 	} //eklendi
 	
+	private void validateContent(BandCreateRequestDto dto, boolean creating) {
+		if (dto == null) throw ProfileInputValidation.invalid("Band content is required");
+		if ((creating && dto.name() == null) || (dto.name() != null
+				&& UsernameUtils.stripBoundaryWhitespace(dto.name()).isBlank())) {
+			throw ProfileInputValidation.invalid("Band name is required");
+		}
+		ProfileInputValidation.text(dto.name(), 100, "name");
+		ProfileInputValidation.text(dto.description(), 1024, "description");
+		ProfileInputValidation.trackIds(dto.spotifyTrackIds());
+		ProfileInputValidation.optionalIdentifier(dto.spotifyArtistId());
+		ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl");
+		ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl");
+		ProfileInputValidation.webUrl(dto.soundCloudUrl(), "soundCloudUrl");
+		ProfileInputValidation.webUrl(dto.spotifyEmbedUrl(), "spotifyEmbedUrl");
+	}
+
 	/**
 	 * Acquire the aggregate fence before loading any mutable membership state.
 	 * Publication changes and public calendar reads lock this same band parent,

@@ -27,7 +27,8 @@ class EventLocalSchemaMigrationOrderTest {
                 "2026-09-05-reciprocal-musician-events.sql",
                 "2026-09-06-event-profile-publications.sql",
                 "2026-09-08-event-audience-intents.sql",
-                "2026-09-09-comment-likes.sql");
+                "2026-09-09-comment-likes.sql",
+                "2026-09-09-event-post-comments.sql");
 
         int previous = -1;
         for (String migration : migrations) {

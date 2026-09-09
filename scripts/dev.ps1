@@ -41,7 +41,8 @@ $LocalSchemaMigrations = @(
     @{ Name = "Notification replay receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-notification-replay-receipts.sql" },
     @{ Name = "Venue analytics"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-venue-analytics.sql" },
     @{ Name = "Event audience intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-event-audience-intents.sql" },
-    @{ Name = "Comment likes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-comment-likes.sql" }
+    @{ Name = "Comment likes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-comment-likes.sql" },
+    @{ Name = "Event post comments"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-event-post-comments.sql" }
 )
 
 function Assert-Command([string]$Name) {

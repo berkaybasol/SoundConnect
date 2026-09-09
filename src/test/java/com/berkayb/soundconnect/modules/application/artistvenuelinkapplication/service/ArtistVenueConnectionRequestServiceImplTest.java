@@ -94,6 +94,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(venue.getName()).thenReturn("Venue X");
 		when(venue.getOwner()).thenReturn(venueOwner);
 		when(requestRepo.findVenueByIdForUpdate(venueId)).thenReturn(Optional.of(venue));
+		when(venueRepo.existsPubliclyVisibleById(any())).thenReturn(true);
 		when(requestRepo.lockUsableAccountIds(anyCollection())).thenAnswer(invocation -> new ArrayList<>(invocation.<Collection<UUID>>getArgument(0)));
 		
 		// ilişki set’lerini gerçek set’lerle döndür
@@ -104,6 +105,50 @@ class ArtistVenueConnectionRequestServiceImplTest {
 		when(venue.getActiveMusicians()).thenReturn(activeMusicians);
 	}
 	
+	@Test
+	void malformedCreateCommandsFailWithoutLocksOrNotifications() {
+		for (ArtistVenueConnectionRequestCreateDto invalid : new ArtistVenueConnectionRequestCreateDto[]{
+				null,
+				new ArtistVenueConnectionRequestCreateDto(mpId, null, null, "hi"),
+				new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, "x".repeat(256))}) {
+			assertThatThrownBy(() -> service.createRequest(musicianUserId, invalid, RequestByType.ARTIST))
+					.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+							assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR));
+		}
+		verify(requestRepo, never()).findVenueByIdForUpdate(any());
+		verify(requestRepo, never()).save(any());
+		verifyNoInteractions(notificationProducer);
+	}
+
+	@Test
+	void unavailableVenueCannotReceiveANewConnectionRequest() {
+		when(musicianRepo.findById(mpId)).thenReturn(Optional.of(mp));
+		when(venueRepo.existsPubliclyVisibleById(venueId)).thenReturn(false);
+		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, "hello");
+		assertThatThrownBy(() -> service.createRequest(musicianUserId, dto, RequestByType.ARTIST))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						assertThat(exception.getErrorType()).isEqualTo(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE));
+		verify(requestRepo, never()).save(any());
+		verifyNoInteractions(notificationProducer);
+	}
+
+	@Test
+	void venueThatBecameUnavailableCannotAcceptAnEarlierRequest() {
+		UUID requestId = UUID.randomUUID();
+		ArtistVenueConnectionRequest request = ArtistVenueConnectionRequest.builder()
+				.venue(venue).musicianProfile(mp).requestByType(RequestByType.ARTIST).status(RequestStatus.PENDING).build();
+		request.setId(requestId);
+		when(requestRepo.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+		when(venueRepo.existsPubliclyVisibleById(venueId)).thenReturn(false);
+		assertThatThrownBy(() -> service.acceptRequest(venueOwnerId, requestId))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						assertThat(exception.getErrorType()).isEqualTo(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE));
+		assertThat(request.getStatus()).isEqualTo(RequestStatus.PENDING);
+		assertThat(mp.getActiveVenues()).isEmpty();
+		verify(requestRepo, never()).save(any());
+		verifyNoInteractions(notificationProducer);
+	}
+
 	@Test
 	void createRequest_ok() {
 		var dto = new ArtistVenueConnectionRequestCreateDto(mpId, null, venueId, "hi");

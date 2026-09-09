@@ -60,6 +60,7 @@ class EventCommentReadSecurityTest {
     @MockitoBean EventCommentReadService service;
     @MockitoBean CommentService comments;
     @MockitoBean EventService events;
+    @MockitoBean com.berkayb.soundconnect.modules.event.support.EventScheduleClock eventClock;
     @MockitoBean LikeService likes;
     @MockitoBean JwtAuthenticationFilter jwt;
     @MockitoBean AuthRateLimitFilter rateLimit;

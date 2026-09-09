@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.comment.support.CommentTargetAccessGuard
 import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
 import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementNotificationService;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -53,6 +54,7 @@ public class CommentServiceImpl implements CommentService {
 	private final CommentAuthorBatchResolver authorResolver;
 	private final CommentBurstGuard burstGuard;
 	private final LikeRepository likes;
+	private final MediaEngagementNotificationService notifications;
 	
 	@Override
 	@Transactional(readOnly = true)
@@ -79,6 +81,7 @@ public class CommentServiceImpl implements CommentService {
 		if (request == null) throw new SoundConnectException(ErrorType.COMMENT_TEXT_INVALID);
 		validateCommentText(request.text());
 		
+		requireActiveActor(userId);
 		targetAccess.requireReadable(targetType, targetId);
 		
 		User author = userEntityFinder.getUser(userId);
@@ -113,12 +116,14 @@ public class CommentServiceImpl implements CommentService {
 		                         .build();
 		
 		comment = commentRepository.save(comment);
+		notifications.commented(userId, targetType, targetId, comment.getId());
 		
 		return mapToCommentResponse(comment, 0, userId, resolveAuthorContext(List.of(comment), userId),Map.of());
 	}
 	
 	@Override
 	public void deleteComment(UUID userId, UUID commentId) {
+		requireActiveActor(userId);
 		var comment = commentRepository.lockComment(commentId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.COMMENT_NOT_FOUND));
 		
@@ -260,6 +265,14 @@ public class CommentServiceImpl implements CommentService {
 		return new CommentReplyResponseDto(dto.id(),dto.user(),dto.anonymousAuthor(),dto.text(),dto.deleted(),
 				dto.parentCommentId(),dto.createdAt(),state==null ? 0 : state.getLikeCount(),
 				viewerId!=null && state!=null && state.getLikedByMe());
+	}
+
+	private void requireActiveActor(UUID userId) {
+		// The JWT filter runs before this transaction. Recheck account eligibility
+		// under the same account-first lock order as likes before accepting a write.
+		if (userId == null || likes.lockActiveActor(userId).isEmpty()) {
+			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		}
 	}
 
 	private Map<UUID,LikeRepository.CommentLikes> loadLikes(List<Comment> page,UUID viewerId) {

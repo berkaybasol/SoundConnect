@@ -1,6 +1,6 @@
 # Personal event plans and listener profile posts
 
-Audience intent is a personal expression (`NONE`, `THINKING`, `GOING`), not an RSVP, ticket, reservation, check-in, attendance confirmation, or performer consent. There are no audience counts, participant lists, or analytics additions. Existing event comments and generic share links remain the conversation/share surfaces. Existing performer approval, performer calendar publication, and the disabled venue-reporting launch flag are unchanged.
+Audience intent is a personal expression (`NONE`, `THINKING`, `GOING`), not an RSVP, ticket, reservation, check-in, attendance confirmation, or performer consent. There are no audience counts, participant lists, or analytics additions. Published listener posts have independent `EVENT_POST` conversations; existing `EVENT` comments remain attached to their event. Existing performer approval, performer calendar publication, and the disabled venue-reporting launch flag are unchanged.
 
 ## Eligibility and privacy
 
@@ -24,6 +24,7 @@ All responses use existing `BaseResponse` and `Cache-Control: private, no-store`
 | --- | --- | --- |
 | GET | `/api/v1/user/event-intents/{eventId}` | Own state; never creates a row |
 | PUT | `/api/v1/user/event-intents/{eventId}` | Explicit full-state versioned mutation |
+| DELETE | `/api/v1/user/event-posts/{postId}` | Remove this owner's exact publication; preserve private intent |
 | GET | `/api/v1/user/event-intents` | Own non-NONE plans; `period=UPCOMING` |
 | GET | `/api/v1/public/listener-profiles/{listenerProfileId}/event-posts` | Explicit posts; `period=ALL` |
 
@@ -39,7 +40,11 @@ PUT requires exactly these four fields (unknown fields, duplicate keys, scalar c
 
 Private state fields: `eventId,intent,publishedOnProfile,note,version,updatedAt,eventAvailable,eventEnded,canSetIntent,canPublish,publicationVisible,event`. Initial state is NONE/version 0/null updatedAt. `publishedOnProfile` is retained preference, whereas `publicationVisible` reflects current author/event visibility. `canPublish` means new publication/edit capability, not whether an old post is visible. `event` is the existing `EventResponseDto` (or null when unavailable).
 
-Public post fields: `eventId,intent,note,publishedAt,eventEnded,event`. There is no author-private version, unpublished preference, audience total, or participant identity list. Both pages reuse the scalar public event-card projection and a single bounded poster-decoration batch; no per-event entity graphs/member lists are loaded.
+Public post fields: `postId,eventId,intent,note,publishedAt,eventEnded,event`. Private states also expose nullable `postId`, present only for a retained publication. There is no author-private version, unpublished preference, audience total, or participant identity list in a public post. Both pages reuse the scalar public event-card projection and a single bounded poster-decoration batch; no per-event entity graphs/member lists are loaded.
+
+`postId` is an independent UUID, not the event ID. Positive intent/note edits and temporary ghost hiding preserve it. Unpublishing or clearing discards it; republishing creates a new UUID with a new conversation. Owner DELETE returns the updated private State, increments its version, removes the note/publication, and keeps GOING/THINKING. An old/deleted/foreign post ID returns the same 404 and cannot delete a replacement publication. The existing account quota applies to DELETE as well as PUT.
+
+Common comment/reply and comment-like endpoints accept `EVENT_POST` with `targetId=postId`. The authenticated social endpoint policy remains in force. Target checks lock the current author, listener visibility, event eligibility and exact publication; ghost, unpublished, removed, invalid-author or unavailable-event posts are inaccessible through comments/replies/likes. Previously written comments remain stored under the discarded UUID but cannot become visible on a new publication. Existing `EVENT` comments are never moved or copied. Comment authors can still delete their own comments after the target is hidden.
 
 ## Consistency and failure handling
 
@@ -64,6 +69,8 @@ The additive migration is `scripts/db/2026-09-08-event-audience-intents.sql`, re
 There is deliberately no event FK: intent/version tombstones survive event deletion. No event title/details are copied into the table. **Optional notes and retained preferences remain stored until the owner clears/unpublishes them or the account is deleted**, including after event deletion; hidden/deleted events are not listed. A caller retaining the event ID may fetch and clear the unavailable owner state. This bounded feature adds no automatic content-retention job or event-deletion hook. Any broader deleted-event note purge/discoverability policy requires a separate product decision.
 
 Deployment requires the authorized database backup and explicit additive migration before serving the updated backend, then a backend restart and rebuilt frontend. Registering the script does not itself execute it. Do not run application migrations implicitly during tests. The venue analytics 90-day retention and reporting-default-off configuration are unrelated and unchanged.
+
+The independent-publication follow-up is `scripts/db/2026-09-09-event-post-comments.sql`, registered after comment likes. It adds/backfills `post_id` only for published rows, adds publication/uniqueness constraints and widens the existing comment/like target enum checks. Reruns preserve assigned UUIDs, existing comments and accepted target types. Apply this migration explicitly before starting the updated binary; an older binary must not write publication state after this migration.
 
 ## Verification
 

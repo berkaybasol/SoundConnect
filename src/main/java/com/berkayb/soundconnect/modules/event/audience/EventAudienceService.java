@@ -71,9 +71,29 @@ public class EventAudienceService {
         current.setIntent(command.intent()); current.setPublishedOnProfile(command.publishedOnProfile()); current.setNote(note);
         current.setVersion(current.getVersion() + 1); current.setUpdatedAt(now);
         current.setPublishedAt(command.publishedOnProfile() ? newlyPublished ? now : current.getPublishedAt() : null);
+        current.setPostId(command.publishedOnProfile() ? newlyPublished ? UUID.randomUUID() : current.getPostId() : null);
         // NONE is retained as a version tombstone: a late request cannot resurrect a cleared plan.
         repository.saveAndFlush(current);
         return state(current, actor, event, now);
+    }
+
+    /** Remove this exact publication, preserving the owner's private attendance choice. */
+    @Transactional(timeout = 5)
+    public EventIntentResponse.State deletePost(UUID userId, UUID postId) {
+        if (postId == null) throw invalid();
+        Actor actor = actor(userId, true);
+        if (!actor.listener()) throw forbidden();
+        UUID eventId = repository.publishedEventId(userId, postId)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND));
+        repository.lockEvent(eventId);
+        var current = repository.findById(new EventAudienceIntent.Id(userId, eventId)).orElseThrow(this::eventNotFound);
+        // Account serialization fences concurrent PUT/DELETE and an old post ID cannot remove a republication.
+        if (!current.isPublishedOnProfile() || !postId.equals(current.getPostId()))
+            throw new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
+        current.setPublishedOnProfile(false); current.setNote(null); current.setPublishedAt(null); current.setPostId(null);
+        current.setVersion(current.getVersion() + 1); current.setUpdatedAt(clock.instant());
+        repository.saveAndFlush(current);
+        return state(current, actor, eventCards(List.of(eventId)).get(eventId), clock.instant());
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, timeout = 5)
@@ -101,7 +121,7 @@ public class EventAudienceService {
         if (ids.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, ids.getTotalElements()));
         var values = states(author, ids.getContent()); var events = eventCards(ids.getContent());
         return PageResponse.from(ids.map(id -> new EventIntentResponse.Post(id, values.get(id).getIntent(), values.get(id).getNote(),
-                values.get(id).getPublishedAt(), ended(events.get(id), now), events.get(id))));
+                values.get(id).getPublishedAt(), ended(events.get(id), now), events.get(id), values.get(id).getPostId())));
     }
 
     private Actor actor(UUID userId, boolean write) {
@@ -132,7 +152,7 @@ public class EventAudienceService {
         boolean available = event != null, ended = available && ended(event, now);
         return new EventIntentResponse.State(value.getId().getEventId(), value.getIntent(), value.isPublishedOnProfile(), value.getNote(),
                 value.getVersion(), value.getUpdatedAt(), available, ended, available && !ended,
-                available && !ended && actor.mayPublish(), available && actor.mayPublish() && value.isPublishedOnProfile(), event);
+                available && !ended && actor.mayPublish(), available && actor.mayPublish() && value.isPublishedOnProfile(), event, value.getPostId());
     }
     static boolean ended(EventResponseDto event, Instant now) {
         if (event == null || event.eventDate() == null || event.startTime() == null) return true;

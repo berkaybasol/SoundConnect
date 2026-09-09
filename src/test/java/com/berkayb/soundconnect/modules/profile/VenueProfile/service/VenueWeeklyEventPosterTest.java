@@ -39,11 +39,11 @@ class VenueWeeklyEventPosterTest {
     @BeforeEach void setup() {
         MockitoAnnotations.openMocks(this);
         venue = Venue.builder().id(UUID.randomUUID()).name("Ankara").build();
-        when(finder.getVenue(venue.getId())).thenReturn(venue);
+        when(venues.findPubliclyVisibleById(venue.getId())).thenReturn(Optional.of(venue));
         when(profiles.findByVenueId(venue.getId())).thenReturn(Optional.of(VenueProfile.builder().venue(venue).build()));
         event = Event.builder().venue(venue).title("Gece").eventDate(LocalDate.now()).startTime(LocalTime.NOON).posterImage(poster.toString()).build();
         event.setId(UUID.randomUUID());
-        when(events.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(eq(venue), any(), any())).thenReturn(List.of(event));
+        when(events.findPublicByVenueBetween(eq(venue), any(), any())).thenReturn(List.of(event));
     }
 
     @Test void profileWeeklySummaryResolvesPosterUuidJustLikeCalendarDetails() {

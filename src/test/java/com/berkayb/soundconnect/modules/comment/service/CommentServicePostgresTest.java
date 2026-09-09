@@ -10,12 +10,24 @@ import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
 import com.berkayb.soundconnect.modules.like.service.CommentLikeAccessGuard;
 import com.berkayb.soundconnect.modules.like.service.LikeServiceImpl;
 import com.berkayb.soundconnect.modules.like.entity.Like;
-import com.berkayb.soundconnect.modules.engagement.service.EngagementTargetValidator;
+import com.berkayb.soundconnect.modules.engagement.service.EngagementTargetValidatorImpl;
+import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementNotificationService;
+import com.berkayb.soundconnect.modules.notification.service.TransactionalNotificationService;
+import com.berkayb.soundconnect.modules.notification.service.NotificationService;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
+import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
+import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementCleanupService;
 import com.berkayb.soundconnect.modules.comment.repository.*;
 import com.berkayb.soundconnect.modules.comment.support.*;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.event.entity.Event;
+import com.berkayb.soundconnect.modules.event.audience.*;
+import com.berkayb.soundconnect.modules.event.discovery.EventDiscoveryService;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
+import com.berkayb.soundconnect.modules.role.entity.Role;
+import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.location.entity.*;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
@@ -87,10 +99,14 @@ class CommentServicePostgresTest {
     @Autowired CommentAuthorBatchResolver authors; @Autowired CommentRepository repository;
     @Autowired EventCommentReadService publicEventComments;
     @Autowired LikeServiceImpl likeService; @Autowired LikeRepository likeRepository;
+    @Autowired EventAudienceRepository audienceRepository; @Autowired UserRepository userRepository;
     @Autowired MediaEngagementCleanupService mediaCleanup;
-    @MockitoBean EngagementTargetValidator legacyLikeTargets;
     @MockitoBean MediaAssetService media; @MockitoBean UserEntityFinder users;
     @MockitoBean CommentBurstGuard burstGuard;
+    @Autowired NotificationRepository inbox;
+    @MockitoBean NotificationBadgeCacheHelper badges;
+    @MockitoBean NotificationWebSocketService sockets;
+    @MockitoBean NotificationService notificationReads;
     JdbcTemplate jdbc; User actor; Venue venue; UUID event;
 
     @BeforeEach void setup() throws Exception {
@@ -131,6 +147,48 @@ class CommentServicePostgresTest {
         assertHidden(() -> service.getComments(actor.getId(),EngagementTargetType.EVENT,event,PageRequest.of(0,20)));
     }
 
+    @Test void eventLikesAndCountsRespectPublicationAndLocationEligibility() {
+        likeService.like(actor.getId(),EngagementTargetType.EVENT,event);
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT,event)).isEqualTo(1);
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT,event)).isTrue();
+        jdbc.update("update tbl_venues set status='PENDING' where id=?",venue.getId());
+        assertEventLikeHidden();
+        jdbc.update("update tbl_venues set status='APPROVED' where id=?",venue.getId());
+        // VENUE-origin events are calendar-approved by the schema contract;
+        // do not manufacture an impossible row to test the access predicate.
+        assertThatThrownBy(() -> jdbc.update("update tbl_event set venue_calendar_approved=false where id=?",event))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        jdbc.update("update tbl_user set email_verified=false where id=?",venue.getOwner().getId());
+        assertEventLikeHidden();
+        jdbc.update("update tbl_user set email_verified=true where id=?",venue.getOwner().getId());
+        UUID wrongCity=tx(() -> persist(City.builder().name("Other "+UUID.randomUUID()).build()).getId());
+        jdbc.update("update tbl_venues set city_id=? where id=?",wrongCity,venue.getId());
+        assertEventLikeHidden();
+        assertHidden(() -> create(event,null));
+        assertLikeError(() -> publicEventComments.getComments(null,event,0,20),ErrorType.EVENT_NOT_FOUND);
+        assertThat(jdbc.queryForObject("select count(*) from tbl_like where target_id=?",Long.class,event)).isEqualTo(1);
+    }
+
+    @Test void inactiveOrUnverifiedAccountCannotUseStaleAuthenticationForEngagementWrites() {
+        UUID root=create(event,null);
+        for(String change : List.of("status='INACTIVE'", "status='ACTIVE',email_verified=false")) {
+            jdbc.update("update tbl_user set "+change+" where id=?",actor.getId());
+            assertLikeError(() -> create(event,null),ErrorType.UNAUTHORIZED);
+            assertLikeError(() -> service.deleteComment(actor.getId(),root),ErrorType.UNAUTHORIZED);
+            assertLikeError(() -> likeService.like(actor.getId(),EngagementTargetType.EVENT,event),ErrorType.UNAUTHORIZED);
+            assertLikeError(() -> likeService.unlike(actor.getId(),EngagementTargetType.EVENT,event),ErrorType.UNAUTHORIZED);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from tbl_comment where target_id=?",Long.class,event)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select is_deleted from tbl_comment where id=?",Boolean.class,root)).isFalse();
+    }
+
+    private void assertEventLikeHidden() {
+        assertHidden(() -> likeService.like(actor.getId(),EngagementTargetType.EVENT,event));
+        assertHidden(() -> likeService.unlike(actor.getId(),EngagementTargetType.EVENT,event));
+        assertHidden(() -> likeService.countLikes(EngagementTargetType.EVENT,event));
+        assertHidden(() -> likeService.isLiked(actor.getId(),EngagementTargetType.EVENT,event));
+    }
+
     @Test void mediaCommentsRespectPrivatePendingDeletedAndGhostOwnerVisibility() {
         UUID profile=tx(() -> persist(ListenerProfile.builder().user(em.getReference(User.class,actor.getId()))
                 .visibilityChoiceCompleted(true).build()).getId());
@@ -138,15 +196,21 @@ class CommentServicePostgresTest {
                 .ownerType(MediaOwnerType.LISTENER_PROFILE).ownerId(profile).size(100L).mimeType("image/jpeg")
                 .sourceUrl("https://cdn.test/image.jpg").build()).getId());
         UUID root=service.createComment(actor.getId(),EngagementTargetType.MEDIA,asset,new CommentCreateRequestDto("media",null)).id();
+        likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset);
         for(String visibility : List.of("PRIVATE","UNLISTED")) {
             jdbc.update("update tbl_media_asset set visibility=? where id=?",visibility,asset);
             assertHidden(() -> service.getReplies(actor.getId(),root,PageRequest.of(0,20)));
+            assertHidden(() -> likeService.countLikes(EngagementTargetType.MEDIA,asset));
         }
         jdbc.update("update tbl_media_asset set visibility='PUBLIC',status='DELETION_PENDING' where id=?",asset);
         assertHidden(() -> service.getComments(actor.getId(),EngagementTargetType.MEDIA,asset,PageRequest.of(0,20)));
         jdbc.update("update tbl_media_asset set status='READY' where id=?",asset);
         jdbc.update("update \"tbl_listener-profile\" set visibility_mode='GHOST' where id=?",profile);
         assertHidden(() -> service.getReplies(actor.getId(),root,PageRequest.of(0,20)));
+        assertHidden(() -> likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset));
+        assertHidden(() -> likeService.unlike(actor.getId(),EngagementTargetType.MEDIA,asset));
+        assertHidden(() -> likeService.countLikes(EngagementTargetType.MEDIA,asset));
+        assertHidden(() -> likeService.isLiked(actor.getId(),EngagementTargetType.MEDIA,asset));
         jdbc.update("update \"tbl_listener-profile\" set visibility_mode='STANDARD',visibility_choice_completed=false where id=?",profile);
         assertHidden(() -> service.createComment(actor.getId(),EngagementTargetType.MEDIA,asset,new CommentCreateRequestDto("no",null)));
     }
@@ -162,6 +226,26 @@ class CommentServicePostgresTest {
         jdbc.update("delete from tbl_overthinking_post where id=?",post);
         assertHidden(() -> service.getComments(viewer,EngagementTargetType.OVERTHINKING,post,PageRequest.of(0,20)));
         assertHidden(() -> service.getReplies(viewer,root,PageRequest.of(0,20)));
+    }
+
+    @Test void legacyCrossTargetRepliesCannotLeakThroughReadableRootOrInflateReplyCount() {
+        UUID root=create(event,null), valid=create(event,root);
+        UUID hiddenAsset=UUID.randomUUID();
+        tx(() -> {
+            persist(Comment.builder().user(em.getReference(User.class,actor.getId()))
+                    .targetType(EngagementTargetType.MEDIA).targetId(hiddenAsset)
+                    .parentComment(em.getReference(Comment.class,root)).text("private legacy content").build());
+            persist(Comment.builder().user(em.getReference(User.class,actor.getId()))
+                    .targetType(EngagementTargetType.EVENT).targetId(UUID.randomUUID())
+                    .parentComment(em.getReference(Comment.class,root)).text("different event content").build());
+            return null;
+        });
+        var replies=service.getReplies(actor.getId(),root,PageRequest.of(0,20));
+        assertThat(replies.getTotalElements()).isEqualTo(1);
+        assertThat(replies.getContent()).singleElement().satisfies(reply -> assertThat(reply.id()).isEqualTo(valid));
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT,event,PageRequest.of(0,20))
+                .getContent()).singleElement().satisfies(comment -> assertThat(comment.replyCount()).isEqualTo(1));
+        assertThat(publicEventComments.getReplies(null,event,root,0,20).getTotalElements()).isEqualTo(1);
     }
 
     @Test void equalTimestampRootAndReplyPaginationHasNoDuplicatesOrMissingLastPage() {
@@ -456,6 +540,47 @@ class CommentServicePostgresTest {
         assertThat(likeService.readCommentLike(actor.getId(),root).likeCount()).isEqualTo(9);
     }
 
+    @Test void concurrentEventDesiredLikesRemainIdempotentWithSharedTargetLocks() throws Exception {
+        try(var workers=Executors.newFixedThreadPool(6)) {
+            for(boolean desired : List.of(true,false)) {
+                var start=new CountDownLatch(1);
+                List<Future<?>> requests=new ArrayList<>();
+                for(int i=0;i<6;i++) requests.add(workers.submit(() -> {
+                    start.await();
+                    if(desired) likeService.like(actor.getId(),EngagementTargetType.EVENT,event);
+                    else likeService.unlike(actor.getId(),EngagementTargetType.EVENT,event);
+                    return null;
+                }));
+                start.countDown();
+                for(var request : requests) request.get(15,TimeUnit.SECONDS);
+                assertThat(likeService.countLikes(EngagementTargetType.EVENT,event)).isEqualTo(desired ? 1 : 0);
+            }
+        }
+    }
+
+    @Test void mediaDeletionWinningTargetLockPreventsRacingContentLikeInsert() throws Exception {
+        UUID asset=tx(() -> persist(MediaAsset.builder().kind(MediaKind.IMAGE).status(MediaStatus.READY)
+                .visibility(MediaVisibility.PUBLIC).ownerType(MediaOwnerType.USER).ownerId(actor.getId())
+                .size(100L).mimeType("image/jpeg").sourceUrl("https://cdn.test/image.jpg").build()).getId());
+        try(var connection=dataSource.getConnection(); var worker=Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try(var lock=connection.prepareStatement("select id from tbl_media_asset where id=? for update")) {
+                lock.setObject(1,asset); lock.executeQuery().close();
+            }
+            var entered=new CountDownLatch(1);
+            var pending=worker.submit(() -> { entered.countDown(); likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset); });
+            assertThat(entered.await(5,TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> pending.get(200,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            try(var deletion=connection.prepareStatement("update tbl_media_asset set status='DELETION_PENDING' where id=?")) {
+                deletion.setObject(1,asset); deletion.executeUpdate();
+            }
+            connection.commit();
+            assertThatThrownBy(() -> pending.get(10,TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
+                    .hasCauseInstanceOf(SoundConnectException.class);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from tbl_like where target_id=?",Long.class,asset)).isZero();
+    }
+
     @Test void commentDeletionWinningTheRowLockPreventsRacingLikeInsert() throws Exception {
         UUID root=create(event,null);
         try(var connection=dataSource.getConnection();var worker=Executors.newSingleThreadExecutor()) {
@@ -595,6 +720,256 @@ class CommentServicePostgresTest {
         assertThat(storedAfterRead).isEqualTo(storedUtc);
     }
 
+    @Test void mediaLikeAndCommentPersistOwnerInboxWithoutRetrySpamOrSelfNotifications() {
+        UUID[] fixture=notificationMedia();
+        UUID owner=fixture[0], asset=fixture[1];
+        likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset);
+        likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset);
+        likeService.unlike(actor.getId(),EngagementTargetType.MEDIA,asset);
+        likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset);
+        assertThat(inbox.countByRecipientIdAndReadIsFalse(owner)).isEqualTo(1);
+        likeService.like(owner,EngagementTargetType.MEDIA,asset);
+        assertThat(inbox.countByRecipientIdAndReadIsFalse(owner)).isEqualTo(1);
+        var comment=service.createComment(actor.getId(),EngagementTargetType.MEDIA,asset,new CommentCreateRequestDto("private snapshot must not be copied",null));
+        assertThat(inbox.countByRecipientIdAndReadIsFalse(owner)).isEqualTo(2);
+        var notification=inbox.findByRecipientId(owner,PageRequest.of(0,10)).stream()
+                .filter(n -> n.getType().name().equals("SOCIAL_COMMENT")).findFirst().orElseThrow();
+        assertThat(notification.getPayload()).containsEntry("targetId",asset.toString()).containsEntry("commentId",comment.id().toString());
+        assertThat(notification.getMessage()).doesNotContain("private snapshot");
+        assertThat(notification.getPayload()).doesNotContainKeys("sourceUrl","playbackUrl","actorAvatarUrl");
+        verify(sockets,times(2)).sendNotificationToUser(eq(owner),any());
+    }
+
+    @Test void rolledBackMediaLikeDoesNotLeaveInboxOrRealtimeSideEffects() {
+        UUID[] fixture=notificationMedia();
+        assertThatThrownBy(() -> tx(() -> {
+            likeService.like(actor.getId(),EngagementTargetType.MEDIA,fixture[1]);
+            throw new IllegalStateException("rollback");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(inbox.countByRecipientIdAndReadIsFalse(fixture[0])).isZero();
+        assertThat(likeRepository.existsByUserIdAndTargetTypeAndTargetId(actor.getId(),EngagementTargetType.MEDIA,fixture[1])).isFalse();
+        verifyNoInteractions(sockets);
+    }
+
+    private UUID[] notificationMedia() {
+        return tx(() -> {
+            User owner=user();
+            var profile=persist(MusicianProfile.builder().user(owner).stageName("Owner").build());
+            var asset=persist(MediaAsset.builder().ownerType(MediaOwnerType.MUSICIAN_PROFILE).ownerId(profile.getId())
+                    .kind(MediaKind.AUDIO).status(MediaStatus.READY).visibility(MediaVisibility.PUBLIC)
+                    .size(100L).mimeType("audio/mpeg").sourceUrl("https://example.test/audio.mp3").title("Audio").build());
+            return new UUID[]{owner.getId(),asset.getId()};
+        });
+    }
+
+    @Test void notificationEnumMigrationPreservesOldTypesAndIsRepeatable() throws Exception {
+        try (var connection=dataSource.getConnection(); var statement=connection.createStatement()) {
+            statement.execute("create temporary table tbl_notification(type varchar(64) check (type in ('SOCIAL_NEW_FOLLOWER')))");
+            String migration=java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-09-09-media-engagement-notification-types.sql"));
+            statement.execute(migration);
+            statement.execute(migration);
+            statement.execute("insert into tbl_notification values ('SOCIAL_LIKE'),('SOCIAL_COMMENT'),('SOCIAL_NEW_FOLLOWER')");
+            assertThatThrownBy(() -> statement.execute("insert into tbl_notification values ('INVALID')"))
+                    .isInstanceOf(java.sql.SQLException.class);
+        }
+    }
+
+    @Test void eventAndTwoListenerPublicationsHaveIndependentLikesAndViewerState() {
+        var first=eventPost(); var second=eventPost();
+        UUID viewer=tx(() -> user().getId());
+        likeService.like(actor.getId(),EngagementTargetType.EVENT,event);
+        likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId());
+        likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId());
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT,event)).isEqualTo(1);
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,first.getPostId())).isEqualTo(1);
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,second.getPostId())).isZero();
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId())).isTrue();
+        assertThat(likeService.isLiked(viewer,EngagementTargetType.EVENT_POST,first.getPostId())).isFalse();
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,second.getPostId())).isFalse();
+        likeService.like(viewer,EngagementTargetType.EVENT_POST,first.getPostId());
+        likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,second.getPostId());
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,first.getPostId())).isEqualTo(2);
+        likeService.unlike(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId());
+        likeService.unlike(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId());
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,first.getPostId())).isEqualTo(1);
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId())).isFalse();
+        assertThat(likeService.isLiked(viewer,EngagementTargetType.EVENT_POST,first.getPostId())).isTrue();
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,second.getPostId())).isEqualTo(1);
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT,event)).isEqualTo(1);
+        assertHidden(() -> likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,event));
+        assertHidden(() -> likeService.countLikes(EngagementTargetType.EVENT,first.getPostId()));
+    }
+
+    @Test void concurrentRepeatedEventPostLikesStoreOneRowAndRepeatedUnlikesRemoveIt() throws Exception {
+        UUID postId=eventPost().getPostId();
+        for(boolean liked:List.of(true,false)) {
+            var ready=new CountDownLatch(4); var start=new CountDownLatch(1);
+            try(var executor=Executors.newFixedThreadPool(4)) {
+                List<Future<?>> requests=new ArrayList<>();
+                for(int i=0;i<4;i++) requests.add(executor.submit(() -> {
+                    ready.countDown();
+                    try { if(!start.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("start timed out"); }
+                    catch(InterruptedException interrupted) { throw new RuntimeException(interrupted); }
+                    if(liked) likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,postId);
+                    else likeService.unlike(actor.getId(),EngagementTargetType.EVENT_POST,postId);
+                }));
+                try { assertThat(ready.await(5,TimeUnit.SECONDS)).isTrue(); }
+                finally { start.countDown(); }
+                for(var request:requests) request.get(10,TimeUnit.SECONDS);
+            }
+            assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,postId)).isEqualTo(liked?1:0);
+            assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,postId)).isEqualTo(liked);
+        }
+    }
+
+    @Test void eventAndTwoListenerPublicationsHaveIndependentCommentsRepliesAndCounts() {
+        var first=eventPost(); var second=eventPost();
+        UUID eventComment=create(event,null);
+        var firstComment=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId(),new CommentCreateRequestDto("first post",null));
+        var secondComment=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,second.getPostId(),new CommentCreateRequestDto("second post",null));
+        var reply=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId(),new CommentCreateRequestDto("first reply",firstComment.id()));
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT,event,PageRequest.of(0,20)).getContent())
+                .extracting(com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto::id).containsExactly(eventComment);
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId(),PageRequest.of(0,20)).getContent())
+                .extracting(com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto::id).containsExactly(firstComment.id());
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT_POST,second.getPostId(),PageRequest.of(0,20)).getContent())
+                .extracting(com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto::id).containsExactly(secondComment.id());
+        assertThat(service.getReplies(actor.getId(),firstComment.id(),PageRequest.of(0,20)).getContent())
+                .extracting(com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto::id).containsExactly(reply.id());
+        assertLikeError(() -> service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,second.getPostId(),
+                new CommentCreateRequestDto("wrong post",firstComment.id())),ErrorType.COMMENT_PARENT_TARGET_MISMATCH);
+        assertLikeError(() -> service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,first.getPostId(),
+                new CommentCreateRequestDto("wrong type",eventComment)),ErrorType.COMMENT_PARENT_TARGET_MISMATCH);
+        likeService.setCommentLike(actor.getId(),firstComment.id(),true);
+        assertThat(likeService.readCommentLike(actor.getId(),firstComment.id()).likedByMe()).isTrue();
+        assertThat(likeService.readCommentLike(actor.getId(),secondComment.id()).likedByMe()).isFalse();
+        assertThat(service.countComments(EngagementTargetType.EVENT_POST,second.getPostId())).isEqualTo(1);
+        assertThat(service.countComments(EngagementTargetType.EVENT,event)).isEqualTo(1);
+    }
+
+    @Test void deletedPublicationCannotExposeOldCommentsOrRemoveARepublishedPostAndPrivatePlanSurvives() {
+        var post=eventPost(); UUID postId=post.getPostId(),owner=post.getId().getUserId();
+        likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,postId);
+        var root=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,postId,new CommentCreateRequestDto("private after removal",null));
+        var clock=mock(EventScheduleClock.class); when(clock.instant()).thenReturn(Instant.parse("2026-09-08T07:00:00Z"));
+        var cards=mock(EventDiscoveryService.class); when(cards.present(anyList())).thenReturn(List.of());
+        var publications=new EventAudienceService(audienceRepository,userRepository,cards,clock);
+        var stranger=eventPost();
+        assertHidden(() -> tx(() -> publications.deletePost(stranger.getId().getUserId(),postId)));
+        var removed=tx(() -> publications.deletePost(owner,postId));
+        assertThat(removed.intent()).isEqualTo(EventIntent.GOING); assertThat(removed.publishedOnProfile()).isFalse();
+        assertThat(removed.note()).isNull(); assertThat(removed.postId()).isNull(); assertThat(removed.version()).isEqualTo(2);
+        assertPostHidden(postId,root.id());
+        // The new ID is a different publication even for the same author and event.
+        UUID next=UUID.randomUUID();
+        jdbc.update("update tbl_event_audience_intent set post_id=?,published_on_profile=true,published_at=now(),version=3 where user_id=? and event_id=?",next,owner,event);
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT_POST,next,PageRequest.of(0,20)).getContent()).isEmpty();
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,next)).isZero();
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,next)).isFalse();
+        assertHidden(() -> tx(() -> publications.deletePost(owner,postId)));
+        assertThat(jdbc.queryForObject("select post_id from tbl_event_audience_intent where user_id=? and event_id=?",UUID.class,owner,event)).isEqualTo(next);
+        assertPostHidden(postId,root.id());
+        service.deleteComment(actor.getId(),root.id());
+    }
+
+    @Test void eventPostPrivacyAndCurrentAuthorEligibilityApplyToEveryCommentEntryPoint() {
+        var post=eventPost(); UUID owner=post.getId().getUserId(),id=post.getPostId();
+        likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,id);
+        var root=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,id,new CommentCreateRequestDto("visible first",null));
+        jdbc.update("update \"tbl_listener-profile\" set visibility_mode='GHOST' where user_id=?",owner); assertPostHidden(id,root.id());
+        jdbc.update("update \"tbl_listener-profile\" set visibility_mode='STANDARD',visibility_choice_completed=false where user_id=?",owner); assertPostHidden(id,root.id());
+        jdbc.update("update \"tbl_listener-profile\" set visibility_choice_completed=true where user_id=?",owner);
+        assertThat(service.getComments(actor.getId(),EngagementTargetType.EVENT_POST,id,PageRequest.of(0,20)).getTotalElements()).isEqualTo(1);
+        assertThat(likeService.countLikes(EngagementTargetType.EVENT_POST,id)).isEqualTo(1);
+        assertThat(likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,id)).isTrue();
+        jdbc.update("update tbl_user set status='INACTIVE' where id=?",owner); assertPostHidden(id,root.id());
+        jdbc.update("update tbl_user set status='ACTIVE',email_verified=false where id=?",owner); assertPostHidden(id,root.id());
+        jdbc.update("update tbl_user set email_verified=true where id=?",owner);
+        tx(() -> { persist(MusicianProfile.builder().user(em.getReference(User.class,owner)).stageName("conflicting profile").build()); return null; });
+        assertPostHidden(id,root.id());
+        jdbc.update("delete from tbl_musician_profile where user_id=?",owner);
+        jdbc.update("delete from user_roles where user_id=?",owner); assertPostHidden(id,root.id());
+    }
+
+    @Test void eventPostCannotOutliveCurrentEventVisibility() {
+        var post=eventPost(); UUID id=post.getPostId();
+        var root=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,id,new CommentCreateRequestDto("event withdrawn",null));
+        jdbc.update("update tbl_venues set status='PENDING' where id=?",venue.getId()); assertPostHidden(id,root.id());
+        jdbc.update("update tbl_venues set status='APPROVED' where id=?",venue.getId());
+        jdbc.update("delete from tbl_event where id=?",event); assertPostHidden(id,root.id());
+    }
+
+    @Test void eventPostReadHoldsAuthorPrivacyEventAndPublicationFencesUntilTransactionCompletes() throws Exception {
+        var post=eventPost(); UUID id=post.getPostId(),owner=post.getId().getUserId();
+        var locked=new CountDownLatch(1); var release=new CountDownLatch(1);
+        try(var executor=Executors.newSingleThreadExecutor()) {
+            var holder=executor.submit(() -> tx(() -> {
+                access.requireReadable(EngagementTargetType.EVENT_POST,id); locked.countDown();
+                try { if(!release.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("release timed out"); }
+                catch(InterruptedException interrupted) { throw new RuntimeException(interrupted); } return null;
+            }));
+            try {
+                assertThat(locked.await(5,TimeUnit.SECONDS)).isTrue();
+                for(String query:List.of("select id from tbl_user where id=? for update nowait",
+                        "select id from \"tbl_listener-profile\" where user_id=? for update nowait",
+                        "select post_id from tbl_event_audience_intent where user_id=? for update nowait"))
+                    assertThatThrownBy(() -> jdbc.queryForObject(query,UUID.class,owner)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+                assertThatThrownBy(() -> jdbc.queryForObject("select id from tbl_event where id=? for update nowait",UUID.class,event))
+                        .isInstanceOf(org.springframework.dao.DataAccessException.class);
+            } finally { release.countDown(); }
+            holder.get(10,TimeUnit.SECONDS);
+        }
+    }
+
+    @Test void commentWaitingForAuthorLockMustObserveRoleRevocationCommittedByThatWriter() throws Exception {
+        var post=eventPost(); UUID owner=post.getId().getUserId();
+        var result=new java.util.concurrent.atomic.AtomicReference<Future<ErrorType>>();
+        try(var executor=Executors.newSingleThreadExecutor()) {
+            tx(() -> {
+                jdbc.queryForObject("select id from tbl_user where id=? for update",UUID.class,owner);
+                result.set(executor.submit(() -> {
+                    try {
+                        service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,post.getPostId(),new CommentCreateRequestDto("must be rejected",null));
+                        return null;
+                    } catch(SoundConnectException rejected) { return rejected.getErrorType(); }
+                }));
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).until(() ->
+                        jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() "
+                                +"and wait_event_type='Lock' and query like '%tbl_user%' and query like '%for share%'",Long.class)>0);
+                jdbc.update("delete from user_roles where user_id=?",owner);
+                return null;
+            });
+            assertThat(result.get().get(10,TimeUnit.SECONDS)).isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND);
+            assertThat(repository.countByTargetTypeAndTargetId(EngagementTargetType.EVENT_POST,post.getPostId())).isZero();
+        }
+    }
+
+    private EventAudienceIntent eventPost() {
+        return tx(() -> {
+            User owner=user();
+            var role=em.createQuery("select r from Role r where r.name='ROLE_LISTENER'",Role.class).getResultStream().findFirst()
+                    .orElseGet(() -> persist(Role.builder().name("ROLE_LISTENER").build()));
+            owner.getRoles().add(role);
+            persist(ListenerProfile.builder().user(owner).visibilityMode(ListenerVisibilityMode.STANDARD).visibilityChoiceCompleted(true).build());
+            var post=new EventAudienceIntent(owner.getId(),event); post.setIntent(EventIntent.GOING);
+            post.setPublishedOnProfile(true); post.setPostId(UUID.randomUUID()); post.setPublishedAt(Instant.now());
+            post.setUpdatedAt(Instant.now()); post.setVersion(1); post.setNote("Published note"); return persist(post);
+        });
+    }
+
+    private void assertPostHidden(UUID postId,UUID root) {
+        assertHidden(() -> service.getComments(actor.getId(),EngagementTargetType.EVENT_POST,postId,PageRequest.of(0,20)));
+        assertHidden(() -> service.getReplies(actor.getId(),root,PageRequest.of(0,20)));
+        assertHidden(() -> service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,postId,new CommentCreateRequestDto("hidden",null)));
+        assertHidden(() -> service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,postId,new CommentCreateRequestDto("hidden reply",root)));
+        assertHidden(() -> likeService.setCommentLike(actor.getId(),root,true));
+        assertHidden(() -> likeService.readCommentLike(actor.getId(),root));
+        assertHidden(() -> likeService.like(actor.getId(),EngagementTargetType.EVENT_POST,postId));
+        assertHidden(() -> likeService.unlike(actor.getId(),EngagementTargetType.EVENT_POST,postId));
+        assertHidden(() -> likeService.isLiked(actor.getId(),EngagementTargetType.EVENT_POST,postId));
+        assertHidden(() -> likeService.countLikes(EngagementTargetType.EVENT_POST,postId));
+    }
+
     private UUID create(UUID event,UUID parent) { return service.createComment(actor.getId(),EngagementTargetType.EVENT,event,new CommentCreateRequestDto("comment",parent)).id(); }
     private Comment comment(User user,UUID event,Comment parent) { return persist(Comment.builder().user(em.getReference(User.class,user.getId())).targetType(EngagementTargetType.EVENT).targetId(event).parentComment(parent).text("text").build()); }
     private User user() { return persist(User.builder().username("user"+UUID.randomUUID().toString().replace("-","").substring(0,10)).email(UUID.randomUUID()+"@test.invalid").password("unused").status(UserStatus.ACTIVE).emailVerified(true).build()); }
@@ -603,15 +978,17 @@ class CommentServicePostgresTest {
     private void assertHidden(Runnable action) { assertThatThrownBy(action::run).isInstanceOfSatisfying(SoundConnectException.class,e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND)); }
 
     @Configuration(proxyBeanMethods=false)
-    @EnableJpaRepositories(basePackageClasses={CommentRepository.class,OverthinkingPostRepository.class,EventCommentReadRepository.class,LikeRepository.class})
+    @EnableJpaRepositories(basePackageClasses={CommentRepository.class,OverthinkingPostRepository.class,EventCommentReadRepository.class,LikeRepository.class,NotificationRepository.class,EventAudienceRepository.class,UserRepository.class})
     @EntityScan(basePackages="com.berkayb.soundconnect")
     @Import({CommentServiceImpl.class,CommentEntityFinder.class,CommentTargetAccessGuard.class,CommentAuthorBatchResolver.class,JpaAuditingConfig.class,EventCommentReadService.class,
-            LikeServiceImpl.class,CommentLikeAccessGuard.class,MediaEngagementCleanupService.class})
+            LikeServiceImpl.class,CommentLikeAccessGuard.class,MediaEngagementCleanupService.class,EngagementTargetValidatorImpl.class,
+            MediaEngagementNotificationService.class,TransactionalNotificationService.class})
     static class Config {
         @Bean DataSource dataSource() {
             if(!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL must be running");
             return new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
         }
         @Bean CommentMapper mapper() { return Mappers.getMapper(CommentMapper.class); }
+        @Bean NotificationMapper notificationMapper() { return Mappers.getMapper(NotificationMapper.class); }
     }
 }

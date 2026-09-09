@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueP
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -60,7 +61,7 @@ public class VenueProfileUserController {
 	public ResponseEntity<BaseResponse<VenueProfileResponseDto>> updateMyVenueProfile(
 			@AuthenticationPrincipal UserDetailsImpl userDetails,
 			@PathVariable UUID venueId,
-			@RequestBody VenueProfileSaveRequestDto dto) {
+			@Valid @RequestBody VenueProfileSaveRequestDto dto) {
 		VenueProfileResponseDto response = venueProfileService.updateProfileByVenueId(userDetails.getUser().getId(), venueId, dto);
 		return ResponseEntity.ok(BaseResponse.<VenueProfileResponseDto>builder()
 		                                     .success(true)
@@ -75,7 +76,7 @@ public class VenueProfileUserController {
 	public ResponseEntity<BaseResponse<VenueOwnerProfileResponseDto>> updateMyVenueProfileDetail( //degisti
 	                                                                                              @AuthenticationPrincipal UserDetailsImpl userDetails,
 	                                                                                              @PathVariable UUID venueId,
-	                                                                                              @RequestBody VenueProfileSaveRequestDto dto) {
+	                                                                                              @Valid @RequestBody VenueProfileSaveRequestDto dto) {
 		
 		VenueOwnerProfileResponseDto response = venueProfileService.updateOwnerProfileDetail(userDetails.getUser().getId(), venueId, dto); //degisti
 		

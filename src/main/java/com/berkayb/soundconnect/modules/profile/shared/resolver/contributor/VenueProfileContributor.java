@@ -33,7 +33,7 @@ public class VenueProfileContributor implements PublicProfileContributor {
 		List<UserProfileTargetDto> result = new ArrayList<>();
 		
 		// Owner'a ait tüm mekanları bul
-		List<Venue> venues = venueRepository.findAllByOwnerId(userId);
+		List<Venue> venues = venueRepository.findAllPubliclyVisibleByOwnerId(userId);
 		
 		for (Venue venue : venues) {
 			// Venue'nin profile'ını getir

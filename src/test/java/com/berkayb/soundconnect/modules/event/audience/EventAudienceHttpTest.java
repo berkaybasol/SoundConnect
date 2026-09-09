@@ -66,6 +66,17 @@ class EventAudienceHttpTest {
         mvc.perform(get(MINE).with(viewer("ROLE_MUSICIAN"))).andExpect(status().isOk());
         verify(service).mine(USER,EventIntentPeriod.UPCOMING,0,20);
     }
+    @Test void deletePublicationRequiresListenerAndUsesPrincipalAndExistingQuota() throws Exception {
+        String path="/api/v1/user/event-posts/"+PROFILE;
+        mvc.perform(delete(path)).andExpect(status().isUnauthorized());
+        mvc.perform(delete(path).with(viewer("ROLE_MUSICIAN"))).andExpect(status().isForbidden());
+        mvc.perform(delete(path).with(viewer("ROLE_VENUE"))).andExpect(status().isForbidden());
+        verifyNoInteractions(service,guard);
+        mvc.perform(delete(path).with(viewer("ROLE_LISTENER")).param("userId",UUID.randomUUID().toString()))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control","private, no-store"));
+        var order=inOrder(service,guard);
+        order.verify(service).requireAuthority(USER); order.verify(guard).check(USER); order.verify(service).deletePost(USER,PROFILE);
+    }
     @ParameterizedTest @ValueSource(strings={
             "{}","null","[]", "{\"intent\":\"GOING\",\"publishedOnProfile\":false,\"expectedVersion\":0}",
             "{\"intent\":\"GOING\",\"publishedOnProfile\":false,\"note\":null,\"expectedVersion\":\"0\"}",
@@ -96,18 +107,20 @@ class EventAudienceHttpTest {
     }
     @Test void privateStateAndPublicPostHaveDistinctStableWireContracts() throws Exception {
         Instant instant=Instant.parse("2026-09-08T12:00:00Z");
-        var own=new EventIntentResponse.State(EVENT,EventIntent.THINKING,true,"Owner note",4,instant,false,false,false,false,false,null);
+        var own=new EventIntentResponse.State(EVENT,EventIntent.THINKING,true,"Owner note",4,instant,false,false,false,false,false,null,PROFILE);
         when(service.get(USER,EVENT)).thenReturn(own);
         mvc.perform(get(ONE).with(viewer("ROLE_LISTENER"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.eventId").value(EVENT.toString())).andExpect(jsonPath("$.data.intent").value("THINKING"))
+                .andExpect(jsonPath("$.data.postId").value(PROFILE.toString()))
                 .andExpect(jsonPath("$.data.version").value(4)).andExpect(jsonPath("$.data.eventAvailable").value(false))
                 .andExpect(jsonPath("$.data.publicationVisible").value(false)).andExpect(jsonPath("$.data.canPublish").value(false));
         when(service.posts(USER,PROFILE,EventIntentPeriod.ALL,0,20)).thenReturn(new PageResponse<>(
-                List.of(new EventIntentResponse.Post(EVENT,EventIntent.GOING,"Public note",instant,true,null)),0,20,1,1,true,true));
+                List.of(new EventIntentResponse.Post(EVENT,EventIntent.GOING,"Public note",instant,true,null,PROFILE)),0,20,1,1,true,true));
         mvc.perform(get(POSTS).with(viewer("ROLE_LISTENER"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.page").value(0)).andExpect(jsonPath("$.data.number").value(0))
                 .andExpect(jsonPath("$.data.totalElements").value(1)).andExpect(jsonPath("$.data.content[0].eventEnded").value(true))
                 .andExpect(jsonPath("$.data.content[0].intent").value("GOING"))
+                .andExpect(jsonPath("$.data.content[0].postId").value(PROFILE.toString()))
                 .andExpect(jsonPath("$.data.content[0].version").doesNotExist())
                 .andExpect(jsonPath("$.data.content[0].publishedOnProfile").doesNotExist())
                 .andExpect(jsonPath("$.data.content[0].canPublish").doesNotExist());

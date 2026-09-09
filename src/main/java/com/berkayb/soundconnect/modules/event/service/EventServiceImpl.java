@@ -42,6 +42,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class EventServiceImpl implements EventService{
 	
 	private final EventRepository eventRepository;
@@ -63,10 +64,7 @@ public class EventServiceImpl implements EventService{
 		if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
 			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		}
-		return eventRepository.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, startDate, endDate)
-				.stream()
-				.map(eventMapper::toDto)
-				.toList();
+		return eventMapper.toDtos(eventRepository.findPublicByVenueBetween(venue, startDate, endDate));
 	}
 	
 	@Override
@@ -78,10 +76,7 @@ public class EventServiceImpl implements EventService{
 			log.warn("[EVENT] Kullanici bu venue'nun sahibi degil. userId={}, venueId={}", ownerUserId, venueId);
 			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
 		}
-		return eventRepository.findByVenueOrderByEventDateAscStartTimeAsc(venue)
-		                      .stream()
-		                      .map(eventMapper::toDto)
-		                      .toList();
+		return eventMapper.toDtos(eventRepository.findByVenueOrderByEventDateAscStartTimeAsc(venue));
 		
 	}
 	
@@ -126,7 +121,7 @@ public class EventServiceImpl implements EventService{
 		}
 		
 		// saat araligi dogrulamasi
-		if (dto.endTime() != null && dto.endTime().isBefore(dto.startTime())) {
+		if (dto.endTime() != null && !dto.endTime().isAfter(dto.startTime())) {
 			log.warn("[EVENT] Gecersiz saat araligi. startTime={}, endTime={}",
 			         dto.startTime(), dto.endTime());
 			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
@@ -279,41 +274,34 @@ public class EventServiceImpl implements EventService{
 	
 	@Override
 	public EventResponseDto getEventById(UUID eventId) {
-		Event event = eventRepository.findById(eventId)
-				.filter(found -> found.getEventOrigin() == EventOrigin.VENUE)
+		Event event = eventRepository.findPublicById(eventId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.EVENT_NOT_FOUND));
 		return eventMapper.toDto(event);
 	}
 	
 	@Override
 	public List<EventResponseDto> getEventsByDate(LocalDate date) {
-		return eventRepository.findByEventDate(date)
-				.stream().map(eventMapper::toDto).toList();
+		return eventMapper.toDtos(eventRepository.findByEventDate(date));
 	}
 	
 	@Override
 	public List<EventResponseDto> getEventsByCity(UUID cityId) {
-		return eventRepository.findByVenue_City_Id(cityId)
-				.stream().map(eventMapper::toDto).toList();
+		return eventMapper.toDtos(eventRepository.findByVenue_City_Id(cityId));
 	}
 	
 	@Override
 	public List<EventResponseDto> getEventsByDistrict(UUID districtId) {
-		return eventRepository.findByVenue_District_Id(districtId)
-				.stream().map(eventMapper::toDto).toList();
+		return eventMapper.toDtos(eventRepository.findByVenue_District_Id(districtId));
 	}
 	
 	@Override
 	public List<EventResponseDto> getEventsByNeighborhood(UUID neighborhoodId) {
-		return eventRepository.findByVenue_Neighborhood_Id(neighborhoodId)
-				.stream().map(eventMapper::toDto).toList();
+		return eventMapper.toDtos(eventRepository.findByVenue_Neighborhood_Id(neighborhoodId));
 	}
 	
 	@Override
 	public List<EventResponseDto> getEventsByVenue(UUID venueId) {
 		Venue venue = venueEntityFinder.getVenue(venueId);
-		return eventRepository.findByVenueOrderByEventDateAscStartTimeAsc(venue)
-				.stream().map(eventMapper::toDto)
-				              .toList();
+		return eventMapper.toDtos(eventRepository.findByVenue(venue));
 	}
 }

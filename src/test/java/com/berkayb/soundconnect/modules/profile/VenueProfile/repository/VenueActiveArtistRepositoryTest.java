@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import jakarta.persistence.EntityManager;
@@ -199,10 +200,41 @@ class VenueActiveArtistRepositoryTest {
     }
 
     private Venue newVenue(String name) {
+        User owner = persist(User.builder().username("owner" + UUID.randomUUID().toString().substring(0, 8))
+                .email(UUID.randomUUID() + "@test.invalid").password("test-password")
+                .status(UserStatus.ACTIVE).emailVerified(true).build());
         var result = persist(Venue.builder().name(name).address("Address").city(city).district(district)
-                .neighborhood(neighborhood).status(VenueStatus.APPROVED).build());
+                .neighborhood(neighborhood).status(VenueStatus.APPROVED).owner(owner).build());
         persist(VenueProfile.builder().venue(result).build());
         return result;
+    }
+
+    @Test
+    void pendingAndUnavailableOwnerVenuesDoNotExposeTheArtistDirectory() {
+        musician("Visible musician", "directoryartist", venue, RequestStatus.ACCEPTED, true, RequestByType.ARTIST);
+        band("Visible band", venue, RequestStatus.ACCEPTED, true);
+        em.flush();
+        assertThat(repository.existsVenueProfile(venue.getId())).isTrue();
+
+        venue.setStatus(VenueStatus.PENDING);
+        assertHiddenDirectory();
+        venue.setStatus(VenueStatus.APPROVED);
+        venue.getOwner().setStatus(UserStatus.INACTIVE);
+        assertHiddenDirectory();
+        venue.getOwner().setStatus(UserStatus.ACTIVE);
+        venue.getOwner().setEmailVerified(false);
+        assertHiddenDirectory();
+        venue.getOwner().setEmailVerified(true);
+        City foreignCity = persist(City.builder().name("Foreign city").build());
+        venue.setCity(foreignCity);
+        assertHiddenDirectory();
+    }
+
+    private void assertHiddenDirectory() {
+        em.flush();
+        assertThat(repository.existsVenueProfile(venue.getId())).isFalse();
+        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
+        assertThat(repository.findBands(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
     }
 
     private MusicianProfile musician(String stageName, String username, Venue target,

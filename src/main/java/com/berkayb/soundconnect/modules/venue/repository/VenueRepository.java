@@ -16,6 +16,30 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface VenueRepository extends JpaRepository<Venue, UUID> {
+	/** Public profiles, directories and connection admission share this eligibility rule. */
+	String PUBLIC_VISIBILITY = """
+			venue.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+			and venue.owner.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+			and venue.owner.emailVerified = true
+			and venue.district.city.id = venue.city.id
+			and venue.neighborhood.district.id = venue.district.id
+			""";
+
+	@EntityGraph(attributePaths = {"owner", "city", "district", "neighborhood"})
+	@Query("select venue from Venue venue where venue.id = :venueId and " + PUBLIC_VISIBILITY)
+	Optional<Venue> findPubliclyVisibleById(@Param("venueId") UUID venueId);
+
+	@Query("select (count(venue) > 0) from Venue venue where venue.id = :venueId and " + PUBLIC_VISIBILITY)
+	boolean existsPubliclyVisibleById(@Param("venueId") UUID venueId);
+
+	@EntityGraph(attributePaths = {"owner", "city", "district", "neighborhood"})
+	@Query("select venue from Venue venue where " + PUBLIC_VISIBILITY + " order by lower(venue.name), venue.id")
+	List<Venue> findAllPubliclyVisible();
+
+	@EntityGraph(attributePaths = {"owner", "city", "district", "neighborhood"})
+	@Query("select venue from Venue venue where venue.owner.id = :ownerId and " + PUBLIC_VISIBILITY
+			+ " order by lower(venue.name), venue.id")
+	List<Venue> findAllPubliclyVisibleByOwnerId(@Param("ownerId") UUID ownerId);
 
 List<Venue> findAllByOwnerId(UUID ownerId);
 Optional<Venue> findByIdAndOwnerId(UUID venueId, UUID ownerId);
@@ -78,12 +102,20 @@ boolean existsByOwner_Id(UUID ownerId);
 	@Query(
 			value = """
 					select v from Venue v
-					where locate(lower(:q), lower(coalesce(v.name, ''))) > 0
+					where v.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+					and v.owner.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+					and v.owner.emailVerified = true
+					and v.district.city.id = v.city.id and v.neighborhood.district.id = v.district.id
+					and locate(lower(:q), lower(coalesce(v.name, ''))) > 0
 					order by lower(v.name), v.id
 					""",
 			countQuery = """
 					select count(v) from Venue v
-					where locate(lower(:q), lower(coalesce(v.name, ''))) > 0
+					where v.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+					and v.owner.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+					and v.owner.emailVerified = true
+					and v.district.city.id = v.city.id and v.neighborhood.district.id = v.district.id
+					and locate(lower(:q), lower(coalesce(v.name, ''))) > 0
 					"""
 	)
 	Page<Venue> searchByName(@Param("q") String q, Pageable pageable);
@@ -95,9 +127,13 @@ boolean existsByOwner_Id(UUID ownerId);
 	@Query("""
 			select v
 			from Venue v
-			where locate(lower(:q), lower(coalesce(v.name, ''))) > 0
+			where v.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+			   and v.owner.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+			   and v.owner.emailVerified = true
+			   and v.district.city.id = v.city.id and v.neighborhood.district.id = v.district.id
+			   and (locate(lower(:q), lower(coalesce(v.name, ''))) > 0
 			   or (:usernameQuery <> ''
-			       and locate(:usernameQuery, coalesce(v.owner.username, '')) > 0)
+			       and locate(:usernameQuery, coalesce(v.owner.username, '')) > 0))
 			order by
 				case
 					when lower(coalesce(v.name, v.owner.username, '')) = lower(:q) then 0

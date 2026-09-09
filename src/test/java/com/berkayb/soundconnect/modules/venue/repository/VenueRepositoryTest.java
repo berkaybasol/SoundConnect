@@ -59,13 +59,13 @@ class VenueRepositoryTest {
 		
 		ownerA = userRepository.save(User.builder()
 		                                 .username("ownerA_" + UUID.randomUUID().toString().substring(0, 12))
-		                                 .password("x").email("a@test.com")
+		                                 .password("x").email("a@test.com").emailVerified(true).status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE)
 		                                 .city(city)
 		                                 .build());
 		
 		ownerB = userRepository.save(User.builder()
 		                                 .username("ownerB_" + UUID.randomUUID().toString().substring(0, 12))
-		                                 .password("x").email("b@test.com")
+		                                 .password("x").email("b@test.com").emailVerified(true).status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE)
 		                                 .city(city)
 		                                 .build());
 	}
@@ -106,6 +106,38 @@ class VenueRepositoryTest {
 		
 		assertThat(found).isPresent();
 		assertThat(found.get().getName()).isEqualTo("V1");
+	}
+
+	@Test
+	void publicEntryPointsHidePendingDisabledUnverifiedAndInvalidLocationVenues() {
+		Venue venue = venueRepository.saveAndFlush(newVenue("Public venue", ownerA));
+		assertThat(venueRepository.findPubliclyVisibleById(venue.getId())).isPresent();
+		assertThat(venueRepository.existsPubliclyVisibleById(venue.getId())).isTrue();
+		venue.setStatus(VenueStatus.PENDING);
+		assertPublicVenueHidden(venue);
+		venue.setStatus(VenueStatus.APPROVED);
+		ownerA.setStatus(com.berkayb.soundconnect.modules.user.enums.UserStatus.INACTIVE);
+		userRepository.saveAndFlush(ownerA);
+		assertPublicVenueHidden(venue);
+		ownerA.setStatus(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE);
+		ownerA.setEmailVerified(false);
+		userRepository.saveAndFlush(ownerA);
+		assertPublicVenueHidden(venue);
+		ownerA.setEmailVerified(true);
+		userRepository.saveAndFlush(ownerA);
+		venue.setCity(cityRepository.save(City.builder().name("Other city").build()));
+		assertPublicVenueHidden(venue);
+		assertThat(venueRepository.findByIdAndOwnerId(venue.getId(), ownerA.getId())).isPresent();
+	}
+
+	private void assertPublicVenueHidden(Venue venue) {
+		venueRepository.saveAndFlush(venue);
+		assertThat(venueRepository.findPubliclyVisibleById(venue.getId())).isEmpty();
+		assertThat(venueRepository.existsPubliclyVisibleById(venue.getId())).isFalse();
+		assertThat(venueRepository.findAllPubliclyVisible()).isEmpty();
+		assertThat(venueRepository.findAllPubliclyVisibleByOwnerId(ownerA.getId())).isEmpty();
+		assertThat(venueRepository.searchByName("Public", PageRequest.of(0, 10))).isEmpty();
+		assertThat(venueRepository.searchByNameOrOwnerUsername("Public", "Public", PageRequest.of(0, 10))).isEmpty();
 	}
 	
 	@Test

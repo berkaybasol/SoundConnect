@@ -30,6 +30,8 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.*;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
@@ -394,6 +396,34 @@ class EventServiceImplTest {
 		
 		verify(eventRepository).delete(event);
 		verify(eventPerformerRequestService).deleteForEvent(eventId);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"19:59", "20:00"})
+	void createEvent_rejectsAnEndThatDoesNotFollowItsStart(String endTime) {
+		User owner = User.builder().id(userId).build();
+		venue.setOwner(owner);
+		venue.setStatus(VenueStatus.APPROVED);
+		when(userEntityFinder.getUser(userId)).thenReturn(owner);
+		when(venueEntityFinder.getVenue(venueId)).thenReturn(venue);
+		var dto = new EventCreateRequestDto("Concert", null, LocalDate.of(2026, 9, 20),
+				LocalTime.of(20, 0), LocalTime.parse(endTime), null, venueId, null, null, null);
+
+		assertThatThrownBy(() -> eventService.createEvent(userId, dto))
+				.isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.INVALID_PARAMETER);
+		verify(eventRepository, never()).save(any());
+		verifyNoInteractions(eventPerformerRequestService);
+	}
+
+	@Test
+	void publicDetailDoesNotFallBackToTheUnrestrictedEntityLookup() {
+		UUID hiddenEventId = UUID.randomUUID();
+		when(eventRepository.findPublicById(hiddenEventId)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> eventService.getEventById(hiddenEventId))
+				.isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.EVENT_NOT_FOUND);
+		verify(eventRepository, never()).findById(any());
+		verifyNoInteractions(eventMapper);
 	}
 	
 	@Test

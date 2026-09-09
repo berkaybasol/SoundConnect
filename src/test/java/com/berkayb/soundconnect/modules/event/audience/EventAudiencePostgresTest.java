@@ -75,6 +75,7 @@ class EventAudiencePostgresTest {
             // Replace only the generated new table so the actual additive SQL constraints/indexes are tested.
             jdbc.execute("drop table tbl_event_audience_intent");
             new ResourceDatabasePopulator(new FileSystemResource("scripts/db/2026-09-08-event-audience-intents.sql")).execute(dataSource);
+            jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-09-09-event-post-comments.sql")));
             schemaInstalled=true;
         }
         clock.now.set(Instant.parse("2026-09-08T12:00:00Z")); reset(media);
@@ -101,6 +102,27 @@ class EventAudiencePostgresTest {
         jdbc.update("insert into tbl_event_audience_intent(user_id,event_id) values (?,?)",bare,event);
         jdbc.update("delete from tbl_user where id=?",bare);
         assertThat(jdbc.queryForObject("select count(*) from tbl_event_audience_intent where user_id=?",Long.class,bare)).isZero();
+    }
+    @Test void actualPublicationLifecyclePreservesIntentAndRejectsOldIdAfterRepublishing() {
+        UUID event=event(LocalTime.of(16,0),null);
+        var published=choose(event,EventIntent.GOING,true,"Original",0);
+        assertThat(published.postId()).isNotNull();
+        var edited=choose(event,EventIntent.THINKING,true,"Edited",1);
+        assertThat(edited.postId()).isEqualTo(published.postId());
+        assertThat(service.posts(viewer,profile,EventIntentPeriod.ALL,0,20).content().getFirst().postId()).isEqualTo(published.postId());
+        setGhost(true);
+        assertThat(service.get(actor,event).postId()).isEqualTo(published.postId());
+        assertThat(service.posts(viewer,profile,EventIntentPeriod.ALL,0,20).content()).isEmpty();
+        var removed=service.deletePost(actor,published.postId());
+        assertThat(removed.intent()).isEqualTo(EventIntent.THINKING); assertThat(removed.version()).isEqualTo(3);
+        assertThat(removed.postId()).isNull(); assertThat(removed.note()).isNull();
+        setGhost(false);
+        var again=choose(event,EventIntent.THINKING,true,"New conversation",3);
+        assertThat(again.postId()).isNotNull().isNotEqualTo(published.postId());
+        assertThat(catchThrowableOfType(() -> service.deletePost(actor,published.postId()),SoundConnectException.class).getErrorType())
+                .isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND);
+        assertThat(service.get(actor,event).postId()).isEqualTo(again.postId());
+        assertThat(service.get(actor,event).version()).isEqualTo(4);
     }
     @Test void concurrentFirstChoicesSerializeAndExactRetriesNeverDuplicateOrAdvanceVersion() throws Exception {
         UUID event=event(LocalTime.of(16,0),null);
@@ -151,7 +173,7 @@ class EventAudiencePostgresTest {
         tx(() -> { for(int i=0;i<67;i++) {
             var value=newEvent(date,LocalTime.of(16,0),null); value.setPosterImage(UUID.randomUUID().toString());
             var intent=new EventAudienceIntent(actor,value.getId()); intent.setIntent(EventIntent.THINKING);
-            intent.setPublishedOnProfile(true); intent.setNote("Plan "+i); intent.setPublishedAt(clock.instant());
+            intent.setPublishedOnProfile(true); intent.setPostId(UUID.randomUUID()); intent.setNote("Plan "+i); intent.setPublishedAt(clock.instant());
             intent.setUpdatedAt(clock.instant()); intent.setVersion(1); em.persist(intent); expected.add(value.getId());
         } return null; });
         expected.sort(Comparator.comparing(UUID::toString));

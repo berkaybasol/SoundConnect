@@ -9,6 +9,9 @@ import java.time.*;
 import java.util.*;
 
 public interface EventAudienceRepository extends JpaRepository<EventAudienceIntent, EventAudienceIntent.Id> {
+    @Query("select intent.id.eventId from EventAudienceIntent intent where intent.id.userId=:userId and intent.postId=:postId and intent.publishedOnProfile=true")
+    Optional<UUID> publishedEventId(@Param("userId") UUID userId, @Param("postId") UUID postId);
+
     @Query(value = "select id from tbl_user where id=:userId and status='ACTIVE' and email_verified for update", nativeQuery = true)
     Optional<UUID> lockActor(@Param("userId") UUID userId);
     @Query(value = "select id from tbl_user where id=:userId and status='ACTIVE' and email_verified for share", nativeQuery = true)

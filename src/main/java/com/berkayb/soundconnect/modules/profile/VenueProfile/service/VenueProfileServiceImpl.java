@@ -19,6 +19,7 @@ import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.*;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.mapper.VenueProfileMapper;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.profile.shared.ProfileInputValidation;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
@@ -71,9 +72,10 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	@Override
 	@Transactional
 	public VenueProfileResponseDto updateProfileByVenueId(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto) {
+		validateContent(dto);
 		Venue venue = venueRepository.findByIdAndOwnerId(venueId, userId)
 		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
-		VenueProfile profile = venueProfileRepository.findByVenueId(venue.getId())
+		VenueProfile profile = venueProfileRepository.findByVenueIdForUpdate(venue.getId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 		applyOwnerUpdate(userId, profile, dto);
 		return venueProfileMapper.toResponse(venueProfileRepository.save(profile));
@@ -82,6 +84,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	@Override
 	@Transactional
 	public VenueProfileResponseDto createProfile(UUID venueId, VenueProfileSaveRequestDto dto) {
+		validateContent(dto);
 		Venue venue = venueEntityFinder.getVenue(venueId);
 		
 		if (venueProfileRepository.findByVenueId(venueId).isPresent()) {
@@ -95,9 +98,9 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 		                                   .venue(venue)
 		                                   .bio(dto.bio())
 		                                   .profilePictureMediaId(dto.profilePicture())
-		                                   .instagramUrl(dto.instagramUrl())
-		                                   .youtubeUrl(dto.youtubeUrl())
-		                                   .websiteUrl(dto.websiteUrl())
+		                                   .instagramUrl(ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl"))
+		                                   .youtubeUrl(ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl"))
+		                                   .websiteUrl(ProfileInputValidation.webUrl(dto.websiteUrl(), "websiteUrl"))
 		                                   .build();
 		
 		VenueProfile saved = venueProfileRepository.save(profile);
@@ -114,7 +117,8 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	@Override
 	@Transactional
 	public VenueProfileResponseDto updateProfile(UUID venueId, VenueProfileSaveRequestDto dto) {
-		VenueProfile profile = venueProfileRepository.findByVenueId(venueId)
+		validateContent(dto);
+		VenueProfile profile = venueProfileRepository.findByVenueIdForUpdate(venueId)
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
 		
 		if (dto.bio() != null) profile.setBio(dto.bio());
@@ -123,9 +127,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 					dto.profilePicture(), MediaOwnerType.VENUE_PROFILE, profile.getId());
 			profile.setProfilePictureMediaId(dto.profilePicture());
 		}
-		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
-		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
-		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl());
+		applyLinks(profile, dto);
 		
 		VenueProfile updated = venueProfileRepository.save(profile);
 		return venueProfileMapper.toResponse(updated);
@@ -145,10 +147,11 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	@Override
 	@Transactional
 	public VenueOwnerProfileResponseDto updateOwnerProfileDetail(UUID userId, UUID venueId, VenueProfileSaveRequestDto dto) { //eklendi
+		validateContent(dto);
 		Venue venue = venueRepository.findByIdAndOwnerId(venueId, userId) //eklendi
 		                             .orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND)); //eklendi
 		
-		VenueProfile profile = venueProfileRepository.findByVenueId(venueId) //eklendi
+		VenueProfile profile = venueProfileRepository.findByVenueIdForUpdate(venueId) //eklendi
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)); //eklendi
 		
 		applyOwnerUpdate(userId, profile, dto);
@@ -166,9 +169,21 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 			);
 			profile.setProfilePictureMediaId(dto.profilePicture());
 		}
-		if (dto.instagramUrl() != null) profile.setInstagramUrl(dto.instagramUrl());
-		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(dto.youtubeUrl());
-		if (dto.websiteUrl() != null) profile.setWebsiteUrl(dto.websiteUrl());
+		applyLinks(profile, dto);
+	}
+
+	private void validateContent(VenueProfileSaveRequestDto dto) {
+		if (dto == null) throw ProfileInputValidation.invalid("Profile content is required");
+		ProfileInputValidation.text(dto.bio(), 1024, "bio");
+		ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl");
+		ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl");
+		ProfileInputValidation.webUrl(dto.websiteUrl(), "websiteUrl");
+	}
+
+	private void applyLinks(VenueProfile profile, VenueProfileSaveRequestDto dto) {
+		if (dto.instagramUrl() != null) profile.setInstagramUrl(ProfileInputValidation.webUrl(dto.instagramUrl(), "instagramUrl"));
+		if (dto.youtubeUrl() != null) profile.setYoutubeUrl(ProfileInputValidation.webUrl(dto.youtubeUrl(), "youtubeUrl"));
+		if (dto.websiteUrl() != null) profile.setWebsiteUrl(ProfileInputValidation.webUrl(dto.websiteUrl(), "websiteUrl"));
 	}
 
 	private void lockAssignableVenueImage(UUID assetId, MediaOwnerType ownerType, UUID ownerId) {
@@ -193,7 +208,8 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	
 	@Override
 	public VenuePublicProfileResponseDto getPublicProfileDetail(UUID venueId) { //eklendi
-		Venue venue = venueEntityFinder.getVenue(venueId); //eklendi
+		Venue venue = venueRepository.findPubliclyVisibleById(venueId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
 		
 		VenueProfile profile = venueProfileRepository.findByVenueId(venueId) //eklendi
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)); //eklendi
@@ -234,7 +250,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 				
 				mapActiveMusicians(venue),
 				mapActiveBands(venue), //eklendi
-				mapWeeklyEvents(venue)
+				mapWeeklyEvents(venue, false)
 		
 		);
 	}
@@ -266,7 +282,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 				
 				mapActiveMusicians(venue),
 				mapActiveBands(venue),
-				mapWeeklyEvents(venue)
+				mapWeeklyEvents(venue, true)
 		);
 	}
 	
@@ -350,13 +366,16 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	} //eklendi
 	
 	
-	private List<VenueEventSummaryDto> mapWeeklyEvents(Venue venue) { //degisti
+	private List<VenueEventSummaryDto> mapWeeklyEvents(Venue venue, boolean publicView) { //degisti
 		// Weekly profiles follow the event's Istanbul calendar day. An event
 		// that ended earlier today remains until the next business date.
 		LocalDate today = scheduleClock.localNow().toLocalDate();
 		LocalDate endDate = today.plusDays(6); //degisti
 		
-		return eventRepository.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, today, endDate) //degisti
+		List<Event> events = publicView
+				? eventRepository.findPublicByVenueBetween(venue, today, endDate)
+				: eventRepository.findByVenueAndEventDateBetweenOrderByEventDateAscStartTimeAsc(venue, today, endDate);
+		return events
 		                      .stream()
 		                      .map(this::toVenueEventSummaryDto)
 		                      .toList();

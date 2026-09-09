@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.repository;
 
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
@@ -15,16 +16,16 @@ import java.util.UUID;
  * therefore cannot publish an artist in the venue's directory.
  */
 public interface VenueActiveArtistRepository extends Repository<Venue, UUID> {
-    @Query("""
-            select (count(profile) > 0) from VenueProfile profile where profile.venue.id = :venueId
-            """)
+    @Query("select (count(profile) > 0) from VenueProfile profile join profile.venue venue "
+            + "where venue.id = :venueId and " + VenueRepository.PUBLIC_VISIBILITY)
     boolean existsVenueProfile(@Param("venueId") UUID venueId);
 
     String MUSICIAN_FROM = """
             from Venue venue join venue.activeMusicians musician join musician.user musicianUser
             """;
     String MUSICIAN_FILTER = """
-            where venue.id = :venueId
+            where venue.id = :venueId and
+            """ + VenueRepository.PUBLIC_VISIBILITY + """
             and exists (select request.id from ArtistVenueConnectionRequest request
                 where request.venue.id = venue.id and request.musicianProfile.id = musician.id
                 and request.status = com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus.ACCEPTED)
@@ -53,7 +54,8 @@ public interface VenueActiveArtistRepository extends Repository<Venue, UUID> {
 
     String BAND_FROM = "from Venue venue join venue.activeBands band ";
     String BAND_FILTER = """
-            where venue.id = :venueId
+            where venue.id = :venueId and
+            """ + VenueRepository.PUBLIC_VISIBILITY + """
             and exists (select request.id from ArtistVenueConnectionRequest request
                 where request.venue.id = venue.id and request.band.id = band.id
                 and request.status = com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus.ACCEPTED)

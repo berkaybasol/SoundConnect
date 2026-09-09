@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.event.controller.user;
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.enums.PerformerType;
 import com.berkayb.soundconnect.modules.event.service.EventService;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +20,7 @@ import org.springframework.context.annotation.FilterType;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -41,6 +43,9 @@ class EventUserControllerTest {
 	
 	@MockitoBean
 	private EventService eventService;
+
+	@MockitoBean
+	private EventScheduleClock scheduleClock;
 	
 	@Autowired
 	private ObjectMapper objectMapper;
@@ -48,6 +53,7 @@ class EventUserControllerTest {
 	@Test
 	@DisplayName("GET /api/v1/events/today -> Günün etkinlikleri listelenmeli")
 	void getTodayEvents_shouldReturnOk() throws Exception {
+		Mockito.when(scheduleClock.localNow()).thenReturn(LocalDate.now().atStartOfDay());
 		UUID bandId = UUID.randomUUID();
 		var event1 = new EventResponseDto(
 				UUID.randomUUID(),
@@ -102,5 +108,18 @@ class EventUserControllerTest {
 		       .andExpect(jsonPath("$.data[0].bandId").value(bandId.toString()))
 		       .andExpect(jsonPath("$.data[1].venueName").value("Jolly Joker"))
 		       .andExpect(jsonPath("$.data.length()").value(2));
+	}
+
+	@Test
+	void todayUsesTurkeyDateWhenUtcIsStillThePreviousDay() throws Exception {
+		Mockito.when(scheduleClock.instant()).thenReturn(Instant.parse("2026-09-08T21:30:00Z"));
+		Mockito.when(scheduleClock.localNow()).thenCallRealMethod();
+		Mockito.when(eventService.getEventsByDate(LocalDate.of(2026, 9, 9))).thenReturn(List.of());
+
+		mockMvc.perform(get(EndPoints.Event.USER_BASE + EndPoints.Event.USER_TODAY))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data").isEmpty());
+
+		Mockito.verify(eventService).getEventsByDate(LocalDate.of(2026, 9, 9));
+		Mockito.verifyNoMoreInteractions(eventService);
 	}
 }

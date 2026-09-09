@@ -52,6 +52,33 @@ class EventAudienceServiceTest {
         assertThat(state.canSetIntent()).isTrue(); assertThat(state.canPublish()).isTrue(); assertThat(state.event()).isEqualTo(event);
         verify(repository,never()).saveAndFlush(any());
     }
+    @Test void publicationIdentitySurvivesEditsAndGhostButNewPublicationHasANewConversation() {
+        var first=service.update(user,eventId,update(EventIntent.GOING,true,"First",0));
+        assertThat(first.postId()).isNotNull().isNotEqualTo(eventId);
+        var edited=service.update(user,eventId,update(EventIntent.THINKING,true,"Edited",1));
+        assertThat(edited.postId()).isEqualTo(first.postId());
+        profile.setVisibilityMode(ListenerVisibilityMode.GHOST);
+        assertThat(service.get(user,eventId).postId()).isEqualTo(first.postId());
+        assertThat(service.get(user,eventId).publicationVisible()).isFalse();
+        var unpublished=service.update(user,eventId,update(EventIntent.THINKING,false,null,2));
+        assertThat(unpublished.postId()).isNull();
+        profile.setVisibilityMode(ListenerVisibilityMode.STANDARD);
+        var republished=service.update(user,eventId,update(EventIntent.THINKING,true,"New",3));
+        assertThat(republished.postId()).isNotNull().isNotEqualTo(first.postId());
+    }
+
+    @Test void deletePostPreservesPrivateIntentAndAllowsRemovalWhenEventUnavailableOrGhost() {
+        var published=service.update(user,eventId,update(EventIntent.GOING,true,"A note",0));
+        when(repository.publishedEventId(user,published.postId())).thenReturn(Optional.of(eventId));
+        profile.setVisibilityMode(ListenerVisibilityMode.GHOST);
+        when(cards.present(anyList())).thenReturn(List.of());
+        var removed=service.deletePost(user,published.postId());
+        assertThat(removed.intent()).isEqualTo(EventIntent.GOING);
+        assertThat(removed.publishedOnProfile()).isFalse(); assertThat(removed.postId()).isNull();
+        assertThat(removed.note()).isNull(); assertThat(removed.version()).isEqualTo(2);
+        assertThat(removed.eventAvailable()).isFalse();
+        assertThatThrownBy(() -> service.deletePost(user,published.postId())).isInstanceOf(SoundConnectException.class);
+    }
     @Test void lostResponseRetryDoesNotAdvanceVersionAndAbaStaleCommandCannotResurrectEarlierIntent() {
         var first=update(EventIntent.GOING,false,null,0);
         assertThat(service.update(user,eventId,first).version()).isEqualTo(1);

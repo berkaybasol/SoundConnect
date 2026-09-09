@@ -18,7 +18,6 @@ import java.util.Set;
 import java.util.UUID;
 
 
-@EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder
 @NoArgsConstructor
@@ -26,6 +25,17 @@ import java.util.UUID;
 @Entity
 @Table(name = "tbl_venues")
 public class Venue extends BaseEntity {
+	/** Connection sets must survive venue edits, ID assignment and proxy loading. */
+	@Override
+	public final boolean equals(Object other) {
+		return this == other || other instanceof Venue venue
+				&& getId() != null && getId().equals(venue.getId());
+	}
+
+	@Override
+	public final int hashCode() {
+		return Venue.class.hashCode();
+	}
 	
 	@Column(nullable = false, length = 50)
 	private String name;
