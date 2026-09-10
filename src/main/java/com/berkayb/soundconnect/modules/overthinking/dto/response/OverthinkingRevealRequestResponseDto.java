@@ -19,6 +19,7 @@ public record OverthinkingRevealRequestResponseDto(
 		@JsonInclude(JsonInclude.Include.NON_NULL)
 		ListenerVisibilityMode requesterVisibilityMode,
 		
+		@JsonInclude(JsonInclude.Include.NON_NULL)
 		UUID authorId,
 		
 		OverthinkingRevealRequestStatus status,
@@ -27,6 +28,10 @@ public record OverthinkingRevealRequestResponseDto(
 		
 ) {
 	public OverthinkingRevealRequestResponseDto {
+		// This record is also built outside MapStruct. Enforce consent at the wire boundary.
+		if (status != OverthinkingRevealRequestStatus.APPROVED) {
+			authorId = null;
+		}
 		if (requesterVisibilityMode != ListenerVisibilityMode.GHOST) {
 			requesterVisibilityMode = null;
 		}

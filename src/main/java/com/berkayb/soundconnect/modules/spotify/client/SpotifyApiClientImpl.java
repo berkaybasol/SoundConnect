@@ -237,7 +237,11 @@ public class SpotifyApiClientImpl implements SpotifyApiClient {
 				(t.external_urls != null ? t.external_urls.spotify : null),
 				(t.album != null ? t.album.name : null),
 				bestAlbumImageUrl(t.album),
-				(t.artists == null ? List.of() : t.artists.stream().map(a -> a.name).toList())
+				(t.artists == null ? List.of() : t.artists.stream()
+						.filter(a -> a != null).map(a -> a.name).toList()),
+				(t.artists == null ? List.of() : t.artists.stream()
+						.filter(a -> a != null && a.id != null && !a.id.isBlank())
+						.map(a -> a.id).toList())
 		);
 	}
 	

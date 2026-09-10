@@ -29,7 +29,13 @@ public interface FollowMapper {
 			Follow follow,
 			Map<UUID, GhostListenerIdentity> ghostIdentities
 	) {
+		return toDto(follow, ghostIdentities, Map.of());
+	}
+
+	default FollowResponseDto toDto(Follow follow, Map<UUID, GhostListenerIdentity> ghostIdentities,
+	                               Map<UUID, String> listenerAvatars) {
 		FollowResponseDto base = toDto(follow);
+		Map<UUID, String> currentAvatars = listenerAvatars == null ? Map.of() : listenerAvatars;
 		Map<UUID, GhostListenerIdentity> safeIdentities = ghostIdentities == null
 				? Map.of()
 				: ghostIdentities;
@@ -40,11 +46,11 @@ public interface FollowMapper {
 				base.id(),
 				base.followerId(),
 				followerIdentity == null ? base.followerUsername() : followerIdentity.username(),
-				followerIdentity == null ? base.followerProfilePicture() : followerIdentity.profilePictureUrl(),
+				followerIdentity == null ? currentAvatars.getOrDefault(base.followerId(), base.followerProfilePicture()) : followerIdentity.profilePictureUrl(),
 				followerIdentity == null ? null : followerIdentity.visibilityMode(),
 				base.followingId(),
 				followingIdentity == null ? base.followingUsername() : followingIdentity.username(),
-				followingIdentity == null ? base.followingProfilePicture() : followingIdentity.profilePictureUrl(),
+				followingIdentity == null ? currentAvatars.getOrDefault(base.followingId(), base.followingProfilePicture()) : followingIdentity.profilePictureUrl(),
 				followingIdentity == null ? null : followingIdentity.visibilityMode(),
 				base.followedAt()
 		);

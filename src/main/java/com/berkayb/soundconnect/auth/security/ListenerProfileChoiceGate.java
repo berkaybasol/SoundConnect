@@ -65,6 +65,7 @@ public class ListenerProfileChoiceGate {
 		String method = request.getMethod();
 		String path = applicationPath(request);
 		return HttpMethod.OPTIONS.matches(method)
+				|| (HttpMethod.DELETE.matches(method) && "/api/v1/users/me/account".equals(path))
 				|| "/error".equals(path)
 				|| (HttpMethod.POST.matches(method) && AUTH_POST_ENDPOINTS.contains(path))
 				|| (HttpMethod.GET.matches(method) && OWNER_PROFILE.equals(path))

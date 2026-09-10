@@ -66,6 +66,7 @@ class RabbitToDbE2E {
 	@Import({
 			NotificationRabbitConfig.class,
 			NotificationEventListener.class,
+			com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class,
 			NotificationBadgeCacheHelper.class,
 			com.berkayb.soundconnect.modules.notification.mapper.NotificationMapperImpl.class
 	})

@@ -34,6 +34,7 @@ public class TransactionalNotificationService {
     private final NotificationWebSocketService notificationWebSocketService;
     private final NotificationService notificationService;
     private final NotificationReceiptRepository receiptRepository;
+    private final NotificationDeliveryPolicy deliveryPolicy;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void persistInCurrentTransaction(NotificationInboundEvent event) {
@@ -51,8 +52,10 @@ public class TransactionalNotificationService {
         if (title.length() > 160 || message.length() > 1000) {
             throw new IllegalArgumentException("Notification title/message exceeds storage limits");
         }
+        boolean eligible = deliveryPolicy.eligible(event);
         if (receiptRepository.claim(event.eventId(), event.recipientId()) == 0) return;
         if (notificationRepository.existsBySourceEventId(event.eventId())) return;
+        if (!eligible) return;
 
         Notification saved = notificationRepository.saveAndFlush(Notification.builder()
                 .sourceEventId(event.eventId())
@@ -67,7 +70,7 @@ public class TransactionalNotificationService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                dispatchCommitted(saved);
+                deliveryPolicy.schedule(event, saved.getId(), () -> dispatchCommitted(saved));
             }
         });
     }

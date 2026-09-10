@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.overthinking.mapper;
 
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingRevealRequestResponseDto;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRequest;
+import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -15,15 +16,23 @@ public interface OverthinkingRevealRequestMapper {
 	@Mapping(target = "requesterUsername", expression = "java(request.getRequester().getUsername())")
 	@Mapping(target = "requesterAvatarUrl", ignore = true)
 	@Mapping(target = "requesterVisibilityMode", ignore = true)
-	@Mapping(target = "authorId", expression = "java(request.getAuthor().getId())")
+	@Mapping(target = "authorId", expression = "java(request.isApproved() ? request.getAuthor().getId() : null)")
 	OverthinkingRevealRequestResponseDto toDto(OverthinkingRevealRequest request);
 
 	default OverthinkingRevealRequestResponseDto toDto(
 			OverthinkingRevealRequest request,
 			GhostListenerIdentity ghostIdentity
 	) {
+		return toDto(request, ghostIdentity, null);
+	}
+
+	default OverthinkingRevealRequestResponseDto toDto(
+			OverthinkingRevealRequest request,
+			GhostListenerIdentity ghostIdentity,
+			UserSummaryDto standardIdentity
+	) {
 		OverthinkingRevealRequestResponseDto base = toDto(request);
-		if (ghostIdentity == null) {
+		if (ghostIdentity == null && standardIdentity == null) {
 			return base;
 		}
 		return new OverthinkingRevealRequestResponseDto(
@@ -31,9 +40,9 @@ public interface OverthinkingRevealRequestMapper {
 				base.postId(),
 				base.postTitle(),
 				base.requesterId(),
-				ghostIdentity.username(),
-				ghostIdentity.profilePictureUrl(),
-				ghostIdentity.visibilityMode(),
+				ghostIdentity != null ? ghostIdentity.username() : standardIdentity.username(),
+				ghostIdentity != null ? ghostIdentity.profilePictureUrl() : standardIdentity.avatarUrl(),
+				ghostIdentity != null ? ghostIdentity.visibilityMode() : standardIdentity.visibilityMode(),
 				base.authorId(),
 				base.status(),
 				base.createdAt()

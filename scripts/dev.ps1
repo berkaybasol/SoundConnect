@@ -42,7 +42,13 @@ $LocalSchemaMigrations = @(
     @{ Name = "Venue analytics"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-venue-analytics.sql" },
     @{ Name = "Event audience intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-event-audience-intents.sql" },
     @{ Name = "Comment likes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-comment-likes.sql" },
-    @{ Name = "Event post comments"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-event-post-comments.sql" }
+    @{ Name = "Event post comments"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-event-post-comments.sql" },
+    @{ Name = "Overthinking lifecycle"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-overthinking-lifecycle.sql" },
+    @{ Name = "Overthinking notification outbox"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-overthinking-notification-outbox.sql" },
+    @{ Name = "Overthinking inbox seen"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-inbox-seen.sql" },
+    @{ Name = "Overthinking profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-profile-shares.sql" },
+    @{ Name = "Overthinking production safety"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-production-safety.sql" },
+    @{ Name = "Listener account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-listener-account-erasure.sql" }
 )
 
 function Assert-Command([string]$Name) {

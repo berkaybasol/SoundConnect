@@ -65,6 +65,10 @@ public class GhostListenerIdentityBatchResolver {
 					pendingUserIds == null ? Set.of() : pendingUserIds,
 					resolved
 			);
+			Set<UUID> erased = listenerProfileRepository.findErasedUserIds(batch);
+			if (erased != null) for (UUID userId : erased) {
+				resolved.put(userId, new GhostListenerIdentity(userId, "Silinmiş hesap", null, ListenerVisibilityMode.GHOST));
+			}
 		}
 		return resolved.isEmpty()
 				? Map.of()

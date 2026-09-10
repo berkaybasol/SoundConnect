@@ -2,26 +2,30 @@ package com.berkayb.soundconnect.modules.overthinking.service;
 
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRequest;
+import com.berkayb.soundconnect.modules.overthinking.outbox.OverthinkingNotificationOutboxPublisher;
+import com.berkayb.soundconnect.modules.overthinking.outbox.OverthinkingNotificationOutboxTimeProvider;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
-import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
+@Transactional(propagation = Propagation.MANDATORY)
 public class OverthinkingNotificationServiceImpl implements OverthinkingNotificationService {
 	
-	private final NotificationProducer notificationProducer;
+	private final OverthinkingNotificationOutboxPublisher notificationOutboxPublisher;
+	private final OverthinkingNotificationOutboxTimeProvider timeProvider;
 	
 	@Override
 	public void sendRevealRequestReceivedNotification(OverthinkingRevealRequest request) {
+		if (!request.isPending()) throw new IllegalArgumentException("Received notification requires a pending request");
 		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_RECEIVED");
 		payload.put("requesterId", request.getRequester().getId().toString());
 		
@@ -29,14 +33,14 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 				request.getAuthor().getId(),
 				NotificationType.OVERTHINKING_REVEAL_REQUEST_RECEIVED,
 				"Anonim paylaşımına görüntüleme isteği geldi",
-				request.getRequester().getUsername() + " profilini görüntülemek istiyor.",
-				payload,
-				request
+				"Birisi bu yazıda profilini görüntülemek istiyor.",
+				payload
 		);
 	}
 	
 	@Override
 	public void sendRevealRequestApprovedNotification(OverthinkingRevealRequest request) {
+		if (!request.isApproved()) throw new IllegalArgumentException("Approved notification requires an approved request");
 		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_APPROVED");
 		payload.put("authorId", request.getAuthor().getId().toString());
 		
@@ -45,13 +49,13 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 				NotificationType.OVERTHINKING_REVEAL_REQUEST_APPROVED,
 				"Profil görüntüleme isteğin kabul edildi",
 				"Artık anonim paylaşımın sahibini görüntüleyebilirsin.",
-				payload,
-				request
+				payload
 		);
 	}
 	
 	@Override
 	public void sendRevealRequestRejectedNotification(OverthinkingRevealRequest request) {
+		if (!request.isRejected()) throw new IllegalArgumentException("Rejected notification requires a rejected request");
 		Map<String, Object> payload = basePayload(request, "REVEAL_REQUEST_REJECTED");
 		
 		publish(
@@ -59,8 +63,7 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 				NotificationType.OVERTHINKING_REVEAL_REQUEST_REJECTED,
 				"Profil görüntüleme isteğin reddedildi",
 				"Yazar şu an profilini paylaşmak istemiyor.",
-				payload,
-				request
+				payload
 		);
 	}
 	
@@ -79,36 +82,21 @@ public class OverthinkingNotificationServiceImpl implements OverthinkingNotifica
 			NotificationType type,
 			String title,
 			String message,
-			Map<String, Object> payload,
-			OverthinkingRevealRequest request
+			Map<String, Object> payload
 	) {
 		NotificationInboundEvent event = NotificationInboundEvent.builder()
+		                                                         .eventId(UUID.randomUUID())
 		                                                         .recipientId(recipientId)
 		                                                         .type(type)
 		                                                         .title(title)
 		                                                         .message(message)
 		                                                         .payload(payload)
 		                                                         .emailForce(false)
-		                                                         .occurredAt(Instant.now())
+		                                                         .occurredAt(timeProvider.now())
 		                                                         .build();
 		
-		try {
-			notificationProducer.publish(event);
-			
-			log.info(
-					"[OverthinkingNotification] Notification published. type={}, recipient={}, request={}",
-					type,
-					recipientId,
-					request.getId()
-			);
-		} catch (Exception e) {
-			log.warn(
-					"[OverthinkingNotification] Notification publish failed. type={}, recipient={}, request={}, err={}",
-					type,
-					recipientId,
-					request.getId(),
-					e.toString()
-			);
-		}
+		// Enqueue failure must roll back the reveal transition. Broker delivery is
+		// attempted only after commit and remains recoverable by the scheduler.
+		notificationOutboxPublisher.enqueueAll(List.of(event));
 	}
 }

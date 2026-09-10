@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.overthinking.mapper;
 
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPostResponseDto;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
+import com.berkayb.soundconnect.modules.overthinking.support.OverthinkingSpotifyReference;
+import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
@@ -14,6 +16,20 @@ import java.util.List;
 
 @Mapper(componentModel = "spring")
 public abstract class OverthinkingPostMapper {
+
+    /** Feed/detail identity is resolved once per distinct author, before mapping this page. */
+    public OverthinkingPostResponseDto toResolvedDto(OverthinkingPost post, boolean canViewAuthor,
+            long likes, long comments, boolean likedByMe, UserSummaryDto identity) {
+        boolean expose = canViewAuthor && identity != null;
+        return new OverthinkingPostResponseDto(post.getId(), expose ? identity.id() : null,
+                expose ? identity.username() : "Anonymous", expose ? identity.avatarUrl() : null,
+                expose ? identity.visibilityMode() : null, post.isAnonymous(), expose, post.getVisibilityType(),
+                post.getTitle(), post.getContent(), post.getSpotifyTrackUrl(), post.getSpotifyArtistId(),
+                post.getSpotifyTrackName(), post.getSpotifyArtistName(),
+                OverthinkingSpotifyReference.imageUrlOrNull(post.getSpotifyAlbumImageUrl()),
+                post.getMusicianTrackId(), post.getBandTrackId(), post.getArtistId(), post.getArtistType(),
+                likes, comments, likedByMe);
+    }
 	
 	@Autowired
 	protected PublicProfileResolverService profileResolverService;
@@ -66,9 +82,10 @@ public abstract class OverthinkingPostMapper {
 				
 				post.getSpotifyTrackUrl(),
 				post.getSpotifyArtistId(),
-				firstText(post.getSpotifyTrackName(), spotifyTrack != null ? spotifyTrack.name() : null),
-				firstText(post.getSpotifyArtistName(), spotifyTrack != null ? artistName(spotifyTrack.artistNames()) : null),
-				firstText(post.getSpotifyAlbumImageUrl(), spotifyTrack != null ? spotifyTrack.albumImageUrl() : null),
+				firstText(spotifyTrack != null ? spotifyTrack.name() : null, post.getSpotifyTrackName()),
+				firstText(spotifyTrack != null ? artistName(spotifyTrack.artistNames()) : null, post.getSpotifyArtistName()),
+				firstText(OverthinkingSpotifyReference.imageUrlOrNull(spotifyTrack != null ? spotifyTrack.albumImageUrl() : null),
+                        OverthinkingSpotifyReference.imageUrlOrNull(post.getSpotifyAlbumImageUrl())),
 				post.getMusicianTrackId(),
 				post.getBandTrackId(),
 				

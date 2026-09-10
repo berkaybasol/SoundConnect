@@ -34,6 +34,7 @@ public class MailJobConsumer {
 	private final MailSenderClient mailSenderClient;
 	private final MailJobHelper helper;
 	private final MailRetryPublisher retryPublisher;
+	private final com.berkayb.soundconnect.modules.notification.service.NotificationMailDelivery notificationMailDelivery;
 	
 	@Value("${mail.idempotencyTtlSec:900}")
 	private long idempotencyTtlSec;
@@ -102,7 +103,11 @@ public class MailJobConsumer {
 			log.info("processing mail job: kind={}, to={}", request.kind(), maskedTo);
 			
 			// Send
-			mailSenderClient.send(request.to(), request.subject(), request.textBody(), request.htmlBody());
+			if (request.kind() == com.berkayb.soundconnect.shared.mail.enums.MailKind.NOTIFICATION) {
+				notificationMailDelivery.sendIfCurrent(request);
+			} else {
+				mailSenderClient.send(request.to(), request.subject(), request.textBody(), request.htmlBody());
+			}
 			
 			// Success -> mark sent + release lock + ACK
 			helper.markSent(sentKey, Duration.ofSeconds(idempotencyTtlSec));

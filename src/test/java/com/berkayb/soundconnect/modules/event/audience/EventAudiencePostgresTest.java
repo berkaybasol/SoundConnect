@@ -124,6 +124,40 @@ class EventAudiencePostgresTest {
         assertThat(service.get(actor,event).postId()).isEqualTo(again.postId());
         assertThat(service.get(actor,event).version()).isEqualTo(4);
     }
+
+    @Test void sixPublicationRowsHaveCorrectIsolatedStatsWithoutPerCardDatabaseReads() {
+        for (int index=0; index<6; index++) {
+            UUID eventId=event(LocalTime.of(16,0),null);
+            UUID postId=choose(eventId,EventIntent.GOING,true,"Plan "+index,0).postId();
+            tx(() -> {
+                var owner=em.getReference(User.class,actor);
+                persist(com.berkayb.soundconnect.modules.like.entity.Like.builder().user(owner)
+                        .targetType(com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType.EVENT_POST)
+                        .targetId(postId).build());
+                persist(com.berkayb.soundconnect.modules.comment.entity.Comment.builder().user(owner)
+                        .targetType(com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType.EVENT_POST)
+                        .targetId(postId).text("Publication comment").build());
+                persist(com.berkayb.soundconnect.modules.comment.entity.Comment.builder().user(owner)
+                        .targetType(com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType.EVENT)
+                        .targetId(eventId).text("Separate event comment").build());
+                return null;
+            });
+        }
+        var statistics=em.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+        service.posts(actor,profile,EventIntentPeriod.ALL,0,1);
+        long singleRowQueries=statistics.getPrepareStatementCount();
+        statistics.clear();
+        var result=service.posts(actor,profile,EventIntentPeriod.ALL,0,6);
+        assertThat(result.content()).hasSize(6).allSatisfy(row -> {
+            assertThat(row.likeCount()).isEqualTo(1);
+            assertThat(row.commentCount()).isEqualTo(1);
+            assertThat(row.likedByMe()).isTrue();
+            assertThat(row.viewerIntentState().intent()).isEqualTo(EventIntent.GOING);
+            assertThat(row.viewerIntentState().version()).isEqualTo(1);
+        });
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(singleRowQueries);
+    }
     @Test void concurrentFirstChoicesSerializeAndExactRetriesNeverDuplicateOrAdvanceVersion() throws Exception {
         UUID event=event(LocalTime.of(16,0),null);
         try(var executor=Executors.newFixedThreadPool(8)) {
@@ -330,7 +364,9 @@ class EventAudiencePostgresTest {
     private <T>T tx(Supplier<T> work) { return new TransactionTemplate(manager).execute(status -> work.get()); }
     static class TestClock extends EventScheduleClock { final AtomicReference<Instant> now=new AtomicReference<>(); @Override public Instant instant(){return now.get();} }
     @Configuration(proxyBeanMethods=false) @EnableJpaAuditing
-    @EnableJpaRepositories(basePackageClasses={EventAudienceRepository.class,EventDiscoveryRepository.class,UserRepository.class,ListenerProfileRepository.class})
+    @EnableJpaRepositories(basePackageClasses={EventAudienceRepository.class,EventDiscoveryRepository.class,UserRepository.class,ListenerProfileRepository.class,
+            com.berkayb.soundconnect.modules.like.repository.LikeRepository.class,
+            com.berkayb.soundconnect.modules.comment.repository.CommentRepository.class})
     @EntityScan(basePackages="com.berkayb.soundconnect") @Import({EventAudienceService.class,EventDiscoveryService.class})
     static class Config {
         @Bean DataSource dataSource() { if(!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL is not running");

@@ -1,9 +1,14 @@
 package com.berkayb.soundconnect.modules.overthinking.controller;
 
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingRevealRequestResponseDto;
+import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPendingRevealRequestCountResponseDto;
+import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingIncomingUnreadStatusResponseDto;
+import com.berkayb.soundconnect.modules.overthinking.dto.request.OverthinkingIncomingSeenRequestDto;
+import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingRevealInboxService;
 import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingRevealRequestService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
@@ -25,6 +30,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Overthinking.*;
 public class OverthinkingRevealRequestController {
 	
 	private final OverthinkingRevealRequestService revealRequestService;
+	private final OverthinkingRevealInboxService inboxService;
 	
 	@PostMapping(CREATE_REVEAL_REQUEST)
 	@PreAuthorize("isAuthenticated()")
@@ -43,6 +49,18 @@ public class OverthinkingRevealRequestController {
 		                                     .build());
 	}
 	
+	@DeleteMapping(CREATE_REVEAL_REQUEST)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Bekleyen kimlik görüntüleme isteğimi geri çek")
+	public ResponseEntity<BaseResponse<Void>> cancelRevealRequest(
+			@AuthenticationPrincipal(expression = "id") UUID requesterId,
+			@PathVariable UUID postId
+	) {
+		revealRequestService.cancelRevealRequest(requesterId, postId);
+		return ResponseEntity.ok(BaseResponse.<Void>builder().success(true).code(200)
+				.message("Görüntüleme isteği geri çekildi").build());
+	}
+
 	@PostMapping(APPROVE_REVEAL_REQUEST)
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Görüntüleme isteğini kabul et")
@@ -94,6 +112,48 @@ public class OverthinkingRevealRequestController {
 		                                     .build());
 	}
 	
+	@GetMapping(INCOMING_PENDING_REVEAL_REQUEST_COUNT)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Karar bekleyen gelen görüntüleme isteklerinin sayısı")
+	public ResponseEntity<BaseResponse<OverthinkingPendingRevealRequestCountResponseDto>> getIncomingPendingRequestCount(
+			@AuthenticationPrincipal(expression = "id") UUID authorId
+	) {
+		var response = new OverthinkingPendingRevealRequestCountResponseDto(
+				revealRequestService.getIncomingPendingRequestCount(authorId));
+		return ResponseEntity.ok(BaseResponse.<OverthinkingPendingRevealRequestCountResponseDto>builder()
+				.success(true)
+				.message("Bekleyen görüntüleme isteği sayısı getirildi")
+				.code(200)
+				.data(response)
+				.build());
+	}
+
+	@GetMapping(INCOMING_REVEAL_UNREAD_STATUS)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Gelen görüntüleme isteklerinin okunmamış durumu")
+	public ResponseEntity<BaseResponse<OverthinkingIncomingUnreadStatusResponseDto>> getIncomingUnreadStatus(
+			@AuthenticationPrincipal(expression = "id") UUID authorId
+	) {
+		return incomingStatus(inboxService.getUnreadStatus(authorId));
+	}
+
+	@PostMapping(INCOMING_REVEAL_SEEN)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Açılan gelen istekler kutusunu okundu olarak işaretle")
+	public ResponseEntity<BaseResponse<OverthinkingIncomingUnreadStatusResponseDto>> markIncomingSeen(
+			@AuthenticationPrincipal(expression = "id") UUID authorId,
+			@Valid @RequestBody OverthinkingIncomingSeenRequestDto request
+	) {
+		return incomingStatus(inboxService.markSeen(authorId, request.revision()));
+	}
+
+	private ResponseEntity<BaseResponse<OverthinkingIncomingUnreadStatusResponseDto>> incomingStatus(
+			OverthinkingIncomingUnreadStatusResponseDto status
+	) {
+		return ResponseEntity.ok(BaseResponse.<OverthinkingIncomingUnreadStatusResponseDto>builder()
+				.success(true).code(200).message("Gelen isteklerin okunma durumu getirildi").data(status).build());
+	}
+
 	@GetMapping(SENT_REVEAL_REQUESTS)
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "Gönderdiğim görüntüleme istekleri")

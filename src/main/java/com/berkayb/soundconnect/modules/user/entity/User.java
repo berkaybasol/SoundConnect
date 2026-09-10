@@ -43,6 +43,11 @@ import java.util.UUID;
 		)
 )
 public class User extends BaseEntity {
+	/** Permanent identity erasure marker; retained only for shared-history references. */
+	@Column(name = "erased_at")
+	@JsonIgnore
+	private LocalDateTime erasedAt;
+
 	@Column(name = "public_code", nullable = false, unique = true, updatable = false, length = 23)
 	private String publicCode;
 	

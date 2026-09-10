@@ -113,7 +113,7 @@ public class UserDetailsImpl implements UserDetails {
 	
 	@Override
 	public boolean isEnabled() {
-		return Boolean.TRUE.equals(user.getEmailVerified())
+		return user.getErasedAt() == null && Boolean.TRUE.equals(user.getEmailVerified())
 				&& user.getStatus() == UserStatus.ACTIVE;
 	}
 }

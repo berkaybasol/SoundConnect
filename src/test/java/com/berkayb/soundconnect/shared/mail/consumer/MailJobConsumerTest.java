@@ -37,7 +37,8 @@ class MailJobConsumerTest {
 	
 	@BeforeEach
 	void setUp() {
-		consumer = new MailJobConsumer(mailSenderClient, helper, retryPublisher);
+		consumer = new MailJobConsumer(mailSenderClient, helper, retryPublisher,
+				mock(com.berkayb.soundconnect.modules.notification.service.NotificationMailDelivery.class));
 		// @Value alanlarını testte setliyoruz
 		setField(consumer, "idempotencyTtlSec", 900L);
 		setField(consumer, "lockTtlSec", 300L);

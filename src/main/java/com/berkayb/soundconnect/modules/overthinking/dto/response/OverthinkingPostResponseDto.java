@@ -44,9 +44,11 @@ public record OverthinkingPostResponseDto(
 		// engagement
 		long likeCount,
 		long commentCount,
-		boolean likedByMe
+		boolean likedByMe,
+		boolean revealRequestPending
 ) {
 	public OverthinkingPostResponseDto {
+		revealRequestPending = anonymous && !canViewAuthor && revealRequestPending;
 		if (!canViewAuthor || authorId == null) {
 			authorId = null;
 			authorUsername = "Anonymous";
@@ -55,6 +57,27 @@ public record OverthinkingPostResponseDto(
 		} else if (authorVisibilityMode != ListenerVisibilityMode.GHOST) {
 			authorVisibilityMode = null;
 		}
+	}
+
+	public OverthinkingPostResponseDto(
+			UUID id, UUID authorId, String authorUsername, String authorAvatarUrl,
+			ListenerVisibilityMode authorVisibilityMode, boolean anonymous, boolean canViewAuthor,
+			OverthinkingVisibilityType visibilityType, String title, String content,
+			String spotifyTrackUrl, String spotifyArtistId, String spotifyTrackName,
+			String spotifyArtistName, String spotifyAlbumImageUrl, UUID musicianTrackId, UUID bandTrackId,
+			UUID artistId, OverthinkingArtistType artistType, long likeCount, long commentCount, boolean likedByMe
+	) {
+		this(id, authorId, authorUsername, authorAvatarUrl, authorVisibilityMode, anonymous, canViewAuthor,
+				visibilityType, title, content, spotifyTrackUrl, spotifyArtistId, spotifyTrackName, spotifyArtistName,
+				spotifyAlbumImageUrl, musicianTrackId, bandTrackId, artistId, artistType, likeCount, commentCount,
+				likedByMe, false);
+	}
+
+	public OverthinkingPostResponseDto withRevealRequestPending(boolean pending) {
+		return new OverthinkingPostResponseDto(id, authorId, authorUsername, authorAvatarUrl, authorVisibilityMode,
+				anonymous, canViewAuthor, visibilityType, title, content, spotifyTrackUrl, spotifyArtistId,
+				spotifyTrackName, spotifyArtistName, spotifyAlbumImageUrl, musicianTrackId, bandTrackId,
+				artistId, artistType, likeCount, commentCount, likedByMe, pending);
 	}
 
 	/** Keeps source compatibility for existing service and test call sites. */

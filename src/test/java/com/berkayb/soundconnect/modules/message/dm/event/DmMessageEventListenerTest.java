@@ -49,7 +49,7 @@ class DmMessageEventListenerTest {
 		
 		DmMessageEventListener listener = new DmMessageEventListener(
 				messagingTemplate, messageMapper, messageRepository, notificationProducer, userRepository,
-				publicProfileResolverService
+				publicProfileResolverService, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts()
 		);
 		
 		// Given
@@ -150,7 +150,7 @@ class DmMessageEventListenerTest {
 				messageRepository,
 				notificationProducer,
 				userRepository,
-				publicProfileResolverService
+				publicProfileResolverService, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts()
 		);
 		UUID conversationId = UUID.randomUUID();
 		UUID senderId = UUID.randomUUID();
@@ -224,7 +224,7 @@ class DmMessageEventListenerTest {
 				messageRepository,
 				notificationProducer,
 				userRepository,
-				publicProfileResolverService
+				publicProfileResolverService, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts()
 		);
 		UUID conversationId = UUID.randomUUID();
 		UUID senderId = UUID.randomUUID();
@@ -288,7 +288,7 @@ class DmMessageEventListenerTest {
 		
 		DmMessageEventListener listener = new DmMessageEventListener(
 				messagingTemplate, messageMapper, messageRepository, notificationProducer, userRepository,
-				publicProfileResolverService
+				publicProfileResolverService, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts()
 		);
 		
 		UUID messageId = UUID.randomUUID();
@@ -316,10 +316,10 @@ class DmMessageEventListenerTest {
 	@Test
 	@DisplayName("DM realtime event handlers run only after transaction commit")
 	void realtimeHandlers_areAfterCommit() throws Exception {
-		TransactionalEventListener sentListener = DmMessageEventListener.class
+		TransactionalEventListener sentListener = DmMessageEventDispatcher.class
 				.getMethod("onDmMessageSent", DmMessageSentEvent.class)
 				.getAnnotation(TransactionalEventListener.class);
-		TransactionalEventListener readListener = DmMessageEventListener.class
+		TransactionalEventListener readListener = DmMessageEventDispatcher.class
 				.getMethod("onDmMessageRead", DmMessageReadEvent.class)
 				.getAnnotation(TransactionalEventListener.class);
 		Transactional sentTransaction = DmMessageEventListener.class
@@ -345,7 +345,8 @@ class DmMessageEventListenerTest {
 		PublicProfileResolverService publicProfileResolverService = mock(PublicProfileResolverService.class);
 		DmMessageEventListener listener = new DmMessageEventListener(
 				messagingTemplate, messageMapper, messageRepository, notificationProducer,
-				userRepository, publicProfileResolverService);
+				userRepository, publicProfileResolverService,
+				com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts());
 		UUID readerId = UUID.randomUUID();
 		when(messageRepository.countByRecipientIdAndReadAtIsNull(readerId)).thenReturn(4L);
 

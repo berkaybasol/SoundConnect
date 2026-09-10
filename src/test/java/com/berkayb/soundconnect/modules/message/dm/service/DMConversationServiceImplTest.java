@@ -61,6 +61,13 @@ class DMConversationServiceImplTest {
 	@Mock VenueRepository venueRepository;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+
+	@org.junit.jupiter.api.BeforeEach
+	void creationBoundary() {
+		org.springframework.test.util.ReflectionTestUtils.setField(service,"conversationCreationService",
+				new DmConversationCreationService(conversationRepository,
+						com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.activeAccounts()));
+	}
 	
 	@Test
 	@DisplayName("getAllConversationsForUser: son mesaja göre DESC sıralama + profil lookup + okundu bayrağı")

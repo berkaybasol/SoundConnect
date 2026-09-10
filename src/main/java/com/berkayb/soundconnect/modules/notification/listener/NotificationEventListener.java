@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
+import com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
@@ -46,6 +47,7 @@ public class NotificationEventListener {
 	private final MailProducer mailProducer;
 	private final NotificationService notificationService;
 	private final NotificationReceiptRepository receiptRepository;
+	private final NotificationDeliveryPolicy deliveryPolicy;
 	
 	
 	// RabbitMQ'dan notification queue'undan mesajlari dinler. her gelen event icin bu method cagrilir
@@ -65,6 +67,7 @@ public class NotificationEventListener {
 			return;
 		}
 
+		boolean eligible = deliveryPolicy.eligible(event);
 		if (receiptRepository.claim(event.eventId(), event.recipientId()) == 0 ||
 				notificationRepository.existsBySourceEventId(event.eventId())) {
 			log.debug(
@@ -73,6 +76,7 @@ public class NotificationEventListener {
 			);
 			return;
 		}
+		if (!eligible) return;
 
 		Instant occurredAt = event.occurredAt();
 		if (occurredAt == null) {
@@ -100,7 +104,7 @@ public class NotificationEventListener {
 		// constraint is the final concurrency fence when duplicate Rabbit
 		// deliveries race on different consumer threads/nodes.
 		Notification persisted = notificationRepository.saveAndFlush(entity);
-		runAfterCommit(() -> dispatchCommitted(persisted, event));
+		runAfterCommit(() -> deliveryPolicy.schedule(event, persisted.getId(), () -> dispatchCommitted(persisted, event)));
 		log.debug("Notification persistence staged: id={}, user={}, type={}",
 				persisted.getId(), persisted.getRecipientId(), persisted.getType());
 	}
@@ -166,8 +170,11 @@ public class NotificationEventListener {
 			String text = subject + "\n\n"
 					+ (entity.getMessage() != null ? entity.getMessage() + "\n\n" : "")
 					+ "Bu e-posta SoundConnect tarafından otomatik gönderildi.";
+			var mailParams = entity.getPayload() == null ? new java.util.LinkedHashMap<String, Object>()
+					: new java.util.LinkedHashMap<>(entity.getPayload());
+			mailParams.put("_notificationId", entity.getId().toString());
 			mailProducer.send(new MailSendRequest(
-					to, subject, null, text, MailKind.NOTIFICATION, entity.getPayload()));
+					to, subject, null, text, MailKind.NOTIFICATION, mailParams));
 			log.debug("Notification mail queued after commit. notifId={}", entity.getId());
 		} catch (Exception e) {
 			log.error("Notification mail dispatch failed. notifId={}, exceptionType={}",

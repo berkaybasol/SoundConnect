@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.notification.config;
 
 import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.event.performer.outbox.EventPerformerNotificationOutboxProperties;
+import com.berkayb.soundconnect.modules.overthinking.outbox.OverthinkingNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.tablegroup.notification.outbox.TableGroupNotificationOutboxProperties;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import org.junit.jupiter.api.Test;
@@ -99,17 +100,43 @@ class NotificationOutboxLeaseConfigurationValidatorTest {
         return properties;
     }
 
+    @Test
+    void startupRejectsAnOverthinkingLeaseThatCanExpireWhileWaitingForConfirm() {
+        OverthinkingNotificationOutboxProperties overthinking = new OverthinkingNotificationOutboxProperties();
+        overthinking.setLeaseDuration(Duration.ofSeconds(9));
+        try (AnnotationConfigApplicationContext context = context(
+                publisher(Duration.ofSeconds(9)), new CollabNotificationOutboxProperties(),
+                new TableGroupNotificationOutboxProperties(), new EventPerformerNotificationOutboxProperties(), overthinking
+        )) {
+            assertThatThrownBy(context::refresh)
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("app.notification.overthinking-outbox.lease-duration must be at least "
+                            + "app.messaging.notification.publisher-confirm-timeout + 1s");
+        }
+    }
+
     private static AnnotationConfigApplicationContext context(
             NotificationPublisherProperties publisher,
             CollabNotificationOutboxProperties collab,
             TableGroupNotificationOutboxProperties tableGroup,
             EventPerformerNotificationOutboxProperties eventPerformer
     ) {
+        return context(publisher, collab, tableGroup, eventPerformer, new OverthinkingNotificationOutboxProperties());
+    }
+
+    private static AnnotationConfigApplicationContext context(
+            NotificationPublisherProperties publisher,
+            CollabNotificationOutboxProperties collab,
+            TableGroupNotificationOutboxProperties tableGroup,
+            EventPerformerNotificationOutboxProperties eventPerformer,
+            OverthinkingNotificationOutboxProperties overthinking
+    ) {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.registerBean(NotificationPublisherProperties.class, () -> publisher);
         context.registerBean(CollabNotificationOutboxProperties.class, () -> collab);
         context.registerBean(TableGroupNotificationOutboxProperties.class, () -> tableGroup);
         context.registerBean(EventPerformerNotificationOutboxProperties.class, () -> eventPerformer);
+        context.registerBean(OverthinkingNotificationOutboxProperties.class, () -> overthinking);
         context.register(NotificationOutboxLeaseConfigurationValidator.class);
         return context;
     }

@@ -123,9 +123,9 @@ public class ListenerVisibilityPolicy {
 
 	@Transactional(propagation = Propagation.MANDATORY)
 	public boolean lockAndIsPubliclyRestrictedProfile(UUID listenerProfileId) {
-		return listenerProfileRepository.findByIdForUpdate(listenerProfileId)
-		                                .map(ListenerProfile::isPubliclyRestricted)
-		                                .orElse(false);
+		return listenerProfileRepository.lockContentVisibility(listenerProfileId)
+		                                .map(value -> !value.getChoiceCompleted() || "GHOST".equals(value.getMode()))
+		                                .orElse(true);
 	}
 
 	@Transactional(propagation = Propagation.MANDATORY)

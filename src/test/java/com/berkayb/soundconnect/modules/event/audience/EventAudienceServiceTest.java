@@ -6,6 +6,10 @@ import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
+import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
+import org.springframework.data.domain.PageImpl;
 import com.berkayb.soundconnect.shared.exception.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,12 +24,14 @@ class EventAudienceServiceTest {
     final UUID user=UUID.randomUUID(), eventId=UUID.randomUUID(), profileId=UUID.randomUUID();
     final Instant now=Instant.parse("2026-09-08T12:00:00Z");
     EventAudienceRepository repository; UserRepository users;
+    LikeRepository likes; CommentRepository comments;
     EventDiscoveryService cards; EventScheduleClock clock; EventAudienceService service; ListenerProfile profile;
     EventResponseDto event; AtomicReference<EventAudienceIntent> saved;
     @BeforeEach void setup() {
         repository=mock(EventAudienceRepository.class); users=mock(UserRepository.class);
         cards=mock(EventDiscoveryService.class); clock=mock(EventScheduleClock.class); when(clock.instant()).thenReturn(now);
-        service=new EventAudienceService(repository,users,cards,clock);
+        likes=mock(LikeRepository.class); comments=mock(CommentRepository.class);
+        service=new EventAudienceService(repository,users,cards,clock,likes,comments);
         profile=ListenerProfile.builder().visibilityMode(ListenerVisibilityMode.STANDARD).visibilityChoiceCompleted(true).build(); profile.setId(profileId);
         when(repository.lockActor(user)).thenReturn(Optional.of(user)); when(repository.lockActiveAccountForRead(user)).thenReturn(Optional.of(user));
         when(users.findRoleNamesByUserId(user)).thenReturn(Set.of("ROLE_LISTENER"));
@@ -51,6 +57,54 @@ class EventAudienceServiceTest {
         assertThat(state.publishedOnProfile()).isFalse(); assertThat(state.publicationVisible()).isFalse();
         assertThat(state.canSetIntent()).isTrue(); assertThat(state.canPublish()).isTrue(); assertThat(state.event()).isEqualTo(event);
         verify(repository,never()).saveAndFlush(any());
+    }
+
+    @Test void publicFeedBatchesPublicationStatsAndOnlyEmbedsTheViewersPrivateIntent() {
+        UUID viewer=UUID.randomUUID(), postId=UUID.randomUUID();
+        when(repository.lockActiveAccountForRead(viewer)).thenReturn(Optional.of(viewer));
+        when(users.findRoleNamesByUserId(viewer)).thenReturn(Set.of("ROLE_MUSICIAN"));
+        when(users.findExistingPersonalProfileRoleNames(viewer)).thenReturn(Set.of("ROLE_MUSICIAN"));
+        var authorValue=new EventAudienceIntent(user,eventId);
+        authorValue.setIntent(EventIntent.GOING); authorValue.setPublishedOnProfile(true);
+        authorValue.setNote("Author public note"); authorValue.setPostId(postId);
+        var viewerValue=new EventAudienceIntent(viewer,eventId);
+        viewerValue.setIntent(EventIntent.THINKING); viewerValue.setVersion(7);
+        when(repository.publicIds(eq(user),any(),any(),any(),any(),any()))
+                .thenReturn(new PageImpl<>(List.of(eventId)));
+        when(repository.pageStates(user,List.of(eventId))).thenReturn(List.of(authorValue));
+        when(repository.pageStates(viewer,List.of(eventId))).thenReturn(List.of(viewerValue));
+        when(likes.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId)))
+                .thenReturn(List.of(new LikeRepository.TargetCountProjection() {
+                    public UUID getTargetId() { return postId; } public long getCount() { return 3; }
+                }));
+        when(comments.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId)))
+                .thenReturn(List.of(new CommentRepository.TargetCountProjection() {
+                    public UUID getTargetId() { return postId; } public long getCount() { return 5; }
+                }));
+        when(likes.findLikedTargetIds(viewer,EngagementTargetType.EVENT_POST,List.of(postId))).thenReturn(Set.of(postId));
+
+        var result=service.posts(viewer,profileId,EventIntentPeriod.ALL,0,20).content().getFirst();
+        assertThat(result.likeCount()).isEqualTo(3); assertThat(result.commentCount()).isEqualTo(5);
+        assertThat(result.likedByMe()).isTrue(); assertThat(result.postId()).isEqualTo(postId);
+        assertThat(result.note()).isEqualTo("Author public note");
+        assertThat(result.viewerIntentState().intent()).isEqualTo(EventIntent.THINKING);
+        assertThat(result.viewerIntentState().version()).isEqualTo(7);
+        assertThat(result.viewerIntentState().note()).isNull();
+        verify(likes).countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId));
+        verify(likes).findLikedTargetIds(viewer,EngagementTargetType.EVENT_POST,List.of(postId));
+        verify(comments).countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId));
+        verifyNoMoreInteractions(likes,comments);
+        verify(repository,never()).findById(any(EventAudienceIntent.Id.class));
+    }
+
+    @Test void unpublishedOwnerPlansHaveZeroStatsWithoutEngagementQueries() {
+        var value=new EventAudienceIntent(user,eventId); value.setIntent(EventIntent.THINKING);
+        when(repository.privateIds(eq(user),any(),any(),any(),any(),any())).thenReturn(new PageImpl<>(List.of(eventId)));
+        when(repository.pageStates(user,List.of(eventId))).thenReturn(List.of(value));
+        var result=service.mine(user,EventIntentPeriod.ALL,0,20).content().getFirst();
+        assertThat(result.likeCount()).isZero(); assertThat(result.commentCount()).isZero();
+        assertThat(result.likedByMe()).isFalse(); assertThat(result.postId()).isNull();
+        verifyNoInteractions(likes,comments);
     }
     @Test void publicationIdentitySurvivesEditsAndGhostButNewPublicationHasANewConversation() {
         var first=service.update(user,eventId,update(EventIntent.GOING,true,"First",0));

@@ -101,7 +101,7 @@ class NotificationServiceImplTest {
 				.doesNotContainKeys("senderUsername", "senderAvatarUrl");
 		assertThat(NotificationServiceImpl.class.getMethod("refreshActorIdentityForDelivery", NotificationResponseDto.class)
 				.getAnnotation(Transactional.class).propagation())
-				.isEqualTo(org.springframework.transaction.annotation.Propagation.REQUIRES_NEW);
+				.isEqualTo(org.springframework.transaction.annotation.Propagation.REQUIRED);
 	}
 
 	@Test

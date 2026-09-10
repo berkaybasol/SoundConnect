@@ -56,7 +56,7 @@ class MailNotificationServiceImplTest {
 				notificationWebSocketService,
 				mailProducer,
 				notificationService,
-				receiptRepository
+				receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy()
 		);
 		lenient().when(notificationService.refreshActorIdentityForDelivery(any()))
 				.thenAnswer(call -> call.getArgument(0));

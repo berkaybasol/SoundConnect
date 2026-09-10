@@ -48,6 +48,17 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 			(select id from tbl_comment where target_type='MEDIA' and target_id=:targetId)
 			""",nativeQuery = true)
 	int deleteMediaCommentReferences(@Param("targetId") UUID targetId);
+
+	@Modifying(flushAutomatically = true)
+	@Query(value = """
+			delete from tbl_like where target_type='COMMENT' and target_id in
+			(select id from tbl_comment where target_type='OVERTHINKING' and target_id=:targetId)
+			""", nativeQuery = true)
+	int deleteOverthinkingCommentReferences(@Param("targetId") UUID targetId);
+
+	@Modifying(flushAutomatically = true)
+	@Query(value = "delete from tbl_like where target_type='OVERTHINKING' and target_id=:targetId", nativeQuery = true)
+	int deleteOverthinkingTargetReferences(@Param("targetId") UUID targetId);
 	
 	// kullanici bu icerigi begenmis mi?
 	boolean existsByUserIdAndTargetTypeAndTargetId(UUID userId, EngagementTargetType targetType, UUID targetId);

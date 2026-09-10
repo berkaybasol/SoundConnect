@@ -65,6 +65,9 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 	private final TableGroupDiceRoller diceRoller;
 	private final TableGroupRateLimitGuard rateLimitGuard;
 	private final TableGroupMetrics metrics;
+	private final TableGroupErasureGamePublisher erasurePublisher;
+	private final com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
+	private final com.berkayb.soundconnect.modules.notification.service.AfterCommitDeliveryExecutor erasureDelivery;
 
 	@Override
 	@Transactional(noRollbackFor = TableGroupGameActiveExistsException.class)
@@ -378,6 +381,15 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 
 	@Transactional
 	public void removeTableParticipantLocked(TableGroup tableGroup, UUID userId, String reason) {
+		removeTableParticipantLocked(tableGroup, userId, reason, false);
+	}
+
+	@Transactional
+	public void removeErasedAccountLocked(TableGroup tableGroup, UUID userId) {
+		removeTableParticipantLocked(tableGroup, userId, "ACCOUNT_DELETED", true);
+	}
+
+	private void removeTableParticipantLocked(TableGroup tableGroup, UUID userId, String reason, boolean accountErasure) {
 		Optional<TableGroupGame> active = gameRepository
 				.findFirstByTableGroupIdAndStatusInOrderByCreatedAtDesc(tableGroup.getId(), ACTIVE_STATUSES);
 		if (active.isEmpty()) {
@@ -403,11 +415,20 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 				resolveCurrentRound(game, now, false);
 			}
 		}
-		persistAndPublish(game);
+		if (accountErasure) persistForErasure(game); else persistAndPublish(game);
 	}
 
 	@Transactional
 	public void closeActiveGameLocked(TableGroup tableGroup, String reason) {
+		closeActiveGameLocked(tableGroup, reason, false);
+	}
+
+	@Transactional
+	public void closeForErasedOwnerLocked(TableGroup tableGroup) {
+		closeActiveGameLocked(tableGroup, "ACCOUNT_DELETED", true);
+	}
+
+	private void closeActiveGameLocked(TableGroup tableGroup, String reason, boolean accountErasure) {
 		Optional<TableGroupGame> active = gameRepository
 				.findFirstByTableGroupIdAndStatusInOrderByCreatedAtDesc(tableGroup.getId(), ACTIVE_STATUSES);
 		if (active.isEmpty()) {
@@ -415,7 +436,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		}
 		TableGroupGame game = lockGame(tableGroup.getId(), active.get().getId());
 		cancelState(game, reason, timeProvider.now());
-		persistAndPublish(game);
+		if (accountErasure) persistForErasure(game); else persistAndPublish(game);
 	}
 
 	@Transactional
@@ -689,6 +710,27 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 	}
 
 	private TableGroupMessageResponseDto persistAndPublish(TableGroupGame game) {
+		TableGroupMessage anchor = persistGameAndAnchor(game);
+		TableGroupGameResponseDto response = projectionService.project(game);
+		return realtimePublisher.publishUpdatedAfterCommit(game.getTableGroupId(), anchor, response);
+	}
+
+	private void persistForErasure(TableGroupGame game) {
+		persistGameAndAnchor(game);
+		UUID gameId = game.getId();
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override public void afterCommit() {
+				// The committed transaction still owns its connection here. Queue only
+				// an identifier; the worker starts its fresh projection transaction.
+				try { erasureDelivery.submit(() -> erasurePublisher.refresh(gameId)); }
+				catch (RuntimeException failure) {
+					log.warn("Committed account-erasure game refresh failed: gameId={}, errorType={}", gameId, failure.getClass().getSimpleName());
+				}
+			}
+		});
+	}
+
+	private TableGroupMessage persistGameAndAnchor(TableGroupGame game) {
 		game.setRevision(game.getRevision() + 1);
 		gameRepository.saveAndFlush(game);
 		TableGroupMessage anchor = messageRepository.findByGameIdAndDeletedAtIsNull(game.getId())
@@ -700,8 +742,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 			anchor.setContent("Hesap Kimde? oyunu iptal edildi.");
 			messageRepository.saveAndFlush(anchor);
 		}
-		TableGroupGameResponseDto response = projectionService.project(game);
-		return realtimePublisher.publishUpdatedAfterCommit(game.getTableGroupId(), anchor, response);
+		return anchor;
 	}
 
 	private TableGroupMessageResponseDto messageResponse(TableGroupGame game) {
@@ -796,6 +837,8 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 	}
 
 	private LockedOpenTable lockOpenTableForAcceptedUser(UUID tableGroupId, UUID userId) {
+		// Player/message inserts must never acquire the actor fence after the table aggregate.
+		accounts.requireActive(List.of(userId));
 		TableGroup tableGroup = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
 		Instant now = timeProvider.now();
 		requireOpenAndAccepted(tableGroup, userId, now);

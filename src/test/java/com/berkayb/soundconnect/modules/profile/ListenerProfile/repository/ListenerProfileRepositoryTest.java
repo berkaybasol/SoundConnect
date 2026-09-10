@@ -86,7 +86,7 @@ class ListenerProfileRepositoryTest {
 		                              .username(randomUsername("bob_"))
 		                              .email("bob_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
-		                              .provider(AuthProvider.LOCAL)
+		                              .status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 		                              .emailVerified(true)
 		                              .city(city)
 		                              .build());
@@ -139,7 +139,7 @@ class ListenerProfileRepositoryTest {
 				.username(randomUsername(prefix + "_"))
 				.email(prefix + "_" + UUID.randomUUID() + "@t.local")
 				.password("secret")
-				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 				.emailVerified(true)
 				.roles(Set.of(role))
 				.city(city)
@@ -152,7 +152,7 @@ class ListenerProfileRepositoryTest {
 		                              .username(randomUsername("visibility_"))
 		                              .email("visibility_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
-		                              .provider(AuthProvider.LOCAL)
+		                              .status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 		                              .emailVerified(true)
 		                              .city(city)
 		                              .build());
@@ -185,7 +185,7 @@ class ListenerProfileRepositoryTest {
 		                              .username(randomUsername("ghost_"))
 		                              .email("ghost_" + UUID.randomUUID() + "@t.local")
 		                              .password("secret")
-		                              .provider(AuthProvider.LOCAL)
+		                              .status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 		                              .emailVerified(true)
 		                              .city(city)
 		                              .build());
@@ -205,11 +205,11 @@ class ListenerProfileRepositoryTest {
 		User ghost = userRepo.save(User.builder()
 				.username(randomUsername("batch_ghost_"))
 				.email("batch_ghost_" + UUID.randomUUID() + "@t.local")
-				.password("secret").provider(AuthProvider.LOCAL).emailVerified(true).city(city).build());
+				.password("secret").status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL).emailVerified(true).city(city).build());
 		User standard = userRepo.save(User.builder()
 				.username(randomUsername("batch_standard_"))
 				.email("batch_standard_" + UUID.randomUUID() + "@t.local")
-				.password("secret").provider(AuthProvider.LOCAL).emailVerified(true).city(city).build());
+				.password("secret").status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL).emailVerified(true).city(city).build());
 		listenerRepo.saveAllAndFlush(List.of(
 				ListenerProfile.builder().user(ghost)
 						.visibilityMode(ListenerVisibilityMode.GHOST).build(),
@@ -229,7 +229,7 @@ class ListenerProfileRepositoryTest {
 				.username("literal_user%one")
 				.email("literal_" + UUID.randomUUID() + "@t.local")
 				.password("secret")
-				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 				.emailVerified(true)
 				.city(city)
 				.build());
@@ -237,7 +237,7 @@ class ListenerProfileRepositoryTest {
 				.username("literalxuseryone")
 				.email("lookalike_" + UUID.randomUUID() + "@t.local")
 				.password("secret")
-				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 				.emailVerified(true)
 				.city(city)
 				.build());
@@ -263,7 +263,7 @@ class ListenerProfileRepositoryTest {
 				.username("oldname")
 				.email("rename_" + UUID.randomUUID() + "@t.local")
 				.password("secret")
-				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 				.emailVerified(true)
 				.city(city)
 				.build());
@@ -291,7 +291,7 @@ class ListenerProfileRepositoryTest {
 				.username(randomUsername("playlist_"))
 				.email("playlist_" + UUID.randomUUID() + "@t.local")
 				.password("secret")
-				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).provider(AuthProvider.LOCAL)
 				.emailVerified(true)
 				.city(city)
 				.build());

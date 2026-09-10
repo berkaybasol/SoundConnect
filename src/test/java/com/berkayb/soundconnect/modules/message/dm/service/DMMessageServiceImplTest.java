@@ -41,6 +41,17 @@ class DMMessageServiceImplTest {
 	@Mock DMMessageMapper messageMapper;
 	@Mock DmMessageEventPublisher eventPublisher;
 	@Mock NotificationService notificationService;
+	@Mock com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accountDeliveryFence;
+
+	@Test
+	void erasedParticipantCannotSendEvenWhenTheSessionStillHasItsOldUser() {
+		doThrow(new SoundConnectException(com.berkayb.soundconnect.shared.exception.ErrorType.ACCOUNT_DELETED))
+				.when(accountDeliveryFence).requireActive(List.of(senderId, recipientId));
+		var request = new DMMessageRequestDto(conversationId, recipientId, "Blocked message", "text");
+		assertThat(assertThrows(SoundConnectException.class, () -> service.sendMessage(request, senderId)).getErrorType())
+				.isEqualTo(com.berkayb.soundconnect.shared.exception.ErrorType.ACCOUNT_DELETED);
+		verifyNoInteractions(conversationRepository, messageRepository, eventPublisher);
+	}
 	
 	UUID conversationId;
 	UUID senderId;

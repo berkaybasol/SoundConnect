@@ -11,6 +11,7 @@ import com.berkayb.soundconnect.modules.message.dm.mapper.DMMessageMapper;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 	private final DMMessageMapper messageMapper;
 	private final DmMessageEventPublisher dmMessageEventPublisher;
 	private final NotificationService notificationService;
+	private final AccountDeliveryFence accountDeliveryFence;
 
 	// belirli bir conversation'in tum mesajlarini gonderim sirasina gore doner.
 	@Override
@@ -61,6 +63,9 @@ public class DMMessageServiceImpl implements DMMessageService {
 	@Override
 	@Transactional
 	public DMMessageResponseDto sendMessage(DMMessageRequestDto requestDto, UUID senderId) {
+		if (requestDto == null || senderId == null || requestDto.recipientId() == null)
+			throw new SoundConnectException(ErrorType.BAD_REQUEST);
+		accountDeliveryFence.requireActive(List.of(senderId, requestDto.recipientId()));
 		// conversation mevcut mu?
 		DMConversation conversation = conversationRepository.findById(requestDto.conversationId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
@@ -120,6 +125,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 	@Override
 	@Transactional
 	public void markMessageAsRead(UUID messageId, UUID readerId) {
+		accountDeliveryFence.requireActive(List.of(readerId));
 		// mesaji bul
 		DMMessage message = messageRepository.findById(messageId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MESSAGE_NOT_FOUND));

@@ -44,6 +44,22 @@ class NotificationEventListenerTest {
 	private NotificationEventListener listener;
 	
 	private UUID userId;
+
+	@Test
+	void erasedOrDeletedSourceRetainsReplayReceiptWithoutRecreatingInboxOrDeliveringSnapshots() {
+		var policy = mock(com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy.class);
+		var guarded = new NotificationEventListener(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer, notificationService, receiptRepository, policy);
+		var event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE).title("Old identity").message("Old text").build();
+		when(policy.eligible(event)).thenReturn(false);
+		guarded.handle(event);
+		var order = inOrder(policy, receiptRepository);
+		order.verify(policy).eligible(event);
+		order.verify(receiptRepository).claim(event.eventId(), userId);
+		verify(notificationRepository, never()).saveAndFlush(any());
+		verifyNoInteractions(notificationWebSocketService, mailProducer, badgeCacheHelper);
+	}
 	
 	@BeforeEach
 	void setUp() {
@@ -54,7 +70,7 @@ class NotificationEventListenerTest {
 				notificationWebSocketService,
 				mailProducer,
 				notificationService,
-				receiptRepository
+				receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy()
 		);
 		lenient().when(notificationService.refreshActorIdentityForDelivery(any()))
 				.thenAnswer(call -> call.getArgument(0));

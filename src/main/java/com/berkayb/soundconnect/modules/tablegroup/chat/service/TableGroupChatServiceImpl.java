@@ -56,6 +56,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 	private final TableGroupRateLimitGuard rateLimitGuard;
 	private final TableGroupMetrics metrics;
 	private final TableGroupGameProjectionService gameProjectionService;
+	private final com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
 
 	/**
 	 * Persists a message for an accepted participant. Cache and realtime side
@@ -87,6 +88,8 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 			);
 		}
 		String normalizedContent = requestDto.content().trim();
+		// New-message inserts reference this actor; take its erasure fence before the table lock.
+		accounts.requireActive(List.of(senderId));
 
 		// A persisted row is its sender's durable application acknowledgement. It
 		// must remain replayable even if Redis is unavailable, the original send

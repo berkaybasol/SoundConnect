@@ -3,6 +3,9 @@ package com.berkayb.soundconnect.modules.event.audience;
 import com.berkayb.soundconnect.modules.event.discovery.*;
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
+import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
+import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import com.berkayb.soundconnect.shared.response.PageResponse;
@@ -22,6 +25,8 @@ public class EventAudienceService {
     private final UserRepository users;
     private final EventDiscoveryService cards;
     private final EventScheduleClock clock;
+    private final LikeRepository likes;
+    private final CommentRepository comments;
 
     /** Lightweight current-account preflight before consuming the shared mutation quota. */
     @Transactional(timeout = 5)
@@ -103,7 +108,12 @@ public class EventAudienceService {
         var ids = repository.privateIds(userId, period.name(), local.toLocalDate(), local.toLocalTime(), LocalTime.MIDNIGHT, pageable);
         if (ids.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, ids.getTotalElements()));
         var values = states(userId, ids.getContent()); var events = eventCards(ids.getContent());
-        return PageResponse.from(ids.map(id -> state(values.get(id), actor, events.get(id), now)));
+        var engagement = engagement(userId, values.values());
+        return PageResponse.from(ids.map(id -> {
+            var result = state(values.get(id), actor, events.get(id), now);
+            var counts = result.postId() == null ? Counts.EMPTY : engagement.getOrDefault(result.postId(), Counts.EMPTY);
+            return result.withEngagement(counts.likes(), counts.comments(), counts.liked());
+        }));
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, timeout = 5)
@@ -120,8 +130,43 @@ public class EventAudienceService {
         var ids = repository.publicIds(author, period.name(), local.toLocalDate(), local.toLocalTime(), LocalTime.MIDNIGHT, pageable);
         if (ids.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, ids.getTotalElements()));
         var values = states(author, ids.getContent()); var events = eventCards(ids.getContent());
+        var engagement = engagement(viewer, values.values());
+        Actor viewerActor = viewer.equals(author) ? target : optionalActor(viewer);
+        var viewerValues = viewerActor == null ? Map.<UUID, EventAudienceIntent>of()
+                : viewer.equals(author) ? values : states(viewer, ids.getContent());
         return PageResponse.from(ids.map(id -> new EventIntentResponse.Post(id, values.get(id).getIntent(), values.get(id).getNote(),
-                values.get(id).getPublishedAt(), ended(events.get(id), now), events.get(id), values.get(id).getPostId())));
+                values.get(id).getPublishedAt(), ended(events.get(id), now), events.get(id), values.get(id).getPostId(),
+                engagement.getOrDefault(values.get(id).getPostId(), Counts.EMPTY).likes(),
+                engagement.getOrDefault(values.get(id).getPostId(), Counts.EMPTY).comments(),
+                engagement.getOrDefault(values.get(id).getPostId(), Counts.EMPTY).liked(),
+                viewerActor == null ? null : state(viewerValues.getOrDefault(id, new EventAudienceIntent(viewer, id)),
+                        viewerActor, events.get(id), now))));
+    }
+
+    private Actor optionalActor(UUID viewer) {
+        try { return actor(viewer, false); }
+        catch (SoundConnectException failure) {
+            if (failure.getErrorType() == ErrorType.FORBIDDEN_ACCESS) return null;
+            throw failure;
+        }
+    }
+
+    /** Engagement belongs to the publication, never the underlying shared event. */
+    private Map<UUID, Counts> engagement(UUID viewer, Collection<EventAudienceIntent> values) {
+        var postIds = values.stream().filter(EventAudienceIntent::isPublishedOnProfile)
+                .map(EventAudienceIntent::getPostId).filter(Objects::nonNull).distinct().toList();
+        if (postIds.isEmpty()) return Map.of();
+        var likeCounts = likes.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST, postIds).stream()
+                .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId, LikeRepository.TargetCountProjection::getCount));
+        var commentCounts = comments.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST, postIds).stream()
+                .collect(Collectors.toMap(CommentRepository.TargetCountProjection::getTargetId, CommentRepository.TargetCountProjection::getCount));
+        var liked = likes.findLikedTargetIds(viewer, EngagementTargetType.EVENT_POST, postIds);
+        return postIds.stream().collect(Collectors.toMap(Function.identity(), id ->
+                new Counts(likeCounts.getOrDefault(id, 0L), commentCounts.getOrDefault(id, 0L), liked.contains(id))));
+    }
+
+    private record Counts(long likes, long comments, boolean liked) {
+        private static final Counts EMPTY = new Counts(0, 0, false);
     }
 
     private Actor actor(UUID userId, boolean write) {

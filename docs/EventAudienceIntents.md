@@ -104,3 +104,15 @@ The privacy regression failed before its fix; the independent-event-read `NOWAIT
 ```
 
 The final XML report confirms **215 tests in 17 suites passed**, with zero failures, errors, or skips (2m28s), including 60 audience tests and 11 isolated PostgreSQL audience cases. These changes require a separately coordinated backend deployment/restart to affect an already-running application; this audit does not perform that action. Real-device multi-session UX and production capacity remain separate validation work. Existing deleted-event optional-note retention and lack of an account-block subsystem remain documented product-policy limitations, not silently changed behavior.
+
+## Profile feed enrichment (2026-09-10)
+
+Profile publication rows carry `likeCount`, `commentCount`, `likedByMe`, and
+`viewerIntentState`. Counts belong to `EVENT_POST` and the publication `postId`,
+not the source event. Three batch queries decorate a whole page. The embedded
+state is the authenticated viewer's own attendance version/capabilities; an
+attendance-ineligible viewer receives null. Author private state is never used
+as viewer state. Owner `mine` rows carry the same engagement fields directly;
+individual get/update responses omit enrichment (null), allowing clients to keep
+existing counts while changing attendance. The frontend can render a profile
+page without making four requests for each event card.

@@ -87,7 +87,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	@Override
 	@Transactional
 	public ListenerProfilePublicResponseDto getProfileByProfileId(UUID profileId) {
-		ListenerProfile profile = listenerProfileRepository.findByIdForVisibilityRead(profileId)
+		ListenerProfile profile = listenerProfileRepository.findForPublicById(profileId)
 		                                                   .orElseThrow(() -> profileNotFoundById(profileId));
 		if (!profile.isVisibilityChoiceCompleted()) {
 			throw profileNotFoundById(profileId);

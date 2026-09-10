@@ -17,10 +17,19 @@ public record DMConversationPreviewResponseDto(
 		LocalDateTime lastMessageAt,
 		Boolean lastMessageRead,
 		@JsonInclude(JsonInclude.Include.NON_NULL)
-		ListenerVisibilityMode otherUserVisibilityMode
+		ListenerVisibilityMode otherUserVisibilityMode,
+		boolean otherUserDeleted
 ) {
 	public DMConversationPreviewResponseDto {
 		otherUserVisibilityMode = ghostOnly(otherUserVisibilityMode);
+	}
+
+	public DMConversationPreviewResponseDto(UUID conversationId, UUID otherUserId, String otherUsername,
+			String otherUserProfilePicture, String lastMessageContent, String lastMessageType,
+			UUID lastMessageSenderId, LocalDateTime lastMessageAt, Boolean lastMessageRead,
+			ListenerVisibilityMode otherUserVisibilityMode) {
+		this(conversationId, otherUserId, otherUsername, otherUserProfilePicture, lastMessageContent,
+				lastMessageType, lastMessageSenderId, lastMessageAt, lastMessageRead, otherUserVisibilityMode, false);
 	}
 
 	public DMConversationPreviewResponseDto(

@@ -14,6 +14,10 @@ public enum ErrorType {
 	USERNAME_CHANGE_COOLDOWN_ACTIVE(1005, "Kullanıcı adını değiştirdikten sonra 30 gün boyunca yeniden değiştiremezsin.", HttpStatus.CONFLICT, "Kullanıcı adını değiştirdikten sonra 30 gün boyunca yeniden değiştiremezsin."),
 	
 	// AUTH (1100-1199)
+	ACCOUNT_DELETION_REAUTH_REQUIRED(1006, "Account deletion requires reauthentication", HttpStatus.FORBIDDEN, "Hesabını silmek için mevcut şifreni veya Google hesabını yeniden doğrula."),
+	ACCOUNT_DELETION_UNSUPPORTED_PROFILE(1007, "Account has a different profile lifecycle", HttpStatus.CONFLICT, "Bu hesabın bağlı profesyonel kayıtları için ayrı bir kapatma işlemi gerekli."),
+	ACCOUNT_DELETED(1008, "Account was permanently deleted", HttpStatus.GONE, "Bu hesap kalıcı olarak silinmiş."),
+
 	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.UNAUTHORIZED, "Kullanıcı adı veya şifre hatalı."),
 	UNAUTHORIZED(1101, "You are not authorized", HttpStatus.UNAUTHORIZED, "Bu işlemi yapmak için giriş yapmalısınız."),
 	FORBIDDEN_ACCESS(1102, "You don't have permission to access this resource", HttpStatus.FORBIDDEN, "Bu kaynağa erişim izniniz yok."),
@@ -278,6 +282,14 @@ public enum ErrorType {
 	OVERTHINKING_REVEAL_REQUEST_ALREADY_DECIDED(9409, "Reveal request already decided", HttpStatus.CONFLICT, "Bu profil görüntüleme isteği daha önce sonuçlandırılmış."),
 	OVERTHINKING_REVEAL_REQUEST_INVALID_STATUS (9410, "Reveal request invalid status", HttpStatus.BAD_REQUEST, "status gecersiz"),
 	OVERTHINKING_SPOTIFY_SOURCE_INVALID(9411,"Spotify source invalid", HttpStatus.BAD_REQUEST,"spotify kaynagi yanlis"),
+	OVERTHINKING_POST_IMMUTABLE(9412, "Published overthinking posts cannot be edited", HttpStatus.CONFLICT, "Paylaşılan yazılar düzenlenemez. İsterseniz yazınızı silebilirsiniz."),
+	OVERTHINKING_PROFILE_SHARE_ALREADY_EXISTS(9413, "Profile publication already exists", HttpStatus.CONFLICT, "Bu yazı profilinizde zaten paylaşılmış. Notu değiştirmek için paylaşımı kaldırıp yeniden paylaşabilirsiniz."),
+	OVERTHINKING_PROFILE_SHARE_INVALID(9414, "Invalid profile publication", HttpStatus.BAD_REQUEST, "Profil paylaşımı veya notu geçersiz."),
+	OVERTHINKING_PROFILE_SHARE_NOT_FOUND(9415, "Profile publication not found", HttpStatus.NOT_FOUND, "Profil paylaşımı bulunamadı."),
+	OVERTHINKING_PROFILE_SHARE_UNAVAILABLE(9416, "Profile publication temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Profil paylaşımına şu anda ulaşılamıyor. Lütfen yeniden deneyin."),
+	OVERTHINKING_CREATE_KEY_CONFLICT(9417, "Publication key reused with different content", HttpStatus.CONFLICT, "Bu paylaşım isteği farklı bir içerik için kullanılmış. Önce önceki paylaşımın sonucunu kontrol edin."),
+	OVERTHINKING_CREATE_ALREADY_DELETED(9418, "Original publication was deleted", HttpStatus.GONE, "Bu istekle oluşturulan yazı silinmiş. Aynı isteği tekrarlamak yazıyı yeniden yayınlamaz."),
+	OVERTHINKING_REVEAL_RATE_LIMITED(9419, "Too many profile reveal requests", HttpStatus.TOO_MANY_REQUESTS, "Kısa sürede çok fazla görüntüleme isteği gönderdiniz. Lütfen biraz sonra tekrar deneyin."),
 	
 	
 	// TRACK(9450 - 9499)

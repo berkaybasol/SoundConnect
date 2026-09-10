@@ -22,6 +22,10 @@ public class AuthAccountRateLimitGuard {
 		check("login", UsernameUtils.normalize(username), properties.getLogin());
 	}
 
+	public void checkAccountDeletion(String userId) {
+		check("account-deletion", userId, properties.getLogin());
+	}
+
 	public void checkRegister(String email) {
 		check("register", EmailUtils.normalize(email), properties.getRegister());
 	}

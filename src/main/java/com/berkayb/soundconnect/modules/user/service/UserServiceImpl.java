@@ -48,6 +48,7 @@ public class UserServiceImpl implements UserService {
 	private final UsernameChangeTimeProvider usernameChangeTimeProvider;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	private final ListenerProfileProvisioner listenerProfileProvisioner;
+	private final com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -58,6 +59,7 @@ public class UserServiceImpl implements UserService {
 		assertCanManageUsers(actor);
 		User user = lockedUsers.target();
 		assertCanMutateTarget(actor, user);
+		if (user.getErasedAt() != null) throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		
 		boolean isUpdated = false;
 		
@@ -114,6 +116,7 @@ public class UserServiceImpl implements UserService {
 	@Transactional
 	public String changeUsername(UUID userId, UsernameChangeRequestDto dto) {
 		User user = findForUpdate(userId);
+		if (user.getErasedAt() != null) throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		String normalizedUsername = UsernameUtils.normalizeAndValidate(dto.username());
 		String currentCanonicalUsername = UsernameUtils.normalize(user.getUsername());
 
@@ -154,7 +157,12 @@ public class UserServiceImpl implements UserService {
 		User user = lockedUsers.target();
 		assertCanMutateTarget(actor, user);
 		assertLastOwnerIsPreserved(user, null);
-		userRepository.delete(user);
+		if (user.getErasedAt() != null || hasRole(user, "ROLE_LISTENER")
+				|| userRepository.findExistingPersonalProfileRoleNames(id).contains("ROLE_LISTENER")) {
+			listenerAccountDeletionService.deleteByAdministrator(id);
+		} else {
+			userRepository.delete(user);
+		}
 		log.info("User deleted by administrator. actorId={} targetId={}", actingUserId, id);
 	}
 	
@@ -240,7 +248,7 @@ public class UserServiceImpl implements UserService {
 			return new LockedUsers(user, user);
 		}
 
-		UUID firstId = actorId.compareTo(targetId) <= 0 ? actorId : targetId;
+		UUID firstId = actorId.toString().compareTo(targetId.toString()) <= 0 ? actorId : targetId;
 		UUID secondId = firstId.equals(actorId) ? targetId : actorId;
 		User first = findForUpdate(firstId);
 		User second = findForUpdate(secondId);

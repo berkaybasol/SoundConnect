@@ -66,9 +66,18 @@ class TableGroupChatServiceImplTest {
 
 	@Mock
 	private TableGroupGameProjectionService gameProjectionService;
+	@Mock private com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
 	
 	@InjectMocks
 	private TableGroupChatServiceImpl chatService;
+
+	@Test void erasedSenderCannotReplayOrLockATableBeforeItsAccountFence() {
+		UUID sender=UUID.randomUUID(),table=UUID.randomUUID();
+		doThrow(new SoundConnectException(ErrorType.ACCOUNT_DELETED)).when(accounts).requireActive(List.of(sender));
+		assertThatThrownBy(() -> chatService.sendMessage(sender,table,new TableGroupMessageRequestDto("Message",MessageType.TEXT,UUID.randomUUID())))
+				.isInstanceOfSatisfying(SoundConnectException.class,e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETED));
+		verifyNoInteractions(messageRepository,tableGroupEntityFinder,rateLimitGuard,unreadHelper,messagingTemplate);
+	}
 	
 	private TableGroup createActiveGroupWithAcceptedParticipants(UUID tableGroupId, UUID senderId, UUID otherUserId) {
 		TableGroup group = TableGroup.builder()
@@ -147,6 +156,10 @@ class TableGroupChatServiceImplTest {
 		
 		// then
 		assertThat(result).isEqualTo(dto);
+		var actorOrder=inOrder(accounts,tableGroupEntityFinder,messageRepository);
+		actorOrder.verify(accounts).requireActive(List.of(senderId));
+		actorOrder.verify(tableGroupEntityFinder).getTableGroupByIdForUpdate(tableGroupId);
+		actorOrder.verify(messageRepository).save(any(TableGroupMessage.class));
 		verify(rateLimitGuard).checkMessageUser(senderId, tableGroupId);
 		verify(metrics).messageSent();
 		

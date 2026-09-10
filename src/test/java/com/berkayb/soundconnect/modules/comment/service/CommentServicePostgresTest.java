@@ -853,7 +853,7 @@ class CommentServicePostgresTest {
         var root=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,postId,new CommentCreateRequestDto("private after removal",null));
         var clock=mock(EventScheduleClock.class); when(clock.instant()).thenReturn(Instant.parse("2026-09-08T07:00:00Z"));
         var cards=mock(EventDiscoveryService.class); when(cards.present(anyList())).thenReturn(List.of());
-        var publications=new EventAudienceService(audienceRepository,userRepository,cards,clock);
+        var publications=new EventAudienceService(audienceRepository,userRepository,cards,clock,likeRepository,repository);
         var stranger=eventPost();
         assertHidden(() -> tx(() -> publications.deletePost(stranger.getId().getUserId(),postId)));
         var removed=tx(() -> publications.deletePost(owner,postId));
@@ -982,7 +982,8 @@ class CommentServicePostgresTest {
     @EntityScan(basePackages="com.berkayb.soundconnect")
     @Import({CommentServiceImpl.class,CommentEntityFinder.class,CommentTargetAccessGuard.class,CommentAuthorBatchResolver.class,JpaAuditingConfig.class,EventCommentReadService.class,
             LikeServiceImpl.class,CommentLikeAccessGuard.class,MediaEngagementCleanupService.class,EngagementTargetValidatorImpl.class,
-            MediaEngagementNotificationService.class,TransactionalNotificationService.class})
+            MediaEngagementNotificationService.class,TransactionalNotificationService.class,
+            com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})
     static class Config {
         @Bean DataSource dataSource() {
             if(!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL must be running");

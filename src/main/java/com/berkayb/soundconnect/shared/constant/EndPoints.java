@@ -154,6 +154,9 @@ public class EndPoints {
 		public static final String APPROVE_REVEAL_REQUEST = "/reveal-requests/{requestId}/approve";
 		public static final String REJECT_REVEAL_REQUEST = "/reveal-requests/{requestId}/reject";
 		public static final String INCOMING_REVEAL_REQUESTS = "/reveal-requests/incoming";
+		public static final String INCOMING_PENDING_REVEAL_REQUEST_COUNT = "/reveal-requests/incoming/pending-count";
+		public static final String INCOMING_REVEAL_UNREAD_STATUS = "/reveal-requests/incoming/unread-status";
+		public static final String INCOMING_REVEAL_SEEN = "/reveal-requests/incoming/seen";
 		public static final String SENT_REVEAL_REQUESTS = "/reveal-requests/sent";
 	}
 	

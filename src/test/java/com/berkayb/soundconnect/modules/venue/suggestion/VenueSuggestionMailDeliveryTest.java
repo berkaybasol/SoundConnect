@@ -103,7 +103,7 @@ class VenueSuggestionMailDeliveryTest {
         verifyNoInteractions(store, sender, retries); verify(channel).basicReject(1, false);
     }
     @Test void sharedConsumerNewKindCannotFallBackToGenericRedisSender() throws Exception {
-        var generic = new MailJobConsumer(sender, helper, retries);
+        var generic = new MailJobConsumer(sender, helper, retries, mock(com.berkayb.soundconnect.modules.notification.service.NotificationMailDelivery.class));
         var deliveryHandler = mock(VenueSuggestionMailDelivery.class);
         generic.setVenueSuggestionDelivery(deliveryHandler);
         generic.listenMailJobs(request, 1, Map.of(), channel);
@@ -111,7 +111,7 @@ class VenueSuggestionMailDeliveryTest {
         verifyNoInteractions(sender, helper, retries);
     }
     @Test void missingNewKindHandlerFailsClosedAndLeavesDurableWatchdogResponsible() throws Exception {
-        var generic = new MailJobConsumer(sender, helper, retries);
+        var generic = new MailJobConsumer(sender, helper, retries, mock(com.berkayb.soundconnect.modules.notification.service.NotificationMailDelivery.class));
         generic.listenMailJobs(request, 1, Map.of(), channel);
         verify(channel).basicReject(1, false); verifyNoInteractions(sender, helper, retries);
     }

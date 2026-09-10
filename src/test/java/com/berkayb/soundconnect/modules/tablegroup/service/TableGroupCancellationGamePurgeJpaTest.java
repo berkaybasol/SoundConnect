@@ -108,7 +108,10 @@ class TableGroupCancellationGamePurgeJpaTest {
 				timeProvider,
 				mock(TableGroupDiceRoller.class),
 				mock(TableGroupRateLimitGuard.class),
-				metrics
+				metrics,
+				mock(com.berkayb.soundconnect.modules.tablegroup.game.service.TableGroupErasureGamePublisher.class),
+				mock(com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class),
+				mock(com.berkayb.soundconnect.modules.notification.service.AfterCommitDeliveryExecutor.class)
 		);
 		TableGroupGameLifecycleService lifecycle = new TableGroupGameLifecycleService(gameService);
 		TableGroupServiceImpl tableService = new TableGroupServiceImpl(

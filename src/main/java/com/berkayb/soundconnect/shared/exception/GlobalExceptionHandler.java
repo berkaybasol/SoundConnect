@@ -174,6 +174,12 @@ public class GlobalExceptionHandler {
 			DataIntegrityViolationException exception,
 			HttpServletRequest request
 	) {
+		for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+			if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
+					&& "ck_account_erased".equals(violation.getConstraintName())) {
+				return response(ErrorType.ACCOUNT_DELETED, request);
+			}
+		}
 		// Database/vendor messages may contain SQL, schema names, or submitted values.
 		log.warn("Data integrity conflict. path={}, exceptionType={}",
 				request.getRequestURI(), exception.getClass().getSimpleName());

@@ -211,11 +211,13 @@ class FollowNotificationEventListenerTest {
 
 	private void assertAfterCommitWithFreshTransaction(String methodName, Class<?> eventType) throws Exception {
 		var method = FollowNotificationEventListener.class.getMethod(methodName, eventType);
-		TransactionalEventListener listenerAnnotation = method.getAnnotation(TransactionalEventListener.class);
+		TransactionalEventListener listenerAnnotation = FollowNotificationDispatcher.class
+				.getMethod(methodName, eventType).getAnnotation(TransactionalEventListener.class);
 		Transactional transaction = method.getAnnotation(Transactional.class);
 
 		assertThat(listenerAnnotation).isNotNull();
 		assertThat(listenerAnnotation.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+		assertThat(method.getAnnotation(TransactionalEventListener.class)).isNull();
 		assertThat(transaction).isNotNull();
 		assertThat(transaction.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
 		assertThat(transaction.readOnly()).isFalse();

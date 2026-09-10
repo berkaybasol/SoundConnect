@@ -10,6 +10,8 @@ public interface OverthinkingRevealRequestService {
 	
 	// kullanici anonim postun sahibini gormek icin istek atar
 	OverthinkingRevealRequestResponseDto createRevealRequest(UUID requesterId, UUID postId);
+
+	void cancelRevealRequest(UUID requesterId, UUID postId);
 	
 	// post sahibi istegi kabul eder
 	OverthinkingRevealRequestResponseDto approveRevealRequest(UUID authorId, UUID requestId);
@@ -19,6 +21,8 @@ public interface OverthinkingRevealRequestService {
 	
 	// post sahibi gelen istekleri listeler
 	Page<OverthinkingRevealRequestResponseDto> getIncomingRequests(UUID authorId, Pageable pageable);
+
+	long getIncomingPendingRequestCount(UUID authorId);
 	
 	// kullanici anonim postlara gonderdigi istekleri listeler
 	Page<OverthinkingRevealRequestResponseDto> getMySentRequests(UUID requesterId, Pageable pageable);

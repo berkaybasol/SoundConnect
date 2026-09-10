@@ -18,8 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -49,7 +47,6 @@ public class FollowNotificationEventListener {
 	private final PublicProfileResolverService publicProfileResolverService;
 	private final BandEntityFinder bandEntityFinder;
 
-	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void onFollowNotificationRequested(FollowNotificationRequestedEvent event) {
 		if (event == null || event.followerId() == null || event.followingId() == null) return;
@@ -70,7 +67,6 @@ public class FollowNotificationEventListener {
 		}
 	}
 
-	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void onBandFollowNotificationRequested(BandFollowNotificationRequestedEvent event) {
 		if (event == null || event.followerId() == null || event.bandId() == null

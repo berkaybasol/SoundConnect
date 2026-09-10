@@ -17,6 +17,9 @@ import java.util.Set;
 import java.util.UUID;
 
 public interface ListenerProfileRepository extends JpaRepository<ListenerProfile, UUID> {
+	@Query("select u.id from User u where u.id in :ids and u.erasedAt is not null")
+	Set<UUID> findErasedUserIds(@Param("ids") Collection<UUID> ids);
+
 	Optional<ListenerProfile> findByUserId(UUID userId);
 
 	boolean existsByUserIdAndVisibilityMode(UUID userId, ListenerVisibilityMode visibilityMode);
@@ -65,6 +68,38 @@ public interface ListenerProfileRepository extends JpaRepository<ListenerProfile
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select lp from ListenerProfile lp where lp.id = :profileId")
 	Optional<ListenerProfile> findByIdForUpdate(@Param("profileId") UUID profileId);
+
+	/** Reads fresh scalar values even when OSIV holds an earlier @Version entity. */
+	@Query(value = """
+			select visibility_mode as "mode", visibility_choice_completed as "choiceCompleted"
+			from "tbl_listener-profile" where id = :profileId for update
+			""", nativeQuery = true)
+	Optional<ContentVisibility> lockContentVisibility(@Param("profileId") UUID profileId);
+
+	interface ContentVisibility {
+		String getMode();
+		boolean getChoiceCompleted();
+	}
+
+	@Query("""
+			select lp.user.id as userId, lp.profilePictureMediaId as mediaId
+			from ListenerProfile lp where lp.user.id in :userIds
+			""")
+	List<AvatarReference> findAvatarReferences(@Param("userIds") Collection<UUID> userIds);
+
+	interface AvatarReference {
+		UUID getUserId();
+		UUID getMediaId();
+	}
+
+	@Lock(LockModeType.PESSIMISTIC_READ)
+	@EntityGraph(attributePaths = "user")
+	@Query("""
+			select lp from ListenerProfile lp where lp.id = :profileId
+			and lp.user.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+			and lp.user.emailVerified = true
+			""")
+	Optional<ListenerProfile> findForPublicById(@Param("profileId") UUID profileId);
 
 	@Lock(LockModeType.PESSIMISTIC_READ)
 	@EntityGraph(attributePaths = "user")
@@ -121,6 +156,8 @@ public interface ListenerProfileRepository extends JpaRepository<ListenerProfile
 			select lp
 			from ListenerProfile lp
 			where lp.visibilityChoiceCompleted = true
+			  and lp.user.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+			  and lp.user.emailVerified = true
 			  and (
 				(:usernameQuery <> ''
 					and locate(:usernameQuery, coalesce(lp.user.username, '')) > 0)
@@ -172,6 +209,8 @@ public interface ListenerProfileRepository extends JpaRepository<ListenerProfile
 			select lp from ListenerProfile lp
 			where lp.user.id = :userId
 			  and lp.visibilityChoiceCompleted = true
+			  and lp.user.status = com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE
+			  and lp.user.emailVerified = true
 			""")
 	Optional<ListenerProfile> findForPublicIdentityByUserId(@Param("userId") UUID userId);
 }

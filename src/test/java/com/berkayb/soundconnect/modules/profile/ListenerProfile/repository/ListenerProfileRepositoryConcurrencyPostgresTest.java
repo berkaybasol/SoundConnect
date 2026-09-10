@@ -81,6 +81,52 @@ class ListenerProfileRepositoryConcurrencyPostgresTest {
 	@Autowired PlatformTransactionManager transactionManager;
 
 	@Test
+	void contentGuardReadsCommittedVisibilityInsteadOfTheStaleManagedProfile() throws Exception {
+		User owner = userRepository.saveAndFlush(user("stale_guard"));
+		ListenerProfile stored = listenerProfileRepository.saveAndFlush(ListenerProfile.builder().user(owner)
+				.visibilityMode(ListenerVisibilityMode.STANDARD).visibilityChoiceCompleted(true).build());
+		try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+			new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+				ListenerProfile stale = listenerProfileRepository.findById(stored.getId()).orElseThrow();
+				try {
+					executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(other -> {
+						var fresh = listenerProfileRepository.findByIdForUpdate(stored.getId()).orElseThrow();
+						fresh.setVisibilityMode(ListenerVisibilityMode.GHOST);
+						listenerProfileRepository.saveAndFlush(fresh);
+					})).get(10, TimeUnit.SECONDS);
+				} catch (Exception failure) { throw new IllegalStateException(failure); }
+				assertThat(stale.getVisibilityMode()).isEqualTo(ListenerVisibilityMode.STANDARD);
+				var current = listenerProfileRepository.lockContentVisibility(stored.getId()).orElseThrow();
+				assertThat(current.getMode()).isEqualTo("GHOST");
+				assertThat(current.getChoiceCompleted()).isTrue();
+			});
+		}
+	}
+
+	@Test
+	void publicShellIdentityAndSearchHideInactiveAndUnverifiedOwners() {
+		User owner = userRepository.saveAndFlush(user("disabled_visibility"));
+		ListenerProfile profile = listenerProfileRepository.saveAndFlush(ListenerProfile.builder().user(owner)
+				.visibilityMode(ListenerVisibilityMode.STANDARD).visibilityChoiceCompleted(true).build());
+		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+			assertThat(listenerProfileRepository.findForPublicById(profile.getId())).isPresent();
+		});
+		owner.setStatus(UserStatus.INACTIVE); userRepository.saveAndFlush(owner);
+		assertHidden(owner, profile);
+		owner.setStatus(UserStatus.ACTIVE); owner.setEmailVerified(false); userRepository.saveAndFlush(owner);
+		assertHidden(owner, profile);
+	}
+
+	private void assertHidden(User owner, ListenerProfile profile) {
+		new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+			assertThat(listenerProfileRepository.findForPublicById(profile.getId())).isEmpty();
+			assertThat(listenerProfileRepository.findForPublicIdentityByUserId(owner.getId())).isEmpty();
+			assertThat(listenerProfileRepository.searchForPublicDiscovery(owner.getUsername(), owner.getUsername(),
+					ListenerVisibilityMode.GHOST, PageRequest.of(0, 10))).isEmpty();
+		});
+	}
+
+	@Test
 	void visibilityReadQueriesExecuteWithTheirUserFetchesOnPostgres() {
 		User ghostUser = userRepository.saveAndFlush(user("visibility_ghost"));
 		User standardUser = userRepository.saveAndFlush(user("visibility_standard"));

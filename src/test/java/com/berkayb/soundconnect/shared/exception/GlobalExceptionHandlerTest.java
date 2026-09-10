@@ -37,6 +37,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class GlobalExceptionHandlerTest {
 
+	@Test
+	void erasedReferenceConflictUsesTheDomainCodeWithoutDatabaseDetails() {
+		var databaseError = new org.hibernate.exception.ConstraintViolationException("private SQL", new java.sql.SQLException(), "ck_account_erased");
+		var response = new GlobalExceptionHandler().handleDataIntegrityViolation(
+				new DataIntegrityViolationException("private SQL", databaseError), new org.springframework.mock.web.MockHttpServletRequest());
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+	}
+
 	private GlobalExceptionHandler handler;
 	private MockMvc mockMvc;
 

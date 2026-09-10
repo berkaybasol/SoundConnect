@@ -58,10 +58,11 @@ public class NotificationServiceImpl implements NotificationService {
 	private final NotificationReceiptRepository receiptRepository;
 
 	@Override
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	@Transactional(propagation = Propagation.REQUIRED)
 	public NotificationResponseDto refreshActorIdentityForDelivery(NotificationResponseDto notification) {
 		// Delivery runs after the inbox transaction commits. Resolve current
-		// privacy in a new transaction, not that transaction's stale snapshot.
+		// privacy in the delivery worker's fresh transaction and keep its locks
+		// until publication completes, avoiding a nested connection acquisition.
 		if (notification == null) return null;
 		return rehydrateActorIdentities(List.of(notification)).getFirst();
 	}

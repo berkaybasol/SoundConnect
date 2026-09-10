@@ -66,6 +66,7 @@ class UserServiceImplTest {
 	@Mock private CityRepository cityRepository;     // ctor bağımlılığı; bu testte kullanılmıyor
 	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Mock private ListenerProfileProvisioner listenerProfileProvisioner;
+	@Mock private com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
 	
 	// ==== Test edeceğimiz servis ====
 	@InjectMocks

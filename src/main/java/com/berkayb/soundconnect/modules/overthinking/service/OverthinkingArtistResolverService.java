@@ -6,4 +6,7 @@ import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 public interface OverthinkingArtistResolverService {
 	
 	void resolveAndSetArtist(OverthinkingPost post, OverthinkingPostSaveRequestDto dto);
+
+    void resolveAndSetArtist(OverthinkingPost post, OverthinkingPostSaveRequestDto dto,
+            com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto snapshot);
 }

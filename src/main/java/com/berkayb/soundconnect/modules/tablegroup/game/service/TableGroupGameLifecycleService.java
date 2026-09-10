@@ -20,6 +20,14 @@ public class TableGroupGameLifecycleService {
 		gameService.closeActiveGameLocked(lockedTableGroup, reason);
 	}
 
+	public void participantErased(TableGroup lockedTableGroup, UUID userId) {
+		gameService.removeErasedAccountLocked(lockedTableGroup, userId);
+	}
+
+	public void ownerErased(TableGroup lockedTableGroup) {
+		gameService.closeForErasedOwnerLocked(lockedTableGroup);
+	}
+
 	public int purgeForTableGroups(Collection<UUID> tableGroupIds) {
 		return gameService.purgeGamesForTableGroups(tableGroupIds);
 	}

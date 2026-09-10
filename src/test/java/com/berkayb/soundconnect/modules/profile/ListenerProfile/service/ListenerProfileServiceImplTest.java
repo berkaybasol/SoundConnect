@@ -162,7 +162,7 @@ class ListenerProfileServiceImplTest {
 	void publicGhostProjectionReturnsRestricted200ShapeWithoutHiddenFields() {
 		ListenerProfile profile = profile(ListenerVisibilityMode.GHOST, 2);
 		profile.setDescription("private bio");
-		when(repo.findByIdForVisibilityRead(profile.getId())).thenReturn(Optional.of(profile));
+		when(repo.findForPublicById(profile.getId())).thenReturn(Optional.of(profile));
 
 		var result = service.getProfileByProfileId(profile.getId());
 
@@ -290,7 +290,7 @@ class ListenerProfileServiceImplTest {
 	void publicStandardProjectionKeepsExistingFields() {
 		ListenerProfile profile = profile(ListenerVisibilityMode.STANDARD, 2);
 		profile.setDescription("public bio");
-		when(repo.findByIdForVisibilityRead(profile.getId())).thenReturn(Optional.of(profile));
+		when(repo.findForPublicById(profile.getId())).thenReturn(Optional.of(profile));
 		when(followService.countFollowers(user)).thenReturn(12L);
 		when(followService.countFollowing(user)).thenReturn(8L);
 
@@ -307,7 +307,7 @@ class ListenerProfileServiceImplTest {
 	void pendingChoiceProfileHasNoPublicByIdProjection() {
 		ListenerProfile pending = profile(ListenerVisibilityMode.STANDARD, 0);
 		pending.setVisibilityChoiceCompleted(false);
-		when(repo.findByIdForVisibilityRead(pending.getId())).thenReturn(Optional.of(pending));
+		when(repo.findForPublicById(pending.getId())).thenReturn(Optional.of(pending));
 
 		assertThatThrownBy(() -> service.getProfileByProfileId(pending.getId()))
 				.isInstanceOfSatisfying(SoundConnectException.class, exception ->

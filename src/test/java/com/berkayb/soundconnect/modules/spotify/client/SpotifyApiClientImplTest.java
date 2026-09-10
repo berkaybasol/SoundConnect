@@ -65,6 +65,8 @@ class SpotifyApiClientImplTest {
 		var result = client.getTracksByIds(List.of(" track-b ", "track-a", "track-b"));
 
 		assertThat(result).extracting("spotifyTrackId").containsExactly("track-b", "track-a");
+		assertThat(result.getFirst().artistIds()).containsExactly("artist-1");
+		assertThat(result.getFirst().artistNames()).containsExactly("Artist");
 		RecordedRequest first = server.takeRequest();
 		RecordedRequest second = server.takeRequest();
 		assertThat(first.getPath()).isEqualTo("/tracks/track-b?market=TR");
@@ -90,6 +92,49 @@ class SpotifyApiClientImplTest {
 				.isInstanceOfSatisfying(SoundConnectException.class,
 						exception -> assertThat(exception.getErrorType())
 								.isEqualTo(ErrorType.SPOTIFY_FORBIDDEN));
+	}
+
+	@Test
+	void trackDetailPreservesAuthoritativeArtistIdsInSpotifyOrder() {
+		server.enqueue(new MockResponse()
+				.addHeader("Content-Type", "application/json")
+				.setBody("""
+						{"id":"track-a","name":"Track A","artists":[
+						  {"id":"artist-primary","name":"Primary"},
+						  {"id":"artist-featured","name":"Featured"}
+						]}
+						"""));
+
+		var result = client.getTrackById("track-a");
+
+		assertThat(result.artistIds()).containsExactly("artist-primary", "artist-featured");
+		assertThat(result.artistNames()).containsExactly("Primary", "Featured");
+	}
+
+	@Test
+	void trackSearchPreservesArtistIdsAndOmitsMissingUpstreamIds() {
+		server.enqueue(new MockResponse()
+				.addHeader("Content-Type", "application/json")
+				.setBody("""
+						{"tracks":{"items":[
+						  {"id":"track-a","artists":[
+						    {"id":"artist-primary","name":"Primary"},
+						    {"name":"No catalog ID"},
+						    {"id":" ","name":"Blank catalog ID"},
+						    null
+						  ]},
+						  {"id":"track-b","artists":null}
+						]}}
+						"""));
+
+		var result = client.searchTracks("Track", 10);
+
+		assertThat(result).hasSize(2);
+		assertThat(result.getFirst().artistIds()).containsExactly("artist-primary");
+		assertThat(result.getFirst().artistNames())
+				.containsExactly("Primary", "No catalog ID", "Blank catalog ID");
+		assertThat(result.get(1).artistIds()).isEmpty();
+		assertThat(result.get(1).artistNames()).isEmpty();
 	}
 
 	@Test

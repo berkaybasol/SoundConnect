@@ -57,7 +57,103 @@ class TableGroupGameServiceImplTest {
 	@Mock TableGroupDiceRoller diceRoller;
 	@Mock TableGroupRateLimitGuard rateLimitGuard;
 	@Mock TableGroupMetrics metrics;
+	@Mock TableGroupErasureGamePublisher erasurePublisher;
+	@Mock com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
+	@Mock com.berkayb.soundconnect.modules.notification.service.AfterCommitDeliveryExecutor erasureDelivery;
 	@InjectMocks TableGroupGameServiceImpl service;
+
+	@Test void erasedActorIsRejectedBeforeAnyGameAggregateLockOrPlayerInsertion() {
+		UUID user=UUID.randomUUID(),table=UUID.randomUUID();
+		doThrow(new SoundConnectException(ErrorType.ACCOUNT_DELETED)).when(accounts).requireActive(List.of(user));
+		assertThatThrownBy(() -> service.create(user,table,new TableGroupGameCreateRequestDto(UUID.randomUUID(),TableGroupGameMode.DICE)))
+				.isInstanceOfSatisfying(SoundConnectException.class,e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETED));
+		verifyNoInteractions(tableGroupEntityFinder,gameRepository,playerRepository,messageRepository);
+	}
+
+	@ParameterizedTest
+	@org.junit.jupiter.params.provider.CsvSource({"true,true", "true,false", "false,true", "false,false"})
+	void accountErasurePersistsWithoutIdentityLocksAndQueuesOnlyAfterCommit(boolean owner, boolean committed) {
+		Instant now = Instant.now(); UUID user = UUID.randomUUID(), tableId = UUID.randomUUID(), gameId = UUID.randomUUID();
+		TableGroup table = openTable(tableId, user, now);
+		TableGroupGame game = inProgressVote(gameId, tableId, user, now);
+		TableGroupMessage anchor = TableGroupMessage.builder().id(UUID.randomUUID()).gameId(gameId).tableGroupId(tableId)
+				.senderId(user).content("Previous identity-bearing game result").build();
+		when(gameRepository.findFirstByTableGroupIdAndStatusInOrderByCreatedAtDesc(eq(tableId),any())).thenReturn(Optional.of(game));
+		when(gameRepository.findByIdForUpdate(gameId)).thenReturn(Optional.of(game));
+		when(timeProvider.now()).thenReturn(now);
+		when(messageRepository.findByGameIdAndDeletedAtIsNull(gameId)).thenReturn(Optional.of(anchor));
+		TableGroupGamePlayer player = player(gameId,user,"Old identity",now);
+		if (!owner) when(playerRepository.findByGameIdAndUserId(gameId,user)).thenReturn(Optional.of(player));
+		org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+		try {
+			if (owner) service.closeForErasedOwnerLocked(table); else service.removeErasedAccountLocked(table,user);
+			assertThat(game.getStatus()).isEqualTo(TableGroupGameStatus.CANCELLED);
+			assertThat(anchor.getContent()).isEqualTo("Hesap Kimde? oyunu iptal edildi.");
+			if (!owner) assertThat(player.getStatus()).isEqualTo(TableGroupGamePlayerStatus.LEFT);
+			verify(gameRepository).saveAndFlush(game);
+			verifyNoInteractions(projectionService,realtimePublisher,erasurePublisher,erasureDelivery);
+			var callbacks = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
+			org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+			if (committed) callbacks.forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+			// A commit callback may still hold the original JDBC connection. It must
+			// return after enqueueing, without invoking the REQUIRES_NEW worker.
+			verifyNoInteractions(erasurePublisher);
+			if (committed) {
+				ArgumentCaptor<Runnable> queued = ArgumentCaptor.forClass(Runnable.class);
+				verify(erasureDelivery).submit(queued.capture());
+				queued.getValue().run();
+				verify(erasurePublisher).refresh(gameId);
+			} else verifyNoInteractions(erasureDelivery);
+		} finally {
+			if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+				org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+		}
+	}
+
+	@ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+	void fullOrStoppingDeliveryQueueNeverRunsErasureProjectionInline(boolean stopping) throws Exception {
+		var delivery = new com.berkayb.soundconnect.modules.notification.service.AfterCommitDeliveryExecutor();
+		org.springframework.test.util.ReflectionTestUtils.setField(service, "erasureDelivery", delivery);
+		var workerStarted = new java.util.concurrent.CountDownLatch(1);
+		var releaseWorker = new java.util.concurrent.CountDownLatch(1);
+		try {
+			if (stopping) delivery.close();
+			else {
+				delivery.submit(() -> {
+					workerStarted.countDown();
+					try { releaseWorker.await(); }
+					catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+				});
+				assertThat(workerStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+				for (int queued = 0; queued < 256; queued++) delivery.submit(() -> { });
+			}
+			Instant now = Instant.now(); UUID user = UUID.randomUUID(), tableId = UUID.randomUUID(), gameId = UUID.randomUUID();
+			TableGroup table = openTable(tableId, user, now);
+			TableGroupGame game = inProgressVote(gameId, tableId, user, now);
+			TableGroupMessage anchor = TableGroupMessage.builder().id(UUID.randomUUID()).gameId(gameId).tableGroupId(tableId)
+					.senderId(user).content("Old identity-bearing game result").build();
+			when(gameRepository.findFirstByTableGroupIdAndStatusInOrderByCreatedAtDesc(eq(tableId), any())).thenReturn(Optional.of(game));
+			when(gameRepository.findByIdForUpdate(gameId)).thenReturn(Optional.of(game));
+			when(timeProvider.now()).thenReturn(now);
+			when(messageRepository.findByGameIdAndDeletedAtIsNull(gameId)).thenReturn(Optional.of(anchor));
+			org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+			service.closeForErasedOwnerLocked(table);
+			var callbacks = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
+			org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+			assertThatCode(() -> callbacks.forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit))
+					.doesNotThrowAnyException();
+			assertThat(game.getStatus()).isEqualTo(TableGroupGameStatus.CANCELLED);
+			assertThat(anchor.getContent()).isEqualTo("Hesap Kimde? oyunu iptal edildi.");
+			verify(gameRepository).saveAndFlush(game);
+			verifyNoInteractions(projectionService, realtimePublisher, erasurePublisher);
+		} finally {
+			if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+				org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+			releaseWorker.countDown();
+			delivery.close();
+		}
+	}
 
 	@Test
 	void createPersistsOneGameAnchorAndAutoJoinsCreatorForThreeMinutes() {
@@ -113,6 +209,11 @@ class TableGroupGameServiceImplTest {
 		verify(messageRepository).save(messageCaptor.capture());
 		assertThat(messageCaptor.getValue().getMessageType()).isEqualTo(MessageType.GAME);
 		assertThat(messageCaptor.getValue().getGameId()).isEqualTo(gameId);
+		InOrder actorOrder = inOrder(accounts, tableGroupEntityFinder, playerRepository, messageRepository);
+		actorOrder.verify(accounts).requireActive(List.of(creatorId));
+		actorOrder.verify(tableGroupEntityFinder).getTableGroupByIdForUpdate(tableId);
+		actorOrder.verify(playerRepository).save(any(TableGroupGamePlayer.class));
+		actorOrder.verify(messageRepository).save(any(TableGroupMessage.class));
 		verify(timeProvider, times(2)).now();
 	}
 

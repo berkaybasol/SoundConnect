@@ -48,6 +48,7 @@ import static org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER
 @SpringBootTest(classes = {
 		NotificationRabbitConfig.class,                  // exchange/queue/binding
 		NotificationEventListener.class,                 // dinleyen sınıf
+		com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class,
 		NotificationEventListenerRabbitIT.AmqpTestConfig.class
 })
 @ImportAutoConfiguration(RabbitAutoConfiguration.class)

@@ -37,6 +37,14 @@ class ListenerProfileChoiceGateTest {
 	}
 
 	@Test
+	void pendingListenerCanPermanentlyDeleteTheirOwnAccountWithoutChoosingVisibility() {
+		var gate = new ListenerProfileChoiceGate(choiceStatusReader);
+		assertThat(gate.shouldReject(new MockHttpServletRequest("DELETE", "/api/v1/users/me/account"),
+				authentication(userWithRole("ROLE_LISTENER")))).isFalse();
+		verifyNoInteractions(choiceStatusReader);
+	}
+
+	@Test
 	void pendingListenerCannotBypassOnboardingThroughAnyAudienceEndpoint() {
 		User listener = userWithRole("ROLE_LISTENER");
 		when(choiceStatusReader.requiresChoice(listener)).thenReturn(true);

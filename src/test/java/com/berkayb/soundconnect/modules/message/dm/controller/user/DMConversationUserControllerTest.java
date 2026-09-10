@@ -48,6 +48,9 @@ class DMConversationUserControllerTest {
 	
 	@Autowired UserRepository userRepo;
 	@Autowired DMConversationService conversationService;
+	// This H2 web fixture exercises HTTP/conversation wiring. PostgreSQL account
+	// row locks and erasure races are covered by NotificationErasureBoundaryPostgresTest.
+	@MockitoBean com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accountDeliveryFence;
 	
 	// MailProducerImpl yüzünden gerekecek
 	@MockitoBean RabbitTemplate rabbitTemplate;

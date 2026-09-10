@@ -133,7 +133,10 @@ class ListenerVisibilityPolicyTest {
 				.visibilityMode(ListenerVisibilityMode.STANDARD)
 				.visibilityChoiceCompleted(false)
 				.build();
-		when(repository.findByIdForUpdate(profileId)).thenReturn(Optional.of(pending));
+		when(repository.lockContentVisibility(profileId)).thenReturn(Optional.of(new ListenerProfileRepository.ContentVisibility() {
+			public String getMode() { return pending.getVisibilityMode().name(); }
+			public boolean getChoiceCompleted() { return pending.isVisibilityChoiceCompleted(); }
+		}));
 
 		assertThat(policy.lockAndIsPubliclyRestrictedProfile(profileId)).isTrue();
 	}

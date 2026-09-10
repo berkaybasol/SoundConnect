@@ -13,6 +13,9 @@ import java.util.Set;
 import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
+	@Query("select u.id from User u where u.id in :ids and u.erasedAt is not null")
+	Set<UUID> findErasedIds(@Param("ids") java.util.Collection<UUID> ids);
+
 	Optional<User> findByUsername(String username);
 	boolean existsByUsername(String username);
 	boolean existsByUsernameAndIdNot(String username, UUID id);

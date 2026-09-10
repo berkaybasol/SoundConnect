@@ -88,7 +88,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			Sort.Order.desc("createdAt"),
 			Sort.Order.desc("id")
 	);
-	
+
 	private final TableGroupNotificationOutboxService notificationOutboxService;
 	private final TableGroupRepository tableGroupRepository;
 	private final TableGroupMapper tableGroupMapper;
@@ -156,7 +156,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				))
 				.toList();
 	}
-	
+
 	// Owner bir katilimciyi masadan kickler
 	@Override
 	public void removeParticipantFromTableGroup(UUID ownerId, UUID tableGroupId, UUID participantId) {
@@ -188,7 +188,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		if (participant.getStatus() != ParticipantStatus.ACCEPTED) {
 			throw new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND);
 		}
-		
+
 		participant.setStatus(ParticipantStatus.KICKED);
 		participant.setJoinedAt(now);
 		pruneTerminalParticipantHistory(tableGroup, now, participantId);
@@ -205,7 +205,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		runAfterCommit("participant_kicked", metrics::participantKicked);
 		log.info("Participant {} kicked from tableGroup {}", participantId, tableGroupId);
 	}
-	
+
 	// Owner masayi iptal eder ve kabul edilmis kullanicilara bildirim gider
 	@Override
 	public void cancelTableGroup(UUID ownerId, UUID tableGroupId) {
@@ -231,7 +231,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		);
 		log.info("TableGroup {} cancelled by owner {}", tableGroupId, ownerId);
 	}
-	
+
 	// kullanicinin masaya katilma basvurusu
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote) {
@@ -298,7 +298,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		tableGroupRepository.save(tableGroup);
 
 		log.info("Join request: user={} tableGroup={} status={}", userId, tableGroupId, joinRequest.getStatus());
-		
+
 		// Notification Event (owner'a basvuru bildirimi fire et)
 		if (!tableGroup.getOwnerId().equals(userId)) {
 			notificationOutboxService.enqueue(
@@ -311,7 +311,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 		runAfterCommit("join_requested", metrics::joinRequested);
 	}
-	
+
 	// owner basvurani kabul eder
 	@Override
 	public void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
@@ -369,11 +369,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 		TableGroupActorPolicy.requireEligible(applicant);
 		requireNoInstitutionalFootprint(participantId);
-				
+
 		if (acceptedParticipantCount(tableGroup) >= tableGroup.getMaxPersonCount()) {
 			throw new SoundConnectException(ErrorType.MAX_PARTICIPANT_LIMIT);
 		}
-		
+
 		participant.setStatus(ParticipantStatus.ACCEPTED);
 		// Cancellation purges games with clearAutomatically=true. Flush the target
 		// acceptance first so that clearing the persistence context cannot discard
@@ -398,7 +398,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 
 		log.info("Join request APPROVED: tableGroup={}, participant={}", tableGroupId, participantId);
-		
+
 		notificationOutboxService.enqueue(
 				participantId,
 				NotificationType.TABLE_JOIN_REQUEST_APPROVED,
@@ -407,9 +407,9 @@ public class TableGroupServiceImpl implements TableGroupService{
 				tablePayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId))
 		);
 		runAfterCommit("join_approved", metrics::joinApproved);
-		
+
 	}
-	
+
 	// owner basvuruyu reddeder
 	@Override
 	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
@@ -433,15 +433,15 @@ public class TableGroupServiceImpl implements TableGroupService{
 		if (participant.getStatus() != ParticipantStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND);
 		}
-		
+
 		// status rejectle
 		participant.setStatus(ParticipantStatus.REJECTED);
 		participant.setJoinedAt(now);
 		pruneTerminalParticipantHistory(tableGroup, now, participantId);
-		
+
 		tableGroupRepository.save(tableGroup);
 		log.info("Join request REJECTED: tableGroup={}, participant={}", tableGroupId, participantId);
-		
+
 		notificationOutboxService.enqueue(
 				participantId,
 				NotificationType.TABLE_JOIN_REQUEST_REJECTED,
@@ -451,7 +451,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		);
 		runAfterCommit("join_rejected", metrics::joinRejected);
 	}
-	
+
 	// kullanici masadan ayrilir (owner ayrilamaz)
 	@Override
 	public void leaveTableGroup(UUID userId, UUID tableGroupId) {
@@ -468,7 +468,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			throw new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND);
 		}
 		TableGroup tableGroup = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
-		
+
 		// kullanici owner mi ownersa masadan ayrilamaz
 		if (tableGroup.getOwnerId().equals(userId)) {
 			throw new SoundConnectException(ErrorType.OWNER_CANNOT_LEAVE);
@@ -501,10 +501,10 @@ public class TableGroupServiceImpl implements TableGroupService{
 				tablePayload(tableGroupId, "PARTICIPANT_LEFT", Map.of("leaverId", userId))
 		);
 		runAfterCommit("participant_left", metrics::participantLeft);
-		
-		
+
+
 	}
-	
+
 	// yeni masa olusturma owner otomatik accepted.
 	@Override
 	public TableGroupResponseDto createTableGroup(UUID ownerId, TableGroupCreateRequestDto requestDto) {
@@ -567,12 +567,12 @@ public class TableGroupServiceImpl implements TableGroupService{
 		String venueNameSnapshot = registeredVenue == null
 				? normalizedVenueName
 				: requireRegisteredVenueName(registeredVenue);
-		
+
 		// Yaş aralığı
 		if (requestDto.ageMin() < 19 || requestDto.ageMax() > 99 || requestDto.ageMin() > requestDto.ageMax()) {
 			throw new SoundConnectException(ErrorType.INVALID_AGE_RANGE);
 		}
-		
+
 		// Cinsiyet dağılımı kişi sayısıyla uyuşmalı
 		if (requestDto.maxPersonCount() < 2 || requestDto.maxPersonCount() > 6
 				|| requestDto.genderPrefs() == null
@@ -581,7 +581,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						pref -> pref == null || !VALID_GENDER_PREFERENCES.contains(pref))) {
 			throw new SoundConnectException(ErrorType.GENDER_AND_COUNT_MISMATCH);
 		}
-		
+
 		// Buluşma zamanı geçmiş olamaz ve masa ömrünün içinde kalmalıdır.
 		if (requestDto.meetingAt() == null || !requestDto.meetingAt().isAfter(now)) {
 			throw new SoundConnectException(ErrorType.TABLE_END_DATE_PASSED);
@@ -593,11 +593,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		if (requestDto.cityId() == null) {
 			throw new SoundConnectException(ErrorType.CITY_NOT_FOUND);
 		}
-		
+
 		// Lokasyon doğrulama
 		City city = cityRepository.findById(requestDto.cityId())
 		                          .orElseThrow(() -> new SoundConnectException(ErrorType.CITY_NOT_FOUND));
-		
+
 		District district;
 		Neighborhood neighborhood;
 		if (registeredVenue != null) {
@@ -646,27 +646,27 @@ public class TableGroupServiceImpl implements TableGroupService{
 		entity.setCity(city);
 		entity.setDistrict(district);
 		entity.setNeighborhood(neighborhood);
-		
+
 		// Owner'ı otomatik ACCEPTED participant olarak ekle
 		TableGroupParticipant ownerParticipant = TableGroupParticipant.builder()
 		                                                              .userId(ownerId)
 		                                                              .joinedAt(now)
 		                                                              .status(ParticipantStatus.ACCEPTED)
 		                                                              .build();
-		
+
 		entity.getParticipants().add(ownerParticipant);
-		
+
 		entity = tableGroupRepository.save(entity);
 		runAfterCommit("created", metrics::created);
-		
+
 		log.info("TableGroup created: id={}, owner={}, venueId={}, venueName={}, city={}",
 		         entity.getId(), ownerId, entity.getVenueId(), entity.getVenueName(),
 		         city.getName()
 		);
-		
+
 		return renderDetail(entity, ownerId);
 	}
-	
+
 	// aktif masalari lokasyona gore listele.
 	@Override
 	public Page<TableGroupResponseDto> listActiveTableGroups(
@@ -679,7 +679,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		Instant now = Instant.now();
 		Page<TableGroup> page;
 		Pageable boundedPageable = boundedActiveListPageable(pageable);
-		
+
 		if (neighborhoodId != null && districtId == null) {
 			throw new SoundConnectException(
 					ErrorType.DISTRICT_NOT_FOUND,
@@ -692,7 +692,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					"District filtresi icin city zorunlu"
 			);
 		}
-		
+
 		if (cityId == null) {
 			page = tableGroupRepository.findByStatusAndExpiresAtAfter(
 					TableGroupStatus.ACTIVE,
@@ -724,7 +724,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					boundedPageable
 			);
 		}
-		
+
 		return renderSummaryPage(page, viewerId);
 	}
 
@@ -742,8 +742,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 		);
 		return renderSummaryPage(page, viewerId);
 	}
-	
-	
+
+
 	// tek masa detayi
 	@Override
 	public TableGroupResponseDto getTableGroupDetail(UUID viewerId, UUID tableGroupId) {
@@ -761,7 +761,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 		return renderDetail(entity, viewerId);
 	}
-	
+
 	@org.springframework.transaction.annotation.Transactional(
 			propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED
 	)
@@ -773,7 +773,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				now,
 				PageRequest.of(0, EXPIRY_BATCH_SIZE)
 		);
-		
+
 		if (expiredIds.isEmpty()) {
 			return;
 		}
@@ -853,7 +853,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 		return deleted;
 	}
-	
+
 	private Page<TableGroupResponseDto> renderSummaryPage(Page<TableGroup> page, UUID viewerId) {
 		Map<UUID, TableGroupResponseDto> projectedById = new LinkedHashMap<>();
 		for (TableGroup entity : page.getContent()) {
@@ -1491,7 +1491,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			Map<UUID, String> profileImages,
 			Map<UUID, ListenerVisibilityMode> visibilityModes
 	) {}
-	
+
 	private Map<String, Object> tablePayload(UUID tableGroupId, String action, Map<String, Object> extraPayload) {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("module", "TABLE");

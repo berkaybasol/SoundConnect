@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.overthinking.service;
 
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingRevealRequestResponseDto;
+import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
+import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
+import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingRevealRequest;
 import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingRevealRequestStatus;
@@ -40,6 +43,11 @@ class OverthinkingRevealRequestServiceGhostIdentityTest {
 	@Mock OverthinkingRevealRequestMapper revealRequestMapper;
 	@Mock OverthinkingNotificationService notificationService;
 	@Mock GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
+	@Mock LikeRepository actorRepository;
+	@Mock CommentAuthorBatchResolver requesterIdentityResolver;
+	@Mock OverthinkingRevealNotificationRetractionService notificationRetraction;
+	@Mock OverthinkingRevealRateGuard rateGuard;
+	@Mock OverthinkingRevealParticipantGuard participants;
 	@InjectMocks OverthinkingRevealRequestServiceImpl service;
 
 	@Test
@@ -49,7 +57,8 @@ class OverthinkingRevealRequestServiceGhostIdentityTest {
 		UUID standardRequesterId = UUID.randomUUID();
 		OverthinkingRevealRequest ghostRequest = request(authorId, ghostRequesterId);
 		OverthinkingRevealRequest standardRequest = request(authorId, standardRequesterId);
-		PageRequest pageable = PageRequest.of(0, 20);
+		PageRequest pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Direction.DESC, "createdAt", "id"));
 		GhostListenerIdentity ghostIdentity = new GhostListenerIdentity(
 				ghostRequesterId,
 				"ghost-listener",
@@ -66,13 +75,16 @@ class OverthinkingRevealRequestServiceGhostIdentityTest {
 				ghostRequesterId,
 				standardRequesterId
 		)))).thenReturn(Map.of(ghostRequesterId, ghostIdentity));
-		when(revealRequestMapper.toDto(ghostRequest, ghostIdentity)).thenReturn(ghostDto);
-		when(revealRequestMapper.toDto(standardRequest, null)).thenReturn(standardDto);
+		var standardIdentity = new UserSummaryDto(standardRequesterId, "standard-listener", "https://cdn.test/standard.jpg");
+		when(requesterIdentityResolver.resolve(List.of(standardRequesterId))).thenReturn(Map.of(standardRequesterId, standardIdentity));
+		when(revealRequestMapper.toDto(ghostRequest, ghostIdentity, null)).thenReturn(ghostDto);
+		when(revealRequestMapper.toDto(standardRequest, null, standardIdentity)).thenReturn(standardDto);
 
 		Page<OverthinkingRevealRequestResponseDto> result =
 				service.getIncomingRequests(authorId, pageable);
 
 		assertThat(result.getContent()).containsExactly(ghostDto, standardDto);
+		verify(requesterIdentityResolver).resolve(List.of(standardRequesterId));
 		verify(ghostIdentityBatchResolver).resolve(argThat(ids -> containsExactly(
 				ids,
 				ghostRequesterId,

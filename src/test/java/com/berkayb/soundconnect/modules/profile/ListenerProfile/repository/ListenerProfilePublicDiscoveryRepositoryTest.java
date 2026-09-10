@@ -119,6 +119,7 @@ class ListenerProfilePublicDiscoveryRepositoryTest {
 				.email(username + "-" + UUID.randomUUID() + "@soundconnect.test")
 				.password("test-password-hash")
 				.provider(AuthProvider.LOCAL)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE)
 				.emailVerified(true)
 				.city(city)
 				.build());

@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVi
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer;
 import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
@@ -41,10 +42,12 @@ public class DmMessageEventListener {
 	private final NotificationProducer notificationProducer;
 	private final UserRepository userRepository;
 	private final PublicProfileResolverService publicProfileResolverService;
+	private final AccountDeliveryFence accountDeliveryFence;
 	
-	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void onDmMessageSent(DmMessageSentEvent event) {
+		if (event == null || !accountDeliveryFence.canDeliver(event.getRecipientId(),
+				java.util.List.of(event.getSenderId(), event.getRecipientId()))) return;
 		try {
 			// eventteki bilgiden DMMessage entity'sini DB'den cek (responseDto icin)
 			var msg = messageRepository.findById(event.getMessageId())
@@ -73,8 +76,9 @@ public class DmMessageEventListener {
 		publishNotification(event);
 	}
 
-	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void onDmMessageRead(DmMessageReadEvent event) {
+		if (event == null || !accountDeliveryFence.canDeliver(event.readerId(), java.util.List.of(event.readerId()))) return;
 		refreshUnreadBadge(event.readerId());
 	}
 

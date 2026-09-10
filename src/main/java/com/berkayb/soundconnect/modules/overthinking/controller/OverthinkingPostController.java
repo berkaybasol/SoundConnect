@@ -4,7 +4,9 @@ import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.overthinking.dto.request.OverthinkingPostSaveRequestDto;
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPostResponseDto;
 import com.berkayb.soundconnect.modules.overthinking.entity.OverthinkingPost;
+import com.berkayb.soundconnect.modules.overthinking.enums.OverthinkingFeedOrder;
 import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingPostService;
+import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingPostCommandService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
@@ -33,6 +35,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Overthinking.*;
 public class OverthinkingPostController {
 	
 	private final OverthinkingPostService postService;
+	private final OverthinkingPostCommandService commands;
 	
 	/**
 	 * Authenticated user ID alma—tek merkez
@@ -78,7 +81,7 @@ public class OverthinkingPostController {
 		
 		log.info("[OverthinkingPostController] Creating post by user {}", userId);
 		
-		var response = postService.create(userId, dto);
+		var response = commands.create(userId, dto);
 		
 		return ResponseEntity.ok(BaseResponse.<OverthinkingPostResponseDto>builder()
 				                         .success(true)
@@ -90,10 +93,9 @@ public class OverthinkingPostController {
 	
 	@PutMapping(UPDATE)
 	@PreAuthorize("isAuthenticated()")
-	@Operation(summary = "Post guncelle")
+	@Operation(summary = "Eski istemci uyumluluğu: paylaşılan yazılar düzenlenemez", deprecated = true)
 	public ResponseEntity<BaseResponse<OverthinkingPostResponseDto>> updatePost(Principal principal, @PathVariable UUID postId, @Valid @RequestBody OverthinkingPostSaveRequestDto dto) {
 		UUID userId = getAuthenticatedUserId(principal);
-		log.info("[Overthinking] Updating post {} by user {}", postId, userId);
 		var response = postService.update(postId, userId, dto);
 		return ResponseEntity.ok(
 				BaseResponse.<OverthinkingPostResponseDto>builder()
@@ -155,11 +157,12 @@ public class OverthinkingPostController {
 	@Operation(summary = "Overthinking global feed")
 	public ResponseEntity<BaseResponse<Page<OverthinkingPostResponseDto>>> getFeed(
 			Principal principal,
-			@ParameterObject Pageable pageable
+			@ParameterObject Pageable pageable,
+			@RequestParam(defaultValue = "NEWEST") OverthinkingFeedOrder order
 	) {
 		UUID viewerId = tryGetAuthenticatedUserId(principal);
 		
-		var response = postService.getAll(viewerId, pageable);
+		var response = postService.getAll(viewerId, pageable, order);
 		
 		return ResponseEntity.ok(BaseResponse.<Page<OverthinkingPostResponseDto>>builder()
 		                                     .success(true)

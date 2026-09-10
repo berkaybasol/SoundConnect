@@ -50,6 +50,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 	private final VenueRepository venueRepository;
 	private final MediaAssetService mediaAssetService;
 	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+	private final DmConversationCreationService conversationCreationService;
 
 
 	// kullanicinin dahil oldugu tum konusmalari ozet halinde getirir.
@@ -67,6 +68,7 @@ public class DMConversationServiceImpl implements DMConversationService {
 				ghostListenerIdentityBatchResolver.resolve(otherUserIds);
 		if (ghostIdentities == null) ghostIdentities = Map.of();
 		Map<UUID, GhostListenerIdentity> resolvedGhostIdentities = ghostIdentities;
+		Set<UUID> erasedUserIds = otherUserIds.isEmpty() ? Set.of() : userRepository.findErasedIds(otherUserIds);
 
 		// son mesaji ve karsi tarafi profile lookup ile bul
 		List<DMConversationPreviewResponseDto> result = conversations.stream()
@@ -80,10 +82,11 @@ public class DMConversationServiceImpl implements DMConversationService {
 
 					// Ghost identity is authoritative and must never fall through to an
 					// alternate professional profile in legacy/corrupt multi-profile data.
-					String otherUsername = ghostIdentity == null
+					boolean otherUserDeleted = erasedUserIds.contains(otherUserId);
+					String otherUsername = otherUserDeleted ? "Silinmiş hesap" : ghostIdentity == null
 							? getDisplayNameForUser(otherUserId)
 							: ghostIdentity.username();
-					String otherUserProfilePicture = ghostIdentity == null
+					String otherUserProfilePicture = otherUserDeleted ? null : ghostIdentity == null
 							? getProfilePictureForUser(otherUserId)
 							: ghostIdentity.profilePictureUrl();
 
@@ -107,7 +110,8 @@ public class DMConversationServiceImpl implements DMConversationService {
 							lastMessageSenderId,
 							lastMessageAt,
 							lastMessageRead,
-							ghostIdentity == null ? null : ghostIdentity.visibilityMode()
+							ghostIdentity == null ? null : ghostIdentity.visibilityMode(),
+							otherUserDeleted
 					);
 				})
 				.sorted(Comparator.comparing(DMConversationPreviewResponseDto :: lastMessageAt,
@@ -134,30 +138,19 @@ public class DMConversationServiceImpl implements DMConversationService {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
 		DmParticipantPair pair = DmParticipantPair.of(userAId, userBId);
-		Optional<DMConversation> existing = conversationRepository.findConversationBetweenUsers(
-				pair.userAId(), pair.userBId());
-		if (existing.isPresent()) {
-			return existing.get().getId();
-		}
-
-		DMConversation conversation = DMConversation.builder()
-				.userAId(pair.userAId())
-				.userBId(pair.userBId())
-				.build();
 		try {
-			return conversationRepository.saveAndFlush(conversation).getId();
+			return conversationCreationService.getOrCreate(userAId, pair);
 		} catch (DataIntegrityViolationException conflict) {
 			// A concurrent request may have committed the same canonical pair.
-			// saveAndFlush runs in the repository transaction because this method
-			// explicitly does not join an ambient transaction, so recovery queries
-			// are not poisoned by the failed insert transaction.
+			// The creation boundary owns a transaction including current-account
+			// shared locks. It has rolled back before this nontransactional facade
+			// retries, so the winner lookup gets fresh eligibility and clean state.
 			for (int attempt = 1; attempt <= CONCURRENT_CREATE_LOOKUP_ATTEMPTS; attempt++) {
-				Optional<DMConversation> winner = conversationRepository.findConversationBetweenUsers(
-						pair.userAId(), pair.userBId());
+				Optional<UUID> winner = conversationCreationService.findExisting(userAId, pair);
 				if (winner.isPresent()) {
 					log.debug("Recovered concurrent DM conversation create pair=({}, {}) attempt={}",
 					          pair.userAId(), pair.userBId(), attempt);
-					return winner.get().getId();
+					return winner.get();
 				}
 			}
 			throw conflict;

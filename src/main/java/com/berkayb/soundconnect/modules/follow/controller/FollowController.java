@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.follow.dto.request.FollowRequestDto;
 import com.berkayb.soundconnect.modules.follow.dto.response.FollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.follow.mapper.FollowMapper;
+import com.berkayb.soundconnect.modules.follow.mapper.ListenerFollowAvatarBatchResolver;
 import com.berkayb.soundconnect.modules.follow.service.FollowService;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
@@ -39,6 +40,7 @@ public class FollowController {
 	private final UserEntityFinder userEntityFinder;
 	private final FollowMapper followMapper;
 	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
+	private final ListenerFollowAvatarBatchResolver listenerAvatarBatchResolver;
 	
 	@GetMapping(FOLLOWERS_COUNT)
 	@PreAuthorize("isAuthenticated()")
@@ -134,9 +136,10 @@ public class FollowController {
 		List<Follow> follows =
 				followService.getFollowingVisibleTo(viewerId, follower);
 		Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(follows);
+		Map<UUID, String> listenerAvatars = listenerAvatarBatchResolver.resolve(followUserIds(follows));
 		List<FollowResponseDto> dtoList = follows
 		                                               .stream()
-		                                               .map(follow -> followMapper.toDto(follow, ghostIdentities))
+		                                               .map(follow -> followMapper.toDto(follow, ghostIdentities, listenerAvatars))
 		                                               .collect(Collectors.toList());
 		
 		return BaseResponse.<List<FollowResponseDto>>builder()
@@ -159,9 +162,10 @@ public class FollowController {
 		List<Follow> follows =
 				followService.getFollowersVisibleTo(viewerId, following);
 		Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(follows);
+		Map<UUID, String> listenerAvatars = listenerAvatarBatchResolver.resolve(followUserIds(follows));
 		List<FollowResponseDto> dtoList = follows
 		                                               .stream()
-		                                               .map(follow -> followMapper.toDto(follow, ghostIdentities))
+		                                               .map(follow -> followMapper.toDto(follow, ghostIdentities, listenerAvatars))
 		                                               .collect(Collectors.toList());
 		
 		return BaseResponse.<List<FollowResponseDto>>builder()
@@ -207,8 +211,12 @@ public class FollowController {
 	private Map<UUID, GhostListenerIdentity> resolveGhostIdentities(
 			List<Follow> follows
 	) {
+		return ghostIdentityBatchResolver.resolve(followUserIds(follows));
+	}
+
+	private LinkedHashSet<UUID> followUserIds(List<Follow> follows) {
 		if (follows == null || follows.isEmpty()) {
-			return Map.of();
+			return new LinkedHashSet<>();
 		}
 		LinkedHashSet<UUID> userIds = new LinkedHashSet<>();
 		for (Follow follow : follows) {
@@ -220,9 +228,6 @@ public class FollowController {
 				userIds.add(follow.getFollowing().getId());
 			}
 		}
-		if (userIds.isEmpty()) {
-			return Map.of();
-		}
-		return ghostIdentityBatchResolver.resolve(userIds);
+		return userIds;
 	}
 }
