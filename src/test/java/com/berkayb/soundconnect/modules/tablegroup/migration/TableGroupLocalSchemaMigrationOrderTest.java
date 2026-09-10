@@ -28,6 +28,9 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				"2026-09-03-listener-ghost-profile.sql";
 		String listenerSpotifyPlaylists =
 				"2026-09-04-listener-spotify-playlists.sql";
+		String listenerErasure = "2026-09-10-listener-account-erasure.sql";
+		String tableProfileShares = "2026-09-10-tablegroup-profile-shares.sql";
+		String tableProfileHistory = "2026-09-10-tablegroup-profile-share-history.sql";
 
 		assertThat(devScript).contains(
 				hardening,
@@ -40,7 +43,7 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				notificationTypeSpelling,
 				strictCreateContract,
 				listenerGhostProfile,
-				listenerSpotifyPlaylists
+				listenerSpotifyPlaylists, listenerErasure, tableProfileShares, tableProfileHistory
 		);
 		assertThat(devScript.indexOf(hardening)).isLessThan(devScript.indexOf(game));
 		assertThat(devScript.indexOf(game)).isLessThan(devScript.indexOf(globalFeed));
@@ -56,6 +59,9 @@ class TableGroupLocalSchemaMigrationOrderTest {
 				.isLessThan(devScript.indexOf(listenerGhostProfile));
 		assertThat(devScript.indexOf(listenerGhostProfile))
 				.isLessThan(devScript.indexOf(listenerSpotifyPlaylists));
+		assertThat(devScript.indexOf(listenerSpotifyPlaylists)).isLessThan(devScript.indexOf(listenerErasure));
+		assertThat(devScript.indexOf(listenerErasure)).isLessThan(devScript.indexOf(tableProfileShares));
+		assertThat(devScript.indexOf(tableProfileShares)).isLessThan(devScript.indexOf(tableProfileHistory));
 		assertThat(devScript).contains(
 				"Local Studio, Collab, TableGroup, listener-profile, event-consent, performer-calendar, and event-publication schemas are ready.");
 	}

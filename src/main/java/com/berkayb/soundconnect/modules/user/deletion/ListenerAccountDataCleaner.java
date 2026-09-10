@@ -31,6 +31,10 @@ public class ListenerAccountDataCleaner {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void erase(UUID userId, UUID profileId) {
+        // Source tables are retained as terminal aggregates after owner erasure.
+        // Delete both authored shares and other listeners' shares of owned tables;
+        // the publication trigger purges associated engagement in this transaction.
+        jdbc.update("delete from tbl_table_group_profile_share where owner_user_id = ? or table_group_id in (select id from tbl_table_group where owner_id = ?)", userId, userId);
         purgeTargets("OVERTHINKING", ids("select id from tbl_overthinking_post where author_id = ? order by id for update", userId));
         purgeTargets("EVENT_POST", ids("select post_id from tbl_event_audience_intent where user_id = ? and post_id is not null for update", userId));
         jdbc.update("delete from tbl_like where user_id = ? or (target_type = 'COMMENT' and target_id in (select id from tbl_comment where user_id = ?))", userId, userId);

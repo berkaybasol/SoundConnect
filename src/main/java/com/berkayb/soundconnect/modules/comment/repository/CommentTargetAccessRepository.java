@@ -13,9 +13,9 @@ public interface CommentTargetAccessRepository extends Repository<Comment, UUID>
     Optional<EventPostOwner> eventPostOwner(@Param("id") UUID id);
 
     @Query(value = "select id from tbl_user where id=:id and status='ACTIVE' and email_verified for share", nativeQuery = true)
-    Optional<UUID> lockEventPostAuthor(@Param("id") UUID id);
+    Optional<UUID> lockActivePostAuthor(@Param("id") UUID id);
 
-    /** Read role/profile eligibility after the account lock, matching EventAudienceService.actor. */
+    /** Shared listener publication boundary; read role/profile eligibility after the account lock. */
     @Query(value = """
             select exists (select 1 from tbl_user u where u.id=:id
                 and exists (select 1 from user_roles ur join tbl_role r on r.id=ur.role_id
@@ -30,7 +30,29 @@ public interface CommentTargetAccessRepository extends Repository<Comment, UUID>
                 and not exists (select 1 from tbl_venues v where v.owner_id=u.id)
             )
             """, nativeQuery = true)
-    boolean eligibleEventPostAuthor(@Param("id") UUID id);
+    boolean eligibleListenerPostAuthor(@Param("id") UUID id);
+
+    @Query(value = "select owner_user_id as \"userId\",table_group_id as \"tableGroupId\" from tbl_table_group_profile_share where id=:id", nativeQuery = true)
+    Optional<TablePostOwner> tablePostOwner(@Param("id") UUID id);
+
+    @Query(value = "select id from tbl_table_group where id=:id for update", nativeQuery = true)
+    Optional<UUID> lockTableGroup(@Param("id") UUID id);
+
+    @Query(value = "select soundconnect_freeze_table_profile_shares(:id, null)", nativeQuery = true)
+    int freezeEndedTablePost(@Param("id") UUID id);
+
+    @Query(value = """
+            select s.id from tbl_table_group_profile_share s join tbl_table_group t on t.id=s.table_group_id
+            where s.id=:id and s.owner_user_id=:ownerId and t.id=:tableId and
+            """ + com.berkayb.soundconnect.modules.tablegroup.profileshare.TableGroupProfileShareRepository.READABLE_PUBLICATION
+            + " for share of s", nativeQuery = true)
+    Optional<UUID> lockPublishedTablePost(@Param("id") UUID id, @Param("ownerId") UUID ownerId,
+                                        @Param("tableId") UUID tableId, @Param("now") java.time.Instant now);
+
+    interface TablePostOwner {
+        UUID getUserId();
+        UUID getTableGroupId();
+    }
 
     @Query(value = """
             select post_id from tbl_event_audience_intent where post_id=:id and user_id=:userId and event_id=:eventId

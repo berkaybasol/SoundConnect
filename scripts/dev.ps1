@@ -48,7 +48,9 @@ $LocalSchemaMigrations = @(
     @{ Name = "Overthinking inbox seen"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-inbox-seen.sql" },
     @{ Name = "Overthinking profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-profile-shares.sql" },
     @{ Name = "Overthinking production safety"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-production-safety.sql" },
-    @{ Name = "Listener account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-listener-account-erasure.sql" }
+    @{ Name = "Listener account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-listener-account-erasure.sql" },
+    @{ Name = "TableGroup profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-shares.sql" },
+    @{ Name = "TableGroup profile share history"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-share-history.sql" }
 )
 
 function Assert-Command([string]$Name) {

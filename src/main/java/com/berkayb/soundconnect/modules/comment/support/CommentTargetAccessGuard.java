@@ -22,6 +22,7 @@ public class CommentTargetAccessGuard {
         boolean visible = switch (type) {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
             case EVENT_POST -> readableEventPost(id);
+            case TABLE_GROUP_POST -> readableTablePost(id);
             case OVERTHINKING -> repository.lockPost(id).isPresent();
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
@@ -35,11 +36,24 @@ public class CommentTargetAccessGuard {
         if (owner == null || owner.getUserId() == null || owner.getEventId() == null) return false;
         // Account -> listener privacy -> event -> publication matches audience writes/removal.
         // Every value is read under database fences; stale OSIV entities cannot expose ghost posts.
-        if (repository.lockEventPostAuthor(owner.getUserId()).isEmpty()
-                || !repository.eligibleEventPostAuthor(owner.getUserId())
+        if (repository.lockActivePostAuthor(owner.getUserId()).isEmpty()
+                || !repository.eligibleListenerPostAuthor(owner.getUserId())
                 || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
                 || repository.lockPublicEvent(owner.getEventId()).isEmpty()) return false;
         return repository.lockPublishedEventPost(id, owner.getUserId(), owner.getEventId()).isPresent();
+    }
+
+    private boolean readableTablePost(UUID id) {
+        var owner = repository.tablePostOwner(id).orElse(null);
+        if (owner == null || owner.getUserId() == null || owner.getTableGroupId() == null) return false;
+        // Match publication writes: account -> privacy -> aggregate -> exact share.
+        // Capture expiry time after the aggregate lock; waiting may cross expiry.
+        if (repository.lockActivePostAuthor(owner.getUserId()).isEmpty()
+                || !repository.eligibleListenerPostAuthor(owner.getUserId())
+                || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
+                || repository.lockTableGroup(owner.getTableGroupId()).isEmpty()) return false;
+        repository.freezeEndedTablePost(owner.getTableGroupId());
+        return repository.lockPublishedTablePost(id, owner.getUserId(), owner.getTableGroupId(), java.time.Instant.now()).isPresent();
     }
 
     private boolean readableMedia(UUID id) {

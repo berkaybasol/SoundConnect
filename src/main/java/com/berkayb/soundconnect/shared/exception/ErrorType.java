@@ -199,6 +199,11 @@ public enum ErrorType {
 	TABLE_GROUP_VENUE_OPTION_LIMIT_INVALID(9126,"Venue option limit must be between 1 and 10",HttpStatus.BAD_REQUEST,"Mekan arama limiti 1 ile 10 arasinda olmalidir."),
 	TABLE_GROUP_OWNER_ACTIVE_EXISTS(9127,"Owner already has an active table group",HttpStatus.CONFLICT,"Yeni masa oluşturmadan önce açık masanı kapatmalısın."),
 	TABLE_GROUP_MESSAGE_IDEMPOTENCY_CONFLICT(9128,"Table group message idempotency conflict",HttpStatus.CONFLICT,"Mesaj anahtarı farklı bir içerikle daha önce kullanılmış."),
+	TABLE_GROUP_PROFILE_SHARE_ALREADY_EXISTS(9129,"Table profile publication already exists",HttpStatus.CONFLICT,"Bu masa profilinizde zaten paylaşılmış. Notu değiştirmek için paylaşımı kaldırıp yeniden paylaşabilirsiniz."),
+	TABLE_GROUP_PROFILE_SHARE_INVALID(9130,"Invalid table profile publication",HttpStatus.BAD_REQUEST,"Masa paylaşımı veya notu geçersiz."),
+	TABLE_GROUP_PROFILE_SHARE_NOT_FOUND(9131,"Table profile publication not found",HttpStatus.NOT_FOUND,"Masa paylaşımı bulunamadı."),
+	TABLE_GROUP_PROFILE_SHARE_UNAVAILABLE(9132,"Table profile publication unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Masa paylaşımına şu anda ulaşılamıyor. Lütfen yeniden deneyin."),
+	TABLE_GROUP_PROFILE_SHARE_FORBIDDEN(9133,"Table profile publication requires current membership",HttpStatus.FORBIDDEN,"Yalnızca sahibi olduğunuz veya katıldığınız açık masaları paylaşabilirsiniz."),
 	
 	// BAND (9200 - 9250)
 	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.CONFLICT, "Bu band zaten mevcut."),

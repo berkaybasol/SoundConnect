@@ -111,7 +111,8 @@ class ListenerAccountDeletionPostgresTest {
             statement.execute(studioMigration.substring(publicCodeStart, publicCodeEnd + publicCodeTriggerEnd.length()));
             for (String migration : List.of("2026-09-09-overthinking-lifecycle.sql",
                     "2026-09-10-overthinking-inbox-seen.sql", "2026-09-10-overthinking-profile-shares.sql",
-                    "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql")) {
+                    "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
+                    "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql")) {
                 statement.execute(Files.readString(Path.of("scripts/db", migration)));
             }
         }
@@ -439,6 +440,48 @@ class ListenerAccountDeletionPostgresTest {
             verify(games,never()).tableClosed(any(),any());
             verify(games,never()).participantRemoved(any(),any(),any());
         }
+    }
+
+    @Test void ownerErasureRemovesEveryPublicationOfRetainedTablesIncludingPeerEngagement() {
+        TableFixture fixture = tableFixture();
+        var publicationIds = tx(() -> {
+            var mine = persist(new com.berkayb.soundconnect.modules.tablegroup.profileshare.TableGroupProfileShare(
+                    owner,fixture.ownerProfile,fixture.table,"Owner note",Instant.now()));
+            var peerShare = persist(new com.berkayb.soundconnect.modules.tablegroup.profileshare.TableGroupProfileShare(
+                    fixture.peer,fixture.peerProfile,fixture.table,"Peer note",Instant.now()));
+            User peer = em.find(User.class,fixture.peer);
+            Comment root = comment(peer,EngagementTargetType.TABLE_GROUP_POST,peerShare.getId(),null);
+            Comment reply = comment(peer,EngagementTargetType.TABLE_GROUP_POST,peerShare.getId(),root);
+            like(peer,EngagementTargetType.TABLE_GROUP_POST,peerShare.getId());
+            like(peer,EngagementTargetType.COMMENT,reply.getId());
+            return List.of(mine.getId(),peerShare.getId(),reply.getId());
+        });
+        jdbc.update("update tbl_table_group set status='INACTIVE' where id=?",fixture.table);
+        assertThat(jdbc.queryForObject("select count(*) from tbl_table_group_profile_share where table_group_id=? and final_source is not null",Long.class,fixture.table))
+                .isEqualTo(2);
+        deletion.deleteSelf(owner,PASSWORD,null);
+        assertThat(count("tbl_table_group","id",fixture.table)).isEqualTo(1);
+        assertThat(count("tbl_table_group_profile_share","table_group_id",fixture.table)).isZero();
+        for (UUID id : publicationIds) {
+            assertThat(count("tbl_like","target_id",id)).isZero();
+            assertThat(count("tbl_comment","target_id",id)).isZero();
+        }
+        assertThat(users.findById(fixture.peer).orElseThrow().getErasedAt()).isNull();
+    }
+
+    @Test void participantErasureAfterDeadlineFreezesSurvivingOwnerPublicationBeforeCollectionCleanup() {
+        TableFixture fixture = tableFixture();
+        UUID publication = tx(() -> persist(new com.berkayb.soundconnect.modules.tablegroup.profileshare.TableGroupProfileShare(
+                owner,fixture.ownerProfile,fixture.table,"Historical count",Instant.now())).getId());
+        jdbc.update("update tbl_table_group set expires_at=now()-interval '1 second' where id=?",fixture.table);
+        deletion.deleteSelf(fixture.peer,PASSWORD,null);
+        assertThat(jdbc.queryForObject("select final_source->>'acceptedCount' from tbl_table_group_profile_share where id=?",String.class,publication))
+                .isEqualTo("2");
+        assertThat(jdbc.queryForObject("select final_source->>'status' from tbl_table_group_profile_share where id=?",String.class,publication))
+                .isEqualTo("INACTIVE");
+        assertThat(jdbc.queryForObject("select count(*) from tbl_table_group_participants where table_group_id=?",Long.class,fixture.table))
+                .isEqualTo(1);
+        assertThat(users.findById(owner).orElseThrow().getErasedAt()).isNull();
     }
 
     private TableFixture tableFixture() {

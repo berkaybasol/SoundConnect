@@ -403,7 +403,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				participantId,
 				NotificationType.TABLE_JOIN_REQUEST_APPROVED,
 				"Başvurun onaylandı",
-				"Katıldığın masa başvurun onaylandı.",
+				"Masana Mesajlar bölümünden ulaşabilirsin.",
 				tablePayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId))
 		);
 		runAfterCommit("join_approved", metrics::joinApproved);

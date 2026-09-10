@@ -273,3 +273,9 @@ row lock. Game state and its chat card commit atomically. Game WebSocket frames
 are also best-effort after-commit projections through the shared broker relay;
 the active-game endpoint and database-backed chat history are the recovery
 sources. The notification outbox is not used as a realtime game-event log.
+
+## Listener profile sharing
+
+Table detail and chat overflow menus may offer listener profile sharing only to the current owner or accepted participant of an active, unexpired table. The additive API, lifecycle rules, minimal public card, engagement target and required database migration are documented in [TableGroupProfileShares.md](TableGroupProfileShares.md).
+
+Published cards read current accepted counts while active. At natural expiry (`INACTIVE`) or early closure (`CANCELLED`), eligible existing publications retain an immutable final public snapshot and their own engagement. A bounded lookup of up to 50 publication IDs supports refreshing visible profile cards. Ended cards do not grant table/chat access or permit new sharing; current listener author visibility and account-erasure rules still apply.

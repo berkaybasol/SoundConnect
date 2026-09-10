@@ -802,7 +802,18 @@ class TableGroupServiceImplTest {
 		// then
 		assertThat(pending.getStatus()).isEqualTo(ParticipantStatus.ACCEPTED);
 		verify(tableGroupRepository).saveAndFlush(tableGroup);
-		verify(notificationOutboxService).enqueue(any(UUID.class), any(NotificationType.class), anyString(), anyString(), anyMap());
+		verify(notificationOutboxService).enqueue(
+				participantId,
+				NotificationType.TABLE_JOIN_REQUEST_APPROVED,
+				"Başvurun onaylandı",
+				"Masana Mesajlar bölümünden ulaşabilirsin.",
+				Map.of(
+						"module", "TABLE",
+						"action", "JOIN_REQUEST_APPROVED",
+						"tableGroupId", tableGroupId.toString(),
+						"ownerId", ownerId.toString())
+		);
+		verifyNoMoreInteractions(notificationOutboxService);
 	}
 
 	@Test
