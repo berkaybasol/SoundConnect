@@ -4,6 +4,7 @@ package com.berkayb.soundconnect.modules.engagement.enums;
 public enum EngagementTargetType {
 	
 	OVERTHINKING,
+	OVERTHINKING_PROFILE_SHARE,
 	MEDIA,
 	EVENT,
 	EVENT_POST,

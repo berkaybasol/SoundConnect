@@ -350,6 +350,11 @@ public class EndPoints {
 		public static final String SEARCH = "/search"; //eklendi
 		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}"; //eklendi
 	}
+
+	public static class MusicianFeed {
+		public static final String BASE = API + VERSION + "/feed/musician";
+		public static final String PREFERENCES = "/preferences";
+	}
 	
 	public static class VenueApplication {
 		public static final String USER_BASE = API + VERSION + "/user/venue-applications";

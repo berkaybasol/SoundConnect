@@ -23,6 +23,7 @@ public class CommentTargetAccessGuard {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
             case EVENT_POST -> readableEventPost(id);
             case TABLE_GROUP_POST -> readableTablePost(id);
+            case OVERTHINKING_PROFILE_SHARE -> readableOverthinkingProfileShare(id);
             case OVERTHINKING -> repository.lockPost(id).isPresent();
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
@@ -54,6 +55,20 @@ public class CommentTargetAccessGuard {
                 || repository.lockTableGroup(owner.getTableGroupId()).isEmpty()) return false;
         repository.freezeEndedTablePost(owner.getTableGroupId());
         return repository.lockPublishedTablePost(id, owner.getUserId(), owner.getTableGroupId(), java.time.Instant.now()).isPresent();
+    }
+
+    private boolean readableOverthinkingProfileShare(UUID id) {
+        var owner = repository.overthinkingProfileShareOwner(id).orElse(null);
+        if (owner == null || owner.getUserId() == null || owner.getSourcePostId() == null) return false;
+        // Match publication writes/removal: account -> listener visibility ->
+        // source -> exact publication. This prevents a source/profile deletion
+        // from committing between validation and an engagement insert.
+        if (repository.lockActivePostAuthor(owner.getUserId()).isEmpty()
+                || !repository.eligibleListenerPostAuthor(owner.getUserId())
+                || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
+                || repository.lockPost(owner.getSourcePostId()).isEmpty()) return false;
+        return repository.lockPublishedOverthinkingProfileShare(
+                id, owner.getUserId(), owner.getSourcePostId()).isPresent();
     }
 
     private boolean readableMedia(UUID id) {

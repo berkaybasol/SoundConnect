@@ -148,6 +148,7 @@ class OverthinkingLifecyclePostgresTest {
                 statement.execute(Files.readString(Path.of("scripts/db/2026-09-09-overthinking-lifecycle.sql")));
                 statement.execute(Files.readString(Path.of("scripts/db/2026-09-10-overthinking-profile-shares.sql")));
                 statement.execute(Files.readString(Path.of("scripts/db/2026-09-10-overthinking-production-safety.sql")));
+                statement.execute(Files.readString(Path.of("scripts/db/2026-09-11-overthinking-profile-share-engagement.sql")));
             }
         }
     }
@@ -499,6 +500,106 @@ class OverthinkingLifecyclePostgresTest {
         assertThat(shares.publish(listener.owner, ownSource, new OverthinkingProfileShareUpdate(" \n\t ")).note()).isNull();
         assertThat(shares.list(reader, listener.profile, 0, 20).content()).hasSize(2);
         assertThat(posts.getById(source, reader).content()).isEqualTo("Body");
+    }
+
+    @Test void profilePublicationOwnsIndependentBatchedEngagementAndDeletionPurgesOnlyThatConversation() {
+        var target = listener();
+        var other = listener();
+        UUID source = post(null);
+        var first = shares.publish(target.owner, source, new OverthinkingProfileShareUpdate("First"));
+        var second = shares.publish(other.owner, source, new OverthinkingProfileShareUpdate("Second"));
+
+        likes.like(reader, EngagementTargetType.OVERTHINKING, source);
+        UUID sourceComment = comments.createComment(reader, EngagementTargetType.OVERTHINKING, source,
+                new CommentCreateRequestDto("Source conversation", null)).id();
+        likes.like(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, first.shareId());
+        UUID root = comments.createComment(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, first.shareId(),
+                new CommentCreateRequestDto("Publication conversation", null)).id();
+        UUID reply = comments.createComment(author, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, first.shareId(),
+                new CommentCreateRequestDto("Publication reply", root)).id();
+        likes.setCommentLike(author, reply, true);
+
+        var card = shares.list(reader, target.profile, 0, 20).content().getFirst();
+        assertThat(card.shareId()).isEqualTo(first.shareId());
+        assertThat(card.likeCount()).isEqualTo(1);
+        assertThat(card.commentCount()).isEqualTo(2);
+        assertThat(card.likedByMe()).isTrue();
+        assertThat(card.post().likeCount()).isEqualTo(1);
+        assertThat(card.post().commentCount()).isEqualTo(1);
+        assertThat(comments.getReplies(reader, root, PageRequest.of(0, 20)).getContent().getFirst().user().id())
+                .isEqualTo(author);
+        var otherCard = shares.list(reader, other.profile, 0, 20).content().getFirst();
+        assertThat(otherCard.shareId()).isEqualTo(second.shareId());
+        assertThat(otherCard.likeCount()).isZero();
+        assertThat(otherCard.commentCount()).isZero();
+        assertThat(otherCard.likedByMe()).isFalse();
+
+        shares.delete(target.owner, first.shareId());
+        assertThat(count("tbl_comment", "target_id", first.shareId())).isZero();
+        assertThat(count("tbl_like", "target_id", first.shareId())).isZero();
+        assertThat(count("tbl_like", "target_id", root)).isZero();
+        assertThat(count("tbl_like", "target_id", reply)).isZero();
+        assertThat(count("tbl_comment", "target_id", source)).isEqualTo(1);
+        assertThat(count("tbl_like", "target_id", source)).isEqualTo(1);
+        assertThat(count("tbl_comment", "id", sourceComment)).isEqualTo(1);
+        assertThat(shares.list(reader, other.profile, 0, 20).content()).singleElement()
+                .satisfies(post -> assertThat(post.shareId()).isEqualTo(second.shareId()));
+        assertError(() -> likes.countLikes(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, first.shareId()),
+                ErrorType.ENGAGEMENT_NOT_FOUND);
+    }
+
+    @Test void profilePublicationEngagementFailsClosedWithListenerVisibilityAndSourceLifecycle() {
+        var target = listener();
+        UUID source = post(null);
+        UUID publication = shares.publish(target.owner, source, new OverthinkingProfileShareUpdate(null)).shareId();
+        likes.like(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication);
+        UUID root = comments.createComment(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication,
+                new CommentCreateRequestDto("Private after transition", null)).id();
+
+        setListenerVisibility(target, true, true);
+        assertError(() -> likes.isLiked(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication),
+                ErrorType.ENGAGEMENT_NOT_FOUND);
+        assertError(() -> comments.getComments(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication,
+                PageRequest.of(0, 20)), ErrorType.ENGAGEMENT_NOT_FOUND);
+        setListenerVisibility(target, false, true);
+        assertThat(likes.isLiked(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication)).isTrue();
+
+        posts.delete(source, author);
+        assertThat(shareRepository.existsById(publication)).isFalse();
+        assertThat(count("tbl_comment", "target_id", publication)).isZero();
+        assertThat(count("tbl_like", "target_id", publication)).isZero();
+        assertThat(count("tbl_like", "target_id", root)).isZero();
+        assertError(() -> likes.countLikes(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication),
+                ErrorType.ENGAGEMENT_NOT_FOUND);
+    }
+
+    @Test void profilePublicationEngagementMigrationWidensLegacyChecksWithoutTouchingSourceRows() throws Exception {
+        var target = listener();
+        UUID source = post(null);
+        UUID publication = shares.publish(target.owner, source, new OverthinkingProfileShareUpdate(null)).shareId();
+        likes.like(reader, EngagementTargetType.OVERTHINKING, source);
+        jdbc.execute("alter table tbl_like add constraint test_old_profile_share_like_enum "
+                + "check(target_type in ('OVERTHINKING','MEDIA','EVENT','EVENT_POST','TABLE_GROUP_POST','COMMENT')) not valid");
+        jdbc.execute("alter table tbl_like add constraint test_profile_share_target_not_zero "
+                + "check(target_id<>'00000000-0000-0000-0000-000000000000'::uuid) not valid");
+        try {
+            applyMigration();
+            likes.like(reader, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, publication);
+            assertThat(count("tbl_like", "target_id", source)).isEqualTo(1);
+            assertThat(count("tbl_like", "target_id", publication)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from soundconnect_schema_migrations "
+                    + "where migration_id='2026-09-11-overthinking-profile-share-engagement'", Long.class))
+                    .isEqualTo(1);
+            String localMigrations = Files.readString(Path.of("scripts/dev.ps1"));
+            assertThat(localMigrations.indexOf("2026-09-10-overthinking-profile-shares.sql"))
+                    .isLessThan(localMigrations.indexOf("2026-09-11-overthinking-profile-share-engagement.sql"));
+            assertThatThrownBy(() -> jdbc.update("insert into tbl_like(id,created_at,updated_at,user_id,target_type,target_id) "
+                    + "values(?,now(),now(),?,'OVERTHINKING_PROFILE_SHARE',?)", UUID.randomUUID(), reader, new UUID(0, 0)))
+                    .hasStackTraceContaining("test_profile_share_target_not_zero");
+        } finally {
+            jdbc.execute("alter table tbl_like drop constraint if exists test_old_profile_share_like_enum");
+            jdbc.execute("alter table tbl_like drop constraint if exists test_profile_share_target_not_zero");
+        }
     }
 
     @Test void concurrentIdenticalPublicationRetriesShareTheSamePersistedIdentityAndTimestamp() throws Exception {

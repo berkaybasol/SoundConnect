@@ -127,6 +127,49 @@ At startup, the production safety validator checks the effective configuration a
 
 The production database schema must be deployed before the application starts. Until versioned migrations are introduced, schema provisioning is an explicit release prerequisite. The required baseline, backfills, rollout order, and unresolved product decisions are tracked in [`docs/ReleaseReadiness.md`](docs/ReleaseReadiness.md); staging/production deployment is blocked until that gate is completed against the real PostgreSQL and object-storage state.
 
+For the musician feed rollout, keep `SOUNDCONNECT_MUSICIAN_FEED_ENABLED=false`
+while applying, in order, `2026-09-11-musician-feed-preferences.sql`,
+`2026-09-11-overthinking-profile-share-engagement.sql`,
+`2026-09-11-musician-feed-delivery.sql`,
+`2026-09-11-musician-feed-replay.sql`,
+`2026-09-11-musician-feed-feedback.sql`, and
+`2026-09-11-musician-feed-indexes.sql`. The last migration uses PostgreSQL
+`CREATE INDEX CONCURRENTLY` and therefore must run with autocommit enabled,
+outside a Flyway/framework transaction. Validate the schema, deploy the API
+with dedicated cursor and delivery secrets, then enable the flag. Roll back by
+disabling the serving flag while keeping
+`SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_ENABLED=true`; do not drop the ledger while
+reports or feedback refer to it. Cleanup must only be enabled after all feed
+migrations, including the replay table, are present.
+Before enabling, verify every `idx_feed_%` row in `pg_index` has both
+`indisvalid=true` and `indisready=true`. PostgreSQL can leave an invalid index
+after an interrupted concurrent build, and `IF NOT EXISTS` will not repair it;
+drop only that confirmed-invalid index with `DROP INDEX CONCURRENTLY`, rerun the
+online-index migration, and recheck both flags.
+Delivery rows remain through the delivery-token TTL plus telemetry retention;
+the bounded cleanup drains telemetry first and then its expired delivery
+envelope. Continuation replay rows expire at the cursor/delivery validity fence
+and are physically drained by the same independently controlled cleanup job.
+Replay idempotency applies to signed continuation requests; an initial request
+has no stable client/session identity and must be retried as a fresh feed session.
+The exact-replay key also includes the requested limit and advertised renderer
+set. Expired or prior-schema/algorithm cursors return the stable
+`MUSICIAN_FEED_CURSOR_INVALID` code and must refresh from the first page.
+Durable hide/show-less/mute feedback and moderation evidence are not
+cascade-deleted with that operational ledger.
+
+Production feed traffic is protected before candidate generation or database
+writes by an authenticated, per-user Redis limiter. Cursorless loads,
+continuation pages, and telemetry have independent token buckets; every page
+also consumes one token from a shared sustained page budget so repeatedly
+starting sessions cannot bypass the continuation policy. The atomic Lua
+decision uses Redis server time and colocates each user's bounded-TTL keys in a
+single Redis Cluster hash slot. HTTP 429 and Redis-unavailable HTTP 503
+responses both carry `Retry-After`. Redis failure is intentionally fail-closed.
+The `prod` profile enables this guard by default and startup refuses an enabled
+feed when `SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_ENABLED=false`. Keep it false
+only for local development or while the feed serving flag itself is disabled.
+
 ## Container images
 
 The multi-stage `Dockerfile` has two deliberate runtime targets:

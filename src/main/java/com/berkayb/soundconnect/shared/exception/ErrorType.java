@@ -60,6 +60,10 @@ public enum ErrorType {
 	MUSICIAN_CALENDAR_RATE_LIMIT_UNAVAILABLE(1314, "Event profile publication protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik görünürlüğü şu an değiştirilemiyor. Kısa süre sonra tekrar dene."),
 	MUSICIAN_CALENDAR_QUERY_INVALID(1315, "Invalid musician calendar range or pagination", HttpStatus.BAD_REQUEST, "Takvim için en fazla 31 günlük geçerli bir tarih aralığı seçin."),
 	EVENT_CALENDAR_SETTINGS_RETIRED(1316, "Global calendar settings retired", HttpStatus.GONE, "Profil görünürlüğü artık her etkinlik için ayrı yönetiliyor. Uygulamayı güncelleyin."),
+	MUSICIAN_FEED_PREFERENCE_VERSION_CONFLICT(1317, "Musician feed preferences changed", HttpStatus.CONFLICT, "Akış tercihlerin başka bir oturumda değişti. Yenileyip tekrar dene."),
+	MUSICIAN_FEED_CURSOR_INVALID(1318, "Musician feed cursor is expired or incompatible", HttpStatus.BAD_REQUEST, "Akış oturumunun süresi doldu veya sürümü değişti. Akışı yenileyip tekrar dene."),
+	MUSICIAN_FEED_RATE_LIMITED(1319, "Too many musician feed requests", HttpStatus.TOO_MANY_REQUESTS, "Akışı çok hızlı yeniliyorsun. Kısa süre sonra tekrar dene."),
+	MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE(1320, "Musician feed protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Akış geçici olarak kullanılamıyor. Kısa süre sonra tekrar dene."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),

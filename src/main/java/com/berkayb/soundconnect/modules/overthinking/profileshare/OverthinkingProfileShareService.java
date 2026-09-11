@@ -1,5 +1,8 @@
 package com.berkayb.soundconnect.modules.overthinking.profileshare;
 
+import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
+import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
+import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingPostService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
@@ -18,11 +21,14 @@ import java.util.stream.Collectors;
 @Service @RequiredArgsConstructor @Transactional(timeout = 10)
 public class OverthinkingProfileShareService {
     private static final Set<String> PERSONAL = Set.of("ROLE_LISTENER", "ROLE_MUSICIAN", "ROLE_VENUE", "ROLE_STUDIO", "ROLE_ORGANIZER", "ROLE_PRODUCER");
+    private static final EngagementTargetType TARGET = EngagementTargetType.OVERTHINKING_PROFILE_SHARE;
     private final OverthinkingProfileShareRepository repository;
     private final UserRepository users;
     private final ListenerVisibilityPolicy visibility;
     private final OverthinkingPostRepository sources;
     private final OverthinkingPostService posts;
+    private final LikeRepository likes;
+    private final CommentRepository comments;
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, timeout = 10)
     public OverthinkingProfileShareResponse.State get(UUID owner, UUID postId) {
@@ -70,9 +76,20 @@ public class OverthinkingProfileShareService {
         if (!target.profile().getProfileId().equals(profileId) || !target.profile().getChoiceCompleted()) throw profileNotFound();
         if (!target.canPublish()) return PageResponse.from(Page.empty(pageable));
         var shares = repository.findByListenerProfileIdAndOwnerUserId(profileId, owner, pageable);
+        if (shares.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, shares.getTotalElements()));
         var originals = posts.getByIdsForViewer(viewer, shares.stream().map(OverthinkingProfileShare::getSourcePostId).toList());
+        var shareIds = shares.stream().map(OverthinkingProfileShare::getId).toList();
+        var likeCounts = likes.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+                .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId,
+                        LikeRepository.TargetCountProjection::getCount));
+        var commentCounts = comments.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+                .collect(Collectors.toMap(CommentRepository.TargetCountProjection::getTargetId,
+                        CommentRepository.TargetCountProjection::getCount));
+        var liked = likes.findLikedTargetIds(viewer, TARGET, shareIds);
         return PageResponse.from(shares.map(share -> new OverthinkingProfileShareResponse.Post(
-                share.getId(), share.getNote(), share.getPublishedAt(), originals.get(share.getSourcePostId()))));
+                share.getId(), share.getNote(), share.getPublishedAt(), originals.get(share.getSourcePostId()),
+                likeCounts.getOrDefault(share.getId(), 0L), commentCounts.getOrDefault(share.getId(), 0L),
+                liked.contains(share.getId()))));
     }
 
     private Actor actor(UUID owner, boolean write) {

@@ -52,6 +52,46 @@ app:
   musician-profile:
     calendar-rate-limit:
       enabled: true
+  feed:
+    musician:
+      enabled: ${SOUNDCONNECT_MUSICIAN_FEED_ENABLED:false}
+      cursor-secret: ${SOUNDCONNECT_MUSICIAN_FEED_CURSOR_SECRET:}
+      cursor-ttl: ${SOUNDCONNECT_MUSICIAN_FEED_CURSOR_TTL:PT24H}
+      delivery-secret: ${SOUNDCONNECT_MUSICIAN_FEED_DELIVERY_SECRET:}
+      delivery-ttl: ${SOUNDCONNECT_MUSICIAN_FEED_DELIVERY_TTL:PT24H}
+      delivery-retention: ${SOUNDCONNECT_MUSICIAN_FEED_DELIVERY_RETENTION:P90D}
+      telemetry-retention: ${SOUNDCONNECT_MUSICIAN_FEED_TELEMETRY_RETENTION:P90D}
+      telemetry-clock-skew: ${SOUNDCONNECT_MUSICIAN_FEED_TELEMETRY_CLOCK_SKEW:PT10M}
+      provider-deadline: ${SOUNDCONNECT_MUSICIAN_FEED_PROVIDER_DEADLINE:PT4S}
+      provider-parallelism: ${SOUNDCONNECT_MUSICIAN_FEED_PROVIDER_PARALLELISM:6}
+      provider-queue-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_PROVIDER_QUEUE_CAPACITY:24}
+      sponsor-campaign-daily-cap: ${SOUNDCONNECT_MUSICIAN_FEED_SPONSOR_DAILY_CAP:3}
+      cleanup-batch-size: ${SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_BATCH_SIZE:1000}
+      cleanup-max-batches: ${SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_MAX_BATCHES:20}
+      cleanup-time-budget: ${SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_TIME_BUDGET:PT5S}
+      cleanup-cron: "${SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_CRON:0 */5 * * * *}"
+      cleanup-enabled: ${SOUNDCONNECT_MUSICIAN_FEED_CLEANUP_ENABLED:false}
+      max-session-deliveries: ${SOUNDCONNECT_MUSICIAN_FEED_MAX_SESSION_DELIVERIES:2000}
+      default-page-size: ${SOUNDCONNECT_MUSICIAN_FEED_DEFAULT_PAGE_SIZE:20}
+      max-page-size: ${SOUNDCONNECT_MUSICIAN_FEED_MAX_PAGE_SIZE:50}
+      provider-limit: ${SOUNDCONNECT_MUSICIAN_FEED_PROVIDER_LIMIT:160}
+      mock-sponsors-enabled: false
+      rate-limit:
+        enabled: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_ENABLED:true}
+        key-prefix: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_KEY_PREFIX:soundconnect:musician-feed:rate-limit}
+        initial:
+          burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_INITIAL_BURST:4}
+          refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_INITIAL_REFILL:PT15S}
+        continuation:
+          burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_CONTINUATION_BURST:12}
+          refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_CONTINUATION_REFILL:PT2S}
+        shared-page-budget:
+          burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_PAGE_BURST:30}
+          refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_PAGE_REFILL:PT3S}
+        telemetry:
+          burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_TELEMETRY_BURST:120}
+          refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_TELEMETRY_REFILL:PT0.25S}
+        unavailable-retry-after: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE_RETRY_AFTER:PT5S}
   table-group:
     rate-limit:
       enabled: true

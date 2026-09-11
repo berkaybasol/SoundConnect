@@ -65,6 +65,25 @@ public interface CommentTargetAccessRepository extends Repository<Comment, UUID>
         UUID getEventId();
     }
 
+    @Query(value = "select owner_user_id as \"userId\",source_post_id as \"sourcePostId\" from tbl_overthinking_profile_share where id=:id", nativeQuery = true)
+    Optional<OverthinkingProfileShareOwner> overthinkingProfileShareOwner(@Param("id") UUID id);
+
+    @Query(value = """
+            select s.id from tbl_overthinking_profile_share s
+            join "tbl_listener-profile" profile
+              on profile.id=s.listener_profile_id and profile.user_id=s.owner_user_id
+            where s.id=:id and s.owner_user_id=:ownerId and s.source_post_id=:sourcePostId
+            for share of s
+            """, nativeQuery = true)
+    Optional<UUID> lockPublishedOverthinkingProfileShare(@Param("id") UUID id,
+                                                         @Param("ownerId") UUID ownerId,
+                                                         @Param("sourcePostId") UUID sourcePostId);
+
+    interface OverthinkingProfileShareOwner {
+        UUID getUserId();
+        UUID getSourcePostId();
+    }
+
     @Query(value = """
             select e.id from tbl_event e join tbl_venues v on v.id=e.venue_id
             join tbl_user u on u.id=v.owner_id

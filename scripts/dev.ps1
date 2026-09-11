@@ -50,7 +50,13 @@ $LocalSchemaMigrations = @(
     @{ Name = "Overthinking production safety"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-production-safety.sql" },
     @{ Name = "Listener account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-listener-account-erasure.sql" },
     @{ Name = "TableGroup profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-shares.sql" },
-    @{ Name = "TableGroup profile share history"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-share-history.sql" }
+    @{ Name = "TableGroup profile share history"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-share-history.sql" },
+    @{ Name = "Musician feed preferences"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-preferences.sql" },
+    @{ Name = "Overthinking profile share engagement"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-overthinking-profile-share-engagement.sql" },
+    @{ Name = "Musician feed delivery"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-delivery.sql" },
+    @{ Name = "Musician feed continuation replay"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-replay.sql" },
+    @{ Name = "Musician feed feedback"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-feedback.sql" },
+    @{ Name = "Musician feed online indexes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-indexes.sql" }
 )
 
 function Assert-Command([string]$Name) {
