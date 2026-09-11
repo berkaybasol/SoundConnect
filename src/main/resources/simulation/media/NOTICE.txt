@@ -1,0 +1,7 @@
+SoundConnect local simulation media fixtures
+
+seed-image.png.b64 is a generated one-pixel PNG.
+seed-audio.wav.b64 is a generated 440 Hz mono PCM tone (8 kHz, 0.1 seconds).
+
+Both fixtures were generated specifically for this repository. They contain no
+third-party recording, artwork, personal data, or external network dependency.

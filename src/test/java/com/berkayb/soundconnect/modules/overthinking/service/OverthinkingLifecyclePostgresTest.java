@@ -26,10 +26,8 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.Liste
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
@@ -100,6 +98,7 @@ class OverthinkingLifecyclePostgresTest {
     @Autowired LikeServiceImpl likes;
     @Autowired TrackServiceImpl trackService;
     @Autowired TrackRepository tracks;
+    @Autowired MusicianProfileRepository musicianProfiles;
     @Autowired OverthinkingProfileShareService shares;
     @Autowired OverthinkingProfileShareRepository shareRepository;
     @Autowired ListenerProfileRepository listenerProfiles;
@@ -114,8 +113,6 @@ class OverthinkingLifecyclePostgresTest {
     @MockitoBean CommentBurstGuard burst;
     @MockitoBean MediaEngagementNotificationService engagementNotifications;
     @MockitoBean MediaAssetService media;
-    @MockitoBean MusicianProfileService musicians;
-    @MockitoBean BandService bands;
     @MockitoBean TrackMapper trackMapper;
     JdbcTemplate jdbc;
     UUID author, reader;
@@ -132,8 +129,6 @@ class OverthinkingLifecyclePostgresTest {
                     new com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto(id, "test-user", null));
             return result;
         });
-        when(musicians.getProfileEntity(any())).thenAnswer(i -> MusicianProfile.builder()
-                .id(i.getArgument(0)).user(User.builder().id(author).build()).build());
         doAnswer(i -> {
             jdbc.update("update tbl_media_asset set status='DELETION_PENDING' where id=?", i.<UUID>getArgument(0));
             return null;
@@ -918,7 +913,13 @@ class OverthinkingLifecyclePostgresTest {
     }
     private Track track(TrackOwnerType ownerType) {
         return tx(() -> {
-            UUID owner = UUID.randomUUID();
+            UUID owner = ownerType == TrackOwnerType.MUSICIAN_PROFILE
+                    ? musicianProfiles.findByUserId(author)
+                            .orElseGet(() -> persist(MusicianProfile.builder()
+                                    .user(em.getReference(User.class, author))
+                                    .build()))
+                            .getId()
+                    : UUID.randomUUID();
             var asset = persist(MediaAsset.builder().kind(MediaKind.AUDIO).status(MediaStatus.READY).visibility(MediaVisibility.PUBLIC)
                     .ownerType(ownerType == TrackOwnerType.BAND ? MediaOwnerType.BAND : MediaOwnerType.MUSICIAN_PROFILE)
                     .ownerId(owner).size(100L).mimeType("audio/mpeg").sourceUrl("https://test.invalid/audio").build());

@@ -107,6 +107,30 @@ public class MusicianFeedMixer {
             MusicianFeedLane lastItemLane,
             long organicCountAtLastPromotion
     ) {
+        return mix(viewerUserId, anchor, pageSize, supportedTypes, feedback, organicCandidates,
+                sponsorCandidates, after, deliveredOrganicCount, deliveredPromotionCount,
+                lastItemPromoted, lastItemType, lastItemLane, organicCountAtLastPromotion,
+                0, 0);
+    }
+
+    public MixedPage mix(
+            UUID viewerUserId,
+            Instant anchor,
+            int pageSize,
+            Set<MusicianFeedItemType> supportedTypes,
+            MusicianFeedFeedbackSnapshot feedback,
+            Collection<MusicianFeedCandidate> organicCandidates,
+            Collection<MusicianFeedCandidate> sponsorCandidates,
+            MusicianFeedCursorState.CursorPosition after,
+            long deliveredOrganicCount,
+            long deliveredPromotionCount,
+            boolean lastItemPromoted,
+            MusicianFeedItemType lastItemType,
+            MusicianFeedLane lastItemLane,
+            long organicCountAtLastPromotion,
+            long deliveredOverthinkingShareCount,
+            long deliveredTableGroupShareCount
+    ) {
         List<ScoredCandidate> organic = scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
                 organicCandidates, false);
         organic.sort(SCORED_ORDER);
@@ -116,7 +140,8 @@ public class MusicianFeedMixer {
         List<ScoredCandidate> sponsors = scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
                 sponsorCandidates, true).stream().sorted(SCORED_ORDER).toList();
 
-        List<ScoredCandidate> basePage = selectLaneWindow(organic, pageSize, lastItemLane);
+        List<ScoredCandidate> basePage = selectLaneWindow(organic, pageSize, lastItemLane,
+                deliveredOverthinkingShareCount, deliveredTableGroupShareCount);
         List<ScoredCandidate> diversePage = diversify(basePage);
         MergeResult merged = mergePromotions(diversePage, sponsors, pageSize, deliveredOrganicCount,
                 deliveredPromotionCount, lastItemPromoted, organicCountAtLastPromotion);
@@ -237,7 +262,9 @@ public class MusicianFeedMixer {
      * discovery take over the entire page.
      */
     private List<ScoredCandidate> selectLaneWindow(List<ScoredCandidate> sorted, int slots,
-                                                    MusicianFeedLane lastItemLane) {
+                                                    MusicianFeedLane lastItemLane,
+                                                    long deliveredOverthinkingShareCount,
+                                                    long deliveredTableGroupShareCount) {
         if (slots <= 0 || sorted.isEmpty()) return List.of();
         List<ScoredCandidate> system = sorted.stream()
                 .filter(value -> value.candidate().lane() == MusicianFeedLane.SYSTEM)
@@ -276,9 +303,46 @@ public class MusicianFeedMixer {
         selected.addAll(system.subList(0, systemCount));
         selected.addAll(primary.subList(0, primaryCount));
         selected.addAll(discovery.subList(0, discoveryCount));
-        selected.addAll(moduleShares.subList(0, moduleCount));
+        selected.addAll(selectModuleShares(moduleShares, moduleCount,
+                deliveredOverthinkingShareCount, deliveredTableGroupShareCount));
         selected.sort(SCORED_ORDER);
         return selected;
+    }
+
+    private List<ScoredCandidate> selectModuleShares(List<ScoredCandidate> sorted, int slots,
+                                                       long deliveredOverthinkingShareCount,
+                                                       long deliveredTableGroupShareCount) {
+        if (slots <= 0 || sorted.isEmpty()) return List.of();
+        ScoredCandidate overthinking = sorted.stream()
+                .filter(value -> value.candidate().type()
+                        == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)
+                .findFirst().orElse(null);
+        ScoredCandidate tableGroup = sorted.stream()
+                .filter(value -> value.candidate().type()
+                        == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
+                .findFirst().orElse(null);
+        if (overthinking == null || tableGroup == null) {
+            return List.copyOf(sorted.subList(0, Math.min(slots, sorted.size())));
+        }
+        if (slots == 1) {
+            if (deliveredOverthinkingShareCount < deliveredTableGroupShareCount) {
+                return List.of(overthinking);
+            }
+            if (deliveredTableGroupShareCount < deliveredOverthinkingShareCount) {
+                return List.of(tableGroup);
+            }
+            return List.of(SCORED_ORDER.compare(overthinking, tableGroup) <= 0
+                    ? overthinking : tableGroup);
+        }
+
+        List<ScoredCandidate> selected = new ArrayList<>(slots);
+        selected.add(overthinking);
+        selected.add(tableGroup);
+        for (ScoredCandidate candidate : sorted) {
+            if (selected.size() >= slots) break;
+            if (!selected.contains(candidate)) selected.add(candidate);
+        }
+        return List.copyOf(selected);
     }
 
     /** Reorders exactly the selected keyset window; no candidate is dropped or moved across a cursor boundary. */

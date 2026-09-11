@@ -17,7 +17,9 @@ public record MusicianFeedDeliverySnapshot(
         long organicCountAtLastPromotion,
         boolean lastItemPromoted,
         MusicianFeedItemType lastItemType,
-        MusicianFeedLane lastItemLane
+        MusicianFeedLane lastItemLane,
+        long deliveredOverthinkingShareCount,
+        long deliveredTableGroupShareCount
 ) {
     public MusicianFeedDeliverySnapshot {
         itemIds = itemIds == null ? Set.of() : Set.copyOf(itemIds);
@@ -27,11 +29,25 @@ public record MusicianFeedDeliverySnapshot(
         campaignIds = campaignIds == null ? Set.of() : Set.copyOf(campaignIds);
         if (nextAbsolutePosition < 0) throw new IllegalArgumentException("Negative feed position");
         if (organicCountAtLastPromotion < 0) throw new IllegalArgumentException("Negative promotion cadence");
+        if (deliveredOverthinkingShareCount < 0 || deliveredTableGroupShareCount < 0) {
+            throw new IllegalArgumentException("Negative module-share delivery count");
+        }
     }
 
     public static MusicianFeedDeliverySnapshot empty(long nextAbsolutePosition) {
         return new MusicianFeedDeliverySnapshot(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(),
-                nextAbsolutePosition, 0, 0, false, null, null);
+                nextAbsolutePosition, 0, 0, false, null, null, 0, 0);
+    }
+
+    public MusicianFeedDeliverySnapshot(Set<String> itemIds, Set<String> targetKeys,
+                                        Set<String> organicTargetKeys, Set<String> promotedTargetKeys,
+                                        Set<UUID> campaignIds, long nextAbsolutePosition,
+                                        long deliveredPromotionCount, long organicCountAtLastPromotion,
+                                        boolean lastItemPromoted, MusicianFeedItemType lastItemType,
+                                        MusicianFeedLane lastItemLane) {
+        this(itemIds, targetKeys, organicTargetKeys, promotedTargetKeys, campaignIds,
+                nextAbsolutePosition, deliveredPromotionCount, organicCountAtLastPromotion,
+                lastItemPromoted, lastItemType, lastItemLane, 0, 0);
     }
 
     public MusicianFeedDeliverySnapshot(Set<String> itemIds, Set<String> targetKeys,
@@ -39,7 +55,8 @@ public record MusicianFeedDeliverySnapshot(
                                         long nextAbsolutePosition, long deliveredPromotionCount,
                                         boolean lastItemPromoted) {
         this(itemIds, targetKeys, targetKeys, promotedTargetKeys, campaignIds, nextAbsolutePosition,
-                deliveredPromotionCount, deliveredPromotionCount * 8, lastItemPromoted, null, null);
+                deliveredPromotionCount, deliveredPromotionCount * 8, lastItemPromoted, null, null,
+                0, 0);
     }
 
     public static String targetKey(String type, UUID id) {

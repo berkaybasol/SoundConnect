@@ -87,7 +87,7 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, timeout = 5)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
         if (!request.supportedTypes().contains(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)) return List.of();
         var parameters = new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())

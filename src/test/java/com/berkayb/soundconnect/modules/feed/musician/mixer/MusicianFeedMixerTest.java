@@ -291,6 +291,123 @@ class MusicianFeedMixerTest {
     }
 
     @Test
+    void twoSlotModuleBudgetIncludesBothNativeShareTypesDespiteScoreGap() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "TABLEGROUP_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK,
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE))
+                .hasSize(1);
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE))
+                .hasSize(1);
+        for (int index = 1; index < page.items().size(); index++) {
+            assertThat(page.itemLanes().get(index - 1) == MusicianFeedLane.MODULE_SHARE
+                    && page.itemLanes().get(index) == MusicianFeedLane.MODULE_SHARE).isFalse();
+        }
+    }
+
+    @Test
+    void moduleSubtypeReservationBackfillsWhenOnlyOneNativeShareTypeExists() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK,
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE))
+                .hasSize(2);
+        assertThat(page.items())
+                .noneMatch(value -> value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE);
+    }
+
+    @Test
+    void oneSlotModuleBudgetAlternatesTheLeastDeliveredSubtypeAcrossSessionPages() {
+        List<MusicianFeedCandidate> remaining = new ArrayList<>();
+        IntStream.range(0, 30).forEach(index -> remaining.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 5).forEach(index -> remaining.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 5).forEach(index -> remaining.add(candidateWithLane(
+                "TABLEGROUP_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 1_900_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        Set<MusicianFeedItemType> supported = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE);
+        List<MusicianFeedItemType> deliveredModuleTypes = new ArrayList<>();
+        long deliveredOrganic = 0;
+        long deliveredOverthinking = 0;
+        long deliveredTableGroup = 0;
+        MusicianFeedItemType lastType = null;
+        MusicianFeedLane lastLane = null;
+
+        for (int pageIndex = 0; pageIndex < 3; pageIndex++) {
+            var page = mixer.mix(VIEWER, ANCHOR, 10, supported,
+                    MusicianFeedFeedbackSnapshot.empty(), remaining, List.of(), null,
+                    deliveredOrganic, 0, false, lastType, lastLane, 0,
+                    deliveredOverthinking, deliveredTableGroup);
+            assertThat(page.items()).hasSize(10);
+            List<MusicianFeedItemType> pageModuleTypes = page.items().stream()
+                    .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE
+                            || value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
+                    .map(MusicianFeedItemResponse::type).toList();
+            assertThat(pageModuleTypes).hasSize(1);
+            deliveredModuleTypes.addAll(pageModuleTypes);
+            deliveredOverthinking += pageModuleTypes.stream()
+                    .filter(value -> value == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE).count();
+            deliveredTableGroup += pageModuleTypes.stream()
+                    .filter(value -> value == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE).count();
+            Set<String> deliveredIds = page.items().stream()
+                    .map(MusicianFeedItemResponse::id).collect(java.util.stream.Collectors.toSet());
+            remaining.removeIf(value -> deliveredIds.contains(value.itemId()));
+            deliveredOrganic = page.deliveredOrganicCount();
+            lastType = page.items().getLast().type();
+            lastLane = page.itemLanes().getLast();
+        }
+
+        assertThat(deliveredModuleTypes).containsExactly(
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+    }
+
+    @Test
     void moduleActivityLaneIsRememberedAcrossPageBoundaries() {
         var activity = candidateWithLane("ACTIVITY_LIKE:module", MusicianFeedItemType.ACTIVITY_LIKE,
                 UUID.randomUUID(), UUID.randomUUID(), 900_000, MusicianFeedLane.MODULE_SHARE);

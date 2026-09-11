@@ -1,0 +1,50 @@
+app:
+  simulation:
+    # The simulation profile alone is inert. Every run must opt in explicitly.
+    enabled: ${SOUNDCONNECT_SIMULATION_ENABLED:false}
+    mode: ${SOUNDCONNECT_SIMULATION_MODE:PAUSE}
+    max-accounts: ${SOUNDCONNECT_SIMULATION_MAX_ACCOUNTS:50}
+    email-suffix: ${SOUNDCONNECT_SIMULATION_EMAIL_SUFFIX:@soundconnect.invalid}
+    # Intentionally has no usable default: destructive runs must name their
+    # exact disposable database explicitly.
+    expected-postgresql-database: ${SOUNDCONNECT_SIMULATION_EXPECTED_DATABASE:}
+    destructive-reset-acknowledged: ${SOUNDCONNECT_SIMULATION_DESTRUCTIVE_RESET_ACKNOWLEDGED:false}
+    # Required only when enabled; never commit or log a real value.
+    common-password: ${SOUNDCONNECT_SIMULATION_COMMON_PASSWORD:}
+    report-directory: ${SOUNDCONNECT_SIMULATION_REPORT_DIRECTORY:build/reports/simulation}
+    mail-capture-capacity: ${SOUNDCONNECT_SIMULATION_MAIL_CAPTURE_CAPACITY:1000}
+    media:
+      # Android emulator reaches the host through 10.0.2.2. A physical-device
+      # run must override this with the same host/origin used for the local API.
+      public-base-url: ${SOUNDCONNECT_SIMULATION_MEDIA_PUBLIC_BASE_URL:http://10.0.2.2:8080}
+      max-response-bytes: ${SOUNDCONNECT_SIMULATION_MEDIA_MAX_RESPONSE_BYTES:8388608}
+      max-public-capabilities: ${SOUNDCONNECT_SIMULATION_MEDIA_MAX_PUBLIC_CAPABILITIES:4096}
+    behavior:
+      enabled: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_ENABLED:true}
+      initial-delay-ms: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_INITIAL_DELAY_MS:30000}
+      tick-delay-ms: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_TICK_DELAY_MS:60000}
+      actions-per-tick: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_ACTIONS_PER_TICK:4}
+      planned-likes: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_PLANNED_LIKES:1200}
+      planned-comments: ${SOUNDCONNECT_SIMULATION_BEHAVIOR_PLANNED_COMMENTS:400}
+      fast-forward-days: ${SOUNDCONNECT_SIMULATION_FAST_FORWARD_DAYS:7}
+      actions-per-fast-forward-day: ${SOUNDCONNECT_SIMULATION_FAST_FORWARD_ACTIONS_PER_DAY:24}
+
+  security:
+    # A local runner invokes proxied services and uses deterministic synthetic
+    # identities. Production safety remains enforced by the runtime guard.
+    auth-rate-limit:
+      enabled: false
+
+  feed:
+    musician:
+      enabled: true
+      mock-sponsors-enabled: true
+      rate-limit:
+        enabled: false
+
+# Application-review messages stay inside the simulation no-send adapter. These
+# reserved addresses cannot resolve to a deliverable Internet mailbox.
+soundconnect:
+  admin-notifications:
+    venue-application-emails: venue-review@soundconnect.invalid
+    studio-application-emails: studio-review@soundconnect.invalid

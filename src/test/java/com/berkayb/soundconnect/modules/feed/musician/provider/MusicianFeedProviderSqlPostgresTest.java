@@ -207,6 +207,101 @@ class MusicianFeedProviderSqlPostgresTest {
     }
 
     @Test
+    void olderCommentKeepsAnActionReservationWhenNewerLikesExceedTheProviderCap() {
+        JdbcTemplate sql = new JdbcTemplate(dataSource);
+        UUID viewer = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+        UUID publisher = UUID.randomUUID();
+        UUID viewerProfile = UUID.randomUUID();
+        UUID actorProfile = UUID.randomUUID();
+        UUID publisherProfile = UUID.randomUUID();
+        insertMusician(sql, viewer, viewerProfile, "reservation-viewer");
+        insertMusician(sql, actor, actorProfile, "reservation-actor");
+        insertMusician(sql, publisher, publisherProfile, "reservation-publisher");
+
+        Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
+        insertFollow(sql, viewer, actor, anchor.minusSeconds(4_000));
+        List<UUID> mediaIds = new ArrayList<>();
+        for (int index = 0; index < 161; index++) {
+            UUID mediaId = UUID.randomUUID();
+            mediaIds.add(mediaId);
+            Instant publishedAt = anchor.minusSeconds(3_000L + index);
+            insertPublicAudio(sql, mediaId, publisherProfile, publishedAt);
+            sql.update("""
+                    insert into tbl_tracks(id,created_at,updated_at,media_asset_id,owner_type,owner_id,title)
+                    values (?,?,?,?,?,?,?)
+                    """, UUID.randomUUID(), Timestamp.from(publishedAt), Timestamp.from(publishedAt), mediaId,
+                    "MUSICIAN_PROFILE", publisherProfile, "Reservation track " + index);
+            insertLike(sql, actor, mediaId, "MEDIA", anchor.minusSeconds(100L + index));
+        }
+        UUID commentId = UUID.randomUUID();
+        insertComment(sql, commentId, actor, mediaIds.getFirst(), "MEDIA",
+                anchor.minusSeconds(1_000));
+
+        var provider = mediaActivityProvider();
+        int providerCap = 160;
+        var request = new MusicianFeedCandidateRequest(viewer, viewerProfile, UUID.randomUUID(),
+                anchor, anchor, providerCap, Set.of(MusicianFeedItemType.ACTIVITY_LIKE,
+                MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.TRACK),
+                MusicianFeedPersonalizationSnapshot.empty(), MusicianFeedFeedbackSnapshot.empty());
+
+        List<MusicianFeedCandidate> candidates = provider.findCandidates(request);
+
+        assertThat(candidates).hasSize(providerCap);
+        assertThat(candidates).filteredOn(value -> value.type() == MusicianFeedItemType.ACTIVITY_COMMENT)
+                .singleElement().extracting(MusicianFeedCandidate::itemId)
+                .isEqualTo("ACTIVITY_COMMENT:" + commentId);
+        assertThat(candidates).filteredOn(value -> value.type() == MusicianFeedItemType.ACTIVITY_LIKE)
+                .hasSize(providerCap - 1);
+    }
+
+    @Test
+    void singleSlotIsWorkConservingAndUsesTheActivityIdAsItsStableTieBreaker() {
+        JdbcTemplate sql = new JdbcTemplate(dataSource);
+        UUID viewer = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+        UUID publisher = UUID.randomUUID();
+        UUID viewerProfile = UUID.randomUUID();
+        UUID actorProfile = UUID.randomUUID();
+        UUID publisherProfile = UUID.randomUUID();
+        insertMusician(sql, viewer, viewerProfile, "single-slot-viewer");
+        insertMusician(sql, actor, actorProfile, "single-slot-actor");
+        insertMusician(sql, publisher, publisherProfile, "single-slot-publisher");
+
+        Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
+        Instant occurredAt = anchor.minusSeconds(100);
+        insertFollow(sql, viewer, actor, anchor.minusSeconds(500));
+        UUID mediaId = UUID.randomUUID();
+        insertPublicAudio(sql, mediaId, publisherProfile, anchor.minusSeconds(400));
+        sql.update("""
+                insert into tbl_tracks(id,created_at,updated_at,media_asset_id,owner_type,owner_id,title)
+                values (?,?,?,?,?,?,?)
+                """, UUID.randomUUID(), Timestamp.from(anchor.minusSeconds(400)),
+                Timestamp.from(anchor.minusSeconds(400)), mediaId, "MUSICIAN_PROFILE", publisherProfile,
+                "Single-slot track");
+        UUID likeId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        insertLike(sql, likeId, actor, mediaId, "MEDIA", occurredAt);
+
+        var provider = mediaActivityProvider();
+        var request = new MusicianFeedCandidateRequest(viewer, viewerProfile, UUID.randomUUID(),
+                anchor, anchor, 1, Set.of(MusicianFeedItemType.ACTIVITY_LIKE,
+                MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.TRACK),
+                MusicianFeedPersonalizationSnapshot.empty(), MusicianFeedFeedbackSnapshot.empty());
+
+        assertThat(provider.findCandidates(request)).singleElement()
+                .extracting(MusicianFeedCandidate::type)
+                .isEqualTo(MusicianFeedItemType.ACTIVITY_LIKE);
+
+        UUID commentId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        insertComment(sql, commentId, actor, mediaId, "MEDIA", occurredAt);
+
+        assertThat(provider.findCandidates(request)).singleElement().satisfies(candidate -> {
+            assertThat(candidate.type()).isEqualTo(MusicianFeedItemType.ACTIVITY_LIKE);
+            assertThat(candidate.itemId()).isEqualTo("ACTIVITY_LIKE:MEDIA:" + mediaId);
+        });
+    }
+
+    @Test
     void overthinkingShareActivityUsesCanonicalPrivateSourceAndTheCombinedModuleLane() {
         JdbcTemplate sql = new JdbcTemplate(dataSource);
         UUID viewer = UUID.randomUUID();
@@ -479,6 +574,13 @@ class MusicianFeedProviderSqlPostgresTest {
         assertThat(profiles.findCandidates(base)).as("producer profile overlap profile").isEmpty();
     }
 
+    private MusicianFeedMediaActivityCandidateProvider mediaActivityProvider() {
+        return new MusicianFeedMediaActivityCandidateProvider(
+                new NamedParameterJdbcTemplate(dataSource),
+                new EventShareUrlBuilder("https://soundconnect.test"), new ObjectMapper(),
+                mock(OverthinkingPostService.class));
+    }
+
     private static MusicianFeedCandidateRequest request(Instant anchor, Set<MusicianFeedItemType> types) {
         return new MusicianFeedCandidateRequest(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 anchor, anchor, 20, types, MusicianFeedPersonalizationSnapshot.empty(),
@@ -542,11 +644,25 @@ class MusicianFeedProviderSqlPostgresTest {
 
     private static void insertLike(JdbcTemplate sql, UUID actor, UUID targetId,
                                    String targetType, Instant createdAt) {
+        insertLike(sql, UUID.randomUUID(), actor, targetId, targetType, createdAt);
+    }
+
+    private static void insertLike(JdbcTemplate sql, UUID likeId, UUID actor, UUID targetId,
+                                   String targetType, Instant createdAt) {
         sql.update("""
                 insert into tbl_like(id,created_at,updated_at,user_id,target_type,target_id)
                 values (?,?,?,?,?,?)
-                """, UUID.randomUUID(), Timestamp.from(createdAt), Timestamp.from(createdAt), actor,
+                """, likeId, Timestamp.from(createdAt), Timestamp.from(createdAt), actor,
                 targetType, targetId);
+    }
+
+    private static void insertComment(JdbcTemplate sql, UUID commentId, UUID actor, UUID targetId,
+                                      String targetType, Instant createdAt) {
+        sql.update("""
+                insert into tbl_comment(id,created_at,updated_at,user_id,target_type,target_id,text,is_deleted)
+                values (?,?,?,?,?,?,?,?)
+                """, commentId, Timestamp.from(createdAt), Timestamp.from(createdAt), actor,
+                targetType, targetId, "Visible activity comment", false);
     }
 
     private static void insertBandMember(JdbcTemplate sql, UUID bandId, UUID userId, String role) {

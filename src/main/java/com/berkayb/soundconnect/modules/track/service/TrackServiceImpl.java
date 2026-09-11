@@ -8,8 +8,9 @@ import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
@@ -37,8 +38,9 @@ public class TrackServiceImpl implements TrackService {
 	private final TrackRepository trackRepository;
 	private final TrackMapper trackMapper;
 	private final MediaAssetService mediaAssetService;
-	private final MusicianProfileService musicianProfileService;
-	private final BandService bandService;
+	private final MusicianProfileRepository musicianProfileRepository;
+	private final BandRepository bandRepository;
+	private final BandMemberRepository bandMemberRepository;
 	private final StudioProfileRepository studioProfileRepository;
 	private final MediaAssetRepository mediaAssetRepository;
 
@@ -146,8 +148,11 @@ public class TrackServiceImpl implements TrackService {
 	}
 
 	private TrackOwnerType resolveOwnerType(UUID ownerId) {
-		boolean musician = ownerExistsAsMusician(ownerId);
-		boolean band = ownerExistsAsBand(ownerId);
+		// Owner probing must remain non-throwing. Catching PROFILE_NOT_FOUND or
+		// BAND_NOT_FOUND from another transactional service would still mark this
+		// transaction rollback-only before the fallback owner type is resolved.
+		boolean musician = musicianProfileRepository.existsById(ownerId);
+		boolean band = bandRepository.existsById(ownerId);
 		boolean studio = studioProfileRepository.existsById(ownerId);
 		int matches = (musician ? 1 : 0) + (band ? 1 : 0) + (studio ? 1 : 0);
 		if (matches != 1) {
@@ -159,42 +164,21 @@ public class TrackServiceImpl implements TrackService {
 		return TrackOwnerType.STUDIO_PROFILE;
 	}
 
-	private boolean ownerExistsAsMusician(UUID ownerId) {
-		try {
-			musicianProfileService.getProfileEntity(ownerId);
-			return true;
-		} catch (SoundConnectException exception) {
-			if (exception.getErrorType() != ErrorType.PROFILE_NOT_FOUND) throw exception;
-			return false;
-		}
-	}
-
-	private boolean ownerExistsAsBand(UUID ownerId) {
-		try {
-			bandService.getBandEntity(ownerId);
-			return true;
-		} catch (SoundConnectException exception) {
-			if (exception.getErrorType() != ErrorType.BAND_NOT_FOUND) throw exception;
-			return false;
-		}
-	}
-
 	private void validateOwner(UUID ownerId, UUID userId, TrackOwnerType ownerType) {
 		switch (ownerType) {
 			case MUSICIAN_PROFILE -> {
-				var profile = musicianProfileService.getProfileEntity(ownerId);
+				var profile = musicianProfileRepository.findById(ownerId)
+						.orElseThrow(() -> new SoundConnectException(ErrorType.TRACK_OWNER_INVALID));
 				if (!profile.getUser().getId().equals(userId)) {
 					throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 				}
 			}
 			case BAND -> {
-				var band = bandService.getBandEntity(ownerId);
-				boolean authorized = band.getMembers().stream().anyMatch(member ->
-						member.getUser() != null
-								&& member.getUser().getId().equals(userId)
-								&& member.getStatus() == BandMemberShipStatus.ACTIVE
-								&& (member.getBandRole() == BandRole.FOUNDER
-								|| member.getBandRole() == BandRole.MANAGER));
+				boolean authorized = bandMemberRepository.findByBandIdAndUserId(ownerId, userId)
+						.filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+						.filter(member -> member.getBandRole() == BandRole.FOUNDER
+								|| member.getBandRole() == BandRole.MANAGER)
+						.isPresent();
 				if (!authorized) throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 			}
 			case STUDIO_PROFILE -> {

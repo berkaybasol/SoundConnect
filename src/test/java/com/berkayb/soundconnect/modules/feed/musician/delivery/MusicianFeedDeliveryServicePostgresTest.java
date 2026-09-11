@@ -133,6 +133,28 @@ class MusicianFeedDeliveryServicePostgresTest {
     }
 
     @Test
+    void snapshotCountsNativeModuleShareSubtypesForSessionFairness() {
+        List<MusicianFeedItemResponse> items = List.of(
+                item("OVERTHINKING_PROFILE_SHARE:one",
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        "OVERTHINKING_PROFILE_SHARE", UUID.randomUUID(), null),
+                item("TABLEGROUP_PROFILE_SHARE:one",
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                        "TABLE_GROUP_POST", UUID.randomUUID(), null),
+                item("TABLEGROUP_PROFILE_SHARE:two",
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                        "TABLE_GROUP_POST", UUID.randomUUID(), null));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, items, List.of(MusicianFeedLane.MODULE_SHARE,
+                        MusicianFeedLane.MODULE_SHARE, MusicianFeedLane.MODULE_SHARE), now));
+
+        MusicianFeedDeliverySnapshot snapshot = service.snapshot(viewer, session, now);
+
+        assertThat(snapshot.deliveredOverthinkingShareCount()).isEqualTo(1);
+        assertThat(snapshot.deliveredTableGroupShareCount()).isEqualTo(2);
+    }
+
+    @Test
     void concurrentReplayOfTheSameSessionPositionHasOneWinnerAndOneControlledRejection() throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);

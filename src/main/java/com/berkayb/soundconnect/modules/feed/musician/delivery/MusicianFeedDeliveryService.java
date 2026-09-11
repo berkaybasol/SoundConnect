@@ -99,10 +99,17 @@ public class MusicianFeedDeliveryService {
             else organicAtLastPromotion = organicCount;
         }
         boolean lastPromoted = !session.isEmpty() && session.getLast().campaignId() != null;
+        long overthinkingShareCount = session.stream()
+                .filter(value -> value.itemType() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)
+                .count();
+        long tableGroupShareCount = session.stream()
+                .filter(value -> value.itemType() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
+                .count();
         return new MusicianFeedDeliverySnapshot(itemIds, targets, organicTargets, promotedTargets,
                 sessionCampaigns, next, promotionCount, organicAtLastPromotion, lastPromoted,
                 session.isEmpty() ? null : session.getLast().itemType(),
-                session.isEmpty() ? null : session.getLast().lane());
+                session.isEmpty() ? null : session.getLast().lane(),
+                overthinkingShareCount, tableGroupShareCount);
     }
 
     private SnapshotDelivery mapSnapshot(ResultSet row, int index) throws SQLException {

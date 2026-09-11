@@ -48,6 +48,7 @@ import java.util.UUID;
 public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedCandidateProvider {
     private static final ZoneId EVENT_ZONE = ZoneId.of("Europe/Istanbul");
     private static final int MAX_VISIBLE_ACTORS = 3;
+    private static final int ACTION_RESERVATION_DIVISOR = 10;
 
     private static final String ACTIVITY_SQL = """
             with actor_profile_candidates as (
@@ -346,10 +347,32 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                            order by occurred_at desc, activity_id desc) as actor_rank,
                        count(*) over (partition by action, target_type, target_id) as actor_count
                 from eligible
+            ), visible_activity as (
+                select * from ranked where action='COMMENT' or actor_rank<=:visibleActorLimit
+            ), candidate_items as (
+                select distinct on (action, item_id) action, item_id, target_type, target_id,
+                       occurred_at, activity_id as sort_activity_id
+                from visible_activity
+                order by action, item_id, occurred_at desc, activity_id desc
+            ), action_ranked_items as (
+                select candidate_items.*,
+                       row_number() over (partition by action
+                           order by occurred_at desc, sort_activity_id desc, item_id) as action_rank
+                from candidate_items
+            ), selected_items as (
+                select action_ranked_items.*,
+                       case when action_rank<=:actionReservation then 0 else 1 end as selection_priority
+                from action_ranked_items
+                order by selection_priority, occurred_at desc, sort_activity_id desc, item_id
+                limit :limit
             )
-            select * from ranked where action='COMMENT' or actor_rank<=:visibleActorLimit
-            order by occurred_at desc, activity_id desc
-            limit :limit
+            select visible_activity.*
+            from visible_activity
+            join selected_items on selected_items.action=visible_activity.action
+                and selected_items.item_id=visible_activity.item_id
+            order by selected_items.selection_priority, selected_items.occurred_at desc,
+                     selected_items.sort_activity_id desc, selected_items.item_id,
+                     visible_activity.actor_rank
             """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS);
 
@@ -650,7 +673,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, timeout = 5)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
         boolean likes = request.supportedTypes().contains(MusicianFeedItemType.ACTIVITY_LIKE);
         boolean comments = request.supportedTypes().contains(MusicianFeedItemType.ACTIVITY_COMMENT);
@@ -670,6 +693,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 .addValue("includeOverthinkingPosts", renderers.contains(ActivityTarget.OVERTHINKING_PROFILE_SHARE))
                 .addValue("targetTypes", renderers.stream().map(ActivityTarget::databaseType).toList())
                 .addValue("visibleActorLimit", MAX_VISIBLE_ACTORS)
+                .addValue("actionReservation", actionReservation(request.limit(), likes, comments))
                 .addValue("limit", request.limit());
         List<ActivityRow> rows = jdbc.query(ACTIVITY_SQL, parameters, this::activityRow);
         if (rows.isEmpty()) return List.of();
@@ -692,6 +716,17 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
         result.sort(Comparator.comparing(MusicianFeedCandidate::occurredAt).reversed()
                 .thenComparing(MusicianFeedCandidate::itemId));
         return List.copyOf(result.stream().limit(request.limit()).toList());
+    }
+
+    /**
+     * When both social actions are requested, each receives a small candidate
+     * reservation. The SQL applies the reservation before its global recency
+     * backfill, so an absent or sparse action never leaves capacity unused.
+     */
+    static int actionReservation(int limit, boolean likes, boolean comments) {
+        if (!likes || !comments || limit <= 0) return 0;
+        return Math.max(1, (int) ((limit + (long) ACTION_RESERVATION_DIVISOR - 1L)
+                / ACTION_RESERVATION_DIVISOR));
     }
 
     private MapSqlParameterSource baseParameters(MusicianFeedCandidateRequest request, ZonedDateTime now) {

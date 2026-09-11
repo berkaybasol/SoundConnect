@@ -22,10 +22,9 @@ import com.berkayb.soundconnect.modules.media.transcode.MediaTranscodeQueuedEven
 import com.berkayb.soundconnect.modules.media.verification.MediaUploadVerificationCoordinator;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
@@ -185,7 +184,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 	
 	private final MediaAssetRepository mediaAssetRepository;
-	private final BandRepository bandRepository;
+	private final BandMemberRepository bandMemberRepository;
 	private final VenueRepository venueRepository;
 	private final MusicianProfileRepository musicianProfileRepository;
 	private final ProducerProfileRepository producerProfileRepository;
@@ -425,8 +424,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private boolean canActForOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId) {
 		return switch (ownerType) {
 			case USER -> ownerId.equals(actingUserId);
-			case BAND -> bandRepository.findById(ownerId)
-					.map(band -> canManageBand(actingUserId, band))
+			case BAND -> bandMemberRepository.findByBandIdAndUserId(ownerId, actingUserId)
+					.map(member -> member.getStatus() == BandMemberShipStatus.ACTIVE
+							&& (member.getBandRole() == BandRole.FOUNDER
+								|| member.getBandRole() == BandRole.MANAGER))
 					.orElse(false);
 			case VENUE -> venueRepository.findById(ownerId)
 					.map(venue -> venue.getOwner() != null && venue.getOwner().getId().equals(actingUserId))
@@ -455,13 +456,4 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		};
 	}
 
-	private boolean canManageBand(UUID actingUserId, Band band) {
-		return band.getMembers().stream()
-				.anyMatch(member -> member.getUser() != null
-						&& member.getUser().getId().equals(actingUserId)
-						&& member.getStatus() == BandMemberShipStatus.ACTIVE
-						&& (member.getBandRole() == BandRole.FOUNDER || member.getBandRole() == BandRole.MANAGER));
-	}
-	
-	
 }

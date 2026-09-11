@@ -155,7 +155,9 @@ public class MusicianFeedService {
                 state.deliveredOrganicCount(), deliverySnapshot.deliveredPromotionCount(),
                 deliverySnapshot.lastItemPromoted(), deliverySnapshot.lastItemType(),
                 deliverySnapshot.lastItemLane(),
-                deliverySnapshot.organicCountAtLastPromotion());
+                deliverySnapshot.organicCountAtLastPromotion(),
+                deliverySnapshot.deliveredOverthinkingShareCount(),
+                deliverySnapshot.deliveredTableGroupShareCount());
         long deliveredSize = mixed.items().size();
         boolean hasMore = !mixed.items().isEmpty() && mixed.hasMore()
                 && state.deliveredItemCount() + deliveredSize < maxSession;
