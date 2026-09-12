@@ -16,7 +16,7 @@ class MusicianFeedCompletionCalculatorTest {
 	void blankProfileKeepsEveryActionableTaskInImpactOrderWithoutGating() {
 		var completion = MusicianFeedCompletionCalculator.calculate(MusicianProfile.builder().build(), false, false);
 
-		assertThat(completion.criteriaVersion()).isEqualTo(1);
+		assertThat(completion.criteriaVersion()).isEqualTo(2);
 		assertThat(completion.personalizationReadiness().complete()).isFalse();
 		assertThat(completion.personalizationReadiness().completed()).isZero();
 		assertThat(completion.personalizationReadiness().percentage()).isZero();
@@ -27,7 +27,7 @@ class MusicianFeedCompletionCalculatorTest {
 				.containsExactly(
 						MusicianFeedCompletionTaskCode.OPPORTUNITY_CITY,
 						MusicianFeedCompletionTaskCode.INSTRUMENTS,
-						MusicianFeedCompletionTaskCode.STAGE_NAME_AND_BIO,
+						MusicianFeedCompletionTaskCode.BIO,
 						MusicianFeedCompletionTaskCode.PORTFOLIO,
 						MusicianFeedCompletionTaskCode.PROFILE_PHOTO_AND_SOCIAL_LINKS
 				);
@@ -56,7 +56,6 @@ class MusicianFeedCompletionCalculatorTest {
 		instrument.setId(UUID.randomUUID());
 		MusicianProfile profile = MusicianProfile.builder()
 				.instruments(Set.of(instrument))
-				.stageName("Stage")
 				.description("Bio")
 				.profilePictureMediaId(UUID.randomUUID())
 				.instagramUrl("https://example.com/artist")
@@ -72,10 +71,10 @@ class MusicianFeedCompletionCalculatorTest {
 	}
 
 	@Test
-	void whitespaceAndOnlyHalfOfCombinedTasksDoNotInflateCompleteness() {
+	void legacyStageNameDoesNotCompleteAMissingBiography() {
 		MusicianProfile profile = MusicianProfile.builder()
-				.stageName("  ")
-				.description("bio")
+				.stageName("Legacy Stage")
+				.description("  ")
 				.profilePictureMediaId(UUID.randomUUID())
 				.instagramUrl(" ")
 				.build();
@@ -83,8 +82,22 @@ class MusicianFeedCompletionCalculatorTest {
 		var completion = MusicianFeedCompletionCalculator.calculate(profile, true, false);
 
 		assertThat(completion.incompleteTasks()).extracting(task -> task.code())
-				.contains(MusicianFeedCompletionTaskCode.STAGE_NAME_AND_BIO,
+				.contains(MusicianFeedCompletionTaskCode.BIO,
 						MusicianFeedCompletionTaskCode.PROFILE_PHOTO_AND_SOCIAL_LINKS);
+		assertThat(completion.overall().completed()).isEqualTo(1);
+	}
+
+	@Test
+	void biographyCompletesWithoutALegacyStageName() {
+		MusicianProfile profile = MusicianProfile.builder()
+				.description("Kendi müzik yolculuğunu anlatan biyografi")
+				.build();
+
+		var completion = MusicianFeedCompletionCalculator.calculate(profile, false, false);
+
+		assertThat(completion.incompleteTasks())
+				.noneMatch(task -> task.code() == MusicianFeedCompletionTaskCode.BIO);
+		assertThat(completion.publicProfileCompleteness().completed()).isEqualTo(1);
 		assertThat(completion.overall().completed()).isEqualTo(1);
 	}
 }

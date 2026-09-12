@@ -70,6 +70,7 @@ class SimulationProfileMaterializerTest {
 	@Mock private InstrumentRepository instrumentRepository;
 	@Mock private MusicianProfileService musicianProfileService;
 	@Mock private MusicianFeedPreferencesService musicianFeedPreferencesService;
+	@Mock private SimulationMusicianLegacyStageNameCleaner musicianStageNameCleaner;
 	@Mock private ListenerProfileService listenerProfileService;
 	@Mock private VenueProfileService venueProfileService;
 	@Mock private StudioProfileService studioProfileService;
@@ -81,7 +82,8 @@ class SimulationProfileMaterializerTest {
 	void setUp() {
 		materializer = new SimulationProfileMaterializer(
 				runtimeGuard, validator, locationResolver, instrumentRepository,
-				musicianProfileService, musicianFeedPreferencesService, listenerProfileService,
+				musicianProfileService, musicianFeedPreferencesService, musicianStageNameCleaner,
+				listenerProfileService,
 				venueProfileService, studioProfileService);
 		City city = City.builder().id(UUID.randomUUID()).name("İstanbul").build();
 		District district = District.builder().id(UUID.randomUUID()).name("Kadıköy").city(city).build();
@@ -104,7 +106,7 @@ class SimulationProfileMaterializerTest {
 		when(instrumentRepository.findByNameIgnoreCase("Elektro Gitar")).thenReturn(Optional.of(instrument));
 		when(musicianProfileService.updateProfile(eq(userId), any()))
 				.thenReturn(musicianResponse(
-						profileId, userId, account.displayName(), account.bio(),
+						profileId, userId, null, account.bio(),
 						Set.of("Elektro Gitar"), "https://www.instagram.com/" + account.username(), null));
 		when(locationResolver.resolve(account.location())).thenReturn(location);
 		when(musicianFeedPreferencesService.get(userId))
@@ -122,7 +124,8 @@ class SimulationProfileMaterializerTest {
 				ArgumentCaptor.forClass(MusicianProfileSaveRequestDto.class);
 		verify(musicianProfileService).updateProfile(eq(userId), profileUpdate.capture());
 		assertThat(profileUpdate.getValue().instrumentIds()).containsExactly(instrumentId);
-		assertThat(profileUpdate.getValue().stageName()).isEqualTo(account.displayName());
+		assertThat(profileUpdate.getValue().stageName()).isNull();
+		verify(musicianStageNameCleaner).clearForUserIds(Set.of(userId));
 		ArgumentCaptor<MusicianFeedPreferencesUpdate> preferenceUpdate =
 				ArgumentCaptor.forClass(MusicianFeedPreferencesUpdate.class);
 		verify(musicianFeedPreferencesService).update(eq(userId), preferenceUpdate.capture());
@@ -145,6 +148,7 @@ class SimulationProfileMaterializerTest {
 
 		assertThat(result.state()).isEqualTo(State.UNVERIFIED_CONTROL);
 		assertThat(result.profileId()).isEqualTo(profileId);
+		verify(musicianStageNameCleaner).clearForUserIds(Set.of(userId));
 		verify(musicianProfileService, never()).updateProfile(any(), any());
 		verify(musicianFeedPreferencesService, never()).get(any());
 		verify(locationResolver, never()).resolve(any());

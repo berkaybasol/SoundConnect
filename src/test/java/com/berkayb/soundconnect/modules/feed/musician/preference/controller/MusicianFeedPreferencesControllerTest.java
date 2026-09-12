@@ -78,10 +78,10 @@ class MusicianFeedPreferencesControllerTest {
 				.andExpect(jsonPath("$.data.opportunityCity.name").value("İstanbul"))
 				.andExpect(jsonPath("$.data.instruments[0].id").value(instrumentId.toString()))
 				.andExpect(jsonPath("$.data.instruments[0].name").value("Gitar"))
-				.andExpect(jsonPath("$.data.completion.criteriaVersion").value(1))
+				.andExpect(jsonPath("$.data.completion.criteriaVersion").value(2))
 				.andExpect(jsonPath("$.data.completion.personalizationReadiness.complete").value(true))
 				.andExpect(jsonPath("$.data.completion.incompleteTasks[0].code")
-						.value("STAGE_NAME_AND_BIO"));
+						.value("BIO"));
 		verify(service).get(userId);
 	}
 
@@ -181,9 +181,9 @@ class MusicianFeedPreferencesControllerTest {
 		var progress = new MusicianFeedCompletionResponse.Progress(true, 2, 2, 100);
 		var profileProgress = new MusicianFeedCompletionResponse.Progress(false, 1, 4, 25);
 		var overall = new MusicianFeedCompletionResponse.Progress(false, 2, 5, 40);
-		var completion = new MusicianFeedCompletionResponse(1, progress, profileProgress, overall,
+		var completion = new MusicianFeedCompletionResponse(2, progress, profileProgress, overall,
 				List.of(new MusicianFeedCompletionResponse.IncompleteTask(
-						MusicianFeedCompletionTaskCode.STAGE_NAME_AND_BIO, 3)));
+						MusicianFeedCompletionTaskCode.BIO, 3)));
 		return new MusicianFeedPreferencesResponse(1, 3,
 				new OpportunityCitySummary(cityId, "İstanbul"),
 				List.of(new MusicianInstrumentSummary(instrumentId, "Gitar")), completion);
@@ -194,6 +194,6 @@ class MusicianFeedPreferencesControllerTest {
 		var publicProfile = new MusicianFeedCompletionResponse.Progress(false, 0, 4, 0);
 		var overall = new MusicianFeedCompletionResponse.Progress(false, 0, 5, 0);
 		return new MusicianFeedPreferencesResponse(1, version, null, List.of(),
-				new MusicianFeedCompletionResponse(1, none, publicProfile, overall, List.of()));
+				new MusicianFeedCompletionResponse(2, none, publicProfile, overall, List.of()));
 	}
 }

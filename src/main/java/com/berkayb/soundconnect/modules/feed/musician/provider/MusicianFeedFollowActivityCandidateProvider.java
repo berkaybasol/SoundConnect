@@ -25,7 +25,7 @@ public class MusicianFeedFollowActivityCandidateProvider implements MusicianFeed
             with profile_candidates as (
                 select musician.id as profile_id, 'MUSICIAN' as profile_type, account.id as user_id,
                        account.user_name as username,
-                       coalesce(musician.stage_name, musician.name, account.user_name) as display_name,
+                       account.user_name as display_name,
                        musician.description as bio, musician.profile_picture_media_id as avatar_id,
                        city.name as location, account.profile_picture as legacy_avatar, 0 as profile_priority
                 from tbl_musician_profile musician join tbl_user account on account.id=musician.user_id

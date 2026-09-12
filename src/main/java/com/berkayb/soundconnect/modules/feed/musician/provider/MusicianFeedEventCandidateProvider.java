@@ -28,7 +28,7 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                    venue.id as venue_id, venue.name as venue_name, city.name as venue_city,
                    district.name as venue_district, neighborhood.name as venue_neighborhood,
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
-                   musician.stage_name as musician_stage_name, band.id as band_id, band.name as band_name,
+                   band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
                    case
                      when event.profile_calendar_approved and musician_user.id is not null then musician_user.id
@@ -52,9 +52,9 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                      else venue_owner.user_name end as author_username,
                    case
                      when event.profile_calendar_approved and musician_user.id is not null
-                       then coalesce(musician.stage_name, musician.name, musician_user.user_name)
+                       then musician_user.user_name
                      when member_publication.author_user_id is not null
-                       then coalesce(member_publication.stage_name, member_publication.name, member_publication.username)
+                       then member_publication.username
                      when event.profile_calendar_approved and band_actor.user_id is not null then band.name
                      else venue.name end as author_display_name,
                    case
@@ -112,7 +112,7 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
             ) band_actor on true
             left join lateral (
                 select profile.user_id as author_user_id, profile.id as author_profile_id,
-                       account.user_name as username, profile.stage_name, profile.name,
+                       account.user_name as username,
                        coalesce(avatar.playback_url, avatar.source_url, account.profile_picture) as avatar_url,
                        (member_follow.id is not null) as followed_by_viewer
                 from event_member_publications publication
@@ -253,8 +253,8 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                     : musicianId != null ? PerformerType.MUSICIAN
                     : manualName != null && !manualName.isBlank() ? PerformerType.MANUAL : null;
             String performerName = bandId != null ? row.getString("band_name")
-                    : musicianId != null ? firstText(row.getString("musician_stage_name"),
-                    row.getString("musician_username")) : firstText(manualName, "Belirtilmemiş");
+                    : musicianId != null ? firstText(row.getString("musician_username"), "Müzisyen")
+                    : firstText(manualName, "Belirtilmemiş");
             EventResponseDto event = new EventResponseDto(eventId, row.getString("title"),
                     row.getString("poster_image"), performerName, musicianId, bandId, performerType, Set.of(),
                     MusicianFeedJdbcSupport.uuid(row, "venue_id"), row.getString("venue_name"),

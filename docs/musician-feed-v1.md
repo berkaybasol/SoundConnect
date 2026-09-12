@@ -86,7 +86,7 @@ actual impact:
 
 1. opportunity city
 2. instruments
-3. stage name and bio
+3. biography
 4. portfolio (at least one public READY Track or profile-media publication)
 5. profile photo and social links
 
@@ -94,6 +94,12 @@ Backend state is authoritative and versioned. Internally, public profile
 completeness and feed-personalization readiness are separate concepts even if
 the UI presents a simple completed-step count. Completion is a nudge, never an
 authentication or route gate.
+
+Completion criteria v2 emits `BIO` instead of the v1 `STAGE_NAME_AND_BIO`
+machine code. The legacy code remains readable for short-lived delivery replay
+compatibility, but new completion responses never require or emit a stage name.
+The legacy musician-profile field remains outside the feed identity contract;
+musician display identity in this feed is the account username.
 
 ## Ranking and mixing invariants
 

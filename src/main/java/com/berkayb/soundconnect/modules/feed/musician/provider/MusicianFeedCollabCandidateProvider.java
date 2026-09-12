@@ -166,10 +166,14 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 : BigDecimal.valueOf(row.getLong("rating_sum"))
                 .divide(BigDecimal.valueOf(reviewCount), 2, RoundingMode.HALF_UP);
         ProfileType profileType = ProfileType.valueOf(row.getString("profile_type"));
+        String contactUsername = row.getString("contact_username");
+        String displayName = profileType == ProfileType.MUSICIAN
+                ? musicianDisplayName(contactUsername)
+                : row.getString("display_name");
         var actor = new CollabActorSummary(MusicianFeedJdbcSupport.uuid(row, "actor_id"), profileType,
                 MusicianFeedJdbcSupport.uuid(row, "source_profile_id"),
-                MusicianFeedJdbcSupport.uuid(row, "owner_user_id"), row.getString("contact_username"),
-                row.getString("display_name"), row.getString("avatar_url"), rating, reviewCount,
+                MusicianFeedJdbcSupport.uuid(row, "owner_user_id"), contactUsername,
+                displayName, row.getString("avatar_url"), rating, reviewCount,
                 row.getLong("completed_job_count"));
         var author = new MusicianFeedItemResponse.Author(actor.contactUserId(), actor.sourceProfileId(),
                 profileType.name(), actor.contactUsername(), actor.displayName(), actor.avatarUrl(),
@@ -192,6 +196,10 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 row.getLong("application_count"), row.getBoolean("owned_by_viewer"),
                 row.getBoolean("applied_by_me"), row.getBoolean("saved_by_me"),
                 row.getBoolean("city_match"), row.getBoolean("instrument_match"));
+    }
+
+    static String musicianDisplayName(String username) {
+        return username == null || username.isBlank() ? "Müzisyen" : username;
     }
 
     private MusicianFeedCandidate candidate(ListingRow value, List<String> genres) {

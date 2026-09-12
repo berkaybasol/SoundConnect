@@ -43,8 +43,8 @@ public class PreferenceBackedMusicianFeedPersonalizationSource implements Musici
             case INSTRUMENTS -> new MusicianFeedPayloads.CompletionTask(code.name(),
                     "Enstrümanlarını ekle", "Aradığın rolle eşleşen ilanları daha doğru sıralayalım.",
                     "Enstrüman ekle", "/profile/musician/edit", order, false);
-            case STAGE_NAME_AND_BIO -> new MusicianFeedPayloads.CompletionTask(code.name(),
-                    "Sahne adını ve biyografini tamamla", "Müzik çevren seni daha kolay tanısın.",
+            case BIO, STAGE_NAME_AND_BIO -> new MusicianFeedPayloads.CompletionTask(code.name(),
+                    "Biyografini tamamla", "Müzik çevren seni daha kolay tanısın.",
                     "Profili düzenle", "/profile/musician/edit", order, false);
             case PORTFOLIO -> new MusicianFeedPayloads.CompletionTask(code.name(),
                     "Portföyünü oluştur", "Herkese açık bir parça veya profil medyası ekle.",

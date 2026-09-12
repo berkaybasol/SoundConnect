@@ -73,6 +73,7 @@ public class SimulationProfileMaterializer {
 	private final InstrumentRepository instrumentRepository;
 	private final MusicianProfileService musicianProfileService;
 	private final MusicianFeedPreferencesService musicianFeedPreferencesService;
+	private final SimulationMusicianLegacyStageNameCleaner musicianStageNameCleaner;
 	private final ListenerProfileService listenerProfileService;
 	private final VenueProfileService venueProfileService;
 	private final StudioProfileService studioProfileService;
@@ -91,6 +92,12 @@ public class SimulationProfileMaterializer {
 	) {
 		runtimeGuard.assertRuntimeAllowed();
 		Map<String, Account> accounts = validateInputs(manifest, accountUserIds);
+		LinkedHashSet<UUID> musicianUserIds = new LinkedHashSet<>();
+		accounts.values().stream()
+				.filter(account -> account.role() == AccountRole.MUSICIAN)
+				.map(account -> accountUserIds.get(account.key()))
+				.forEach(musicianUserIds::add);
+		if (!musicianUserIds.isEmpty()) musicianStageNameCleaner.clearForUserIds(musicianUserIds);
 		LinkedHashMap<String, SimulationProfileReference> result = new LinkedHashMap<>();
 
 		for (Account account : accounts.values()) {
@@ -171,6 +178,9 @@ public class SimulationProfileMaterializer {
 				account.musicianProfile(), "musicianProfile for " + account.key());
 		MusicianProfileResponseDto current = musicianProfileService.getProfileByUserId(userId);
 		assertProfileIdentity(account, userId, current.userId(), current.id());
+		if (current.stageName() != null) {
+			throw mismatch(account.key(), "legacy stage name cleanup was not applied");
+		}
 
 		if (account.emailVerification() == EmailVerificationState.UNVERIFIED) {
 			skipped(ledger, PROFILE_PHASE, "musician", account.key(), "unverified control");
@@ -185,13 +195,12 @@ public class SimulationProfileMaterializer {
 		String desiredBio = plan.populateBio() ? account.bio() : null;
 		String desiredInstagram = plan.populateSocialLinks() ? instagramUrl(account.username()) : null;
 
-		boolean profileChange = !Objects.equals(current.stageName(), account.displayName())
-				|| plan.populateBio() && !Objects.equals(current.bio(), desiredBio)
+		boolean profileChange = plan.populateBio() && !Objects.equals(current.bio(), desiredBio)
 				|| plan.populateSocialLinks() && !Objects.equals(current.instagramUrl(), desiredInstagram)
 				|| !sameNormalizedStrings(current.instruments(), desiredInstrumentNames);
 		if (profileChange) {
 			MusicianProfileSaveRequestDto update = new MusicianProfileSaveRequestDto(
-					account.displayName(),
+					null,
 					plan.populateBio() ? desiredBio : null,
 					null,
 					plan.populateSocialLinks() ? desiredInstagram : null,
@@ -202,7 +211,7 @@ public class SimulationProfileMaterializer {
 			current = musicianProfileService.updateProfile(userId, update);
 			assertProfileIdentity(account, userId, current.userId(), current.id());
 		}
-		if (!Objects.equals(current.stageName(), account.displayName())
+		if (current.stageName() != null
 				|| plan.populateBio() && !Objects.equals(current.bio(), desiredBio)
 				|| plan.populateSocialLinks() && !Objects.equals(current.instagramUrl(), desiredInstagram)
 				|| !sameNormalizedStrings(current.instruments(), desiredInstrumentNames)) {

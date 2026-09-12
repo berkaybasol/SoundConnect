@@ -22,8 +22,7 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                        coalesce(musician.user_id, listener.user_id, studio.user_id, venue.owner_id, band_actor.user_id) as author_user_id,
                        case when attachment.profile_type='VENUE' then venue.id
                             else attachment.profile_id end as author_profile_id,
-                       coalesce(band.name, venue.name, musician.stage_name, musician.name,
-                                studio.name, listener.name) as profile_display_name,
+                       coalesce(band.name, venue.name, studio.name, listener.name) as profile_display_name,
                        coalesce(band.profile_picture_media_id, venue_profile.profile_picture_media_id,
                                 musician.profile_picture_media_id, studio.profile_picture_media_id,
                                 listener.profile_picture_media_id) as avatar_media_id,

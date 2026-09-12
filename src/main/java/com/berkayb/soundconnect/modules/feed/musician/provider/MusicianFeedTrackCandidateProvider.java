@@ -27,8 +27,7 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                            when 'STUDIO_PROFILE' then 'STUDIO'
                            when 'VENUE_PROFILE' then 'VENUE'
                            when 'BAND' then 'BAND' end as author_profile_type,
-                       coalesce(band.name, venue.name, musician.stage_name, musician.name,
-                                studio.name, listener.name) as profile_display_name,
+                       coalesce(band.name, venue.name, studio.name, listener.name) as profile_display_name,
                        coalesce(band.profile_picture_media_id, venue_profile.profile_picture_media_id,
                                 musician.profile_picture_media_id, studio.profile_picture_media_id,
                                 listener.profile_picture_media_id) as avatar_media_id,

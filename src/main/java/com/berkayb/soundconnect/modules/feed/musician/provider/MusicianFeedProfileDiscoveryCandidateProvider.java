@@ -15,7 +15,7 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
     private static final String SQL = """
             with profiles as (
                 select musician.id as profile_id, 'MUSICIAN' as profile_type, musician.user_id,
-                       coalesce(musician.stage_name, musician.name) as display_name,
+                       account.user_name as display_name,
                        musician.description as bio, musician.profile_picture_media_id as avatar_id,
                        account.city_id, city.name as location, musician.created_at
                 from tbl_musician_profile musician

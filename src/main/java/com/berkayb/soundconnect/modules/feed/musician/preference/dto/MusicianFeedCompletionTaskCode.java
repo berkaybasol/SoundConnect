@@ -4,7 +4,13 @@ package com.berkayb.soundconnect.modules.feed.musician.preference.dto;
 public enum MusicianFeedCompletionTaskCode {
 	OPPORTUNITY_CITY,
 	INSTRUMENTS,
-	STAGE_NAME_AND_BIO,
+	BIO,
 	PORTFOLIO,
-	PROFILE_PHOTO_AND_SOCIAL_LINKS
+	PROFILE_PHOTO_AND_SOCIAL_LINKS,
+	/**
+	 * Legacy v1 response code retained so an in-flight/replayed payload can still
+	 * be deserialized. Completion criteria v2 never emits it.
+	 */
+	@Deprecated
+	STAGE_NAME_AND_BIO
 }

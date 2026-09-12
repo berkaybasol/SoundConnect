@@ -29,7 +29,7 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
                    venue.id as venue_id, venue.name as venue_name, city.name as venue_city,
                    district.name as venue_district, neighborhood.name as venue_neighborhood,
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
-                   musician.stage_name as musician_stage_name, band.id as band_id, band.name as band_name,
+                   band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
                    account.id as author_user_id, listener.id as author_profile_id,
                    'LISTENER' as author_profile_type, account.user_name as author_username,
@@ -148,8 +148,8 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
                     : musicianId != null ? PerformerType.MUSICIAN
                     : manualName != null && !manualName.isBlank() ? PerformerType.MANUAL : null;
             String performerName = bandId != null ? row.getString("band_name")
-                    : musicianId != null ? firstText(row.getString("musician_stage_name"),
-                    row.getString("musician_username")) : firstText(manualName, "Belirtilmemiş");
+                    : musicianId != null ? firstText(row.getString("musician_username"), "Müzisyen")
+                    : firstText(manualName, "Belirtilmemiş");
             EventResponseDto event = new EventResponseDto(eventId, row.getString("title"),
                     row.getString("poster_image"), performerName, musicianId, bandId, performerType, Set.of(),
                     MusicianFeedJdbcSupport.uuid(row, "venue_id"), row.getString("venue_name"),

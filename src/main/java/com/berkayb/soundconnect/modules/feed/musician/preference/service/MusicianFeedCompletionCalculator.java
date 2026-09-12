@@ -7,15 +7,15 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.BIO;
 import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.INSTRUMENTS;
 import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.OPPORTUNITY_CITY;
 import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.PORTFOLIO;
 import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.PROFILE_PHOTO_AND_SOCIAL_LINKS;
-import static com.berkayb.soundconnect.modules.feed.musician.preference.dto.MusicianFeedCompletionTaskCode.STAGE_NAME_AND_BIO;
 
 /** Pure, versioned completion policy; clients never recreate these rules. */
 final class MusicianFeedCompletionCalculator {
-	static final int CRITERIA_VERSION = 1;
+	static final int CRITERIA_VERSION = 2;
 	private static final int TOTAL_PERSONALIZATION_TASKS = 2;
 	private static final int TOTAL_PUBLIC_PROFILE_TASKS = 4;
 	private static final int TOTAL_CAROUSEL_TASKS = 5;
@@ -28,19 +28,19 @@ final class MusicianFeedCompletionCalculator {
 			boolean hasPublicPortfolio
 	) {
 		boolean instruments = profile.getInstruments() != null && !profile.getInstruments().isEmpty();
-		boolean stageNameAndBio = hasText(profile.getStageName()) && hasText(profile.getDescription());
+		boolean biography = hasText(profile.getDescription());
 		boolean photoAndSocialLinks = profile.getProfilePictureMediaId() != null && hasSocialLink(profile);
 
 		List<MusicianFeedCompletionResponse.IncompleteTask> incomplete = new ArrayList<>();
 		addIfIncomplete(incomplete, OPPORTUNITY_CITY, 1, hasOpportunityCity);
 		addIfIncomplete(incomplete, INSTRUMENTS, 2, instruments);
-		addIfIncomplete(incomplete, STAGE_NAME_AND_BIO, 3, stageNameAndBio);
+		addIfIncomplete(incomplete, BIO, 3, biography);
 		addIfIncomplete(incomplete, PORTFOLIO, 4, hasPublicPortfolio);
 		addIfIncomplete(incomplete, PROFILE_PHOTO_AND_SOCIAL_LINKS, 5, photoAndSocialLinks);
 
 		int personalizationCompleted = count(hasOpportunityCity, instruments);
 		// Instruments improve both matching and the public professional profile.
-		int publicProfileCompleted = count(instruments, stageNameAndBio, hasPublicPortfolio, photoAndSocialLinks);
+		int publicProfileCompleted = count(instruments, biography, hasPublicPortfolio, photoAndSocialLinks);
 		int overallCompleted = TOTAL_CAROUSEL_TASKS - incomplete.size();
 
 		return new MusicianFeedCompletionResponse(

@@ -54,7 +54,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
             with actor_profile_candidates as (
                 select musician.id as profile_id, 'MUSICIAN' as profile_type, account.id as user_id,
                        account.user_name as username,
-                       coalesce(musician.stage_name, musician.name, account.user_name) as display_name,
+                       account.user_name as display_name,
                        musician.profile_picture_media_id as avatar_id, account.profile_picture as legacy_avatar,
                        0 as profile_priority
                 from tbl_musician_profile musician join tbl_user account on account.id=musician.user_id
@@ -469,7 +469,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                    venue.id as venue_id, venue.name as venue_name, city.name as venue_city,
                    district.name as venue_district, neighborhood.name as venue_neighborhood,
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
-                   musician.stage_name as musician_stage_name, band.id as band_id, band.name as band_name,
+                   band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
                    (select count(*) from tbl_like likes where likes.target_type='EVENT'
                        and likes.target_id=event.id) as like_count,
@@ -526,7 +526,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                    venue.id as venue_id, venue.name as venue_name, city.name as venue_city,
                    district.name as venue_district, neighborhood.name as venue_neighborhood,
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
-                   musician.stage_name as musician_stage_name, band.id as band_id, band.name as band_name,
+                   band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
                    (select count(*) from tbl_like likes where likes.target_type='EVENT_POST'
                        and likes.target_id=intent.post_id) as like_count,
@@ -902,8 +902,8 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 : musicianId != null ? PerformerType.MUSICIAN
                 : manualName != null && !manualName.isBlank() ? PerformerType.MANUAL : null;
         String performerName = bandId != null ? row.getString("band_name")
-                : musicianId != null ? firstText(row.getString("musician_stage_name"),
-                row.getString("musician_username")) : firstText(manualName, "Belirtilmemiş");
+                : musicianId != null ? firstText(row.getString("musician_username"), "Müzisyen")
+                : firstText(manualName, "Belirtilmemiş");
         return new EventResponseDto(eventId, row.getString("title"), row.getString("poster_image"),
                 performerName, musicianId, bandId, performerType, Set.of(),
                 MusicianFeedJdbcSupport.uuid(row, "venue_id"), row.getString("venue_name"),
