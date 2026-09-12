@@ -56,7 +56,8 @@ $LocalSchemaMigrations = @(
     @{ Name = "Musician feed delivery"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-delivery.sql" },
     @{ Name = "Musician feed continuation replay"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-replay.sql" },
     @{ Name = "Musician feed feedback"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-feedback.sql" },
-    @{ Name = "Musician feed online indexes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-indexes.sql" }
+    @{ Name = "Musician feed online indexes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-indexes.sql" },
+    @{ Name = "Like users pagination index"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-12-like-users-pagination.sql" }
 )
 
 function Assert-Command([string]$Name) {
