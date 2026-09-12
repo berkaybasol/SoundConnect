@@ -86,13 +86,6 @@ Linux/macOS:
 
 The API listens on port `8080` by default. Local OpenAPI UI is available at `/swagger-ui.html`, and health is available at `/actuator/health`.
 
-### Disposable local simulation
-
-The musician-feed test world, safety contract, IntelliJ green-button setup,
-run modes, observer accounts, status endpoint, and recovery instructions live
-in [`docs/local-simulation-v1.md`](docs/local-simulation-v1.md). Do not enable
-`FRESH` against data that must be retained.
-
 ## Configuration
 
 All secrets and environment-specific addresses are injected at runtime. See [`.env.example`](.env.example) for the API baseline and the two `.env.worker-*.example` files for the isolated worker credential contracts. Every `.local` env file is deliberately ignored by Git and must never be committed.

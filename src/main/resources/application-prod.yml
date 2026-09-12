@@ -74,7 +74,6 @@ app:
       default-page-size: ${SOUNDCONNECT_MUSICIAN_FEED_DEFAULT_PAGE_SIZE:20}
       max-page-size: ${SOUNDCONNECT_MUSICIAN_FEED_MAX_PAGE_SIZE:50}
       provider-limit: ${SOUNDCONNECT_MUSICIAN_FEED_PROVIDER_LIMIT:160}
-      mock-sponsors-enabled: false
       rate-limit:
         enabled: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_ENABLED:true}
         key-prefix: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_KEY_PREFIX:soundconnect:musician-feed:rate-limit}

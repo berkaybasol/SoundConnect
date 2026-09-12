@@ -50,9 +50,6 @@ public class MusicianFeedConfiguration {
                 throw new IllegalStateException(
                         "Enabled production musician feed requires a dedicated delivery HMAC secret of at least 32 bytes");
             }
-            if (properties.isMockSponsorsEnabled()) {
-                throw new IllegalStateException("Mock musician-feed sponsors must stay disabled in production");
-            }
         };
     }
 

@@ -30,7 +30,6 @@ public class MusicianFeedProperties {
     private int defaultPageSize = 20;
     private int maxPageSize = 50;
     private int providerLimit = 160;
-    private boolean mockSponsorsEnabled = false;
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -70,6 +69,4 @@ public class MusicianFeedProperties {
     public void setMaxPageSize(int maxPageSize) { this.maxPageSize = maxPageSize; }
     public int getProviderLimit() { return providerLimit; }
     public void setProviderLimit(int providerLimit) { this.providerLimit = providerLimit; }
-    public boolean isMockSponsorsEnabled() { return mockSponsorsEnabled; }
-    public void setMockSponsorsEnabled(boolean mockSponsorsEnabled) { this.mockSponsorsEnabled = mockSponsorsEnabled; }
 }

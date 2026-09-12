@@ -150,14 +150,12 @@ Sponsor insertion rules:
   relevance
 
 The existing Promotion module is a migration starting point, not yet a feed
-campaign system. The first feed implementation may use deterministic
-development fixtures behind an explicit non-production flag; production must
-return no mock sponsor candidate. Initial real campaigns are admin-managed.
-
-Development fixtures include distinct standalone creatives and bounded native
-Collab/Event placements from existing eligible candidate providers. Identities
-are stable across sessions; session-based fixture ranking varies their order.
-These examples do not activate paid campaigns or change native module records.
+campaign system. There is currently no built-in sponsorship provider or mock
+sponsor generation. Until admin-managed real campaigns are connected, the
+feed continues with organic content only. The sponsorship provider interface,
+placement metadata, native card support and insertion policy remain available
+for that integration; removing test-world tooling does not remove this product
+architecture.
 
 ## Extension contract
 
