@@ -21,7 +21,9 @@ Build a repeatable, local-only SoundConnect world that is rich enough to exercis
 - Existing local data is disposable. A fresh simulation is allowed to reset the local application data before rebuilding the world.
 - The world uses real catalog-backed Turkish locations and fictional, persistent people, bands, venues, and studios.
 - Test identities use reserved non-deliverable email addresses. No real OTP, application-decision, notification, payment, or sponsorship message may leave the local environment.
-- V1 uses the existing development musician-feed sponsor fixture. The production promotion-to-feed integration remains separate sponsorship work.
+- V1 uses varied development-only standalone, Collab and Event sponsor fixtures. The production promotion-to-feed integration remains separate sponsorship work.
+- Placement spacing varies between six and ten organic items (average eight), with no daily delivery quota. Same-target repeats remain suppressed within a browsing session.
+- Automated observer feed verification rolls back its delivery/replay records per observer; running checks must not consume or change manual observers' browsing history.
 
 ## World layout
 

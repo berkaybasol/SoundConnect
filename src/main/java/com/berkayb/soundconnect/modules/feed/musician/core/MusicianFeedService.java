@@ -29,7 +29,7 @@ import java.util.concurrent.*;
 @Slf4j
 public class MusicianFeedService {
     public static final int SCHEMA_VERSION = 1;
-    public static final String ALGORITHM_VERSION = "musician-v1.0.0";
+    public static final String ALGORITHM_VERSION = "musician-v1.0.1";
 
     private final MusicianFeedProperties properties;
     private final MusicianFeedViewerGuard viewerGuard;
@@ -270,8 +270,7 @@ public class MusicianFeedService {
                 || !request.supportedTypes().contains(candidate.type())
                 || request.delivery().itemIds().contains(candidate.itemId())
                 || request.delivery().targetKeys().contains(
-                MusicianFeedDeliverySnapshot.targetKey(candidate.target().type(), candidate.target().id()))
-                || request.delivery().campaignIds().contains(candidate.promotion().campaignId()));
+                MusicianFeedDeliverySnapshot.targetKey(candidate.target().type(), candidate.target().id())));
         return new CollectedCandidates(List.copyOf(organic), List.copyOf(promotions));
     }
 

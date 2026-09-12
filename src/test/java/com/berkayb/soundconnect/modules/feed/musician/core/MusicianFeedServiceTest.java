@@ -10,6 +10,7 @@ import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSource;
 import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedSponsorshipProvider;
+import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedPromotionCadence;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +28,7 @@ import static org.mockito.Mockito.*;
 
 class MusicianFeedServiceTest {
     private static final Instant NOW = Instant.parse("2026-09-11T12:30:00Z");
-    private final UUID viewer = UUID.randomUUID();
+    private final UUID viewer = UUID.fromString("fd30a85e-62bf-41fd-9588-03d6daf97a9f");
     private final UUID profile = UUID.randomUUID();
     private MusicianFeedViewerGuard guard;
     private MusicianFeedFeedbackService feedback;
@@ -81,7 +82,7 @@ class MusicianFeedServiceTest {
         when(deliveries.replay(eq(viewer), any(UUID.class), anyLong(), anyString(), anyInt(),
                 anySet(), eq(NOW))).thenReturn(Optional.empty());
         when(deliveries.recordPage(eq(viewer), any(UUID.class), any(Instant.class), eq(1),
-                eq("musician-v1.0.0"), anyLong(), anyList(), anyList(), eq(NOW))).thenAnswer(invocation -> {
+                eq("musician-v1.0.1"), anyLong(), anyList(), anyList(), eq(NOW))).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked") List<MusicianFeedItemResponse> items = invocation.getArgument(6);
             @SuppressWarnings("unchecked") List<MusicianFeedLane> lanes = invocation.getArgument(7);
             long start = invocation.getArgument(5);
@@ -110,7 +111,7 @@ class MusicianFeedServiceTest {
             return result;
         });
         when(deliveries.recordPageAndReplay(eq(viewer), any(UUID.class), any(Instant.class), eq(1),
-                eq("musician-v1.0.0"), anyLong(), anyString(), anyInt(), anySet(), anyList(),
+                eq("musician-v1.0.1"), anyLong(), anyString(), anyInt(), anySet(), anyList(),
                 anyList(), nullable(String.class), anyBoolean(), eq(NOW))).thenAnswer(invocation -> {
             UUID session = invocation.getArgument(1);
             Instant anchor = invocation.getArgument(2);
@@ -120,8 +121,8 @@ class MusicianFeedServiceTest {
             String nextCursor = invocation.getArgument(11);
             boolean hasMore = invocation.getArgument(12);
             List<MusicianFeedItemResponse> delivered = deliveries.recordPage(viewer, session, anchor, 1,
-                    "musician-v1.0.0", start, items, lanes, NOW);
-            return new MusicianFeedPageResponse(1, "musician-v1.0.0", session, NOW,
+                    "musician-v1.0.1", start, items, lanes, NOW);
+            return new MusicianFeedPageResponse(1, "musician-v1.0.1", session, NOW,
                     delivered, nextCursor, hasMore);
         });
     }
@@ -144,7 +145,7 @@ class MusicianFeedServiceTest {
 
         assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:kept");
         assertThat(page.schemaVersion()).isEqualTo(1);
-        assertThat(page.algorithmVersion()).isEqualTo("musician-v1.0.0");
+        assertThat(page.algorithmVersion()).isEqualTo("musician-v1.0.1");
     }
 
     @Test
@@ -285,7 +286,7 @@ class MusicianFeedServiceTest {
         })));
         MusicianFeedPageResponse firstPage = service.get(viewer, 1, null, List.of("TRACK"));
         MusicianFeedPageResponse concurrentlyCommitted = new MusicianFeedPageResponse(
-                1, "musician-v1.0.0", firstPage.feedSessionId(), NOW,
+                1, "musician-v1.0.1", firstPage.feedSessionId(), NOW,
                 List.of(second.toResponse().withDelivery(1, "concurrent-signed-token")),
                 null, false);
         var replayLookups = new java.util.concurrent.atomic.AtomicInteger();
@@ -397,7 +398,8 @@ class MusicianFeedServiceTest {
 
     @Test
     void nativePromotionDoesNotRequireTheStandaloneSponsoredRenderer() {
-        List<MusicianFeedCandidate> organic = java.util.stream.IntStream.range(0, 9)
+        int firstGap = MusicianFeedPromotionCadence.organicGap(viewer, NOW, 0);
+        List<MusicianFeedCandidate> organic = java.util.stream.IntStream.range(0, firstGap + 1)
                 .mapToObj(index -> candidate("TRACK:" + index, 1_000_000 - index)).toList();
         UUID target = UUID.randomUUID();
         var promoted = promotedCollab("COLLAB:paid", target);
@@ -405,10 +407,84 @@ class MusicianFeedServiceTest {
                 request -> List.of(promoted));
 
         MusicianFeedPageResponse page = service(List.of(provider("tracks", request -> organic)),
-                List.of(sponsor), executor).get(viewer, 9, null, List.of("TRACK", "COLLAB"));
+                List.of(sponsor), executor).get(viewer, firstGap + 1, null, List.of("TRACK", "COLLAB"));
 
         assertThat(page.items()).anyMatch(value -> value.type() == MusicianFeedItemType.COLLAB
                 && value.promotion() != null);
+    }
+
+    @Test
+    void variableCadenceSurvivesPaginationAndReplayAndAllowsDistinctTargetsFromOneCampaign() {
+        properties.setProviderLimit(8);
+        UUID sharedCampaign = UUID.fromString("6f4e66c1-2a14-4fc6-9895-5a8db7a3a4aa");
+        List<MusicianFeedCandidate> organic = java.util.stream.IntStream.range(0, 70)
+                .mapToObj(index -> candidate("TRACK:paged:" + index, 1_000_000 - index * 10_000L))
+                .toList();
+        List<MusicianFeedCandidate> sponsors = java.util.stream.IntStream.range(0, 5)
+                .mapToObj(index -> promotedCollab("COLLAB:distinct-paid:" + index,
+                        UUID.randomUUID(), sharedCampaign)).toList();
+        var providerCalls = new java.util.concurrent.atomic.AtomicInteger();
+        MusicianFeedService service = service(List.of(provider("paged-tracks", request -> {
+            providerCalls.incrementAndGet();
+            return organic.stream().filter(item -> !request.delivery().itemIds().contains(item.itemId()))
+                    .limit(request.limit()).toList();
+        })), List.of(sponsorship("one-campaign", Set.of(MusicianFeedItemType.COLLAB), request -> {
+            providerCalls.incrementAndGet();
+            return sponsors;
+        })), executor);
+        List<String> supportedNames = List.of("TRACK", "COLLAB");
+        Set<MusicianFeedItemType> supportedTypes = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.COLLAB);
+        List<MusicianFeedItemResponse> received = new ArrayList<>();
+        String cursor = null;
+        String sponsorRequestCursor = null;
+        int sponsorRequestSize = 0;
+        long sponsorRequestOffset = 0;
+        MusicianFeedPageResponse sponsorPage = null;
+        int[] pageSizes = {2, 5, 3};
+        for (int pageIndex = 0; pageIndex < 60; pageIndex++) {
+            int pageSize = pageSizes[pageIndex % pageSizes.length];
+            long offset = received.size();
+            MusicianFeedPageResponse page = service.get(viewer, pageSize, cursor, supportedNames);
+            assertThat(page.items()).isNotEmpty();
+            if (sponsorPage == null && cursor != null
+                    && page.items().stream().anyMatch(item -> item.promotion() != null)) {
+                sponsorRequestCursor = cursor;
+                sponsorRequestSize = pageSize;
+                sponsorRequestOffset = offset;
+                sponsorPage = page;
+            }
+            received.addAll(page.items());
+            cursor = page.nextCursor();
+            if (!page.hasMore()) break;
+        }
+
+        assertThat(cursor).isNull();
+        assertThat(received).hasSize(75);
+        assertThat(received).extracting(MusicianFeedItemResponse::id).doesNotHaveDuplicates();
+        List<Integer> promotionPositions = java.util.stream.IntStream.range(0, received.size())
+                .filter(index -> received.get(index).promotion() != null).boxed().toList();
+        List<Integer> expectedPositions = new ArrayList<>();
+        int nextPosition = 0;
+        for (int ordinal = 0; ordinal < sponsors.size(); ordinal++) {
+            nextPosition += MusicianFeedPromotionCadence.organicGap(viewer, NOW, ordinal);
+            expectedPositions.add(nextPosition++);
+        }
+        assertThat(promotionPositions).containsExactlyElementsOf(expectedPositions).hasSize(5);
+        assertThat(received.stream().filter(item -> item.promotion() != null))
+                .allMatch(item -> item.promotion().campaignId().equals(sharedCampaign));
+
+        assertThat(sponsorPage).isNotNull();
+        when(deliveries.replay(eq(viewer), eq(sponsorPage.feedSessionId()), eq(sponsorRequestOffset),
+                anyString(), eq(sponsorRequestSize), eq(supportedTypes), eq(NOW)))
+                .thenReturn(Optional.of(sponsorPage));
+        int callsBeforeReplay = providerCalls.get();
+        long deliveriesBeforeReplay = deliveredCount.get();
+        assertThat(service.get(viewer, sponsorRequestSize, sponsorRequestCursor, supportedNames))
+                .isEqualTo(sponsorPage);
+        assertThat(providerCalls.get()).isEqualTo(callsBeforeReplay);
+        assertThat(deliveredCount.get()).isEqualTo(deliveriesBeforeReplay);
+        assertThat(promotionCount.get()).isEqualTo(5);
     }
 
     @Test
@@ -548,6 +624,10 @@ class MusicianFeedServiceTest {
     }
 
     private static MusicianFeedCandidate promotedCollab(String id, UUID targetId) {
+        return promotedCollab(id, targetId, UUID.randomUUID());
+    }
+
+    private static MusicianFeedCandidate promotedCollab(String id, UUID targetId, UUID campaignId) {
         UUID authorId = UUID.randomUUID();
         var author = new MusicianFeedItemResponse.Author(authorId, UUID.randomUUID(), "MUSICIAN",
                 "artist", "Artist", null, false);
@@ -556,7 +636,7 @@ class MusicianFeedServiceTest {
         return new MusicianFeedCandidate(id, MusicianFeedItemType.COLLAB, 1, NOW.minusSeconds(60),
                 new MusicianFeedItemResponse.Reason(MusicianFeedReasonCode.SPONSORED, List.of(), 0),
                 author, new MusicianFeedItemResponse.Target("COLLAB", targetId), null,
-                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"),
+                new MusicianFeedItemResponse.Promotion(campaignId, "Sponsored", "Başvur", "/collab"),
                 List.of(MusicianFeedFeedbackAction.HIDE), new MusicianFeedPayloads.Collab(listing),
                 2_000_000, 0, MusicianFeedLane.SYSTEM, false);
     }

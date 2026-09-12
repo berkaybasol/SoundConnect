@@ -76,7 +76,6 @@ public class MusicianFeedConfiguration {
                 || properties.getProviderParallelism() < 1 || properties.getProviderParallelism() > 16
                 || properties.getProviderQueueCapacity() < properties.getProviderParallelism()
                 || properties.getProviderQueueCapacity() > 256
-                || properties.getSponsorCampaignDailyCap() < 1
                 || properties.getCleanupBatchSize() < 1 || properties.getCleanupBatchSize() > 10_000
                 || properties.getCleanupMaxBatches() < 1 || properties.getCleanupMaxBatches() > 100
                 || properties.getDefaultPageSize() < 1

@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
+import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedPromotionCadence;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MusicianFeedMixerTest {
     private static final Instant ANCHOR = Instant.parse("2026-09-11T12:00:00Z");
-    private static final UUID VIEWER = UUID.randomUUID();
+    private static final UUID VIEWER = UUID.fromString("15a5e2b1-8ab3-46de-b4b0-b8fb3437bc50");
     private final MusicianFeedMixer mixer = new MusicianFeedMixer();
 
     @Test
@@ -94,26 +95,41 @@ class MusicianFeedMixerTest {
     }
 
     @Test
-    void promotionsAreNeverEarlyOrConsecutiveAndUseOnePerEightOrganicItems() {
-        List<MusicianFeedCandidate> organic = IntStream.range(0, 24)
+    void promotionsUseVariableOrganicGapsAndContinueBeyondThreeDistinctSponsors() {
+        List<MusicianFeedCandidate> organic = IntStream.range(0, 100)
                 .mapToObj(index -> candidate("TRACK:" + index, MusicianFeedItemType.TRACK,
                         UUID.randomUUID(), UUID.randomUUID(), 1_000_000 - index, false, null))
                 .toList();
-        List<MusicianFeedCandidate> sponsors = IntStream.range(0, 3)
+        List<MusicianFeedCandidate> sponsors = IntStream.range(0, 12)
                 .mapToObj(index -> candidate("SPONSORED:" + index, MusicianFeedItemType.SPONSORED,
                         UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index, false,
                         new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "https://example.test")))
                 .toList();
 
-        var page = mixer.mix(VIEWER, ANCHOR, 20,
+        var page = mixer.mix(VIEWER, ANCHOR, 90,
                 Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.SPONSORED),
                 MusicianFeedFeedbackSnapshot.empty(), organic, sponsors, null, 0);
 
         List<Integer> promotedPositions = IntStream.range(0, page.items().size())
                 .filter(index -> page.items().get(index).promotion() != null).boxed().toList();
-        assertThat(promotedPositions).containsExactly(8, 17);
-        assertThat(page.items().subList(0, 2)).allMatch(item -> item.promotion() == null);
-        assertThat(page.deliveredOrganicCount()).isEqualTo(18);
+        List<Integer> expectedPositions = new ArrayList<>();
+        int nextPosition = 0;
+        for (int ordinal = 0; ordinal < sponsors.size(); ordinal++) {
+            nextPosition += MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, ordinal);
+            if (nextPosition >= 90) break;
+            expectedPositions.add(nextPosition++);
+        }
+        assertThat(promotedPositions).containsExactlyElementsOf(expectedPositions).hasSizeGreaterThan(3);
+        List<Integer> gaps = new ArrayList<>();
+        int previousPosition = -1;
+        for (int position : promotedPositions) {
+            gaps.add(position - previousPosition - 1);
+            previousPosition = position;
+        }
+        assertThat(gaps).allSatisfy(gap -> assertThat(gap).isBetween(6, 10));
+        assertThat(new HashSet<>(gaps)).hasSizeGreaterThan(1);
+        assertThat(page.items().subList(0, 6)).allMatch(item -> item.promotion() == null);
+        assertThat(page.deliveredOrganicCount()).isEqualTo(90 - promotedPositions.size());
         assertThat(page.hasMore()).isTrue();
     }
 
@@ -141,8 +157,9 @@ class MusicianFeedMixerTest {
 
     @Test
     void suppressedCommentTailCannotAdvertiseASecondSponsorContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
         UUID firstTarget = UUID.randomUUID();
-        List<MusicianFeedCandidate> comments = IntStream.range(0, 8)
+        List<MusicianFeedCandidate> comments = IntStream.range(0, firstGap)
                 .mapToObj(index -> candidate("ACTIVITY_COMMENT:" + index,
                         MusicianFeedItemType.ACTIVITY_COMMENT, UUID.randomUUID(), firstTarget,
                         900_000 - index, false, null))
@@ -157,7 +174,7 @@ class MusicianFeedMixerTest {
         var page = mixer.mix(VIEWER, ANCHOR, 1,
                 Set.of(MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.SPONSORED),
                 MusicianFeedFeedbackSnapshot.empty(), comments, List.of(firstSponsor, secondSponsor),
-                null, 8, 0, false);
+                null, firstGap, 0, false);
 
         assertThat(page.items()).singleElement().satisfies(value ->
                 assertThat(value.id()).isEqualTo("SPONSORED:first"));
@@ -166,7 +183,8 @@ class MusicianFeedMixerTest {
 
     @Test
     void exactCadenceThresholdKeepsAContinuationForTheWaitingSponsor() {
-        List<MusicianFeedCandidate> organic = IntStream.range(0, 8)
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        List<MusicianFeedCandidate> organic = IntStream.range(0, firstGap)
                 .mapToObj(index -> candidate("TRACK:" + index, MusicianFeedItemType.TRACK,
                         UUID.randomUUID(), UUID.randomUUID(), 1_000_000 - index, false, null))
                 .toList();
@@ -174,7 +192,7 @@ class MusicianFeedMixerTest {
                 UUID.randomUUID(), UUID.randomUUID(), 2_000_000, false,
                 new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/open"));
 
-        var thresholdPage = mixer.mix(VIEWER, ANCHOR, 8,
+        var thresholdPage = mixer.mix(VIEWER, ANCHOR, firstGap,
                 Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.SPONSORED),
                 MusicianFeedFeedbackSnapshot.empty(), organic, List.of(sponsor), null, 0, 0, false);
         assertThat(thresholdPage.items()).allMatch(value -> value.promotion() == null);
@@ -192,10 +210,92 @@ class MusicianFeedMixerTest {
     }
 
     @Test
+    void delayedSponsorStartsAFreshGapWithoutCatchingUpOnMissedSlots() {
+        int delayedOrganicCount = 23;
+        int secondGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 1);
+        var firstSponsor = sponsored("SPONSORED:late");
+        var nextSponsor = sponsored("SPONSORED:next");
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.SPONSORED);
+
+        var latePage = mixer.mix(VIEWER, ANCHOR, 1, types,
+                MusicianFeedFeedbackSnapshot.empty(), List.of(), List.of(firstSponsor),
+                null, delayedOrganicCount, 0, false, null, 0);
+        assertThat(latePage.items()).singleElement().satisfies(item ->
+                assertThat(item.promotion()).isNotNull());
+        assertThat(latePage.deliveredOrganicCount()).isEqualTo(delayedOrganicCount);
+        assertThat(latePage.hasMore()).isFalse();
+
+        List<MusicianFeedCandidate> nextOrganic = IntStream.range(0, secondGap)
+                .mapToObj(index -> candidate("TRACK:late-separator:" + index,
+                        MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                        1_000_000 - index, false, null)).toList();
+        var almostReady = mixer.mix(VIEWER, ANCHOR, secondGap - 1, types,
+                MusicianFeedFeedbackSnapshot.empty(), nextOrganic, List.of(nextSponsor), null,
+                delayedOrganicCount, 1, true, MusicianFeedItemType.SPONSORED, delayedOrganicCount);
+        assertThat(almostReady.items()).hasSize(secondGap - 1)
+                .allMatch(item -> item.promotion() == null);
+        assertThat(almostReady.hasMore()).isTrue();
+
+        Set<String> emittedIds = almostReady.items().stream().map(MusicianFeedItemResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        var ready = mixer.mix(VIEWER, ANCHOR, 2, types,
+                MusicianFeedFeedbackSnapshot.empty(), nextOrganic.stream()
+                        .filter(item -> !emittedIds.contains(item.itemId())).toList(),
+                List.of(nextSponsor), null, almostReady.deliveredOrganicCount(), 1, false,
+                MusicianFeedItemType.TRACK, delayedOrganicCount);
+        assertThat(ready.items()).hasSize(2);
+        assertThat(ready.items().getFirst().promotion()).isNull();
+        assertThat(ready.items().getLast().id()).isEqualTo(nextSponsor.itemId());
+        assertThat(ready.deliveredOrganicCount()).isEqualTo(delayedOrganicCount + secondGap);
+        assertThat(ready.hasMore()).isFalse();
+    }
+
+    @Test
+    void legacyOverloadsKeepASafeGapAfterADelayedSponsorEvenWithoutItsExactPosition() {
+        int delayedPromotionOrganicPosition = 23;
+        int secondGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 1);
+        var sponsor = sponsored("SPONSORED:legacy-continuation");
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.SPONSORED);
+        // Exercise both an ad-ending page and a page with one organic item after that ad.
+        // A nominal first slot would make the late campaign look overdue in both cases.
+        for (boolean lastItemPromoted : List.of(true, false)) {
+            int alreadySeparated = lastItemPromoted ? 0 : 1;
+            int remainingGap = secondGap - alreadySeparated;
+            int organicAlreadyDelivered = delayedPromotionOrganicPosition + alreadySeparated;
+            List<MusicianFeedCandidate> separators = IntStream.range(0, remainingGap)
+                    .mapToObj(index -> candidate("TRACK:legacy-separator:" + index,
+                            MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                            1_000_000 - index, false, null)).toList();
+
+            var shortPage = mixer.mix(VIEWER, ANCHOR, remainingGap + 1, types,
+                    MusicianFeedFeedbackSnapshot.empty(), separators, List.of(sponsor), null,
+                    organicAlreadyDelivered, 1, lastItemPromoted);
+            var typedPage = mixer.mix(VIEWER, ANCHOR, remainingGap + 1, types,
+                    MusicianFeedFeedbackSnapshot.empty(), separators, List.of(sponsor), null,
+                    organicAlreadyDelivered, 1, lastItemPromoted,
+                    lastItemPromoted ? MusicianFeedItemType.SPONSORED : MusicianFeedItemType.TRACK);
+
+            for (var page : List.of(shortPage, typedPage)) {
+                assertThat(page.items()).hasSize(remainingGap + 1);
+                assertThat(page.items().subList(0, remainingGap))
+                        .allMatch(item -> item.promotion() == null);
+                assertThat(page.items().getLast().id()).isEqualTo(sponsor.itemId());
+                assertThat(alreadySeparated + remainingGap).isGreaterThanOrEqualTo(6);
+                assertThat(page.deliveredOrganicCount())
+                        .isEqualTo(delayedPromotionOrganicPosition + secondGap);
+                assertThat(page.hasMore()).isFalse();
+            }
+        }
+    }
+
+    @Test
     void nativeCampaignUpgradesItsOrganicTargetAtTheSlotWithoutDuplicatingIt() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
         UUID target = UUID.randomUUID();
         List<MusicianFeedCandidate> organic = new ArrayList<>();
-        IntStream.range(0, 8).forEach(index -> organic.add(candidate("TRACK:" + index,
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
                 MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
                 1_000_000 - index, false, null)));
         organic.add(candidate("COLLAB:organic", MusicianFeedItemType.COLLAB,
@@ -204,7 +304,7 @@ class MusicianFeedMixerTest {
                 UUID.randomUUID(), target, 2_000_000, false,
                 new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
 
-        var page = mixer.mix(VIEWER, ANCHOR, 10,
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 2,
                 Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
                 MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null, 0, 0, false);
 
@@ -214,32 +314,34 @@ class MusicianFeedMixerTest {
 
     @Test
     void promotedDeferredNativeTargetDoesNotCreateAPhantomContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
         UUID target = UUID.randomUUID();
         List<MusicianFeedCandidate> organic = new ArrayList<>();
         organic.add(candidate("COLLAB:organic", MusicianFeedItemType.COLLAB,
                 UUID.randomUUID(), target, 2_000_000, false, null));
-        IntStream.range(0, 8).forEach(index -> organic.add(candidate("TRACK:" + index,
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
                 MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
                 1_000_000 - index, false, null)));
         var promotedNative = candidate("COLLAB:promoted", MusicianFeedItemType.COLLAB,
                 UUID.randomUUID(), target, 2_100_000, false,
                 new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
 
-        var page = mixer.mix(VIEWER, ANCHOR, 9,
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 1,
                 Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
                 MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null,
                 0, 0, false);
 
-        assertThat(page.items()).hasSize(9);
+        assertThat(page.items()).hasSize(firstGap + 1);
         assertThat(page.items().getLast().promotion()).isNotNull();
         assertThat(page.hasMore()).isFalse();
     }
 
     @Test
     void promotedUnexaminedNativeTailDoesNotCreateAPhantomContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
         UUID target = UUID.randomUUID();
         List<MusicianFeedCandidate> organic = new ArrayList<>();
-        IntStream.range(0, 8).forEach(index -> organic.add(candidate("TRACK:" + index,
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
                 MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
                 2_000_000 - index, false, null)));
         organic.add(candidate("COLLAB:organic-tail", MusicianFeedItemType.COLLAB,
@@ -248,12 +350,12 @@ class MusicianFeedMixerTest {
                 UUID.randomUUID(), target, 2_100_000, false,
                 new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
 
-        var page = mixer.mix(VIEWER, ANCHOR, 9,
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 1,
                 Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
                 MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null,
                 0, 0, false);
 
-        assertThat(page.items()).hasSize(9);
+        assertThat(page.items()).hasSize(firstGap + 1);
         assertThat(page.items().getLast().promotion()).isNotNull();
         assertThat(page.hasMore()).isFalse();
     }
@@ -483,6 +585,12 @@ class MusicianFeedMixerTest {
                     .contains(actorProfile, publisherProfile);
             assertThat(value.payload()).isEqualTo(Map.of("trackId", target));
         });
+    }
+
+    private static MusicianFeedCandidate sponsored(String id) {
+        return candidate(id, MusicianFeedItemType.SPONSORED, UUID.randomUUID(), UUID.randomUUID(),
+                2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/open"));
     }
 
     private static MusicianFeedCandidate candidate(

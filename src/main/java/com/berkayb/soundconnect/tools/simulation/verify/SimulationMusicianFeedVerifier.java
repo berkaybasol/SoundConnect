@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemRespon
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPageResponse;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedService;
+import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedPromotionCadence;
 import com.berkayb.soundconnect.tools.simulation.SimulationRuntimeGuard;
 import com.berkayb.soundconnect.tools.simulation.report.SimulationRunLedger;
 import com.berkayb.soundconnect.tools.simulation.world.SimulationWorldManifest;
@@ -11,6 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,7 +37,6 @@ public class SimulationMusicianFeedVerifier {
 
 	private static final int PAGE_SIZE = 20;
 	private static final int MAX_PAGES = 3;
-	private static final int ORGANIC_ITEMS_PER_PROMOTION = 8;
 	private static final Set<MusicianFeedItemType> MODULE_SHARES = Set.of(
 			MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
 			MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE);
@@ -42,23 +45,31 @@ public class SimulationMusicianFeedVerifier {
 
 	private final SimulationRuntimeGuard runtimeGuard;
 	private final MusicianFeedService feedService;
+	private final TransactionTemplate observerTransactions;
 	private final LongSupplier nanoTime;
 
 	@Autowired
 	public SimulationMusicianFeedVerifier(
 			SimulationRuntimeGuard runtimeGuard,
-			MusicianFeedService feedService
+			MusicianFeedService feedService,
+			PlatformTransactionManager transactionManager
 	) {
-		this(runtimeGuard, feedService, System::nanoTime);
+		this(runtimeGuard, feedService, transactionManager, System::nanoTime);
 	}
 
 	SimulationMusicianFeedVerifier(
 			SimulationRuntimeGuard runtimeGuard,
 			MusicianFeedService feedService,
+			PlatformTransactionManager transactionManager,
 			LongSupplier nanoTime
 	) {
 		this.runtimeGuard = Objects.requireNonNull(runtimeGuard, "runtimeGuard");
 		this.feedService = Objects.requireNonNull(feedService, "feedService");
+		this.observerTransactions = new TransactionTemplate(
+				Objects.requireNonNull(transactionManager, "transactionManager"));
+		this.observerTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+		this.observerTransactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+		this.observerTransactions.setName("simulation-musician-feed-verification");
 		this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
 	}
 
@@ -85,8 +96,14 @@ public class SimulationMusicianFeedVerifier {
 				.toList()) {
 			UUID userId = requireId(accountUserIds, observer.key());
 			try {
-				SimulationFeedVerificationResult.ObserverResult result = verifyObserver(
-						observer, userId, forbiddenAuthors);
+				SimulationFeedVerificationResult.ObserverResult result = observerTransactions.execute(status -> {
+					// Feed reads persist delivery/replay evidence. Keep it visible to this
+					// observer's continuation requests, then discard it on success or failure
+					// so verification never becomes part of their browsing history.
+					status.setRollbackOnly();
+					return verifyObserver(observer, userId, forbiddenAuthors);
+				});
+				Objects.requireNonNull(result, "Observer verification returned no result");
 				results.put(observer.key(), result);
 				ledger.succeeded("feed-verification", "READ_OBSERVER_FEED", observer.key(), null,
 						result.items() + " items / " + result.elapsedMillis() + " ms");
@@ -171,8 +188,8 @@ public class SimulationMusicianFeedVerifier {
 		int organicSincePromotion = 0;
 		MusicianFeedItemType previous = null;
 		for (MusicianFeedItemResponse item : items) {
-			if (item.type() == MusicianFeedItemType.SPONSORED) {
-				if (organicSincePromotion < ORGANIC_ITEMS_PER_PROMOTION) {
+			if (item.promotion() != null || item.type() == MusicianFeedItemType.SPONSORED) {
+				if (organicSincePromotion < MusicianFeedPromotionCadence.MIN_ORGANIC_ITEMS) {
 					throw new IllegalStateException("Sponsored item violated organic spacing");
 				}
 				organicSincePromotion = 0;

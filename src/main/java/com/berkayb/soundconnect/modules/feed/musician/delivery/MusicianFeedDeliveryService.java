@@ -79,16 +79,6 @@ public class MusicianFeedDeliveryService {
                 .collect(Collectors.toUnmodifiableSet());
         Set<UUID> sessionCampaigns = session.stream().map(SnapshotDelivery::campaignId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
-        sessionCampaigns.addAll(jdbc.queryForList("""
-                select campaign_id from tbl_musician_feed_delivery
-                where viewer_user_id=:viewerId and campaign_id is not null
-                  and delivered_at>=:since
-                group by campaign_id having count(*)>=:cap
-                limit :campaignLimit
-                """, new MapSqlParameterSource().addValue("viewerId", viewerId)
-                .addValue("since", Timestamp.from(now.minusSeconds(86_400)))
-                .addValue("cap", Math.max(1, properties.getSponsorCampaignDailyCap()))
-                .addValue("campaignLimit", maxSessionDeliveries()), UUID.class));
         long next = session.stream().mapToLong(SnapshotDelivery::absolutePosition)
                 .max().orElse(-1L) + 1L;
         long promotionCount = session.stream().filter(value -> value.campaignId() != null).count();

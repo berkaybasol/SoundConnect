@@ -78,6 +78,29 @@ class MusicianFeedDeliveryServicePostgresTest {
     }
 
     @Test
+    void earlierSessionsDoNotCreateADailySponsorQuota() {
+        UUID campaign = UUID.randomUUID();
+        UUID creative = UUID.randomUUID();
+        var promotion = new MusicianFeedItemResponse.Promotion(
+                campaign, "Sponsored", "İncele", "/collab");
+        for (int index = 0; index < 4; index++) {
+            UUID previousSession = UUID.randomUUID();
+            transactions.executeWithoutResult(status -> service.recordPage(
+                    viewer, previousSession, now, 1, "musician-v1", 0,
+                    List.of(item("SPONSORED:" + creative, MusicianFeedItemType.SPONSORED,
+                            "STANDALONE", creative, promotion)), now));
+            assertThat(service.snapshot(viewer, previousSession, now).targetKeys())
+                    .contains(MusicianFeedDeliverySnapshot.targetKey("STANDALONE", creative));
+        }
+
+        MusicianFeedDeliverySnapshot freshSession = service.snapshot(viewer, session, now);
+        assertThat(freshSession.campaignIds()).isEmpty();
+        assertThat(freshSession.targetKeys()).isEmpty();
+        assertThat(freshSession.deliveredPromotionCount()).isZero();
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(4);
+    }
+
+    @Test
     void snapshotUsesMinimalProjectionAndPreservesAllMixerState() {
         String projection = MusicianFeedDeliveryService.SNAPSHOT_SQL.substring(0,
                 MusicianFeedDeliveryService.SNAPSHOT_SQL.toLowerCase(Locale.ROOT).indexOf("from"))

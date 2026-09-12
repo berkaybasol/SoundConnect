@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCand
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
 import com.berkayb.soundconnect.modules.feed.musician.cursor.MusicianFeedCursorState;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
+import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedPromotionCadence;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -16,7 +17,6 @@ import java.util.*;
 public class MusicianFeedMixer {
     private static final long MAX_FRESHNESS_BONUS = 120_000L;
     private static final long SHOW_LESS_PENALTY = 45_000L;
-    private static final int ORGANIC_ITEMS_PER_PROMOTION = 8;
 
     public MixedPage mix(
             UUID viewerUserId,
@@ -48,7 +48,8 @@ public class MusicianFeedMixer {
     ) {
         return mix(viewerUserId, anchor, pageSize, supportedTypes, feedback, organicCandidates,
                 sponsorCandidates, after, deliveredOrganicCount, deliveredPromotionCount,
-                lastItemPromoted, null, deliveredPromotionCount * ORGANIC_ITEMS_PER_PROMOTION);
+                lastItemPromoted, null, conservativeLastPromotionPosition(
+                        deliveredOrganicCount, deliveredPromotionCount, lastItemPromoted));
     }
 
     public MixedPage mix(
@@ -68,7 +69,7 @@ public class MusicianFeedMixer {
         return mix(viewerUserId, anchor, pageSize, supportedTypes, feedback, organicCandidates,
                 sponsorCandidates, after, deliveredOrganicCount, deliveredPromotionCount,
                 lastItemPromoted, lastItemType,
-                deliveredPromotionCount * ORGANIC_ITEMS_PER_PROMOTION);
+                conservativeLastPromotionPosition(deliveredOrganicCount, deliveredPromotionCount, lastItemPromoted));
     }
 
     public MixedPage mix(
@@ -143,7 +144,7 @@ public class MusicianFeedMixer {
         List<ScoredCandidate> basePage = selectLaneWindow(organic, pageSize, lastItemLane,
                 deliveredOverthinkingShareCount, deliveredTableGroupShareCount);
         List<ScoredCandidate> diversePage = diversify(basePage);
-        MergeResult merged = mergePromotions(diversePage, sponsors, pageSize, deliveredOrganicCount,
+        MergeResult merged = mergePromotions(viewerUserId, anchor, diversePage, sponsors, pageSize, deliveredOrganicCount,
                 deliveredPromotionCount, lastItemPromoted, organicCountAtLastPromotion);
         MusicianFeedCursorState.CursorPosition boundary = merged.lastDelivered() == null
                 ? null : position(merged.lastDelivered());
@@ -391,6 +392,8 @@ public class MusicianFeedMixer {
     }
 
     private MergeResult mergePromotions(
+            UUID viewerId,
+            Instant anchor,
             List<ScoredCandidate> organic,
             List<ScoredCandidate> sponsors,
             int pageSize,
@@ -405,8 +408,8 @@ public class MusicianFeedMixer {
         int sponsorIndex = 0;
         int organicEmitted = 0;
         long organicSeen = deliveredOrganic;
-        long nextPromotionAt = deliveredPromotions == 0 ? ORGANIC_ITEMS_PER_PROMOTION
-                : organicCountAtLastPromotion + ORGANIC_ITEMS_PER_PROMOTION;
+        long nextPromotionAt = organicCountAtLastPromotion
+                + MusicianFeedPromotionCadence.organicGap(viewerId, anchor, deliveredPromotions);
         boolean lastWasPromotion = previousWasPromotion;
         Set<String> deliveredTargets = new HashSet<>();
         Set<String> promotedTargets = new HashSet<>();
@@ -435,7 +438,8 @@ public class MusicianFeedMixer {
                     boundaryCandidate = weaker(boundaryCandidate, sponsor);
                     lastWasPromotion = true;
                     deliveredPromotions++;
-                    nextPromotionAt = organicSeen + ORGANIC_ITEMS_PER_PROMOTION;
+                    nextPromotionAt = organicSeen
+                            + MusicianFeedPromotionCadence.organicGap(viewerId, anchor, deliveredPromotions);
                     continue;
                 }
             }
@@ -515,6 +519,14 @@ public class MusicianFeedMixer {
     private MusicianFeedCursorState.CursorPosition position(ScoredCandidate value) {
         return new MusicianFeedCursorState.CursorPosition(
                 value.score(), value.candidate().occurredAt(), value.candidate().itemId());
+    }
+
+    private static long conservativeLastPromotionPosition(long organicCount, long promotionCount,
+                                                         boolean lastItemPromoted) {
+        // Legacy callers do not know when a delayed ad actually appeared.
+        // Only the final organic item (if any) is a proven gap. Full-state
+        // continuations use the persisted position instead of this fallback.
+        return promotionCount == 0 ? 0 : Math.max(0, organicCount - (lastItemPromoted ? 0 : 1));
     }
 
     private static MusicianFeedLane legacyLane(MusicianFeedItemType itemType) {

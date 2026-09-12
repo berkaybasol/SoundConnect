@@ -22,7 +22,6 @@ public class MusicianFeedProperties {
     private Duration providerDeadline = Duration.ofSeconds(4);
     private int providerParallelism = 6;
     private int providerQueueCapacity = 24;
-    private int sponsorCampaignDailyCap = 3;
     private int cleanupBatchSize = 1_000;
     private int cleanupMaxBatches = 20;
     private Duration cleanupTimeBudget = Duration.ofSeconds(5);
@@ -55,8 +54,6 @@ public class MusicianFeedProperties {
     public void setProviderParallelism(int providerParallelism) { this.providerParallelism = providerParallelism; }
     public int getProviderQueueCapacity() { return providerQueueCapacity; }
     public void setProviderQueueCapacity(int providerQueueCapacity) { this.providerQueueCapacity = providerQueueCapacity; }
-    public int getSponsorCampaignDailyCap() { return sponsorCampaignDailyCap; }
-    public void setSponsorCampaignDailyCap(int sponsorCampaignDailyCap) { this.sponsorCampaignDailyCap = sponsorCampaignDailyCap; }
     public int getCleanupBatchSize() { return cleanupBatchSize; }
     public void setCleanupBatchSize(int cleanupBatchSize) { this.cleanupBatchSize = cleanupBatchSize; }
     public int getCleanupMaxBatches() { return cleanupMaxBatches; }

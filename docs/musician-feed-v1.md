@@ -136,8 +136,15 @@ Sponsor insertion rules:
 
 - never in the first two positions
 - never consecutive
-- approximately one placement per eight to ten organic items
-- per-user/per-campaign frequency caps
+- variable gaps of six to ten organic items, averaging eight; never a fixed
+  every-eighth-item pattern
+- the gap is stable for the viewer, session anchor and placement ordinal;
+  pagination/retries preserve the last placement position instead of rerolling
+- when no eligible placement is available, continue organic content; after a
+  late placement, start a full new gap rather than catching up with extra ads
+- no daily total or per-campaign delivery quota; different creatives from the
+  same campaign remain eligible, while already-delivered item/target identities
+  cannot repeat within that feed session
 - no duplicate organic and sponsored rendering of the same target in a session
 - sponsorship never bypasses target visibility, status, eligibility, or
   relevance
@@ -146,6 +153,11 @@ The existing Promotion module is a migration starting point, not yet a feed
 campaign system. The first feed implementation may use deterministic
 development fixtures behind an explicit non-production flag; production must
 return no mock sponsor candidate. Initial real campaigns are admin-managed.
+
+Development fixtures include distinct standalone creatives and bounded native
+Collab/Event placements from existing eligible candidate providers. Identities
+are stable across sessions; session-based fixture ranking varies their order.
+These examples do not activate paid campaigns or change native module records.
 
 ## Extension contract
 

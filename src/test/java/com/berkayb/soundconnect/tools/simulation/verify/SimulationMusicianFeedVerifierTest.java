@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -47,6 +49,7 @@ class SimulationMusicianFeedVerifierTest {
 			TestPropertyValues.of("app.simulation.enabled=true").applyTo(context);
 			context.registerBean(SimulationRuntimeGuard.class, () -> runtimeGuard);
 			context.registerBean(MusicianFeedService.class, () -> feedService);
+			context.registerBean(PlatformTransactionManager.class, this::transactionManager);
 			context.register(SimulationMusicianFeedVerifier.class);
 			context.refresh();
 
@@ -69,7 +72,8 @@ class SimulationMusicianFeedVerifierTest {
 		});
 		AtomicLong nanos = new AtomicLong();
 		SimulationMusicianFeedVerifier verifier = new SimulationMusicianFeedVerifier(
-				mock(SimulationRuntimeGuard.class), feed, () -> nanos.getAndAdd(5_000_000L));
+				mock(SimulationRuntimeGuard.class), feed, transactionManager(),
+				() -> nanos.getAndAdd(5_000_000L));
 
 		SimulationFeedVerificationResult result = verifier.verify(
 				manifest, ids(), new SimulationRunLedger(manifest.worldId(), manifest.seed(), clock));
@@ -85,12 +89,73 @@ class SimulationMusicianFeedVerifierTest {
 				1, "test", UUID.randomUUID(), clock.instant(),
 				List.of(item("too-early", MusicianFeedItemType.SPONSORED, 0)), null, false));
 		SimulationMusicianFeedVerifier verifier = new SimulationMusicianFeedVerifier(
-				mock(SimulationRuntimeGuard.class), feed, System::nanoTime);
+				mock(SimulationRuntimeGuard.class), feed, transactionManager(), System::nanoTime);
 
 		assertThatThrownBy(() -> verifier.verify(
 				manifest, ids(), new SimulationRunLedger(manifest.worldId(), manifest.seed(), clock)))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("organic spacing");
+	}
+
+	@Test
+	void promotedNativeCardsAlsoResetTheOrganicSpacingCounter() {
+		MusicianFeedService feed = mock(MusicianFeedService.class);
+		List<MusicianFeedItemResponse> items = new ArrayList<>();
+		for (int index = 0; index < 8; index++) {
+			items.add(item("organic-" + index, MusicianFeedItemType.TRACK, index));
+		}
+		items.add(promoted("featured-collab", MusicianFeedItemType.COLLAB, 8));
+		items.add(item("organic-after-collab", MusicianFeedItemType.TRACK, 9));
+		items.add(promoted("featured-event", MusicianFeedItemType.EVENT, 10));
+		when(feed.get(any(), anyInt(), isNull(), anyList())).thenReturn(new MusicianFeedPageResponse(
+				1, "test", UUID.randomUUID(), clock.instant(), items, null, false));
+		SimulationMusicianFeedVerifier verifier = new SimulationMusicianFeedVerifier(
+				mock(SimulationRuntimeGuard.class), feed, transactionManager(), System::nanoTime);
+
+		assertThatThrownBy(() -> verifier.verify(
+				manifest, ids(), new SimulationRunLedger(manifest.worldId(), manifest.seed(), clock)))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("organic spacing");
+	}
+
+	@Test
+	void acceptsVariableSponsorSpacingAndFeedsWithoutEligibleSponsors() {
+		MusicianFeedService feed = mock(MusicianFeedService.class);
+		List<MusicianFeedItemResponse> items = new ArrayList<>();
+		for (int index = 0; index < 6; index++) {
+			items.add(item("first-organic-" + index, MusicianFeedItemType.TRACK, items.size()));
+		}
+		items.add(promoted("featured-event", MusicianFeedItemType.EVENT, items.size()));
+		for (int index = 0; index < 10; index++) {
+			items.add(item("second-organic-" + index, MusicianFeedItemType.TRACK, items.size()));
+		}
+		items.add(promoted("featured-collab", MusicianFeedItemType.COLLAB, items.size()));
+		items.add(item("completion", MusicianFeedItemType.PROFILE_COMPLETION, items.size()));
+		when(feed.get(any(), anyInt(), isNull(), anyList())).thenReturn(new MusicianFeedPageResponse(
+				1, "test", UUID.randomUUID(), clock.instant(), items, null, false));
+		SimulationMusicianFeedVerifier verifier = new SimulationMusicianFeedVerifier(
+				mock(SimulationRuntimeGuard.class), feed, transactionManager(), System::nanoTime);
+
+		assertThat(verifier.verify(manifest, ids(),
+				new SimulationRunLedger(manifest.worldId(), manifest.seed(), clock)).observers()).hasSize(3);
+
+		when(feed.get(any(), anyInt(), isNull(), anyList())).thenReturn(new MusicianFeedPageResponse(
+				1, "test", UUID.randomUUID(), clock.instant(),
+				List.of(item("completion", MusicianFeedItemType.PROFILE_COMPLETION, 0)), null, false));
+		assertThat(verifier.verify(manifest, ids(),
+				new SimulationRunLedger(manifest.worldId(), manifest.seed(), clock)).observers()).hasSize(3);
+	}
+
+	private PlatformTransactionManager transactionManager() {
+		PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+		when(manager.getTransaction(any())).thenAnswer(invocation -> new SimpleTransactionStatus(true));
+		return manager;
+	}
+
+	private MusicianFeedItemResponse promoted(String id, MusicianFeedItemType type, long position) {
+		return new MusicianFeedItemResponse(id, type, 1, clock.instant(), null, null, null, null,
+				new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsorlu", "Aç", "/collab"),
+				List.of(), null).withDelivery(position, "impression-" + position);
 	}
 
 	private Map<String, UUID> ids() {
