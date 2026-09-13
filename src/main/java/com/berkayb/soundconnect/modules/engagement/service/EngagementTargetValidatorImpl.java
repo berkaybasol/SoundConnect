@@ -23,4 +23,11 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
 		// listener privacy is locked before media, matching public media readers.
 		targetAccess.requireReadable(targetType, targetId);
 	}
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void validateExists(UUID viewerId, EngagementTargetType type, UUID id) {
+        if (type == EngagementTargetType.ANNOUNCEMENT) targetAccess.requireReadable(viewerId, type, id);
+        else targetAccess.requireReadable(type, id);
+    }
+
 }

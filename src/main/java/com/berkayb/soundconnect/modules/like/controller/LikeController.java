@@ -81,10 +81,12 @@ public class LikeController {
 	
 	@GetMapping(COUNT)
 	public ResponseEntity<BaseResponse<Long>> countLikes(
+            @AuthenticationPrincipal(expression = "id") UUID viewerId,
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId
 	) {
-		long count = likeService.countLikes(targetType, targetId);
+		long count = targetType == EngagementTargetType.ANNOUNCEMENT || targetType == EngagementTargetType.COMMENT
+                ? likeService.countLikes(viewerId, targetType, targetId) : likeService.countLikes(targetType, targetId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Long>builder()

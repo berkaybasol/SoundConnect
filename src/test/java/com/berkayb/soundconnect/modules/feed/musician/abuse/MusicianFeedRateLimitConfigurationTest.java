@@ -46,6 +46,19 @@ class MusicianFeedRateLimitConfigurationTest {
                         .isEqualTo("${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_ENABLED:true}"));
     }
 
+    @Test
+    void productionFeedbackBudgetDefaultsMatchTheBoundedReplenishingPolicy() throws IOException {
+        var sources = new YamlPropertySourceLoader().load(
+                "application-prod", new ClassPathResource("application-prod.yml"));
+
+        assertThat(sources).anySatisfy(source -> {
+            assertThat(source.getProperty("app.feed.musician.rate-limit.feedback.burst-capacity"))
+                    .isEqualTo("${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_FEEDBACK_BURST:20}");
+            assertThat(source.getProperty("app.feed.musician.rate-limit.feedback.refill-period"))
+                    .isEqualTo("${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_FEEDBACK_REFILL:PT2S}");
+        });
+    }
+
     private MockEnvironment productionEnvironment(boolean feedEnabled) {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("prod");

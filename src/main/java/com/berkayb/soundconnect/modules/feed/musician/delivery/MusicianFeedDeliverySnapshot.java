@@ -19,14 +19,34 @@ public record MusicianFeedDeliverySnapshot(
         MusicianFeedItemType lastItemType,
         MusicianFeedLane lastItemLane,
         long deliveredOverthinkingShareCount,
-        long deliveredTableGroupShareCount
+        long deliveredTableGroupShareCount,
+        Set<UUID> deliveredAnnouncementIds,
+        long deliveredNormalCount,
+        long normalCountAtLastAnnouncement
 ) {
+    public MusicianFeedDeliverySnapshot(Set<String> itemIds, Set<String> targetKeys,
+                                        Set<String> organicTargetKeys, Set<String> promotedTargetKeys,
+                                        Set<UUID> campaignIds, long nextAbsolutePosition, long deliveredPromotionCount,
+                                        long organicCountAtLastPromotion, boolean lastItemPromoted,
+                                        MusicianFeedItemType lastItemType, MusicianFeedLane lastItemLane,
+                                        long deliveredOverthinkingShareCount, long deliveredTableGroupShareCount) {
+        this(itemIds, targetKeys, organicTargetKeys, promotedTargetKeys, campaignIds,
+                nextAbsolutePosition, deliveredPromotionCount, organicCountAtLastPromotion,
+                lastItemPromoted, lastItemType, lastItemLane, deliveredOverthinkingShareCount,
+                deliveredTableGroupShareCount, Set.of(), Math.max(0, nextAbsolutePosition - deliveredPromotionCount), 0);
+    }
+
     public MusicianFeedDeliverySnapshot {
         itemIds = itemIds == null ? Set.of() : Set.copyOf(itemIds);
         targetKeys = targetKeys == null ? Set.of() : Set.copyOf(targetKeys);
         organicTargetKeys = organicTargetKeys == null ? Set.of() : Set.copyOf(organicTargetKeys);
         promotedTargetKeys = promotedTargetKeys == null ? Set.of() : Set.copyOf(promotedTargetKeys);
         campaignIds = campaignIds == null ? Set.of() : Set.copyOf(campaignIds);
+        deliveredAnnouncementIds = deliveredAnnouncementIds == null ? Set.of() : Set.copyOf(deliveredAnnouncementIds);
+        if (deliveredNormalCount < 0 || normalCountAtLastAnnouncement < 0
+                || normalCountAtLastAnnouncement > deliveredNormalCount) {
+            throw new IllegalArgumentException("Invalid announcement cadence state");
+        }
         if (nextAbsolutePosition < 0) throw new IllegalArgumentException("Negative feed position");
         if (organicCountAtLastPromotion < 0) throw new IllegalArgumentException("Negative promotion cadence");
         if (deliveredOverthinkingShareCount < 0 || deliveredTableGroupShareCount < 0) {

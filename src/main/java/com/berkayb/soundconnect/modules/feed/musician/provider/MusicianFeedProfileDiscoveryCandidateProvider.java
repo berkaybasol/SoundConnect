@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -84,6 +86,7 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
                     where profile.profile_type='BAND' and own_member.band_id=profile.profile_id
                       and own_member.user_id=:viewerId and own_member.status='ACTIVE')
               and following.id is null and band_follow.id is null
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
                     (feedback.action in ('HIDE','REPORT')
@@ -102,7 +105,8 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
                          and profile.profile_type in ('VENUE','STUDIO'))))
             order by profile.created_at desc, profile.profile_id desc
             limit :limit
-            """;
+            """.replace("/* FEED_MODERATION */", allowed(item("'PROFILE:' || profile.profile_id::text"),
+                    profile("profile.profile_type", "profile.profile_id")));
 
     private final NamedParameterJdbcTemplate jdbc;
 

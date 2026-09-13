@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.collab.dto.response.*;
 import com.berkayb.soundconnect.modules.collab.enums.*;
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
@@ -61,6 +63,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                     select 1 from tbl_band_member own_member
                     where own_member.band_id=actor.source_profile_id
                       and own_member.user_id=:viewerId and own_member.status='ACTIVE'))
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
                     (feedback.action in ('HIDE','REPORT')
@@ -111,7 +114,8 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 else 3 end,
               listing.published_at desc, listing.id desc
             limit :limit
-            """;
+            """.replace("/* FEED_MODERATION */", allowed(item("'COLLAB:' || listing.id::text"),
+                    target("'COLLAB'", "listing.id")));
     private static final String GENRES_SQL = """
             select collab_id, genre from tbl_collab_genre
             where collab_id in (:listingIds) order by collab_id, position

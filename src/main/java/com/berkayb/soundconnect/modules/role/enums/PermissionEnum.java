@@ -17,6 +17,7 @@ public enum PermissionEnum {
 	MANAGE_DM,
 	MANAGE_BACKLINE_CATALOG,
 	MANAGE_COLLAB_REPORTS,
+	MANAGE_MUSICIAN_FEED_REPORTS,
 	
 	// USER
 	READ_USER, // sisteme kayit olan herkes bu role sahip olur.

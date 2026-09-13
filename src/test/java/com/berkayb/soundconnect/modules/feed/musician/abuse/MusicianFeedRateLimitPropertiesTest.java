@@ -35,6 +35,30 @@ class MusicianFeedRateLimitPropertiesTest {
         assertThat(properties.keyTtlMillis(properties.getContinuation())).isEqualTo(48_000L);
         assertThat(properties.keyTtlMillis(properties.getSharedPageBudget())).isEqualTo(180_000L);
         assertThat(properties.keyTtlMillis(properties.getTelemetry())).isEqualTo(60_000L);
+        assertThat(properties.getFeedback().getBurstCapacity()).isEqualTo(20);
+        assertThat(properties.getFeedback().getRefillPeriod()).isEqualTo(Duration.ofSeconds(2));
+        assertThat(properties.keyTtlMillis(properties.getFeedback())).isEqualTo(80_000L);
+    }
+
+    @Test
+    void feedbackPolicyCapsBurstAndRejectsMissingOrUnboundedRefill() {
+        MusicianFeedRateLimitProperties properties = new MusicianFeedRateLimitProperties();
+        properties.getFeedback().setBurstCapacity(100);
+        assertThat(validator.validate(properties)).isEmpty();
+
+        properties.getFeedback().setBurstCapacity(101);
+        assertThat(validator.validate(properties))
+                .anyMatch(violation -> violation.getPropertyPath().toString().equals("bucketPolicyValid"));
+
+        properties.getFeedback().setBurstCapacity(20);
+        properties.getFeedback().setRefillPeriod(Duration.ofMillis(49));
+        assertThat(validator.validate(properties)).isNotEmpty();
+        properties.getFeedback().setRefillPeriod(Duration.ofMinutes(11));
+        assertThat(validator.validate(properties)).isNotEmpty();
+        properties.getFeedback().setRefillPeriod(null);
+        assertThat(validator.validate(properties)).isNotEmpty();
+        properties.setFeedback(null);
+        assertThat(validator.validate(properties)).isNotEmpty();
     }
 
     @Test

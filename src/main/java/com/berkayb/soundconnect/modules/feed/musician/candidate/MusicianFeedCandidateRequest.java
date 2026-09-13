@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 
 import java.time.Instant;
 import java.util.Set;
@@ -19,8 +20,35 @@ public record MusicianFeedCandidateRequest(
         Set<MusicianFeedItemType> supportedTypes,
         MusicianFeedPersonalizationSnapshot personalization,
         MusicianFeedFeedbackSnapshot feedback,
-        MusicianFeedDeliverySnapshot delivery
+        MusicianFeedDeliverySnapshot delivery,
+        MusicianFeedAnnouncementPlan announcementPlan,
+        long providerDeadlineNanos
 ) {
+    public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
+                                        Instant anchor, Instant readAt, int limit,
+                                        Set<MusicianFeedItemType> supportedTypes,
+                                        MusicianFeedPersonalizationSnapshot personalization,
+                                        MusicianFeedFeedbackSnapshot feedback, MusicianFeedDeliverySnapshot delivery,
+                                        MusicianFeedAnnouncementPlan announcementPlan) {
+        this(viewerUserId, musicianProfileId, feedSessionId, anchor, readAt, limit,
+                supportedTypes, personalization, feedback, delivery, announcementPlan, Long.MAX_VALUE);
+    }
+
+    public MusicianFeedCandidateRequest withProviderDeadline(long deadlineNanos) {
+        return new MusicianFeedCandidateRequest(viewerUserId, musicianProfileId, feedSessionId,
+                anchor, readAt, limit, supportedTypes, personalization, feedback, delivery,
+                announcementPlan, deadlineNanos);
+    }
+
+    public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
+                                        Instant anchor, Instant readAt, int limit,
+                                        Set<MusicianFeedItemType> supportedTypes,
+                                        MusicianFeedPersonalizationSnapshot personalization,
+                                        MusicianFeedFeedbackSnapshot feedback, MusicianFeedDeliverySnapshot delivery) {
+        this(viewerUserId, musicianProfileId, feedSessionId, anchor, readAt, limit,
+                supportedTypes, personalization, feedback, delivery, null);
+    }
+
     public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
                                         Instant anchor, Instant readAt, int limit,
                                         Set<MusicianFeedItemType> supportedTypes,

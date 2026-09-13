@@ -92,6 +92,11 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class CommentServicePostgresTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore announcementAnalytics;
+
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("comments_test").withUsername("comments_test").withPassword("comments_test").withReuse(false);
     @Autowired DataSource dataSource; @Autowired EntityManager em; @Autowired PlatformTransactionManager manager;

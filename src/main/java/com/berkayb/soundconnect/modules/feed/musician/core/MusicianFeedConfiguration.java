@@ -97,7 +97,6 @@ public class MusicianFeedConfiguration {
                 return thread;
             }
         };
-        return new ThreadPoolExecutor(parallelism, parallelism, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(queueCapacity), factory, new ThreadPoolExecutor.AbortPolicy());
+        return new MusicianFeedProviderExecutor(parallelism, queueCapacity, factory);
     }
 }

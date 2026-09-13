@@ -85,6 +85,11 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OverthinkingLifecyclePostgresTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore announcementAnalytics;
+
     @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("overthinking_lifecycle_test").withUsername("overthinking_test")
             .withPassword("overthinking_test").withReuse(false);

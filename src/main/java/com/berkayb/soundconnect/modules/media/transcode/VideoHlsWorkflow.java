@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.media.dto.request.VideoHlsRequest;
 import com.berkayb.soundconnect.modules.media.dto.response.HlsUploadResult;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
+import com.berkayb.soundconnect.modules.media.storage.StorageObjectKeys;
 import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 import com.berkayb.soundconnect.modules.media.transcode.ffmpeg.FfmpegService;
 import com.berkayb.soundconnect.modules.media.transcode.ffmpeg.FfprobeService;
@@ -54,7 +55,9 @@ public class VideoHlsWorkflow {
 						claim.assetId(),
 						claim.attemptToken(),
 						claim.sourceKey(),
-						mediaPolicy.buildHlsPrefix(assetId),
+						StorageObjectKeys.isPrivateVerified(claim.sourceKey())
+                                ? StorageObjectKeys.protectedKey(mediaPolicy.buildHlsPrefix(assetId))
+                                : mediaPolicy.buildHlsPrefix(assetId),
 						claim.attemptNumber()
 				));
 	}
@@ -116,6 +119,10 @@ public class VideoHlsWorkflow {
 					assetId, duration, width, height, metadata.frameRate());
 			lease.checkpoint();
 
+            if (StorageObjectKeys.isPrivateVerified(work.sourceKey())) {
+                processPrivateVideo(work, lease, srcFile, outDir, thumb, duration);
+                return;
+            }
 			ffmpeg.generateHlsLadder(srcFile, outDir);
 			lease.checkpoint();
 			ffmpeg.generateThumbnail(srcFile, thumb);
@@ -175,6 +182,26 @@ public class VideoHlsWorkflow {
 			}
 		}
 	}
+
+    private void processPrivateVideo(ClaimedVideoHlsWork work, TranscodeLease lease, Path source,
+                                     Path outDir, Path thumbnail, Integer duration) throws Exception {
+        // Rebuild the canonical protected key; a broker message cannot select a public destination.
+        String prefix = StorageObjectKeys.protectedKey(mediaPolicy.buildHlsPrefix(work.assetId()));
+        Path mp4 = outDir.resolve("video.mp4");
+        ffmpeg.generateProgressive(source, mp4);
+        lease.checkpoint();
+        ffmpeg.generateThumbnail(source, thumbnail);
+        lease.checkpoint();
+        VideoProbeMetadata normalized = ffprobe.probeVideo(mp4);
+        storage.putFile(mp4, prefix + "/video.mp4", "video/mp4", "private,no-store,max-age=0");
+        lease.checkpoint();
+        storage.putFile(thumbnail, prefix + "/thumbnail.jpg", "image/jpeg", "private,no-store,max-age=0");
+        lease.checkpoint();
+        boolean finalized = statusUpdater.tryFinalizeReadyPrivateVideo(work.assetId(), work.attemptToken(),
+                duration, normalized.width(), normalized.height());
+        log.info("[workflow] private MP4 completed assetId={} attempt={} finalized={}",
+                work.assetId(), work.attemptNumber(), finalized);
+    }
 
 	private static boolean hasCause(Throwable error, Class<? extends Throwable> type) {
 		Throwable current = error;

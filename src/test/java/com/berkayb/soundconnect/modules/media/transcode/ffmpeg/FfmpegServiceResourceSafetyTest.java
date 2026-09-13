@@ -18,6 +18,21 @@ class FfmpegServiceResourceSafetyTest {
 	@TempDir Path tempDir;
 
 	@Test
+	void privateProgressiveCommandNormalizesCodecsAndBoundsBitrateDurationAndResolution() throws Exception {
+        var properties = new TranscodeProperties();
+        properties.setMaxDurationSeconds(300);
+        TranscodeVariant selected = variant("2200k", "128k"); selected.setHeight(720);
+        properties.setLadder(List.of(selected));
+        var command = new FfmpegService(properties).buildProgressiveCommand(
+                tempDir.resolve("source.mp4"), tempDir.resolve("out/video.mp4"));
+        assertThat(command).containsSubsequence("-t", "300", "-i");
+        assertThat(command).containsSubsequence("-map", "0:v:0", "-map", "0:a:0?");
+        assertThat(command).containsSubsequence("-vf", "scale=-2:trunc(min(ih\\,720)/2)*2");
+        assertThat(command).containsSubsequence("-pix_fmt", "yuv420p", "-b:v", "2200k", "-maxrate", "2200k", "-bufsize", "4400k");
+        assertThat(command).containsSubsequence("-movflags", "+faststart", "-f", "mp4");
+    }
+
+    @Test
 	void variantCommandHardCapsDurationAndUsesVbvBounds() throws Exception {
 		TranscodeProperties properties = new TranscodeProperties();
 		properties.setMaxDurationSeconds(900);

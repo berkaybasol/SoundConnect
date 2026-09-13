@@ -89,6 +89,9 @@ app:
         telemetry:
           burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_TELEMETRY_BURST:120}
           refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_TELEMETRY_REFILL:PT0.25S}
+        feedback:
+          burst-capacity: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_FEEDBACK_BURST:20}
+          refill-period: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_FEEDBACK_REFILL:PT2S}
         unavailable-retry-after: ${SOUNDCONNECT_MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE_RETRY_AFTER:PT5S}
   table-group:
     rate-limit:

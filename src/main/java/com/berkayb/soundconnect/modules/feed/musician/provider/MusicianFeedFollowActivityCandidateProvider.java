@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -140,7 +142,8 @@ public class MusicianFeedFollowActivityCandidateProvider implements MusicianFeed
                        'ACTIVITY_FOLLOW:' || story.target_profile_type || ':'
                            || story.target_profile_id::text as item_id
                 from follow_stories story
-                where not exists(select 1 from tbl_musician_feed_feedback feedback
+                where /* FEED_MODERATION */
+                  and not exists(select 1 from tbl_musician_feed_feedback feedback
                     where feedback.viewer_user_id=:viewerId and (
                       (feedback.action in ('HIDE','REPORT') and feedback.item_id=
                           'ACTIVITY_FOLLOW:' || story.target_profile_type || ':' || story.target_profile_id::text)
@@ -163,7 +166,9 @@ public class MusicianFeedFollowActivityCandidateProvider implements MusicianFeed
             select * from ranked where actor_rank<=:visibleActorLimit
             order by occurred_at desc, activity_id desc
             limit :limit
-            """;
+            """.replace("/* FEED_MODERATION */", allowed(
+                    item("'ACTIVITY_FOLLOW:' || story.target_profile_type || ':' || story.target_profile_id::text"),
+                    profile("story.target_profile_type", "story.target_profile_id")));
 
     private final NamedParameterJdbcTemplate jdbc;
 

@@ -16,10 +16,15 @@ import java.util.UUID;
         uniqueConstraints = @UniqueConstraint(name = "uk_musician_feed_feedback_scope",
                 columnNames = {"viewer_user_id", "action", "scope_key"}),
         indexes = {
+                @Index(name = "idx_musician_feed_feedback_delivery_lookup", columnList = "delivery_id"),
                 @Index(name = "idx_musician_feed_feedback_viewer_action",
                         columnList = "viewer_user_id,action,created_at"),
                 @Index(name = "idx_musician_feed_feedback_viewer_profile",
-                        columnList = "viewer_user_id,author_profile_type,author_profile_id")
+                        columnList = "viewer_user_id,author_profile_type,author_profile_id"),
+                @Index(name = "idx_musician_feed_feedback_ranking_lookup",
+                        columnList = "viewer_user_id,action,item_type,id"),
+                @Index(name = "idx_musician_feed_feedback_item_lookup",
+                        columnList = "viewer_user_id,item_id,action")
         })
 public class MusicianFeedFeedback {
     @Id

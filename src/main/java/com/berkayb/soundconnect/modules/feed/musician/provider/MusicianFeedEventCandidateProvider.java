@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.enums.*;
 import com.berkayb.soundconnect.modules.event.publication.EventProfilePublicationRepository;
@@ -18,7 +20,25 @@ import java.util.*;
 @Component
 public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidateProvider {
     private static final ZoneId EVENT_ZONE = ZoneId.of("Europe/Istanbul");
-    private static final String SQL = """
+    private static final String FOLLOWING_PREFILTER = """
+            (:pool<>'FOLLOWING' or event.venue_id in (
+                select followed_venue.id from tbl_venues followed_venue
+                join tbl_follow followed on followed.following_id=followed_venue.owner_id
+                where followed.follower_id=:viewerId)
+            or (event.profile_calendar_approved and event.musician_profile_id in (
+                select followed_profile.id from tbl_musician_profile followed_profile
+                join tbl_follow followed on followed.following_id=followed_profile.user_id
+                where followed.follower_id=:viewerId))
+            or (event.profile_calendar_approved and event.band_id in (
+                select followed.band_id from tbl_band_follow followed where followed.follower_id=:viewerId))
+            or event.id in (
+                select publication.event_id from event_member_publications publication
+                join tbl_musician_profile followed_profile on followed_profile.id=publication.musician_profile_id
+                join tbl_follow followed on followed.following_id=followed_profile.user_id
+                where publication.visible and followed.follower_id=:viewerId))
+            """;
+
+    private static final String ELIGIBLE_EVENT_SQL = """
             select event.id, event.title, event.description, event.event_date,
                    %s as normalized_start_seconds,
                    case when event.end_time is null then null else %s end as normalized_end_seconds,
@@ -126,7 +146,9 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                 where publication.event_id=event.id and publication.visible
                 order by (member_follow.id is not null) desc, profile.id limit 1
             ) member_publication on true
-            left join tbl_media_asset poster on poster.id::text=event.poster_image
+            left join tbl_media_asset poster on poster.id=case
+                when event.poster_image ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                then cast(event.poster_image as uuid) else null end
                 and poster.status='READY' and poster.visibility='PUBLIC'
             left join tbl_media_asset musician_avatar on musician_avatar.id=musician.profile_picture_media_id
                 and musician_avatar.status='READY' and musician_avatar.visibility='PUBLIC'
@@ -139,22 +161,31 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
             left join tbl_follow venue_follow on venue_follow.follower_id=:viewerId
                 and venue_follow.following_id=venue_owner.id
             left join tbl_band_follow band_follow on band_follow.follower_id=:viewerId and band_follow.band_id=band.id
-            where event.event_origin='VENUE' and event.venue_calendar_approved
+            where event.id=source_event.id
+              and event.event_origin='VENUE' and event.venue_calendar_approved
+              -- Necessary, deliberately broad social prefilter. The canonical
+              -- author/visibility checks below still decide final eligibility.
+              -- These uncorrelated membership sets avoid hydrating every future
+              -- event when none of its possible publishers is followed.
+              and /* FOLLOWING_PREFILTER */
               and event.performer_approval_status in ('APPROVED','NOT_REQUIRED')
               and venue.status='APPROVED' and venue_owner.status='ACTIVE'
               and venue_owner.email_verified and venue_owner.erased_at is null
-              and not (event.organizer_user_id=:viewerId
+              and (event.musician_profile_id is null or musician_user.id is not null)
+              and (event.band_id is null or band_actor.user_id is not null)
+              and not coalesce(event.organizer_user_id=:viewerId
                     or (event.profile_calendar_approved and musician_user.id=:viewerId)
                     or member_publication.author_user_id=:viewerId
                     or exists(select 1 from tbl_band_member own_member
                         where own_member.band_id=band.id and own_member.user_id=:viewerId
-                          and own_member.status='ACTIVE'))
+                          and own_member.status='ACTIVE'), false)
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
-                  where feedback.viewer_user_id=:viewerId and (
-                    (feedback.action in ('HIDE','REPORT')
-                     and feedback.item_id='EVENT:' || event.id::text)
-                    or (feedback.action='MUTE_AUTHOR'
-                        and feedback.author_profile_type=(case
+                  where feedback.viewer_user_id=:viewerId and feedback.action in ('HIDE','REPORT')
+                    and feedback.item_id='EVENT:' || event.id::text offset 0)
+              and not exists(select 1 from tbl_musician_feed_feedback feedback
+                  where feedback.viewer_user_id=:viewerId and feedback.action='MUTE_AUTHOR'
+                    and feedback.author_profile_type=(case
                           when event.profile_calendar_approved and musician_user.id is not null then 'MUSICIAN'
                           when member_publication.author_profile_id is not null then 'MUSICIAN'
                           when event.profile_calendar_approved and band_actor.user_id is not null then 'BAND'
@@ -163,7 +194,7 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                           when event.profile_calendar_approved and musician_user.id is not null then musician.id
                           when member_publication.author_profile_id is not null then member_publication.author_profile_id
                           when event.profile_calendar_approved and band_actor.user_id is not null then band.id
-                          else venue.id end))))
+                          else venue.id end) offset 0)
               and event.event_date is not null and event.start_time is not null
               and (event.event_date>:today or (event.event_date=:today and %s>:nowSeconds))
               and event.created_at<=:anchor
@@ -171,9 +202,11 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                     where pending.event_id=event.id and pending.status='PENDING')
               and not exists(select 1 from tbl_musician_feed_delivery delivered
                   where delivered.viewer_user_id=:viewerId and delivered.feed_session_id=:feedSessionId
-                    and (delivered.item_id='EVENT:' || event.id::text
-                      or (delivered.item_type<>'ACTIVITY_COMMENT' and delivered.target_type='EVENT'
-                          and delivered.target_id=event.id)))
+                    and delivered.item_id='EVENT:' || event.id::text offset 0)
+              and not exists(select 1 from tbl_musician_feed_delivery delivered
+                  where delivered.viewer_user_id=:viewerId and delivered.feed_session_id=:feedSessionId
+                    and delivered.item_type<>'ACTIVITY_COMMENT' and delivered.target_type='EVENT'
+                    and delivered.target_id=event.id offset 0)
               and (
                 (:pool='FOLLOWING' and ((event.profile_calendar_approved and musician_follow.id is not null)
                     or coalesce(member_publication.followed_by_viewer,false)
@@ -190,13 +223,40 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                     or venue_follow.id is not null)
                     and not (:hasCity and venue.city_id=:cityId))
               )
-            order by event.event_date, %s, event.id
-            limit :limit
+            offset 0
             """.formatted(
             EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
-            EventProfilePublicationRepository.SQL_START_SECONDS,
-            EventProfilePublicationRepository.SQL_START_SECONDS);
+            EventProfilePublicationRepository.SQL_START_SECONDS)
+            .replace("/* FEED_MODERATION */", allowed(item("'EVENT:' || event.id::text"), target("'EVENT'", "event.id")))
+            .replace("/* FOLLOWING_PREFILTER */", FOLLOWING_PREFILTER);
+
+    // Sort only lightweight source keys, then check complete eligibility one event
+    // at a time. OFFSET 0 preserves correlation; LIMIT applies after every fence,
+    // so hidden/private/previously delivered events cannot starve an older result.
+    private static final String SQL = """
+            select eligible.* from (
+                select event.id,event.event_date,%s as source_start_seconds
+                from tbl_event event
+                where event.event_origin='VENUE' and event.venue_calendar_approved
+                  and event.created_at<=:anchor and event.event_date is not null and event.start_time is not null
+                  and (event.event_date>:today or (event.event_date=:today and %s>:nowSeconds))
+                  and /* FOLLOWING_PREFILTER */
+                  and (:pool<>'RELEVANT' or (:hasCity and event.venue_id in (
+                      select city_venue.id from tbl_venues city_venue where city_venue.city_id=:cityId)))
+                  and (:pool<>'GENERAL' or not (:hasCity and event.venue_id in (
+                      select city_venue.id from tbl_venues city_venue where city_venue.city_id=:cityId)))
+                order by event.event_date,source_start_seconds,event.id
+                offset 0
+            ) source_event cross join lateral (
+            """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
+                    EventProfilePublicationRepository.SQL_START_SECONDS)
+                    .replace("/* FOLLOWING_PREFILTER */", FOLLOWING_PREFILTER)
+            + ELIGIBLE_EVENT_SQL + """
+            ) eligible
+            order by source_event.event_date,source_event.source_start_seconds,source_event.id
+            limit :limit
+            """;
 
     private final NamedParameterJdbcTemplate jdbc;
     private final EventShareUrlBuilder shareUrls;

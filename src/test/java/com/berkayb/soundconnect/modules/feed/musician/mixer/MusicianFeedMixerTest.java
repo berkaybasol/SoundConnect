@@ -510,6 +510,61 @@ class MusicianFeedMixerTest {
     }
 
     @Test
+    void quotaWithheldHigherRankedSharesKeepAUsableContinuation() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 8).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:remaining:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 970_000, MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "EVENT:separator:" + index, MusicianFeedItemType.EVENT,
+                UUID.randomUUID(), UUID.randomUUID(), 880_000, MusicianFeedLane.FOLLOWING)));
+        var supported = Set.of(MusicianFeedItemType.EVENT, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+
+        var first = mixer.mix(VIEWER, ANCHOR, 20, supported,
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(first.items()).hasSize(20);
+        assertThat(first.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)).hasSize(2);
+        assertThat(first.itemLanes().getLast()).isEqualTo(MusicianFeedLane.FOLLOWING);
+        assertThat(first.hasMore()).isTrue();
+        Set<String> delivered = first.items().stream().map(MusicianFeedItemResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        var remaining = candidates.stream().filter(value -> !delivered.contains(value.itemId())).toList();
+        assertThat(remaining).hasSize(6);
+
+        var second = mixer.mix(VIEWER, ANCHOR, 20, supported,
+                MusicianFeedFeedbackSnapshot.empty(), remaining, List.of(), null,
+                first.deliveredOrganicCount(), 0, false, first.items().getLast().type(),
+                first.itemLanes().getLast(), 0);
+
+        assertThat(second.items()).singleElement().satisfies(value -> {
+            assertThat(value.type()).isEqualTo(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+            assertThat(delivered).doesNotContain(value.id());
+        });
+    }
+
+    @Test
+    void deliveredIndividualCommentsDoNotCreateAPhantomContinuation() {
+        UUID sharedTarget = UUID.randomUUID();
+        var comments = IntStream.range(0, 2).mapToObj(index -> candidate(
+                "ACTIVITY_COMMENT:exhausted:" + index, MusicianFeedItemType.ACTIVITY_COMMENT,
+                UUID.randomUUID(), sharedTarget, 900_000, false, null)).toList();
+
+        var partial = mixer.mix(VIEWER, ANCHOR, 1, Set.of(MusicianFeedItemType.ACTIVITY_COMMENT),
+                MusicianFeedFeedbackSnapshot.empty(), comments, List.of(), null, 0);
+        assertThat(partial.items()).hasSize(1);
+        assertThat(partial.hasMore()).as("another comment on the same target remains").isTrue();
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20, Set.of(MusicianFeedItemType.ACTIVITY_COMMENT),
+                MusicianFeedFeedbackSnapshot.empty(), comments, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(2);
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
     void moduleActivityLaneIsRememberedAcrossPageBoundaries() {
         var activity = candidateWithLane("ACTIVITY_LIKE:module", MusicianFeedItemType.ACTIVITY_LIKE,
                 UUID.randomUUID(), UUID.randomUUID(), 900_000, MusicianFeedLane.MODULE_SHARE);

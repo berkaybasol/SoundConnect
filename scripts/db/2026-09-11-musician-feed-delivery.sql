@@ -185,7 +185,7 @@ ALTER TABLE public.tbl_musician_feed_telemetry_event
         event_type IN ('IMPRESSION','OPEN','CTA','FOLLOW','SAVE','APPLY','HIDE','MUTE','REPORT'));
 ALTER TABLE public.tbl_musician_feed_content_report
     DROP CONSTRAINT IF EXISTS ck_musician_feed_report_status,
-    ADD CONSTRAINT ck_musician_feed_report_status CHECK (status IN ('NEW','REVIEWING','ACTIONED','DISMISSED')),
+    ADD CONSTRAINT ck_musician_feed_report_status CHECK (status IN ('NEW','REVIEWING','ACTIONED','DISMISSED','RESTORED')),
     DROP CONSTRAINT IF EXISTS ck_musician_feed_report_reason,
     ADD CONSTRAINT ck_musician_feed_report_reason CHECK (
         reason IS NULL OR (char_length(reason)<=500 AND btrim(reason)<>''));

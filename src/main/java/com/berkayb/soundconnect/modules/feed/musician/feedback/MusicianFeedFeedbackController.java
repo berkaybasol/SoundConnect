@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.feedback;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.feed.musician.abuse.MusicianFeedRateLimitGuard;
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -9,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +24,20 @@ import java.util.UUID;
 @PreAuthorize("hasRole('MUSICIAN')")
 public class MusicianFeedFeedbackController {
     private final MusicianFeedFeedbackService service;
+    private final MusicianFeedMutedAuthorsService mutedAuthors;
+    private final MusicianFeedRateLimitGuard rateLimitGuard;
+
+    @GetMapping("/muted-authors")
+    public ResponseEntity<BaseResponse<MusicianFeedMutedAuthorsResponse>> mutedAuthors(
+            @AuthenticationPrincipal UserDetailsImpl principal,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor
+    ) {
+        var page = mutedAuthors.get(userId(principal), limit, cursor);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+                .body(BaseResponse.<MusicianFeedMutedAuthorsResponse>builder()
+                        .success(true).message("Sessize alınan profiller getirildi.").code(200).data(page).build());
+    }
 
     @PostMapping("/items/{itemId}/feedback")
     public ResponseEntity<BaseResponse<MusicianFeedFeedbackResponse>> record(
@@ -29,7 +45,9 @@ public class MusicianFeedFeedbackController {
             @PathVariable String itemId,
             @Valid @RequestBody MusicianFeedFeedbackRequest request
     ) {
-        var value = service.recordItem(userId(principal), itemId, request);
+        UUID viewerId = userId(principal);
+        rateLimitGuard.checkFeedback(viewerId);
+        var value = service.recordItem(viewerId, itemId, request);
         return ok(value, "Akış tercihi kaydedildi.");
     }
 
@@ -39,7 +57,9 @@ public class MusicianFeedFeedbackController {
             @PathVariable String profileType,
             @PathVariable UUID profileId
     ) {
-        return ok(service.mute(userId(principal), profileType, profileId), "Profil akışta sessize alındı.");
+        UUID viewerId = userId(principal);
+        rateLimitGuard.checkFeedback(viewerId);
+        return ok(service.mute(viewerId, profileType, profileId), "Profil akışta sessize alındı.");
     }
 
     @DeleteMapping("/authors/{profileType}/{profileId}/mute")
@@ -48,7 +68,9 @@ public class MusicianFeedFeedbackController {
             @PathVariable String profileType,
             @PathVariable UUID profileId
     ) {
-        service.unmute(userId(principal), profileType, profileId);
+        UUID viewerId = userId(principal);
+        rateLimitGuard.checkFeedback(viewerId);
+        service.unmute(viewerId, profileType, profileId);
         return ok(null, "Profilin akış sessizi kaldırıldı.");
     }
 

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -14,54 +16,62 @@ import java.util.*;
 
 @Component
 public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidateProvider {
-    private static final String SQL = """
+    private static final String ELIGIBLE_TRACK_SQL = """
             with publications as (
                 select track.id as track_id, track.media_asset_id, track.title, track.duration_seconds, track.bpm,
                        track.owner_type, track.owner_id, track.created_at,
-                       coalesce(musician.user_id, listener.user_id, studio.user_id, venue.owner_id, band_actor.user_id) as author_user_id,
-                       case when track.owner_type='VENUE_PROFILE' then venue.id
-                            else track.owner_id end as author_profile_id,
-                       case track.owner_type
-                           when 'MUSICIAN_PROFILE' then 'MUSICIAN'
-                           when 'LISTENER_PROFILE' then 'LISTENER'
-                           when 'STUDIO_PROFILE' then 'STUDIO'
-                           when 'VENUE_PROFILE' then 'VENUE'
-                           when 'BAND' then 'BAND' end as author_profile_type,
-                       coalesce(band.name, venue.name, studio.name, listener.name) as profile_display_name,
-                       coalesce(band.profile_picture_media_id, venue_profile.profile_picture_media_id,
-                                musician.profile_picture_media_id, studio.profile_picture_media_id,
-                                listener.profile_picture_media_id) as avatar_media_id,
-                       listener.visibility_mode as listener_visibility,
-                       listener.visibility_choice_completed as listener_choice,
-                       venue.status as venue_status,
-                       exists(select 1 from tbl_band_member own_member
-                              where track.owner_type='BAND' and own_member.band_id=track.owner_id
-                                and own_member.user_id=:viewerId and own_member.status='ACTIVE') as owned_band
+                       publisher.*
                 from tbl_tracks track
                 join tbl_media_asset media on media.id=track.media_asset_id
                     and media.owner_type=track.owner_type and media.owner_id=track.owner_id
-                left join tbl_musician_profile musician
-                    on track.owner_type='MUSICIAN_PROFILE' and musician.id=track.owner_id
-                left join \"tbl_listener-profile\" listener
-                    on track.owner_type='LISTENER_PROFILE' and listener.id=track.owner_id
-                left join tbl_studio_profile studio
-                    on track.owner_type='STUDIO_PROFILE' and studio.id=track.owner_id
-                left join tbl_venue_profile venue_profile
-                    on track.owner_type='VENUE_PROFILE' and venue_profile.id=track.owner_id
-                left join tbl_venues venue on venue.id=venue_profile.venue_id
-                left join tbl_band band on track.owner_type='BAND' and band.id=track.owner_id
-                left join lateral (
-                    select member.user_id from tbl_band_member member
-                    join tbl_user member_account on member_account.id=member.user_id
-                        and member_account.status='ACTIVE' and member_account.email_verified
-                        and member_account.erased_at is null
-                    where member.band_id=band.id and member.status='ACTIVE'
-                    order by case when member.band_role='FOUNDER' then 0 else 1 end, member.id limit 1
-                ) band_actor on true
+                -- Exactly one owner branch can match. Correlation avoids joining
+                -- every track to unrelated publisher tables before the page LIMIT.
+                join lateral (
+                    select musician.user_id as author_user_id, musician.id as author_profile_id,
+                           'MUSICIAN'::text as author_profile_type, null::text as profile_display_name,
+                           musician.profile_picture_media_id as avatar_media_id,
+                           null::text as listener_visibility, null::boolean as listener_choice,
+                           null::text as venue_status, false as owned_band
+                    from tbl_musician_profile musician
+                    where track.owner_type='MUSICIAN_PROFILE' and musician.id=track.owner_id
+                    union all
+                    select listener.user_id, listener.id, 'LISTENER', listener.name,
+                           listener.profile_picture_media_id, listener.visibility_mode::text,
+                           listener.visibility_choice_completed, null::text, false
+                    from \"tbl_listener-profile\" listener
+                    where track.owner_type='LISTENER_PROFILE' and listener.id=track.owner_id
+                    union all
+                    select studio.user_id, studio.id, 'STUDIO', studio.name,
+                           studio.profile_picture_media_id, null::text, null::boolean, null::text, false
+                    from tbl_studio_profile studio
+                    where track.owner_type='STUDIO_PROFILE' and studio.id=track.owner_id
+                    union all
+                    select venue.owner_id, venue.id, 'VENUE', venue.name,
+                           venue_profile.profile_picture_media_id, null::text, null::boolean, venue.status::text, false
+                    from tbl_venue_profile venue_profile join tbl_venues venue on venue.id=venue_profile.venue_id
+                    where track.owner_type='VENUE_PROFILE' and venue_profile.id=track.owner_id
+                    union all
+                    select band_actor.user_id, band.id, 'BAND', band.name,
+                           band.profile_picture_media_id, null::text, null::boolean, null::text,
+                           exists(select 1 from tbl_band_member own_member
+                               where own_member.band_id=band.id and own_member.user_id=:viewerId
+                                 and own_member.status='ACTIVE')
+                    from tbl_band band
+                    join lateral (
+                        select member.user_id from tbl_band_member member
+                        join tbl_user member_account on member_account.id=member.user_id
+                            and member_account.status='ACTIVE' and member_account.email_verified
+                            and member_account.erased_at is null
+                        where member.band_id=band.id and member.status='ACTIVE'
+                        order by case when member.band_role='FOUNDER' then 0 else 1 end, member.id limit 1
+                    ) band_actor on true
+                    where track.owner_type='BAND' and band.id=track.owner_id
+                ) publisher on true
                 where media.status='READY' and media.visibility='PUBLIC'
                   and coalesce(media.playback_url, media.source_url) is not null
                   and track.owner_type in ('MUSICIAN_PROFILE','LISTENER_PROFILE','STUDIO_PROFILE','VENUE_PROFILE','BAND')
                   and track.created_at <= :anchor
+                  and track.id=source_track.id
             )
             select publication.*, media.playback_url, media.source_url,
                    account.user_name as author_username,
@@ -100,21 +110,61 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                        and not exists(select 1 from tbl_venues venue where venue.owner_id=account.id)))
               and (publication.owner_type<>'VENUE_PROFILE' or publication.venue_status='APPROVED')
               and publication.author_user_id<>:viewerId and not publication.owned_band
+              and /* FEED_MODERATION */
+              -- Separate equality probes keep viewer/session history out of a
+              -- nested-loop OR join as the delivery ledger grows.
               and not exists(select 1 from tbl_musician_feed_feedback feedback
-                  where feedback.viewer_user_id=:viewerId and (
-                    (feedback.action in ('HIDE','REPORT')
-                     and feedback.item_id='TRACK:' || publication.track_id::text)
-                    or (feedback.action='MUTE_AUTHOR'
-                        and feedback.author_profile_type=publication.author_profile_type
-                        and feedback.author_profile_id=publication.author_profile_id)))
+                  where feedback.viewer_user_id=:viewerId and feedback.action in ('HIDE','REPORT')
+                    and feedback.item_id='TRACK:' || publication.track_id::text offset 0)
+              and not exists(select 1 from tbl_musician_feed_feedback feedback
+                  where feedback.viewer_user_id=:viewerId and feedback.action='MUTE_AUTHOR'
+                    and feedback.author_profile_type=publication.author_profile_type
+                    and feedback.author_profile_id=publication.author_profile_id offset 0)
               and not exists(select 1 from tbl_musician_feed_delivery delivered
                   where delivered.viewer_user_id=:viewerId and delivered.feed_session_id=:feedSessionId
-                    and (delivered.item_id='TRACK:' || publication.track_id::text
-                      or (delivered.item_type<>'ACTIVITY_COMMENT' and delivered.target_type='MEDIA'
-                          and delivered.target_id=publication.media_asset_id)))
+                    and delivered.item_id='TRACK:' || publication.track_id::text offset 0)
+              and not exists(select 1 from tbl_musician_feed_delivery delivered
+                  where delivered.viewer_user_id=:viewerId and delivered.feed_session_id=:feedSessionId
+                    and delivered.item_type<>'ACTIVITY_COMMENT' and delivered.target_type='MEDIA'
+                    and delivered.target_id=publication.media_asset_id offset 0)
               and (case when publication.owner_type='BAND' then band_follow.id is not null
                         else following.id is not null end)=:followingPool
-            order by publication.created_at desc, publication.track_id desc
+            offset 0
+            """.replace("/* FEED_MODERATION */", allowed(item("'TRACK:' || publication.track_id::text"),
+                    target("'MEDIA'", "publication.media_asset_id")));
+
+    // ORDER BY contains only publication keys. The lateral boundary keeps every
+    // eligibility check before the outer LIMIT while preventing PostgreSQL from
+    // hydrating/sorting the entire catalogue or materializing session history.
+    // Membership sets are a cheap exact pool prefilter; canonical follows remain
+    // checked by ELIGIBLE_TRACK_SQL before any candidate can be returned.
+    private static final String SQL = """
+            select eligible.* from (
+                select track.id,track.created_at from tbl_tracks track
+                where track.created_at<=:anchor
+                  and track.owner_type in ('MUSICIAN_PROFILE','LISTENER_PROFILE','STUDIO_PROFILE','VENUE_PROFILE','BAND')
+                  and (case track.owner_type
+                    when 'MUSICIAN_PROFILE' then track.owner_id in (
+                        select profile.id from tbl_musician_profile profile join tbl_follow followed
+                            on followed.following_id=profile.user_id where followed.follower_id=:viewerId)
+                    when 'LISTENER_PROFILE' then track.owner_id in (
+                        select profile.id from \"tbl_listener-profile\" profile join tbl_follow followed
+                            on followed.following_id=profile.user_id where followed.follower_id=:viewerId)
+                    when 'STUDIO_PROFILE' then track.owner_id in (
+                        select profile.id from tbl_studio_profile profile join tbl_follow followed
+                            on followed.following_id=profile.user_id where followed.follower_id=:viewerId)
+                    when 'VENUE_PROFILE' then track.owner_id in (
+                        select profile.id from tbl_venue_profile profile join tbl_venues venue on venue.id=profile.venue_id
+                            join tbl_follow followed on followed.following_id=venue.owner_id where followed.follower_id=:viewerId)
+                    when 'BAND' then track.owner_id in (
+                        select followed.band_id from tbl_band_follow followed where followed.follower_id=:viewerId)
+                    else false end)=:followingPool
+                order by track.created_at desc,track.id desc
+                offset 0
+            ) source_track cross join lateral (
+            """ + ELIGIBLE_TRACK_SQL + """
+            ) eligible
+            order by source_track.created_at desc,source_track.id desc
             limit :limit
             """;
 

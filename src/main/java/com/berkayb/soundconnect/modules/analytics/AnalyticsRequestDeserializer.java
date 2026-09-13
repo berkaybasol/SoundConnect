@@ -11,7 +11,8 @@ import java.util.*;
 
 /** Scoped strict parsing: no scalar/enum coercion, undeclared identity fields or silently ignored fields. */
 public class AnalyticsRequestDeserializer extends StdDeserializer<AnalyticsRequest> {
-    private static final Set<String> FIELDS = Set.of("id", "type", "eventId", "venueId", "sourceEventId", "observedAt");
+    private static final Set<String> FIELDS = Set.of("id", "type", "eventId", "venueId", "sourceEventId", "observedAt",
+            "announcementId", "source", "playbackId", "impressionToken");
     public AnalyticsRequestDeserializer() { super(AnalyticsRequest.class); }
     @Override public AnalyticsRequest deserialize(JsonParser parser, DeserializationContext context) throws IOException {
         parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -35,10 +36,22 @@ public class AnalyticsRequestDeserializer extends StdDeserializer<AnalyticsReque
                 String timestamp = text(row.get("observedAt"));
                 if (!timestamp.endsWith("Z")) throw invalid();
                 Instant observed = Instant.parse(timestamp);
-                if (type == AnalyticsRequest.Type.VENUE_PROFILE_VIEW) {
+                UUID announcement = uuid(row.get("announcementId"), true);
+                UUID playback = uuid(row.get("playbackId"), true);
+                String proof = row.hasNonNull("impressionToken") ? text(row.get("impressionToken")) : null;
+                if (proof != null && (proof.isBlank() || proof.length() > 4096)) throw invalid();
+                AnalyticsRequest.Source surface = row.hasNonNull("source")
+                        ? AnalyticsRequest.Source.valueOf(text(row.get("source"))) : null;
+                if (type.announcement()) {
+                    if (announcement == null || surface == null || event != null || venue != null || source != null
+                            || (type.video() != (playback != null))
+                            || (surface == AnalyticsRequest.Source.FEED) != (proof != null)) throw invalid();
+                } else if (announcement != null || surface != null || playback != null || proof != null) throw invalid();
+                else if (type == AnalyticsRequest.Type.VENUE_PROFILE_VIEW) {
                     if (venue == null || event != null) throw invalid();
                 } else if (event == null || venue != null || source != null) throw invalid();
-                observations.add(new AnalyticsRequest.Observation(id, type, event, venue, source, observed));
+                observations.add(new AnalyticsRequest.Observation(id, type, event, venue, source, observed,
+                        announcement, surface, playback, proof));
             }
             return new AnalyticsRequest(clientId, List.copyOf(observations));
         } catch (RuntimeException malformed) {

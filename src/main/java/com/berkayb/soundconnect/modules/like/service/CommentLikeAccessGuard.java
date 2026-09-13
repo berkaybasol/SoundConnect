@@ -21,13 +21,18 @@ public class CommentLikeAccessGuard {
     private final CommentTargetAccessGuard content;
 
     public void requireLikeable(UUID id,boolean mutation) {
+        requireLikeable(null, id, mutation);
+    }
+
+    public void requireLikeable(UUID viewerId, UUID id, boolean mutation) {
         if(id==null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
         var initial=comments.findCommentTarget(id).orElseThrow(this::notFound);
         EngagementTargetType type;
         try { type=EngagementTargetType.valueOf(initial.getTargetType()); }
         catch(RuntimeException malformed) { throw notFound(); }
         if(type==EngagementTargetType.COMMENT) throw notFound();
-        content.requireReadable(type,initial.getTargetId());
+        if (type == EngagementTargetType.ANNOUNCEMENT) content.requireReadable(viewerId, type, initial.getTargetId());
+        else content.requireReadable(type,initial.getTargetId());
         var current=(mutation ? comments.lockComment(id) : comments.lockCommentForRead(id)).orElseThrow(this::notFound);
         if(current.getDeleted() || !Objects.equals(current.getTargetType(),initial.getTargetType())
                 || !Objects.equals(current.getTargetId(),initial.getTargetId())

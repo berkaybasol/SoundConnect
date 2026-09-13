@@ -40,6 +40,7 @@ $LocalSchemaMigrations = @(
     @{ Name = "Band invitation identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-band-invitation-identity.sql" },
     @{ Name = "Notification replay receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-notification-replay-receipts.sql" },
     @{ Name = "Venue analytics"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-venue-analytics.sql" },
+    @{ Name = "Venue suggestions"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-venue-suggestions.sql" },
     @{ Name = "Event audience intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-08-event-audience-intents.sql" },
     @{ Name = "Comment likes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-comment-likes.sql" },
     @{ Name = "Event post comments"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-09-event-post-comments.sql" },
@@ -57,7 +58,13 @@ $LocalSchemaMigrations = @(
     @{ Name = "Musician feed continuation replay"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-replay.sql" },
     @{ Name = "Musician feed feedback"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-feedback.sql" },
     @{ Name = "Musician feed online indexes"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-indexes.sql" },
-    @{ Name = "Like users pagination index"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-12-like-users-pagination.sql" }
+    @{ Name = "Like users pagination index"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-12-like-users-pagination.sql" },
+    @{ Name = "Musician feed feedback lookup"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-musician-feed-feedback-lookup.sql" },
+    @{ Name = "Musician feed moderation"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-musician-feed-moderation.sql" },
+    @{ Name = "Musician feed retention lookup"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-musician-feed-retention-lookup.sql" },
+    @{ Name = "Feed announcements"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-feed-announcements.sql" },
+    @{ Name = "Announcement feed plan"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-announcement-feed-plan.sql" },
+    @{ Name = "Announcement analytics"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-announcement-analytics.sql" }
 )
 
 function Assert-Command([string]$Name) {

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.enums.EventOrigin;
 import com.berkayb.soundconnect.modules.event.enums.EventVenueApprovalStatus;
@@ -214,6 +216,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 join tbl_neighborhood neighborhood on neighborhood.id=venue.neighborhood_id
                     and neighborhood.district_id=district.id
                 where :includeEventPosts and intent.published_on_profile and intent.intent<>'NONE'
+                  and /* EVENT_SOURCE_MODERATION */
                   and intent.published_at<=:anchor
                   and intent.post_id is not null and publisher.id<>:viewerId
                   and publisher.status='ACTIVE' and publisher.email_verified and publisher.erased_at is null
@@ -325,6 +328,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 left join tbl_media_asset actor_avatar on actor_avatar.id=actor_profile.avatar_id
                     and actor_avatar.status='READY' and actor_avatar.visibility='PUBLIC'
                 where actor_profile.user_id<>:viewerId
+                  and /* FEED_MODERATION */
                   and not exists(select 1 from tbl_musician_feed_feedback feedback
                       where feedback.viewer_user_id=:viewerId and (
                         (feedback.action in ('HIDE','REPORT') and feedback.item_id=(case
@@ -374,7 +378,11 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                      selected_items.sort_activity_id desc, selected_items.item_id,
                      visible_activity.actor_rank
             """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
-            EventProfilePublicationRepository.SQL_START_SECONDS);
+            EventProfilePublicationRepository.SQL_START_SECONDS)
+            .replace("/* EVENT_SOURCE_MODERATION */", allowed(target("'EVENT'", "event.id")))
+            .replace("/* FEED_MODERATION */", allowed(item("case when activity.action='COMMENT' then "
+                    + "'ACTIVITY_COMMENT:' || activity.activity_id::text else 'ACTIVITY_LIKE:' || activity.target_type "
+                    + "|| ':' || activity.target_id::text end"), target("activity.target_type", "activity.target_id")));
 
     private static final String MEDIA_TARGET_SQL = """
             select media.id as target_id, media.kind, media.source_url, media.playback_url,
@@ -505,7 +513,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     and member_account.erased_at is null
                   where public_member.band_id=event.band_id and public_member.status='ACTIVE'))
               and event.organizer_user_id<>:viewerId
-              and not (event.profile_calendar_approved and musician_user.id=:viewerId)
+              and not coalesce(event.profile_calendar_approved and musician_user.id=:viewerId, false)
               and not exists(select 1 from tbl_band_member own_member where own_member.band_id=event.band_id
                   and own_member.user_id=:viewerId and own_member.status='ACTIVE')
               and not exists(select 1 from event_member_publications own_publication

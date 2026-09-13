@@ -55,21 +55,27 @@ public class MusicianFeedRateLimitProperties {
     @NotNull
     private Bucket telemetry = new Bucket(120, Duration.ofMillis(250));
 
+    @Valid
+    @NotNull
+    private Bucket feedback = new Bucket(20, Duration.ofSeconds(2));
+
     @NotNull
     private Duration unavailableRetryAfter = Duration.ofSeconds(5);
 
     @AssertTrue(message = "musician feed rate-limit bucket policy is outside safe operational bounds")
     public boolean isBucketPolicyValid() {
-        if (initial == null || continuation == null || sharedPageBudget == null || telemetry == null) {
+        if (initial == null || continuation == null || sharedPageBudget == null
+                || telemetry == null || feedback == null) {
             return false;
         }
         if (initial.burstCapacity > 10 || continuation.burstCapacity > 100
-                || sharedPageBudget.burstCapacity > 250 || telemetry.burstCapacity > 1_000) {
+                || sharedPageBudget.burstCapacity > 250 || telemetry.burstCapacity > 1_000
+                || feedback.burstCapacity > 100) {
             return false;
         }
         if (sharedPageBudget.burstCapacity < continuation.burstCapacity
                 || !validTiming(initial) || !validTiming(continuation)
-                || !validTiming(sharedPageBudget) || !validTiming(telemetry)) {
+                || !validTiming(sharedPageBudget) || !validTiming(telemetry) || !validTiming(feedback)) {
             return false;
         }
         // The shared budget must constrain a long scroll more strongly than

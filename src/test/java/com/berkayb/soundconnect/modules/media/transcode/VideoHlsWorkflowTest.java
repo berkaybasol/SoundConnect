@@ -59,6 +59,33 @@ class VideoHlsWorkflowTest {
 	}
 
 	@Test
+	void privatePlatformVideoUsesProtectedMp4AndThumbnailWithoutPublicUploaderOrUrls() throws Exception {
+        UUID id = UUID.randomUUID(), token = UUID.randomUUID();
+        String source = "protected/private-verified/media/" + id + "/source.mp4";
+        when(statusUpdater.tryClaimQueuedTranscode(id)).thenReturn(Optional.of(new MediaAssetStatusUpdater.TranscodeClaim(
+                id, token, source, 1, LocalDateTime.now().plusMinutes(15), LocalDateTime.now().plusHours(12))));
+        when(mediaPolicy.buildHlsPrefix(id)).thenReturn("media/" + id + "/hls");
+        when(heartbeat.start(id, token)).thenReturn(lease);
+        when(tempBudgetManager.reserveMaxWorkBudget()).thenReturn(tempReservation);
+        when(ffprobe.probeVideo(any())).thenReturn(new VideoProbeMetadata(10.0, 1920, 1080, 30.0),
+                new VideoProbeMetadata(10.0, 1280, 720, 30.0));
+        when(statusUpdater.tryFinalizeReadyPrivateVideo(id, token, 10, 1280, 720)).thenReturn(true);
+
+        workflow.process(request(id));
+
+        verify(ffmpeg).generateProgressive(any(), any());
+        verify(ffmpeg).generateThumbnail(any(), any());
+        verify(storage).putFile(any(), eq("protected/media/" + id + "/hls/video.mp4"), eq("video/mp4"), eq("private,no-store,max-age=0"));
+        verify(storage).putFile(any(), eq("protected/media/" + id + "/hls/thumbnail.jpg"), eq("image/jpeg"), eq("private,no-store,max-age=0"));
+        verify(statusUpdater).tryFinalizeReadyPrivateVideo(id, token, 10, 1280, 720);
+        verify(statusUpdater, never()).tryFinalizeReadyHls(any(), any(), any(), any(), any(), any(), any());
+        verify(storage, never()).publicUrl(any());
+        verifyNoInteractions(uploader);
+        verify(tempReservation).close();
+        verify(lease).close();
+    }
+
+    @Test
 	void happyPathUsesDurableClaimHeartbeatStrictProbeAndTokenFinalizer() throws Exception {
 		UUID id = UUID.randomUUID();
 		UUID token = UUID.randomUUID();

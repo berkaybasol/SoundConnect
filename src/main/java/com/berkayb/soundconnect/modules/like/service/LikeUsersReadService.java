@@ -35,7 +35,8 @@ public class LikeUsersReadService {
         }
         LikeUsersCursor cursor = LikeUsersCursor.decode(encodedCursor, type, targetId);
         if (likes.lockActiveActor(viewerId).isEmpty()) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
-        if (type == EngagementTargetType.COMMENT) comments.requireLikeable(targetId, false);
+        if (type == EngagementTargetType.COMMENT) comments.requireLikeable(viewerId, targetId, false);
+        else if (type == EngagementTargetType.ANNOUNCEMENT) targets.validateExists(viewerId, type, targetId);
         else targets.validateExists(type, targetId);
 
         var rows = repository.page(type, targetId, cursor, size + 1);

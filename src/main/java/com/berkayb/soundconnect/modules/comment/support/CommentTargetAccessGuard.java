@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,9 +16,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CommentTargetAccessGuard {
     private final CommentTargetAccessRepository repository;
+    private final AnnouncementAccess announcements;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireReadable(EngagementTargetType type, UUID id) {
+        requireReadable(null, type, id);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireReadable(UUID viewerId, EngagementTargetType type, UUID id) {
         if (type == null || id == null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
         boolean visible = switch (type) {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
@@ -28,6 +35,7 @@ public class CommentTargetAccessGuard {
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
             case COMMENT -> false;
+            case ANNOUNCEMENT -> { announcements.requireVisible(viewerId, id); yield true; }
         };
         if (!visible) throw new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
     }

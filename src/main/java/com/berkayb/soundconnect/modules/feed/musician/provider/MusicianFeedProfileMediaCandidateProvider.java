@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -103,6 +105,7 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                        and not exists(select 1 from tbl_venues venue where venue.owner_id=account.id)))
               and (publication.profile_type<>'VENUE' or publication.venue_status='APPROVED')
               and publication.author_user_id<>:viewerId and not publication.owned_band
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
                     (feedback.action in ('HIDE','REPORT')
@@ -119,7 +122,8 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                         else following.id is not null end)=:followingPool
             order by publication.created_at desc, publication.attachment_id desc
             limit :limit
-            """;
+            """.replace("/* FEED_MODERATION */", allowed(item("'PROFILE_MEDIA:' || publication.attachment_id::text"),
+                    target("'MEDIA'", "publication.media_asset_id")));
 
     private final NamedParameterJdbcTemplate jdbc;
 

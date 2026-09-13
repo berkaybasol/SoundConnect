@@ -17,7 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Fail-closed, account-scoped request protection for feed reads and telemetry.
+ * Fail-closed, account-scoped protection for feed reads, telemetry and feedback writes.
  * Redis server time and one Lua decision keep the policy consistent across API
  * nodes. Page requests reserve both their lane bucket and the shared sustained
  * page budget atomically, so rejected attempts never consume only one bucket.
@@ -102,6 +102,12 @@ public class MusicianFeedRateLimitGuard {
         Objects.requireNonNull(userId, "userId must not be null");
         if (!properties.isEnabled()) return;
         reserve(userId, List.of(new ScopedBucket("telemetry", properties.getTelemetry())));
+    }
+
+    public void checkFeedback(UUID userId) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        if (!properties.isEnabled()) return;
+        reserve(userId, List.of(new ScopedBucket("feedback", properties.getFeedback())));
     }
 
     private void reserve(UUID userId, List<ScopedBucket> buckets) {

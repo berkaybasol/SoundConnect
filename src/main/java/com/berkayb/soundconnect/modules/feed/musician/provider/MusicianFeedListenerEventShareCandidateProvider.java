@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.enums.*;
 import com.berkayb.soundconnect.modules.event.publication.EventProfilePublicationRepository;
@@ -89,6 +91,7 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
               and (event.event_date>:today or (event.event_date=:today and %s>:nowSeconds))
               and not exists(select 1 from event_performer_requests pending
                     where pending.event_id=event.id and pending.status='PENDING')
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
                     (feedback.action in ('HIDE','REPORT')
@@ -106,7 +109,9 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
             """.formatted(
             EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
-            EventProfilePublicationRepository.SQL_START_SECONDS);
+            EventProfilePublicationRepository.SQL_START_SECONDS)
+            .replace("/* FEED_MODERATION */", allowed(item("'EVENT_PROFILE_SHARE:' || intent.post_id::text"),
+                    target("'EVENT_POST'", "intent.post_id"), target("'EVENT'", "event.id")));
 
     private final NamedParameterJdbcTemplate jdbc;
     private final EventShareUrlBuilder shareUrls;

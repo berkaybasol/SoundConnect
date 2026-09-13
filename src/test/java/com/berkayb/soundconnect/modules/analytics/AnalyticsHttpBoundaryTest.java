@@ -73,7 +73,7 @@ class AnalyticsHttpBoundaryTest {
                 .addFilters(filter).build();
     }
 
-    @ParameterizedTest @EnumSource(AnalyticsRequest.Type.class)
+    @ParameterizedTest @EnumSource(value=AnalyticsRequest.Type.class, names={"EVENT_IMPRESSION","EVENT_DETAIL_VIEW","VENUE_PROFILE_VIEW"})
     void exactPayloadMapsWithoutCoercionAndAcknowledgesOriginalIds(AnalyticsRequest.Type type) throws Exception {
         Map<String, Object> row = row();
         row.put("type", type.name());

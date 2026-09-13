@@ -64,6 +64,10 @@ public enum ErrorType {
 	MUSICIAN_FEED_CURSOR_INVALID(1318, "Musician feed cursor is expired or incompatible", HttpStatus.BAD_REQUEST, "Akış oturumunun süresi doldu veya sürümü değişti. Akışı yenileyip tekrar dene."),
 	MUSICIAN_FEED_RATE_LIMITED(1319, "Too many musician feed requests", HttpStatus.TOO_MANY_REQUESTS, "Akışı çok hızlı yeniliyorsun. Kısa süre sonra tekrar dene."),
 	MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE(1320, "Musician feed protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Akış geçici olarak kullanılamıyor. Kısa süre sonra tekrar dene."),
+	MUSICIAN_FEED_REPORT_NOT_FOUND(1321, "Musician feed report not found", HttpStatus.NOT_FOUND, "Akış şikâyeti bulunamadı."),
+	MUSICIAN_FEED_REPORT_CONFLICT(1322, "Musician feed report review conflict", HttpStatus.CONFLICT, "Şikâyetin durumu değişti. Güncel kaydı inceleyip tekrar deneyin."),
+	MUSICIAN_FEED_REPORT_CURSOR_INVALID(1323, "Musician feed report cursor invalid", HttpStatus.BAD_REQUEST, "Şikâyet listesinin sayfa bilgisi geçersiz. Listeyi yenileyin."),
+	MUSICIAN_FEED_CAPACITY_UNAVAILABLE(1324, "Musician feed capacity temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Akış geçici olarak yoğun. Kısa süre sonra tekrar dene."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
@@ -376,6 +380,14 @@ public enum ErrorType {
 	EVENT_INTENT_CLOSED(9922, "Event intent window closed", HttpStatus.CONFLICT, "Geçmiş etkinlik için yeni plan veya paylaşım oluşturulamaz."),
 	EVENT_INTENT_RATE_LIMITED(9923, "Event intent rate limited", HttpStatus.TOO_MANY_REQUESTS, "Planlarını çok sık değiştiriyorsun. Biraz sonra tekrar dene."),
 	EVENT_INTENT_UNAVAILABLE(9924, "Event intent temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik planları şu anda kullanılamıyor."),
+	// FEED ANNOUNCEMENTS (9930-9936)
+	ANNOUNCEMENT_INVALID(9930, "Invalid announcement", HttpStatus.BAD_REQUEST, "Duyuru bilgilerini kontrol et."),
+	ANNOUNCEMENT_NOT_FOUND(9931, "Announcement not found", HttpStatus.NOT_FOUND, "Duyuru bulunamadı."),
+	ANNOUNCEMENT_VERSION_CONFLICT(9932, "Announcement changed", HttpStatus.CONFLICT, "Duyuru değişti. Güncel kaydı açıp tekrar dene."),
+	ANNOUNCEMENT_STATE_CONFLICT(9933, "Announcement transition unavailable", HttpStatus.CONFLICT, "Duyurunun mevcut durumu bu işleme uygun değil."),
+	ANNOUNCEMENT_MEDIA_INVALID(9934, "Announcement media unavailable", HttpStatus.BAD_REQUEST, "Duyuruya ait hazır bir fotoğraf veya video seç."),
+	ANNOUNCEMENT_FORBIDDEN(9935, "Announcement access denied", HttpStatus.FORBIDDEN, "Bu duyuru işlemine erişimin yok."),
+	ANNOUNCEMENT_CURSOR_INVALID(9936, "Invalid announcement cursor", HttpStatus.BAD_REQUEST, "Duyuru listesini yenileyip tekrar dene."),
 	// GENEL (9999)
 
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),

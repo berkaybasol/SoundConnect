@@ -4,6 +4,10 @@ import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolv
 import com.berkayb.soundconnect.modules.event.support.EventShareUrlBuilder;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads;
+import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
+import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveryService;
+import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveryTokenCodec;
+import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedReplayVisibilityGuard;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidateRequest;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
@@ -65,6 +69,12 @@ import static org.mockito.Mockito.when;
 @Import({
         MusicianFeedOverthinkingShareCandidateProvider.class,
         MusicianFeedMediaActivityCandidateProvider.class,
+        MusicianFeedDeliveryService.class,
+        com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveryLookup.class,
+        MusicianFeedReplayVisibilityGuard.class,
+        com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard.class,
+        com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionRepository.class,
+        com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver.class,
         CommentAuthorBatchResolver.class,
         MusicianFeedOverthinkingProviderTransactionPostgresTest.ProviderConfiguration.class
 })
@@ -93,9 +103,12 @@ class MusicianFeedOverthinkingProviderTransactionPostgresTest {
     @Autowired private CommentAuthorBatchResolver authorResolver;
     @Autowired private MusicianFeedOverthinkingShareCandidateProvider provider;
     @Autowired private MusicianFeedMediaActivityCandidateProvider activityProvider;
+    @Autowired private MusicianFeedDeliveryService deliveries;
+    @Autowired private ObjectMapper objectMapper;
 
     @MockitoBean private OverthinkingPostService posts;
     @MockitoBean private MediaAssetService media;
+    @MockitoBean private com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementReadService announcements;
 
     private final Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
     private UUID viewerId;
@@ -130,8 +143,9 @@ class MusicianFeedOverthinkingProviderTransactionPostgresTest {
                     Timestamp.from(anchor.minusSeconds(900)), viewerId, "Feed Viewer", "Feed Viewer");
 
             insertAccount(publisherId, "listener-publisher");
-            UUID listenerRoleId = UUID.randomUUID();
-            sql.update("insert into tbl_role(id,created_at,updated_at,name) values (?,?,?,?)",
+            var listenerRoles = sql.queryForList("select id from tbl_role where name='ROLE_LISTENER'", UUID.class);
+            UUID listenerRoleId = listenerRoles.isEmpty() ? UUID.randomUUID() : listenerRoles.getFirst();
+            if (listenerRoles.isEmpty()) sql.update("insert into tbl_role(id,created_at,updated_at,name) values (?,?,?,?)",
                     listenerRoleId, Timestamp.from(anchor.minusSeconds(900)),
                     Timestamp.from(anchor.minusSeconds(900)), "ROLE_LISTENER");
             sql.update("insert into user_roles(user_id,role_id) values (?,?)", publisherId, listenerRoleId);
@@ -235,7 +249,28 @@ class MusicianFeedOverthinkingProviderTransactionPostgresTest {
         });
     }
 
+    @Test
+    void proxiedReplayAllowsCanonicalIdentityLocksAndPreservesTheCommittedResponse() throws Exception {
+        UUID session = UUID.randomUUID();
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+        var request = new MusicianFeedCandidateRequest(viewerId, viewerProfileId, session,
+                anchor, anchor, 20, types, MusicianFeedPersonalizationSnapshot.empty(),
+                MusicianFeedFeedbackSnapshot.empty());
+        var candidate = provider.findCandidates(request).getFirst();
+        var committed = deliveries.recordPageAndReplay(viewerId, session, anchor, 1, "musician-v1",
+                0, "r".repeat(43), 1, types, List.of(candidate.toResponse()), List.of(candidate.lane()),
+                null, false, anchor);
+        assertThat(AopUtils.isAopProxy(deliveries)).isTrue();
+        var replayed = deliveries.requireReplay(viewerId, session, 0, "r".repeat(43), 1, types,
+                anchor.plusSeconds(1));
+        assertThat(objectMapper.readTree(objectMapper.writeValueAsBytes(replayed)))
+                .isEqualTo(objectMapper.readTree(objectMapper.writeValueAsBytes(committed)));
+        assertThat(deliveries.replay(viewerId, session, 0, "r".repeat(43), 1, types,
+                anchor.plusSeconds(2))).isPresent();
+    }
+
     private void insertAccount(UUID id, String username) {
+        username += "-" + id.toString().substring(0, 8);
         String publicCode = "SC-" + id.toString().replace("-", "")
                 .substring(0, 20).toUpperCase(Locale.ROOT);
         sql.update("""
@@ -256,7 +291,15 @@ class MusicianFeedOverthinkingProviderTransactionPostgresTest {
 
         @Bean
         ObjectMapper objectMapper() {
-            return new ObjectMapper();
+            return new ObjectMapper().findAndRegisterModules()
+                    .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        }
+
+        @Bean MusicianFeedProperties musicianFeedProperties() { return new MusicianFeedProperties(); }
+
+        @Bean MusicianFeedDeliveryTokenCodec musicianFeedDeliveryTokenCodec(
+                ObjectMapper mapper, MusicianFeedProperties properties) {
+            return new MusicianFeedDeliveryTokenCodec(mapper, properties);
         }
     }
 }

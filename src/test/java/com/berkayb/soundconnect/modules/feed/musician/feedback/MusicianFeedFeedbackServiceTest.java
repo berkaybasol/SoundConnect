@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.modules.feed.musician.feedback;
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedViewerGuard;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.*;
+import com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ class MusicianFeedFeedbackServiceTest {
     private MusicianFeedDeliveryService deliveries;
     private MusicianFeedReportDispatcher reports;
     private MusicianFeedFeedbackLock feedbackLock;
+    private MusicianFeedFeedbackReader reader;
     private MusicianFeedFeedbackService service;
 
     @BeforeEach
@@ -35,11 +38,11 @@ class MusicianFeedFeedbackServiceTest {
         deliveries = mock(MusicianFeedDeliveryService.class);
         reports = mock(MusicianFeedReportDispatcher.class);
         feedbackLock = mock(MusicianFeedFeedbackLock.class);
+        reader = mock(MusicianFeedFeedbackReader.class);
         service = new MusicianFeedFeedbackService(repository, guard, authorProfiles,
-                deliveries, reports, feedbackLock,
+                deliveries, reports, feedbackLock, reader,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         when(guard.requireMusicianProfile(viewer)).thenReturn(UUID.randomUUID());
-        when(repository.countByViewerUserId(viewer)).thenReturn(0L);
         when(repository.save(any(MusicianFeedFeedback.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(deliveries.require(anyString(), eq(viewer), anyString(), eq(NOW))).thenAnswer(invocation -> {
             String itemId = invocation.getArgument(2);
@@ -84,30 +87,91 @@ class MusicianFeedFeedbackServiceTest {
 
         assertThat(existing.getReason()).isEqualTo("second");
         assertThat(existing.getUpdatedAt()).isEqualTo(NOW);
-        verify(repository, never()).countByViewerUserId(any());
+        verify(repository).save(existing);
     }
 
     @Test
-    void snapshotTurnsPersistedActionsIntoEligibilityAndRankingSignals() {
-        UUID mutedAuthor = UUID.randomUUID();
-        MusicianFeedFeedback hidden = MusicianFeedFeedback.item(viewer, MusicianFeedFeedbackAction.HIDE,
-                "TRACK:hidden", MusicianFeedItemType.TRACK, null, NOW);
-        MusicianFeedFeedback reported = MusicianFeedFeedback.item(viewer, MusicianFeedFeedbackAction.REPORT,
-                "COLLAB:reported", MusicianFeedItemType.COLLAB, "unsafe", NOW);
-        MusicianFeedFeedback lessOne = MusicianFeedFeedback.item(viewer, MusicianFeedFeedbackAction.SHOW_LESS,
-                "TRACK:one", MusicianFeedItemType.TRACK, null, NOW);
-        MusicianFeedFeedback lessTwo = MusicianFeedFeedback.item(viewer, MusicianFeedFeedbackAction.SHOW_LESS,
-                "TRACK:two", MusicianFeedItemType.TRACK, null, NOW);
-        MusicianFeedFeedback muted = MusicianFeedFeedback.mute(viewer, "VENUE", mutedAuthor, NOW);
-        when(repository.findAllByViewerUserId(viewer))
-                .thenReturn(List.of(hidden, reported, lessOne, lessTwo, muted));
+    void announcementHideKeepsItsIdentityAcrossEditsAndReportsAuthoritativeAnalyticsWithThatReceipt() {
+        var analytics = mock(AnnouncementAnalyticsStore.class);
+        var access = mock(AnnouncementAccess.class);
+        service = new MusicianFeedFeedbackService(repository, guard, authorProfiles, deliveries, reports, feedbackLock,
+                reader, Clock.fixed(NOW, ZoneOffset.UTC), analytics, access);
+        UUID announcement = UUID.randomUUID(), otherAnnouncement = UUID.randomUUID();
+        Map<String, MusicianFeedFeedback> savedRows = new HashMap<>();
+        when(repository.findByViewerUserIdAndActionAndScopeKey(eq(viewer), eq(MusicianFeedFeedbackAction.HIDE), anyString()))
+                .thenAnswer(call -> Optional.ofNullable(savedRows.get(call.getArgument(2))));
+        when(repository.save(any(MusicianFeedFeedback.class))).thenAnswer(call -> {
+            MusicianFeedFeedback row = call.getArgument(0);
+            savedRows.put(row.getScopeKey(), row);
+            return row;
+        });
+        when(deliveries.require(anyString(), eq(viewer), startsWith("ANNOUNCEMENT:"), eq(NOW))).thenAnswer(call -> {
+            String item = call.getArgument(2);
+            return new MusicianFeedDeliveredItem(UUID.randomUUID(), viewer, UUID.randomUUID(), item,
+                    MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", UUID.fromString(item.substring(13)), null, null,
+                    "PLATFORM_ANNOUNCEMENT", Set.of(MusicianFeedFeedbackAction.HIDE), 1, "announcement-test", 0, null,
+                    "{}", NOW, NOW.plusSeconds(100), NOW.plusSeconds(200));
+        });
+        var hide = new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.HIDE, null, "real-delivery-token");
+        service.recordItem(viewer, "ANNOUNCEMENT:" + announcement, hide);
+        UUID firstReceipt = savedRows.get("ITEM:ANNOUNCEMENT:" + announcement).getId();
+        service.recordItem(viewer, "ANNOUNCEMENT:" + announcement, hide); // later delivery after an edit, same aggregate id
+        service.recordItem(viewer, "ANNOUNCEMENT:" + otherAnnouncement, hide);
+        assertThat(savedRows).hasSize(2);
+        assertThat(savedRows.get("ITEM:ANNOUNCEMENT:" + announcement).getId()).isEqualTo(firstReceipt);
+        verify(analytics).recordEngagement(viewer, announcement, firstReceipt, AnnouncementAnalyticsStore.EngagementMetric.HIDE, NOW);
+        verify(access, times(2)).requireVisible(viewer, announcement);
+        verifyNoInteractions(reports);
+        assertThatThrownBy(() -> service.recordItem(viewer, "ANNOUNCEMENT:" + announcement,
+                new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.SHOW_LESS, null, "real-delivery-token")))
+                .isInstanceOf(SoundConnectException.class);
+    }
+
+    @Test
+    void deletedArchivedOrRetargetedAnnouncementCannotPersistHideOrAttributionFromAnOldDelivery() {
+        var analytics = mock(AnnouncementAnalyticsStore.class);
+        var access = mock(AnnouncementAccess.class);
+        service = new MusicianFeedFeedbackService(repository, guard, authorProfiles, deliveries, reports, feedbackLock,
+                reader, Clock.fixed(NOW, ZoneOffset.UTC), analytics, access);
+        doThrow(new SoundConnectException(ErrorType.ANNOUNCEMENT_NOT_FOUND)).when(access).requireVisible(eq(viewer), any());
+        assertThatThrownBy(() -> service.recordItem(viewer, "ANNOUNCEMENT:" + UUID.randomUUID(),
+                new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.HIDE, null, "old-valid-proof")))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.ANNOUNCEMENT_NOT_FOUND));
+        verify(access).requireVisible(eq(viewer), any());
+        verifyNoInteractions(repository, analytics, reports);
+    }
+
+    @Test
+    void legacyConstructorCannotSilentlyAcceptAnnouncementFeedbackWithoutItsGuard() {
+        assertThatThrownBy(() -> service.recordItem(viewer, "ANNOUNCEMENT:" + UUID.randomUUID(),
+                new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.HIDE, null, "valid-proof")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("dependencies are unavailable");
+        verifyNoInteractions(repository, reports);
+    }
+
+    @Test
+    void snapshotReadsBoundedRankingWithoutHydratingThePreferenceHistory() {
+        var ranking = new MusicianFeedFeedbackSnapshot(Set.of(), Set.of(),
+                Map.of(MusicianFeedItemType.TRACK, 10), "capped-ranking");
+        when(reader.ranking(viewer)).thenReturn(ranking);
 
         MusicianFeedFeedbackSnapshot snapshot = service.snapshot(viewer);
 
-        assertThat(snapshot.hiddenItemIds()).containsExactlyInAnyOrder("TRACK:hidden", "COLLAB:reported");
-        assertThat(snapshot.mutedAuthorKeys()).containsExactly(
-                MusicianFeedFeedbackSnapshot.authorKey("VENUE", mutedAuthor));
-        assertThat(snapshot.showLessCounts()).containsEntry(MusicianFeedItemType.TRACK, 2);
+        assertThat(snapshot).isEqualTo(ranking);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void anonymousSnapshotRequestsNeverReadPreferences() {
+        assertThatThrownBy(() -> service.snapshot(null))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        failure -> assertThat(failure.getErrorType()).isEqualTo(ErrorType.UNAUTHORIZED));
+        assertThatThrownBy(() -> service.forCandidates(null, MusicianFeedFeedbackSnapshot.empty(),
+                List.of(), List.of()))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        failure -> assertThat(failure.getErrorType()).isEqualTo(ErrorType.UNAUTHORIZED));
+        verifyNoInteractions(reader, repository);
     }
 
     @Test

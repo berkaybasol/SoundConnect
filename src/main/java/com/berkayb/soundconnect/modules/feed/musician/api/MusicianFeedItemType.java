@@ -14,5 +14,6 @@ public enum MusicianFeedItemType {
     ACTIVITY_LIKE,
     ACTIVITY_COMMENT,
     PROFILE_COMPLETION,
+    ANNOUNCEMENT,
     SPONSORED
 }

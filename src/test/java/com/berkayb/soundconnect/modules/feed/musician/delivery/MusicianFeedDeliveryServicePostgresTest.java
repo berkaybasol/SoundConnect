@@ -29,6 +29,10 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 
 @Testcontainers(disabledWithoutDocker = true)
 class MusicianFeedDeliveryServicePostgresTest {
@@ -44,6 +48,7 @@ class MusicianFeedDeliveryServicePostgresTest {
     private NamedParameterJdbcTemplate jdbc;
     private TransactionTemplate transactions;
     private MusicianFeedProperties properties;
+    private MusicianFeedReplayVisibilityGuard replayVisibility;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -56,9 +61,10 @@ class MusicianFeedDeliveryServicePostgresTest {
         properties = new MusicianFeedProperties();
         properties.setDeliverySecret("delivery-service-test-secret-at-least-32-bytes");
         jdbc = new NamedParameterJdbcTemplate(dataSource);
+        replayVisibility = mock(MusicianFeedReplayVisibilityGuard.class);
         service = new MusicianFeedDeliveryService(jdbc,
                 new MusicianFeedDeliveryTokenCodec(new ObjectMapper().findAndRegisterModules(), properties),
-                properties, new ObjectMapper().findAndRegisterModules());
+                properties, new ObjectMapper().findAndRegisterModules(), replayVisibility);
         transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }
 
@@ -75,6 +81,27 @@ class MusicianFeedDeliveryServicePostgresTest {
                 .isZero();
         assertThat(service.snapshot(viewer, session, now).lastItemLane())
                 .isEqualTo(MusicianFeedLane.FOLLOWING);
+    }
+
+    @Test
+    void announcementCadenceComesFromTheWholeLedgerAndCountsOnlyNormalItems() {
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), campaign = UUID.randomUUID();
+        List<MusicianFeedItemResponse> firstPage = List.of(item("TRACK:first"),
+                item("ANNOUNCEMENT:" + first, MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", first, null),
+                item("TRACK:second"), item("SPONSORED:one", MusicianFeedItemType.SPONSORED, "STANDALONE", UUID.randomUUID(),
+                new MusicianFeedItemResponse.Promotion(campaign, "Sponsored", "Open", "/open")));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1, "announcement-test", 0, firstPage, now));
+        List<MusicianFeedItemResponse> continuation = List.of(item("TRACK:third"), item("TRACK:fourth"), item("TRACK:fifth"),
+                item("ANNOUNCEMENT:" + second, MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", second, null));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1, "announcement-test", 4, continuation, now));
+        var snapshot = service.snapshot(viewer, session, now);
+        assertThat(snapshot.deliveredAnnouncementIds()).containsExactlyInAnyOrder(first, second);
+        assertThat(snapshot.deliveredNormalCount()).isEqualTo(5);
+        assertThat(snapshot.normalCountAtLastAnnouncement()).isEqualTo(5);
+        assertThat(snapshot.organicCountAtLastPromotion()).isEqualTo(2);
+        assertThat(snapshot.deliveredPromotionCount()).isEqualTo(1);
+        assertThat(snapshot.nextAbsolutePosition()).isEqualTo(8);
+        assertThat(snapshot.lastItemType()).isEqualTo(MusicianFeedItemType.ANNOUNCEMENT);
     }
 
     @Test
@@ -302,6 +329,8 @@ class MusicianFeedDeliveryServicePostgresTest {
                 .isEqualTo(wireMapper.valueToTree(committed));
         assertThat(replayed.generatedAt()).isEqualTo(now);
         assertThat(replayed.nextCursor()).isEqualTo("signed.next.cursor");
+        verify(replayVisibility).requireVisible(eq(viewer), any(MusicianFeedPageResponse.class),
+                eq(now.plusSeconds(1)));
         assertThat(replayed.items()).extracting(MusicianFeedItemResponse::position)
                 .containsExactly(0L, 1L);
         replayed.items().forEach(value -> assertThat(service.require(value.impressionToken(), viewer,
@@ -316,6 +345,35 @@ class MusicianFeedDeliveryServicePostgresTest {
         assertThatThrownBy(() -> service.requireReplay(viewer, session, 0,
                 "z".repeat(43), 2, Set.of(MusicianFeedItemType.TRACK), now.plusSeconds(1)))
                 .isInstanceOf(SoundConnectException.class);
+    }
+
+    @Test
+    void revokedReplayRequestsRefreshOnBothReadAndCompetingCommitPaths() {
+        String fingerprint = "r".repeat(43);
+        transactions.executeWithoutResult(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:revoked")),
+                List.of(MusicianFeedLane.FOLLOWING), null, false, now));
+        Instant later = now.plusSeconds(1);
+        doThrow(new SoundConnectException(ErrorType.MUSICIAN_FEED_CURSOR_INVALID))
+                .when(replayVisibility).requireVisible(eq(viewer), any(MusicianFeedPageResponse.class), eq(later));
+
+        assertThatThrownBy(() -> service.replay(viewer, session, 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), later))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), later))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThatThrownBy(() -> transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:new-draft")),
+                List.of(MusicianFeedLane.FOLLOWING), null, false, later)))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+        assertThat(number("select count(*) from tbl_musician_feed_page_replay")).isEqualTo(1);
     }
 
     @Test

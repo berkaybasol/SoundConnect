@@ -1,12 +1,17 @@
 package com.berkayb.soundconnect.modules.feed.musician.core;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementResponse;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementStatus;
+import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import com.berkayb.soundconnect.modules.feed.musician.cursor.MusicianFeedCursorCodec;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.*;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackService;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
+import com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSource;
 import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedSponsorshipProvider;
@@ -32,6 +37,7 @@ class MusicianFeedServiceTest {
     private final UUID profile = UUID.randomUUID();
     private MusicianFeedViewerGuard guard;
     private MusicianFeedFeedbackService feedback;
+    private MusicianFeedRestrictionGuard restrictions;
     private MusicianFeedPersonalizationSource personalization;
     private MusicianFeedProperties properties;
     private MusicianFeedDeliveryService deliveries;
@@ -44,6 +50,8 @@ class MusicianFeedServiceTest {
     private final AtomicLong promotionCount = new AtomicLong();
     private final AtomicLong organicCount = new AtomicLong();
     private final AtomicLong organicCountAtLastPromotion = new AtomicLong();
+    private final AtomicLong normalCountAtLastAnnouncement = new AtomicLong();
+    private final Set<UUID> announcementIds = ConcurrentHashMap.newKeySet();
     private final java.util.concurrent.atomic.AtomicReference<MusicianFeedItemType> lastType =
             new java.util.concurrent.atomic.AtomicReference<>();
     private final java.util.concurrent.atomic.AtomicReference<MusicianFeedLane> lastLane =
@@ -55,6 +63,8 @@ class MusicianFeedServiceTest {
     void setUp() {
         guard = mock(MusicianFeedViewerGuard.class);
         feedback = mock(MusicianFeedFeedbackService.class);
+        restrictions = mock(MusicianFeedRestrictionGuard.class);
+        when(restrictions.filter(anyCollection())).thenAnswer(invocation -> List.copyOf(invocation.getArgument(0)));
         personalization = mock(MusicianFeedPersonalizationSource.class);
         properties = new MusicianFeedProperties();
         deliveries = mock(MusicianFeedDeliveryService.class);
@@ -67,22 +77,27 @@ class MusicianFeedServiceTest {
         promotionCount.set(0);
         organicCount.set(0);
         organicCountAtLastPromotion.set(0);
+        normalCountAtLastAnnouncement.set(0);
+        announcementIds.clear();
         lastType.set(null);
         lastLane.set(null);
         lastPromoted.set(false);
         properties.setCursorSecret("unit-test-musician-feed-secret-at-least-32-bytes");
         when(guard.requireMusicianProfile(viewer)).thenReturn(profile);
         when(feedback.snapshot(viewer)).thenReturn(MusicianFeedFeedbackSnapshot.empty());
+        when(feedback.forCandidates(eq(viewer), any(), anyCollection(), anyCollection()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         when(personalization.load(viewer, profile)).thenReturn(MusicianFeedPersonalizationSnapshot.empty());
         when(deliveries.snapshot(eq(viewer), any(UUID.class), eq(NOW))).thenAnswer(ignored ->
                 new MusicianFeedDeliverySnapshot(Set.copyOf(deliveredIds), Set.copyOf(deliveredTargets),
                         Set.copyOf(deliveredTargets), Set.copyOf(promotedTargets), Set.copyOf(campaignIds),
                         deliveredCount.get(), promotionCount.get(),
-                        organicCountAtLastPromotion.get(), lastPromoted.get(), lastType.get(), lastLane.get()));
+                        organicCountAtLastPromotion.get(), lastPromoted.get(), lastType.get(), lastLane.get(),
+                        0, 0, Set.copyOf(announcementIds), organicCount.get(), normalCountAtLastAnnouncement.get()));
         when(deliveries.replay(eq(viewer), any(UUID.class), anyLong(), anyString(), anyInt(),
                 anySet(), eq(NOW))).thenReturn(Optional.empty());
         when(deliveries.recordPage(eq(viewer), any(UUID.class), any(Instant.class), eq(1),
-                eq("musician-v1.0.1"), anyLong(), anyList(), anyList(), eq(NOW))).thenAnswer(invocation -> {
+                eq(MusicianFeedService.ALGORITHM_VERSION), anyLong(), anyList(), anyList(), eq(NOW))).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked") List<MusicianFeedItemResponse> items = invocation.getArgument(6);
             @SuppressWarnings("unchecked") List<MusicianFeedLane> lanes = invocation.getArgument(7);
             long start = invocation.getArgument(5);
@@ -99,6 +114,9 @@ class MusicianFeedServiceTest {
                     campaignIds.add(items.get(index).promotion().campaignId());
                     promotionCount.incrementAndGet();
                     organicCountAtLastPromotion.set(organicCount.get());
+                } else if (items.get(index).type() == MusicianFeedItemType.ANNOUNCEMENT) {
+                    announcementIds.add(items.get(index).target().id());
+                    normalCountAtLastAnnouncement.set(organicCount.get());
                 } else {
                     organicCount.incrementAndGet();
                 }
@@ -111,7 +129,7 @@ class MusicianFeedServiceTest {
             return result;
         });
         when(deliveries.recordPageAndReplay(eq(viewer), any(UUID.class), any(Instant.class), eq(1),
-                eq("musician-v1.0.1"), anyLong(), anyString(), anyInt(), anySet(), anyList(),
+                eq(MusicianFeedService.ALGORITHM_VERSION), anyLong(), anyString(), anyInt(), anySet(), anyList(),
                 anyList(), nullable(String.class), anyBoolean(), eq(NOW))).thenAnswer(invocation -> {
             UUID session = invocation.getArgument(1);
             Instant anchor = invocation.getArgument(2);
@@ -121,8 +139,8 @@ class MusicianFeedServiceTest {
             String nextCursor = invocation.getArgument(11);
             boolean hasMore = invocation.getArgument(12);
             List<MusicianFeedItemResponse> delivered = deliveries.recordPage(viewer, session, anchor, 1,
-                    "musician-v1.0.1", start, items, lanes, NOW);
-            return new MusicianFeedPageResponse(1, "musician-v1.0.1", session, NOW,
+                    MusicianFeedService.ALGORITHM_VERSION, start, items, lanes, NOW);
+            return new MusicianFeedPageResponse(1, MusicianFeedService.ALGORITHM_VERSION, session, NOW,
                     delivered, nextCursor, hasMore);
         });
     }
@@ -130,6 +148,80 @@ class MusicianFeedServiceTest {
     @org.junit.jupiter.api.AfterEach
     void tearDown() {
         executor.shutdownNow();
+    }
+
+    @Test
+    void globalRestrictionsCoverOptionalProvidersAndPromotionsBeforeMixing() {
+        var blocked = candidate("TRACK:globally-blocked", 1_000_000);
+        var kept = candidate("TRACK:globally-kept", 900_000);
+        var promoted = promotedCollab("COLLAB:blocked-promotion", UUID.randomUUID());
+        var repository = mock(com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionRepository.class);
+        Set<String> active = Set.of("TARGET:MEDIA:" + blocked.target().id(), "ITEM:" + promoted.itemId());
+        when(repository.activeScopes(anyCollection())).thenAnswer(invocation -> {
+            Collection<String> requested = invocation.getArgument(0);
+            return requested.stream().filter(active::contains).collect(java.util.stream.Collectors.toSet());
+        });
+        restrictions = new MusicianFeedRestrictionGuard(repository,
+                new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(new ObjectMapper()));
+
+        var page = service(List.of(provider("new-extension", request -> List.of(blocked, kept))),
+                List.of(sponsorship("campaign", Set.of(MusicianFeedItemType.COLLAB), request -> List.of(promoted))), executor)
+                .get(viewer, 20, null, List.of("TRACK", "COLLAB"));
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly(kept.itemId());
+        verify(repository, times(2)).activeScopes(anyCollection());
+    }
+
+    @Test
+    void centralFeedbackSuppressesCompletionAndANewOptionalProviderAfterCollection() {
+        var ranking = new MusicianFeedFeedbackSnapshot(Set.of(), Set.of(),
+                Map.of(MusicianFeedItemType.TRACK, 2), "ranking-only");
+        when(feedback.snapshot(viewer)).thenReturn(ranking);
+        var completion = new MusicianFeedPayloads.Completion(0, 1, List.of(
+                new MusicianFeedPayloads.CompletionTask("bio", "Bio", "Add your bio", "Edit",
+                        "/profile/edit", 1, false)));
+        when(personalization.load(viewer, profile)).thenReturn(
+                new MusicianFeedPersonalizationSnapshot(null, Set.of(), completion));
+        var muted = candidate("TRACK:optional-muted", 1_000_000);
+        var kept = candidate("TRACK:optional-kept", 900_000);
+        String completionId = "PROFILE_COMPLETION:" + profile;
+        var suppressed = new MusicianFeedFeedbackSnapshot(Set.of(completionId), Set.of(
+                MusicianFeedFeedbackSnapshot.authorKey(muted.author().profileType(), muted.author().profileId())),
+                ranking.showLessCounts(), ranking.rankingContextVersion());
+        when(feedback.forCandidates(eq(viewer), eq(ranking), anyCollection(), anyCollection()))
+                .thenAnswer(invocation -> {
+                    Collection<MusicianFeedCandidate> candidates = invocation.getArgument(2);
+                    assertThat(candidates).extracting(MusicianFeedCandidate::itemId)
+                            .containsExactlyInAnyOrder(completionId, muted.itemId(), kept.itemId());
+                    return suppressed;
+                });
+        var optional = provider("new-optional-extension", request -> {
+            assertThat(request.feedback()).isEqualTo(ranking);
+            return List.of(muted, kept);
+        });
+
+        var page = service(List.of(optional,
+                new com.berkayb.soundconnect.modules.feed.musician.provider.MusicianFeedCompletionCandidateProvider()))
+                .get(viewer, 10, null, List.of("TRACK", "PROFILE_COMPLETION"));
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly(kept.itemId());
+        verify(feedback).forCandidates(eq(viewer), eq(ranking), anyCollection(), eq(List.of()));
+    }
+
+    @Test
+    void centralFeedbackAlsoChecksPromotionCandidates() {
+        List<MusicianFeedCandidate> organic = java.util.stream.IntStream.range(0, 15)
+                .mapToObj(index -> candidate("TRACK:organic-" + index, 1_000_000 - index)).toList();
+        var promotion = promotedCollab("COLLAB:promotion", UUID.randomUUID());
+        when(feedback.forCandidates(eq(viewer), any(), eq(organic), eq(List.of(promotion))))
+                .thenReturn(new MusicianFeedFeedbackSnapshot(Set.of(promotion.itemId()), Set.of(), Map.of()));
+
+        var page = service(List.of(provider("tracks", request -> organic)), List.of(
+                sponsorship("campaign", Set.of(MusicianFeedItemType.COLLAB), request -> List.of(promotion))), executor)
+                .get(viewer, 20, null, List.of("TRACK", "COLLAB"));
+
+        assertThat(page.items()).hasSize(15).allMatch(item -> item.promotion() == null);
+        verify(feedback).forCandidates(eq(viewer), any(), eq(organic), eq(List.of(promotion)));
     }
 
     @Test
@@ -145,7 +237,7 @@ class MusicianFeedServiceTest {
 
         assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:kept");
         assertThat(page.schemaVersion()).isEqualTo(1);
-        assertThat(page.algorithmVersion()).isEqualTo("musician-v1.0.1");
+        assertThat(page.algorithmVersion()).isEqualTo(MusicianFeedService.ALGORITHM_VERSION);
     }
 
     @Test
@@ -286,7 +378,7 @@ class MusicianFeedServiceTest {
         })));
         MusicianFeedPageResponse firstPage = service.get(viewer, 1, null, List.of("TRACK"));
         MusicianFeedPageResponse concurrentlyCommitted = new MusicianFeedPageResponse(
-                1, "musician-v1.0.1", firstPage.feedSessionId(), NOW,
+                1, MusicianFeedService.ALGORITHM_VERSION, firstPage.feedSessionId(), NOW,
                 List.of(second.toResponse().withDelivery(1, "concurrent-signed-token")),
                 null, false);
         var replayLookups = new java.util.concurrent.atomic.AtomicInteger();
@@ -527,6 +619,169 @@ class MusicianFeedServiceTest {
     }
 
     @Test
+    void admissionTimeoutCancelsEarlierQueuedProvidersAndDoesNotPersistAnEmptyPage() throws Exception {
+        properties.setProviderDeadline(Duration.ofMillis(80));
+        MusicianFeedProviderExecutor bounded = new MusicianFeedProviderExecutor(1, 1, Executors.defaultThreadFactory());
+        CountDownLatch occupied = new CountDownLatch(1), release = new CountDownLatch(1);
+        bounded.submit(() -> {
+            occupied.countDown();
+            await(release);
+        });
+        assertThat(occupied.await(1, TimeUnit.SECONDS)).isTrue();
+        AtomicLong calls = new AtomicLong();
+        try {
+            MusicianFeedService service = service(List.of(
+                    provider("a-queued", request -> { calls.incrementAndGet(); return List.of(); }),
+                    provider("z-no-capacity", request -> { calls.incrementAndGet(); return List.of(); })),
+                    List.of(), bounded);
+            assertThatThrownBy(() -> service.get(viewer, 10, null, List.of("TRACK")))
+                    .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                            assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+            assertThat(calls.get()).isZero();
+            assertThat(bounded.getQueue()).isEmpty();
+            assertThat(bounded.getActiveCount()).isEqualTo(1);
+            assertNoPagePersisted();
+        } finally {
+            release.countDown();
+            bounded.shutdownNow();
+            assertThat(bounded.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void announcementPlanIsSignedBeforeItsFirstExposureAndStaysFrozenAcrossSingleCardPages() {
+        var plan = new MusicianFeedAnnouncementPlan(List.of(
+                new MusicianFeedAnnouncementPlan.Entry(new UUID(70, 1), 1),
+                new MusicianFeedAnnouncementPlan.Entry(new UUID(70, 2), 4),
+                new MusicianFeedAnnouncementPlan.Entry(new UUID(70, 3), 4)));
+        List<MusicianFeedCandidate> announcements = plan.entries().stream().map(entry -> {
+            var payload = new AnnouncementResponse(entry.id(), 0, "Duyuru", "Platform açıklaması", Set.of(ProfileType.MUSICIAN),
+                    AnnouncementStatus.PUBLISHED, null, null, NOW.minusSeconds(1), NOW, NOW, null,
+                    new AnnouncementResponse.Engagement(0, 0, false), false);
+            return new MusicianFeedCandidate("ANNOUNCEMENT:" + entry.id(), MusicianFeedItemType.ANNOUNCEMENT, 1, NOW.minusSeconds(1),
+                    new MusicianFeedItemResponse.Reason(MusicianFeedReasonCode.PLATFORM_ANNOUNCEMENT, List.of(), 0), null,
+                    new MusicianFeedItemResponse.Target("ANNOUNCEMENT", entry.id()), null, null,
+                    List.of(MusicianFeedFeedbackAction.HIDE), payload, 0, 0, MusicianFeedLane.SYSTEM, false, entry);
+        }).toList();
+        AtomicLong initialSelections = new AtomicLong();
+        var announcementProvider = new MusicianFeedCandidateProvider() {
+            @Override public String providerId() { return "announcements"; }
+            @Override public Set<MusicianFeedItemType> supportedTypes() { return Set.of(MusicianFeedItemType.ANNOUNCEMENT); }
+            @Override public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
+                if (request.announcementPlan() == null) initialSelections.incrementAndGet();
+                else assertThat(request.announcementPlan()).isEqualTo(plan);
+                return announcements.stream().filter(value -> !request.delivery().itemIds().contains(value.itemId())).toList();
+            }
+        };
+        var tracks = java.util.stream.IntStream.range(0, 12).mapToObj(id -> candidate("TRACK:plan:" + id, 1_000_000 - id)).toList();
+        var service = service(List.of(announcementProvider, provider("tracks", request -> tracks.stream()
+                .filter(value -> !request.delivery().itemIds().contains(value.itemId())).limit(request.limit()).toList())));
+        var first = service.get(viewer, 1, null, List.of("TRACK", "ANNOUNCEMENT"));
+        assertThat(first.items()).singleElement().satisfies(value -> assertThat(value.type()).isEqualTo(MusicianFeedItemType.TRACK));
+        var decoded = new MusicianFeedCursorCodec(new ObjectMapper(), properties).decodeForReplay(first.nextCursor(), viewer,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.ANNOUNCEMENT), NOW);
+        assertThat(decoded.announcementPlan()).isEqualTo(plan);
+        List<MusicianFeedItemResponse> shown = new ArrayList<>(first.items());
+        var page = first;
+        for (int index = 0; page.hasMore() && index < 30; index++) {
+            page = service.get(viewer, 1, page.nextCursor(), List.of("TRACK", "ANNOUNCEMENT"));
+            shown.addAll(page.items());
+        }
+        assertThat(page.hasMore()).isFalse();
+        assertThat(initialSelections.get()).isEqualTo(1);
+        assertThat(shown).hasSize(15);
+        assertThat(shown.stream().filter(value -> value.type() == MusicianFeedItemType.ANNOUNCEMENT))
+                .extracting(value -> value.target().id()).containsExactlyElementsOf(plan.entries().stream().map(MusicianFeedAnnouncementPlan.Entry::id).toList());
+        assertThat(organicCount.get()).isEqualTo(12);
+    }
+
+    @Test
+    void acceptedButNeverStartedProviderExpiresAsUnavailableWithoutEndingTheFeed() throws Exception {
+        properties.setProviderDeadline(Duration.ofMillis(80));
+        MusicianFeedProviderExecutor bounded = new MusicianFeedProviderExecutor(1, 1, Executors.defaultThreadFactory());
+        CountDownLatch occupied = new CountDownLatch(1), release = new CountDownLatch(1);
+        bounded.submit(() -> {
+            occupied.countDown();
+            await(release);
+        });
+        assertThat(occupied.await(1, TimeUnit.SECONDS)).isTrue();
+        AtomicLong calls = new AtomicLong();
+        try {
+            MusicianFeedService service = service(List.of(provider("queued", request -> {
+                calls.incrementAndGet();
+                return List.of();
+            })), List.of(), bounded);
+            assertThatThrownBy(() -> service.get(viewer, 10, null, List.of("TRACK")))
+                    .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                            assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+            assertThat(calls.get()).isZero();
+            assertThat(bounded.getQueue()).isEmpty();
+            assertNoPagePersisted();
+        } finally {
+            release.countDown();
+            bounded.shutdownNow();
+            assertThat(bounded.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void interruptedCollectionCancelsRunningAndQueuedProvidersAndRestoresCallerInterrupt() throws Exception {
+        MusicianFeedProviderExecutor bounded = new MusicianFeedProviderExecutor(1, 1, Executors.defaultThreadFactory());
+        CountDownLatch started = new CountDownLatch(1), interrupted = new CountDownLatch(1);
+        AtomicLong queuedCalls = new AtomicLong();
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var callerInterrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        MusicianFeedService service = service(List.of(provider("a-running", request -> {
+            started.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException stopped) {
+                interrupted.countDown();
+                Thread.currentThread().interrupt();
+            }
+            return List.of();
+        }), provider("z-queued", request -> { queuedCalls.incrementAndGet(); return List.of(); })), List.of(), bounded);
+        Thread caller = new Thread(() -> {
+            try {
+                service.get(viewer, 10, null, List.of("TRACK"));
+            } catch (Throwable stopped) {
+                failure.set(stopped);
+                callerInterrupted.set(Thread.currentThread().isInterrupted());
+            }
+        });
+        try {
+            caller.start();
+            assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (bounded.getQueue().isEmpty() && System.nanoTime() < deadline) Thread.onSpinWait();
+            assertThat(bounded.getQueue()).hasSize(1);
+            caller.interrupt();
+            caller.join(1_000);
+            assertThat(caller.isAlive()).isFalse();
+            assertThat(failure.get()).isInstanceOfSatisfying(SoundConnectException.class, unavailable ->
+                    assertThat(unavailable.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+            assertThat(callerInterrupted.get()).isTrue();
+            assertThat(interrupted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(queuedCalls.get()).isZero();
+            assertThat(bounded.getQueue()).isEmpty();
+            assertNoPagePersisted();
+        } finally {
+            caller.interrupt();
+            bounded.shutdownNow();
+            caller.join(1_000);
+            assertThat(bounded.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private void assertNoPagePersisted() {
+        verify(deliveries, never()).recordPage(any(), any(), any(), anyInt(), anyString(),
+                anyLong(), anyList(), anyList(), any());
+        verify(deliveries, never()).recordPageAndReplay(any(), any(), any(), anyInt(), anyString(),
+                anyLong(), anyString(), anyInt(), anySet(), anyList(), anyList(), nullable(String.class),
+                anyBoolean(), any());
+    }
+
+    @Test
     void requiredProviderCannotBeStarvedByASaturatedSharedOptionalPool() throws Exception {
         ThreadPoolExecutor saturated = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(1));
@@ -591,7 +846,7 @@ class MusicianFeedServiceTest {
                                         ExecutorService selectedExecutor) {
         return new MusicianFeedService(properties, guard,
                 new MusicianFeedCursorCodec(new ObjectMapper(), properties), new MusicianFeedMixer(),
-                feedback, personalization, deliveries, providers, sponsors, selectedExecutor,
+                feedback, restrictions, personalization, deliveries, providers, sponsors, selectedExecutor,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

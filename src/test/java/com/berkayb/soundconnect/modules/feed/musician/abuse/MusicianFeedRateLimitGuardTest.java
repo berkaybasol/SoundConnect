@@ -79,6 +79,40 @@ class MusicianFeedRateLimitGuardTest {
     }
 
     @Test
+    void feedbackUsesOnlyItsOwnAccountScopedReplenishingBucket() {
+        UUID userId = UUID.randomUUID();
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenReturn(0L);
+
+        guard.checkFeedback(userId);
+
+        verify(redis).execute(any(RedisScript.class), eq(List.of(
+                        "soundconnect:musician-feed:rate-limit:{" + userId + "}:feedback")),
+                eq("20"), eq("2000"), eq("80000"));
+    }
+
+    @Test
+    void feedbackRejectionKeepsTheExisting429ContractAndRoundsRetryAfterUp() {
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenReturn(1_001L);
+
+        assertThatThrownBy(() -> guard.checkFeedback(UUID.randomUUID()))
+                .isInstanceOfSatisfying(RateLimitedException.class, exception -> {
+                    assertThat(exception.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_RATE_LIMITED);
+                    assertThat(exception.getRetryAfterSeconds()).isEqualTo(2L);
+                });
+    }
+
+    @Test
+    void feedbackRedisFailureOrInvalidReservationResultFailsClosed() {
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class)))
+                .thenThrow(new RedisConnectionFailureException("offline"))
+                .thenReturn(null, -1L, 2_001L);
+
+        for (int attempt = 0; attempt < 4; attempt++) {
+            assertUnavailable(() -> guard.checkFeedback(UUID.randomUUID()));
+        }
+    }
+
+    @Test
     void rejectionUsesFeedSpecific429AndRoundsRetryAfterUp() {
         when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenReturn(1_001L);
 
@@ -114,8 +148,10 @@ class MusicianFeedRateLimitGuardTest {
 
         guard.checkPage(UUID.randomUUID(), false);
         guard.checkTelemetry(UUID.randomUUID());
+        guard.checkFeedback(UUID.randomUUID());
         verify(redis, never()).execute(any(RedisScript.class), anyList(), any(Object[].class));
         assertThatThrownBy(() -> guard.checkPage(null, false)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> guard.checkFeedback(null)).isInstanceOf(NullPointerException.class);
     }
 
     private void assertUnavailable(Runnable call) {

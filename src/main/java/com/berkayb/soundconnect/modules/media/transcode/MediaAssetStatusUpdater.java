@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.media.transcode;
 
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaStreamingProtocol;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
@@ -21,7 +22,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Transactional state machine and ownership fences for public video HLS work. */
+/** Transactional ownership fences shared by public HLS and private platform MP4 work. */
 @Service
 @Slf4j
 public class MediaAssetStatusUpdater {
@@ -84,7 +85,7 @@ public class MediaAssetStatusUpdater {
 		}
 
 		MediaAsset asset = getOrThrow(assetId);
-		validateOwnedPublicVideo(asset, attemptToken, now);
+		validateOwnedVideo(asset, attemptToken, now);
 		return Optional.of(new TranscodeClaim(
 				assetId,
 				attemptToken,
@@ -112,7 +113,7 @@ public class MediaAssetStatusUpdater {
 	@Transactional(readOnly = true)
 	public MediaAsset getClaimedPublicVideo(UUID assetId, UUID attemptToken) {
 		MediaAsset asset = getOrThrow(assetId);
-		validateOwnedPublicVideo(asset, attemptToken, utcNow());
+		validateOwnedVideo(asset, attemptToken, utcNow());
 		return asset;
 	}
 
@@ -152,6 +153,31 @@ public class MediaAssetStatusUpdater {
 		log.info("[asset] HLS finalization fenced assetId={} attemptToken={}", assetId, attemptToken);
 		return false;
 	}
+
+    /** Private derivatives have deterministic protected keys; signed URLs are never persisted. */
+    @Transactional
+    public boolean tryFinalizeReadyPrivateVideo(UUID assetId, UUID attemptToken,
+                                               Integer durationSeconds, Integer width, Integer height) {
+        MediaAsset asset = getOrThrow(assetId);
+        if (asset.getOwnerType() != MediaOwnerType.PROMOTION || asset.getVisibility() != MediaVisibility.PRIVATE) {
+            throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
+        }
+        return mediaAssetRepository.finalizeHlsIfProcessing(assetId, MediaKind.VIDEO,
+                MediaVisibility.PRIVATE, MediaStatus.PROCESSING, attemptToken, utcNow(), MediaStatus.READY,
+                MediaStreamingProtocol.PROGRESSIVE, null, null, positiveOrNull(durationSeconds),
+                positiveOrNull(width), positiveOrNull(height)) == 1;
+    }
+
+    static boolean supportedVideoVisibility(MediaAsset asset) {
+        return asset.getVisibility() == MediaVisibility.PUBLIC
+                || (asset.getVisibility() == MediaVisibility.PRIVATE && asset.getOwnerType() == MediaOwnerType.PROMOTION);
+    }
+
+    static boolean validVerifiedSource(MediaAsset asset) {
+        return asset.getVisibility() == MediaVisibility.PRIVATE
+                ? StorageObjectKeys.isPrivateVerified(asset.getStorageKey())
+                : StorageObjectKeys.isVerified(asset.getStorageKey()) && !StorageObjectKeys.isProtected(asset.getStorageKey());
+    }
 
 	/** A failed live worker may request terminal cleanup only for its exact lease. */
 	@Transactional
@@ -319,12 +345,11 @@ public class MediaAssetStatusUpdater {
 		return mediaAssetRepository.findById(assetId)
 				.filter(asset -> asset.getStatus() == MediaStatus.HLS_CLEANUP)
 				.filter(asset -> asset.getKind() == MediaKind.VIDEO)
-				.filter(asset -> asset.getVisibility() == MediaVisibility.PUBLIC)
+				.filter(MediaAssetStatusUpdater::supportedVideoVisibility)
 				.map(asset -> {
 					String sourceKey = asset.getStorageKey();
 					if (StringUtils.hasText(sourceKey)
-							&& (!StorageObjectKeys.isVerified(sourceKey)
-							|| StorageObjectKeys.isProtected(sourceKey))) {
+							&& !validVerifiedSource(asset)) {
 						throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
 					}
 					return new HlsCleanupTarget(
@@ -350,21 +375,20 @@ public class MediaAssetStatusUpdater {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 	}
 
-	private static void validateOwnedPublicVideo(
+	private static void validateOwnedVideo(
 			MediaAsset asset,
 			UUID attemptToken,
 			LocalDateTime now
 	) {
 		if (asset.getStatus() != MediaStatus.PROCESSING
 				|| asset.getKind() != MediaKind.VIDEO
-				|| asset.getVisibility() != MediaVisibility.PUBLIC
+				|| !supportedVideoVisibility(asset)
 				|| !attemptToken.equals(asset.getTranscodeAttemptToken())
 				|| asset.getTranscodeLeaseUntil() == null
 				|| !asset.getTranscodeLeaseUntil().isAfter(now)
 				|| asset.getTranscodeAttemptDeadline() == null
 				|| !asset.getTranscodeAttemptDeadline().isAfter(now)
-				|| !StorageObjectKeys.isVerified(asset.getStorageKey())
-				|| StorageObjectKeys.isProtected(asset.getStorageKey())) {
+				|| !validVerifiedSource(asset)) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
 		}
 	}

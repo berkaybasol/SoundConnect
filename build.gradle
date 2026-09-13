@@ -127,7 +127,7 @@ test {
 
 tasks.named('test') {
     useJUnitPlatform {
-        excludeTags 'analytics-load'
+        excludeTags 'analytics-load', 'feed-load'
     }
 }
 
@@ -143,6 +143,21 @@ tasks.register('venueAnalyticsLoadTest', Test) {
     }
     maxParallelForks = 1
     maxHeapSize = '1g'
+    jvmArgs '-XX:+EnableDynamicAgentLoading'
+    outputs.upToDateWhen { false }
+}
+
+// Explicit development regression measurement. Fixtures and schema exist only in
+// a fresh Testcontainers database; no application configuration or DB is loaded.
+tasks.register('musicianFeedLoadTest', Test) {
+    group = 'verification'
+    description = 'Measures real musician-feed providers, service and replay on disposable PostgreSQL.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'feed-load' }
+    systemProperty 'feedLoad.diagnosticsOnly', project.findProperty('feedLoadDiagnosticsOnly') ?: 'false'
+    maxParallelForks = 1
+    maxHeapSize = '2g'
     jvmArgs '-XX:+EnableDynamicAgentLoading'
     outputs.upToDateWhen { false }
 }

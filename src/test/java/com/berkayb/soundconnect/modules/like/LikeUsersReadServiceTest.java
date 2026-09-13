@@ -60,7 +60,8 @@ class LikeUsersReadServiceTest {
     void hiddenTargetCannotBeUsedToEnumerateLikes(EngagementTargetType type) {
         when(likes.lockActiveActor(viewer)).thenReturn(Optional.of(viewer));
         var failure = new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
-        if (type == EngagementTargetType.COMMENT) doThrow(failure).when(comments).requireLikeable(target, false);
+        if (type == EngagementTargetType.COMMENT) doThrow(failure).when(comments).requireLikeable(viewer, target, false);
+        else if (type == EngagementTargetType.ANNOUNCEMENT) doThrow(failure).when(targets).validateExists(viewer,type,target);
         else doThrow(failure).when(targets).validateExists(type, target);
         assertThatThrownBy(() -> service.get(viewer, type, target, 20, null)).isSameAs(failure);
         verifyNoInteractions(repository, identities);

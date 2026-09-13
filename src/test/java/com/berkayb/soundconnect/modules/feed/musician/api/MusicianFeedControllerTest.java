@@ -20,6 +20,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import com.berkayb.soundconnect.shared.exception.ServiceUnavailableRetryException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -87,6 +88,21 @@ class MusicianFeedControllerTest {
         InOrder boundaryOrder = inOrder(rateLimitGuard, service);
         boundaryOrder.verify(rateLimitGuard).checkPage(userId, false);
         boundaryOrder.verify(service).get(userId, 20, null, List.of("TRACK", "COLLAB"));
+    }
+
+    @Test
+    void exhaustedProviderCapacityReturnsTheDomain503EnvelopeThroughControllerAdvice() throws Exception {
+        UUID userId = authenticate("ROLE_MUSICIAN");
+        when(service.get(userId, 20, null, List.of("TRACK")))
+                .thenThrow(new SoundConnectException(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+
+        mvc.perform(get("/api/v1/feed/musician").param("limit", "20")
+                        .param("supportedItemTypes", "TRACK"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(1324))
+                .andExpect(jsonPath("$.message").value(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE.getMessage()))
+                .andExpect(jsonPath("$.data").doesNotExist());
+        verify(rateLimitGuard).checkPage(userId, false);
     }
 
     @Test

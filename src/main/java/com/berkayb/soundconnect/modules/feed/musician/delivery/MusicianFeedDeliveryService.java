@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedPropertie
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -47,15 +48,31 @@ public class MusicianFeedDeliveryService {
     private final MusicianFeedDeliveryTokenCodec tokens;
     private final MusicianFeedProperties properties;
     private final ObjectMapper objectMapper;
+    private final MusicianFeedReplayVisibilityGuard replayVisibility;
+    private final MusicianFeedDeliveryLookup lookup;
 
     public MusicianFeedDeliveryService(NamedParameterJdbcTemplate jdbc,
                                        MusicianFeedDeliveryTokenCodec tokens,
                                        MusicianFeedProperties properties,
-                                       ObjectMapper objectMapper) {
+                                       ObjectMapper objectMapper,
+                                       MusicianFeedReplayVisibilityGuard replayVisibility) {
+        this(jdbc, tokens, properties, objectMapper, replayVisibility,
+                new MusicianFeedDeliveryLookup(jdbc, tokens));
+    }
+
+    @Autowired
+    public MusicianFeedDeliveryService(NamedParameterJdbcTemplate jdbc,
+                                       MusicianFeedDeliveryTokenCodec tokens,
+                                       MusicianFeedProperties properties,
+                                       ObjectMapper objectMapper,
+                                       MusicianFeedReplayVisibilityGuard replayVisibility,
+                                       MusicianFeedDeliveryLookup lookup) {
         this.jdbc = jdbc;
         this.tokens = tokens;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.replayVisibility = replayVisibility;
+        this.lookup = lookup;
     }
 
     @Transactional(readOnly = true)
@@ -84,8 +101,13 @@ public class MusicianFeedDeliveryService {
         long promotionCount = session.stream().filter(value -> value.campaignId() != null).count();
         long organicCount = 0;
         long organicAtLastPromotion = 0;
+        long normalAtLastAnnouncement = 0;
+        Set<UUID> announcementIds = new HashSet<>();
         for (SnapshotDelivery delivered : session) {
-            if (delivered.campaignId() == null) organicCount++;
+            if (delivered.itemType() == MusicianFeedItemType.ANNOUNCEMENT) {
+                announcementIds.add(delivered.targetId());
+                normalAtLastAnnouncement = organicCount;
+            } else if (delivered.campaignId() == null) organicCount++;
             else organicAtLastPromotion = organicCount;
         }
         boolean lastPromoted = !session.isEmpty() && session.getLast().campaignId() != null;
@@ -99,7 +121,7 @@ public class MusicianFeedDeliveryService {
                 sessionCampaigns, next, promotionCount, organicAtLastPromotion, lastPromoted,
                 session.isEmpty() ? null : session.getLast().itemType(),
                 session.isEmpty() ? null : session.getLast().lane(),
-                overthinkingShareCount, tableGroupShareCount);
+                overthinkingShareCount, tableGroupShareCount, announcementIds, organicCount, normalAtLastAnnouncement);
     }
 
     private SnapshotDelivery mapSnapshot(ResultSet row, int index) throws SQLException {
@@ -144,7 +166,8 @@ public class MusicianFeedDeliveryService {
         return new IllegalStateException("Corrupt musician-feed delivery snapshot row", cause);
     }
 
-    @Transactional(readOnly = true)
+    // Canonical source privacy resolution takes shared identity locks on PostgreSQL.
+    @Transactional
     public MusicianFeedPageResponse requireReplay(
             UUID viewerId,
             UUID sessionId,
@@ -158,7 +181,7 @@ public class MusicianFeedDeliveryService {
                 requestedLimit, canonicalTypes(supportedTypes), now).orElseThrow(this::invalid);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Optional<MusicianFeedPageResponse> replay(
             UUID viewerId,
             UUID sessionId,
@@ -251,7 +274,7 @@ public class MusicianFeedDeliveryService {
                 select * from tbl_musician_feed_delivery
                 where viewer_user_id=:viewerId and feed_session_id=:sessionId and id in (:ids)
                 """, new MapSqlParameterSource().addValue("viewerId", viewerId)
-                .addValue("sessionId", sessionId).addValue("ids", ids), this::map);
+                .addValue("sessionId", sessionId).addValue("ids", ids), lookup::map);
         Map<String, MusicianFeedDeliveredItem> byItem = rows.stream().collect(Collectors.toMap(
                 MusicianFeedDeliveredItem::itemId, value -> value));
         if (byItem.size() != items.size()) throw new IllegalStateException("Incomplete musician-feed delivery batch");
@@ -330,35 +353,7 @@ public class MusicianFeedDeliveryService {
 
     @Transactional(readOnly = true)
     public MusicianFeedDeliveredItem require(String token, UUID viewerId, String expectedItemId, Instant now) {
-        MusicianFeedDeliveryTokenCodec.Claims claims = tokens.decode(token, viewerId, now);
-        List<MusicianFeedDeliveredItem> rows = jdbc.query("""
-                select * from tbl_musician_feed_delivery
-                where id=:id and viewer_user_id=:viewerId and expires_at>:now
-                """, new MapSqlParameterSource().addValue("id", claims.deliveryId())
-                .addValue("viewerId", viewerId).addValue("now", Timestamp.from(now)), this::map);
-        if (rows.size() != 1) throw invalid();
-        MusicianFeedDeliveredItem row = rows.getFirst();
-        validateClaims(claims, row, expectedItemId);
-        return row;
-    }
-
-    private MusicianFeedDeliveredItem map(ResultSet row, int index) throws SQLException {
-        String capabilities = row.getString("feedback_capabilities");
-        EnumSet<MusicianFeedFeedbackAction> parsed = EnumSet.noneOf(MusicianFeedFeedbackAction.class);
-        if (capabilities != null && !capabilities.isBlank()) {
-            for (String value : capabilities.split(",")) parsed.add(MusicianFeedFeedbackAction.valueOf(value));
-        }
-        return new MusicianFeedDeliveredItem(row.getObject("id", UUID.class),
-                row.getObject("viewer_user_id", UUID.class), row.getObject("feed_session_id", UUID.class),
-                row.getString("item_id"), MusicianFeedItemType.valueOf(row.getString("item_type")),
-                row.getString("target_type"), row.getObject("target_id", UUID.class),
-                row.getString("author_profile_type"), row.getObject("author_profile_id", UUID.class),
-                row.getString("reason_code"), Set.copyOf(parsed), row.getInt("schema_version"),
-                row.getString("algorithm_version"), row.getLong("absolute_position"),
-                row.getObject("campaign_id", UUID.class), row.getString("evidence_json"),
-                row.getTimestamp("delivered_at").toInstant(), row.getTimestamp("expires_at").toInstant(),
-                row.getTimestamp("purge_after").toInstant(),
-                MusicianFeedLane.valueOf(row.getString("feed_lane")));
+        return lookup.require(token, viewerId, expectedItemId, now);
     }
 
     private Optional<MusicianFeedPageResponse> findReplay(
@@ -389,16 +384,22 @@ public class MusicianFeedDeliveryService {
                 || !Objects.equals(row.requestFingerprint(), requestFingerprint)
                 || row.requestedLimit() != requestedLimit
                 || !Objects.equals(row.supportedTypes(), supportedTypes)) throw invalid();
+        MusicianFeedPageResponse response;
         try {
-            MusicianFeedPageResponse response = objectMapper.readValue(
+            response = objectMapper.readValue(
                     row.responseJson(), MusicianFeedPageResponse.class);
             validateReplayResponse(response, viewerId, sessionId, requestPosition, requestedLimit, row, now);
-            return Optional.of(response);
         } catch (SoundConnectException known) {
             throw known;
         } catch (Exception corrupt) {
             throw invalid();
         }
+        // Delivery tokens prove that this viewer received this page, not
+        // that its content remains public. Preserve the exact response
+        // only while its publications and exposed identities are readable.
+        // Keep dependency failures distinct from corrupt stored JSON.
+        replayVisibility.requireVisible(viewerId, response, now);
+        return Optional.of(response);
     }
 
     private void validateReplayResponse(
@@ -441,7 +442,7 @@ public class MusicianFeedDeliveryService {
                       and id in (:ids) and expires_at>:now
                     """, new MapSqlParameterSource().addValue("viewerId", viewerId)
                     .addValue("sessionId", sessionId).addValue("ids", deliveryIds)
-                    .addValue("now", Timestamp.from(now)), this::map);
+                    .addValue("now", Timestamp.from(now)), lookup::map);
             if (deliveries.size() != claims.size()) throw invalid();
             Map<UUID, MusicianFeedDeliveredItem> byId = deliveries.stream().collect(Collectors.toMap(
                     MusicianFeedDeliveredItem::deliveryId, value -> value));
@@ -449,22 +450,9 @@ public class MusicianFeedDeliveryService {
                 MusicianFeedDeliveryTokenCodec.Claims decoded = claims.get(index);
                 MusicianFeedDeliveredItem delivery = byId.get(decoded.deliveryId());
                 if (delivery == null) throw invalid();
-                validateClaims(decoded, delivery, response.items().get(index).id());
+                lookup.validateClaims(decoded, delivery, response.items().get(index).id());
             }
         }
-    }
-
-    private void validateClaims(MusicianFeedDeliveryTokenCodec.Claims claims,
-                                MusicianFeedDeliveredItem row,
-                                String expectedItemId) {
-        if ((expectedItemId != null && !expectedItemId.equals(row.itemId()))
-                || !claims.feedSessionId().equals(row.feedSessionId())
-                || !claims.itemId().equals(row.itemId())
-                || !claims.targetType().equals(row.targetType())
-                || !claims.targetId().equals(row.targetId())
-                || claims.schemaVersion() != row.schemaVersion()
-                || !claims.algorithmVersion().equals(row.algorithmVersion())
-                || claims.absolutePosition() != row.absolutePosition()) throw invalid();
     }
 
     private String serializeReplay(MusicianFeedPageResponse response) {

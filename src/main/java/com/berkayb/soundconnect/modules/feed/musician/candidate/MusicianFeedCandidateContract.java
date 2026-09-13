@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.candidate;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementResponse;
 
 import java.net.URI;
 import java.util.*;
@@ -24,7 +25,7 @@ public final class MusicianFeedCandidateContract {
             "MUSICIAN", "LISTENER", "STUDIO", "VENUE", "BAND");
     private static final Set<String> TARGET_TYPES = Set.of(
             "MEDIA", "COLLAB", "EVENT", "EVENT_POST", "OVERTHINKING_PROFILE_SHARE",
-            "TABLE_GROUP_POST", "PROFILE", "STANDALONE");
+            "TABLE_GROUP_POST", "PROFILE", "STANDALONE", "ANNOUNCEMENT");
     private static final Set<MusicianFeedFeedbackAction> ITEM_FEEDBACK = Set.of(
             MusicianFeedFeedbackAction.HIDE,
             MusicianFeedFeedbackAction.SHOW_LESS,
@@ -87,10 +88,22 @@ public final class MusicianFeedCandidateContract {
         if ((candidate.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE
                 || candidate.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
                 && candidate.lane() != MusicianFeedLane.MODULE_SHARE) throw invalid(providerId);
+        if (candidate.type() == MusicianFeedItemType.ANNOUNCEMENT) {
+            var placement = candidate.announcementPlacement();
+            if (candidate.lane() != MusicianFeedLane.SYSTEM || placement == null
+                    || !candidate.target().id().equals(placement.id()) || placement.gap() < 1 || placement.gap() > 8
+                    || !"ANNOUNCEMENT".equals(candidate.target().type())
+                    || !candidate.itemId().equals("ANNOUNCEMENT:" + candidate.target().id())
+                    || candidate.author() != null || candidate.ownedByViewer()
+                    || candidate.reason().code() != MusicianFeedReasonCode.PLATFORM_ANNOUNCEMENT
+                    || !candidate.reason().actors().isEmpty() || candidate.reason().secondaryActorCount() != 0
+                    || !candidate.feedbackCapabilities().equals(List.of(MusicianFeedFeedbackAction.HIDE))) throw invalid(providerId);
+        } else if (candidate.announcementPlacement() != null) throw invalid(providerId);
     }
 
     private static boolean requiresAuthor(MusicianFeedItemType type) {
         return type != MusicianFeedItemType.PROFILE_COMPLETION
+                && type != MusicianFeedItemType.ANNOUNCEMENT
                 && type != MusicianFeedItemType.SPONSORED;
     }
 
@@ -128,9 +141,11 @@ public final class MusicianFeedCandidateContract {
                                           boolean promotionSource) {
         MusicianFeedItemResponse.Promotion promotion = candidate.promotion();
         if (promotionSource != (promotion != null)) throw invalid(providerId);
+        if (candidate.type() == MusicianFeedItemType.ANNOUNCEMENT && promotion != null) throw invalid(providerId);
         if (promotion == null) {
             if (candidate.type() == MusicianFeedItemType.SPONSORED
-                    || isPromotionReason(candidate.reason().code())) throw invalid(providerId);
+                    || (isPromotionReason(candidate.reason().code())
+                    && candidate.type() != MusicianFeedItemType.ANNOUNCEMENT)) throw invalid(providerId);
             return;
         }
         String expectedDisclosure = switch (candidate.reason().code()) {
@@ -178,6 +193,12 @@ public final class MusicianFeedCandidateContract {
                     validActivity(providerId, type, payload, supportedTypes);
             case PROFILE_COMPLETION -> payload instanceof MusicianFeedPayloads.Completion value
                     && validCompletion(value);
+            case ANNOUNCEMENT -> payload instanceof AnnouncementResponse value
+                    && value.id() != null && value.version() >= 0 && text(value.title(), 160)
+                    && text(value.body(), 10_000) && value.firstPublishedAt() != null
+                    && value.engagement() != null && value.engagement().likeCount() >= 0
+                    && value.engagement().commentCount() >= 0
+                    && (value.media() == null || (value.media().assetId() != null && value.media().kind() != null));
             case SPONSORED -> payload instanceof MusicianFeedPayloads.SponsoredStandalone value
                     && text(value.title(), 255) && text(value.body(), 2_000)
                     && optionalText(value.mediaUrl(), MAX_URL)
@@ -203,6 +224,7 @@ public final class MusicianFeedCandidateContract {
                 || value.targetItemType() == MusicianFeedItemType.ACTIVITY_LIKE
                 || value.targetItemType() == MusicianFeedItemType.ACTIVITY_COMMENT
                 || value.targetItemType() == MusicianFeedItemType.PROFILE_COMPLETION
+                || value.targetItemType() == MusicianFeedItemType.ANNOUNCEMENT
                 || value.targetItemType() == MusicianFeedItemType.SPONSORED) return false;
         try {
             validatePayload(providerId, value.targetItemType(), value.targetPayload(), supportedTypes);
@@ -235,6 +257,7 @@ public final class MusicianFeedCandidateContract {
             case OVERTHINKING_PROFILE_SHARE, TABLEGROUP_PROFILE_SHARE ->
                     ((MusicianFeedPayloads.ProfileShare) payload).shareId();
             case PROFILE -> ((MusicianFeedPayloads.Profile) payload).profileId();
+            case ANNOUNCEMENT -> ((AnnouncementResponse) payload).id();
             case ACTIVITY_FOLLOW, ACTIVITY_LIKE, ACTIVITY_COMMENT -> payloadTarget(
                     ((MusicianFeedPayloads.Activity) payload).targetItemType(),
                     ((MusicianFeedPayloads.Activity) payload).targetPayload());

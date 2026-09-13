@@ -107,7 +107,9 @@ CloudFront, ACL, bucket-policy, or bucket-administration permission.
       "Action": "s3:GetObject",
       "Resource": [
         "arn:aws:s3:::PRIVATE_BUCKET/verified/media/*/attempts/*/source.*",
-        "arn:aws:s3:::PRIVATE_BUCKET/verified/media/*/source.*"
+        "arn:aws:s3:::PRIVATE_BUCKET/verified/media/*/source.*",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/attempts/*/source.*",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/source.*"
       ]
     },
     {
@@ -126,7 +128,9 @@ CloudFront, ACL, bucket-policy, or bucket-administration permission.
       "Resource": [
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/hls/*",
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/attempts/*/thumbnail.jpg",
-        "arn:aws:s3:::PUBLIC_BUCKET/media/*/thumbnail.jpg"
+        "arn:aws:s3:::PUBLIC_BUCKET/media/*/thumbnail.jpg",
+        "arn:aws:s3:::PRIVATE_BUCKET/media/*/hls/video.mp4",
+        "arn:aws:s3:::PRIVATE_BUCKET/media/*/hls/thumbnail.jpg"
       ]
     },
     {
@@ -141,6 +145,13 @@ CloudFront, ACL, bucket-policy, or bucket-administration permission.
   ]
 }
 ```
+
+The private source/output grants support promotion-backed announcement video.
+`protected/` is a logical routing prefix removed by `StorageObjectKeys.physicalKey`;
+these ARNs therefore name physical keys in the private bucket. The worker still
+does not need private-bucket listing or deletion: API cleanup owns abandoned
+derivatives. Keep both output filenames private even after publication; only the
+API issues short-lived signed GETs after current announcement authorization.
 
 If SSE-KMS is enabled, add only the corresponding key's decrypt permission for
 source reads and encrypt/data-key permission for generated public objects.
@@ -189,6 +200,41 @@ stop/drain the worker before revoking its identities; queued rows remain the
 durable source of truth.
 
 ## Verification
+
+The ordinary `local` API profile runs both the API and native video/image workers
+in one Java process by default. That existing mode supports private announcement
+video through the same `VideoHlsWorkflow`; keep the Compose worker stopped and
+provide absolute `FFMPEG_BINARY`/`FFPROBE_BINARY` paths when preserving this setup.
+Only the API JAR is needed. This development mode is distinct from production,
+where native decoding runs in the dedicated worker artifact/container.
+
+For a bounded restart of an existing database, build the selected artifact(s),
+apply only the reviewed feature migrations while API/worker writers are stopped,
+then start the new artifact(s). `dev.cmd boot`, `idea`, and `up` run the entire
+historical migration list, so they are unsuitable when only a specific feature
+rollout is intended. Keep the existing PostgreSQL, RabbitMQ, and Redis containers
+and volumes running.
+
+If testing the split runtime locally, build `mediaWorkerBootJar` and run it as a
+separate Java 21 process. Give it a dedicated
+working directory without `.env.local`: the shared `application.yml` otherwise
+imports that API secret file relative to the working directory. Supply only the
+existing worker DB/Rabbit credential files and worker-namespaced storage settings
+through the child environment, point DB/Rabbit hosts to their existing local
+published ports, select `media-worker` without the production-only TLS profile,
+and set absolute `FFMPEG_BINARY`, `FFPROBE_BINARY`, and
+`SOUNDCONNECT_MEDIA_WORKER_HEALTH_FILE` paths. Use an explicit local temporary
+directory via `-Djava.io.tmpdir` and retain the existing resource limits. This
+local process arrangement does not provide the production container's OS/network
+isolation.
+
+Start the local API with native video/image workers disabled and dispatch enabled
+when the separate worker is running. Keep `spring.jpa.hibernate.ddl-auto=validate`
+for every started artifact after the reviewed migrations, so startup cannot silently
+alter unrelated schema. Preserve existing application credentials and analytics
+identity secrets across the restart. Verify API readiness before checking an
+uploaded private video; the split runtime also requires the dedicated worker's
+fresh DB/Rabbit readiness marker.
 
 ```powershell
 .\gradlew.bat test --tests "com.berkayb.soundconnectworker.*" `

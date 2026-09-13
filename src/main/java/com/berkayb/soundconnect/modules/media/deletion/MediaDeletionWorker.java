@@ -105,7 +105,9 @@ public class MediaDeletionWorker {
 		}
 		if (target.kind() == MediaKind.VIDEO) {
 			try {
-				storageClient.deleteFolder(mediaPolicy.buildHlsPrefix(target.assetId()));
+				String prefix = mediaPolicy.buildHlsPrefix(target.assetId());
+                storageClient.deleteFolder(target.visibility() == MediaVisibility.PRIVATE
+                        ? StorageObjectKeys.protectedKey(prefix) : prefix);
 			} catch (RuntimeException failure) {
 				deletionFailure = combine(deletionFailure, failure);
 			}

@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.feed.musician.mixer;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemResponse;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
+import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
 import com.berkayb.soundconnect.modules.feed.musician.cursor.MusicianFeedCursorState;
@@ -132,8 +134,27 @@ public class MusicianFeedMixer {
             long deliveredOverthinkingShareCount,
             long deliveredTableGroupShareCount
     ) {
+        return mix(viewerUserId, anchor, pageSize, supportedTypes, feedback, organicCandidates,
+                sponsorCandidates, after, deliveredOrganicCount, deliveredPromotionCount, lastItemPromoted,
+                lastItemType, lastItemLane, organicCountAtLastPromotion, deliveredOverthinkingShareCount,
+                deliveredTableGroupShareCount, MusicianFeedAnnouncementPlan.EMPTY, null);
+    }
+
+    public MixedPage mix(UUID viewerUserId, Instant anchor, int pageSize,
+                         Set<MusicianFeedItemType> supportedTypes, MusicianFeedFeedbackSnapshot feedback,
+                         Collection<MusicianFeedCandidate> organicCandidates, Collection<MusicianFeedCandidate> sponsorCandidates,
+                         MusicianFeedCursorState.CursorPosition after, long deliveredOrganicCount,
+                         long deliveredPromotionCount, boolean lastItemPromoted, MusicianFeedItemType lastItemType,
+                         MusicianFeedLane lastItemLane, long organicCountAtLastPromotion,
+                         long deliveredOverthinkingShareCount, long deliveredTableGroupShareCount,
+                         MusicianFeedAnnouncementPlan announcementPlan, MusicianFeedDeliverySnapshot deliveryState) {
+        Map<UUID, ScoredCandidate> announcements = new LinkedHashMap<>();
+        for (ScoredCandidate value : scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
+                organicCandidates.stream().filter(candidate -> candidate != null && candidate.type() == MusicianFeedItemType.ANNOUNCEMENT).toList(), false)) {
+            announcements.put(value.candidate().target().id(), value);
+        }
         List<ScoredCandidate> organic = scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
-                organicCandidates, false);
+                organicCandidates.stream().filter(candidate -> candidate != null && candidate.type() != MusicianFeedItemType.ANNOUNCEMENT).toList(), false);
         organic.sort(SCORED_ORDER);
         // Continuation is session-ledger based. A single global boundary cannot
         // represent quota-selected lanes without skipping unconsumed higher lanes.
@@ -145,15 +166,18 @@ public class MusicianFeedMixer {
                 deliveredOverthinkingShareCount, deliveredTableGroupShareCount);
         List<ScoredCandidate> diversePage = diversify(basePage);
         MergeResult merged = mergePromotions(viewerUserId, anchor, diversePage, sponsors, pageSize, deliveredOrganicCount,
-                deliveredPromotionCount, lastItemPromoted, organicCountAtLastPromotion);
+                deliveredPromotionCount, lastItemPromoted, organicCountAtLastPromotion,
+                announcements, announcementPlan, deliveryState, lastItemType);
         MusicianFeedCursorState.CursorPosition boundary = merged.lastDelivered() == null
                 ? null : position(merged.lastDelivered());
 
-        boolean organicHasMore = merged.deferredOrganic() > 0
-                || organic.subList(Math.min(merged.organicExamined(), organic.size()), organic.size()).stream()
+        // Lane quotas and diversity can select a non-prefix of the ranked pool.
+        // Only delivered identities prove consumption; a selected-list index cannot.
+        boolean organicHasMore = organic.stream()
                 .anyMatch(value -> isEligibleContinuation(value.candidate(), merged));
         boolean sponsorHasMore = promotionCanBeServedLater(sponsors, merged, organic);
-        boolean hasMore = !merged.items().isEmpty() && (organicHasMore || sponsorHasMore);
+        boolean announcementHasMore = announcementCanBeServedLater(merged, organic);
+        boolean hasMore = !merged.items().isEmpty() && (organicHasMore || sponsorHasMore || announcementHasMore);
         return new MixedPage(merged.items(), merged.itemLanes(), boundary, hasMore,
                 deliveredOrganicCount + merged.organicEmitted());
     }
@@ -400,7 +424,11 @@ public class MusicianFeedMixer {
             long deliveredOrganic,
             long deliveredPromotions,
             boolean previousWasPromotion,
-            long organicCountAtLastPromotion
+            long organicCountAtLastPromotion,
+            Map<UUID, ScoredCandidate> announcements,
+            MusicianFeedAnnouncementPlan announcementPlan,
+            MusicianFeedDeliverySnapshot deliveryState,
+            MusicianFeedItemType previousItemType
     ) {
         List<MusicianFeedItemResponse> output = new ArrayList<>(pageSize);
         List<MusicianFeedLane> outputLanes = new ArrayList<>(pageSize);
@@ -411,6 +439,12 @@ public class MusicianFeedMixer {
         long nextPromotionAt = organicCountAtLastPromotion
                 + MusicianFeedPromotionCadence.organicGap(viewerId, anchor, deliveredPromotions);
         boolean lastWasPromotion = previousWasPromotion;
+        boolean lastWasAnnouncement = previousItemType == MusicianFeedItemType.ANNOUNCEMENT;
+        Set<UUID> announcementIds = new HashSet<>(deliveryState == null ? Set.of() : deliveryState.deliveredAnnouncementIds());
+        long normalAtLastAnnouncement = deliveryState == null ? 0 : deliveryState.normalCountAtLastAnnouncement();
+        List<MusicianFeedAnnouncementPlan.Entry> remainingAnnouncements = announcementPlan.entries().stream()
+                .filter(entry -> !announcementIds.contains(entry.id()) && announcements.containsKey(entry.id())).toList();
+        int announcementIndex = 0;
         Set<String> deliveredTargets = new HashSet<>();
         Set<String> promotedTargets = new HashSet<>();
         Set<String> emittedAggregationKeys = new HashSet<>();
@@ -419,11 +453,31 @@ public class MusicianFeedMixer {
         Deque<ScoredCandidate> deferredNativeTargets = new ArrayDeque<>();
         ScoredCandidate boundaryCandidate = null;
         while (output.size() < pageSize && (organicIndex < organic.size()
-                || !deferredNativeTargets.isEmpty() || sponsorIndex < sponsors.size())) {
+                || !deferredNativeTargets.isEmpty() || sponsorIndex < sponsors.size()
+                || announcementIndex < remainingAnnouncements.size())) {
+            if (announcementIndex < remainingAnnouncements.size()
+                    && announcementIds.size() < MusicianFeedAnnouncementPlan.MAX_ANNOUNCEMENTS
+                    && !lastWasPromotion && !lastWasAnnouncement && organicSeen >= 1) {
+                var entry = remainingAnnouncements.get(announcementIndex);
+                long threshold = announcementThreshold(entry, announcementIds.size(), normalAtLastAnnouncement);
+                if (organicSeen >= threshold) {
+                    ScoredCandidate announcement = announcements.get(entry.id());
+                    output.add(announcement.candidate().toResponse());
+                    outputLanes.add(MusicianFeedLane.SYSTEM);
+                    deliveredTargets.add(targetKey(announcement.candidate()));
+                    emittedAggregationKeys.add(aggregationKey(announcement.candidate()));
+                    announcementIds.add(entry.id());
+                    announcementIndex++;
+                    normalAtLastAnnouncement = organicSeen;
+                    lastWasAnnouncement = true;
+                    boundaryCandidate = weaker(boundaryCandidate, announcement);
+                    continue;
+                }
+            }
             boolean mayPromote = sponsorIndex < sponsors.size()
                     && organicSeen >= nextPromotionAt
                     && organicSeen >= 2
-                    && !lastWasPromotion;
+                    && !lastWasPromotion && !lastWasAnnouncement;
             if (mayPromote) {
                 ScoredCandidate sponsor = null;
                 while (sponsorIndex < sponsors.size() && sponsor == null) {
@@ -437,6 +491,7 @@ public class MusicianFeedMixer {
                     promotedTargets.add(targetKey(sponsor.candidate()));
                     boundaryCandidate = weaker(boundaryCandidate, sponsor);
                     lastWasPromotion = true;
+                    lastWasAnnouncement = false;
                     deliveredPromotions++;
                     nextPromotionAt = organicSeen
                             + MusicianFeedPromotionCadence.organicGap(viewerId, anchor, deliveredPromotions);
@@ -461,6 +516,7 @@ public class MusicianFeedMixer {
                 organicEmitted++;
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;
+                lastWasAnnouncement = false;
             } else if (!deferredNativeTargets.isEmpty()) {
                 ScoredCandidate candidate = deferredNativeTargets.removeFirst();
                 if (promotedTargets.contains(targetKey(candidate.candidate()))
@@ -472,18 +528,40 @@ public class MusicianFeedMixer {
                 organicEmitted++;
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;
+                lastWasAnnouncement = false;
             } else {
                 break;
             }
         }
-        deferredNativeTargets.removeIf(value -> promotedTargets.contains(targetKey(value.candidate())));
-        return new MergeResult(List.copyOf(output), List.copyOf(outputLanes), organicIndex,
-                deferredNativeTargets.size(), sponsorIndex, organicEmitted, organicSeen,
-                nextPromotionAt, lastWasPromotion, Set.copyOf(deliveredTargets),
-                Set.copyOf(promotedTargets), boundaryCandidate);
+        Set<String> deliveredItemIds = output.stream().map(MusicianFeedItemResponse::id)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        boolean announcementRemains = announcementIndex < remainingAnnouncements.size()
+                && announcementIds.size() < MusicianFeedAnnouncementPlan.MAX_ANNOUNCEMENTS;
+        long nextAnnouncementAt = announcementRemains
+                ? announcementThreshold(remainingAnnouncements.get(announcementIndex), announcementIds.size(), normalAtLastAnnouncement)
+                : Long.MAX_VALUE;
+        return new MergeResult(List.copyOf(output), List.copyOf(outputLanes),
+                sponsorIndex, organicEmitted, organicSeen,
+                nextPromotionAt, lastWasPromotion, deliveredItemIds, Set.copyOf(deliveredTargets),
+                Set.copyOf(promotedTargets), boundaryCandidate, announcementRemains, nextAnnouncementAt, lastWasAnnouncement);
+    }
+
+    private static long announcementThreshold(MusicianFeedAnnouncementPlan.Entry entry, int deliveredCount,
+                                                long normalAtLastAnnouncement) {
+        return deliveredCount == 0 ? entry.gap()
+                : normalAtLastAnnouncement + Math.max(MusicianFeedAnnouncementPlan.MIN_NORMAL_GAP, entry.gap());
+    }
+
+    private boolean announcementCanBeServedLater(MergeResult merged, List<ScoredCandidate> organic) {
+        if (!merged.announcementRemains()) return false;
+        long requiredNormal = Math.max(0L, merged.nextAnnouncementAt() - merged.organicSeen());
+        requiredNormal = Math.max(requiredNormal, Math.max(0L, 1L - merged.organicSeen()));
+        if (merged.lastWasPromotion() || merged.lastWasAnnouncement()) requiredNormal = Math.max(1L, requiredNormal);
+        return organic.stream().filter(value -> isEligibleContinuation(value.candidate(), merged)).count() >= requiredNormal;
     }
 
     private boolean isEligibleContinuation(MusicianFeedCandidate candidate, MergeResult merged) {
+        if (merged.deliveredItemIds().contains(candidate.itemId())) return false;
         String target = targetKey(candidate);
         if (merged.promotedTargets().contains(target)) return false;
         return candidate.type() == MusicianFeedItemType.ACTIVITY_COMMENT
@@ -502,9 +580,8 @@ public class MusicianFeedMixer {
         if (!sponsorRemains) return false;
         long requiredOrganic = Math.max(0L, merged.nextPromotionAt() - merged.organicSeen());
         requiredOrganic = Math.max(requiredOrganic, Math.max(0L, 2L - merged.organicSeen()));
-        if (merged.lastWasPromotion()) requiredOrganic = Math.max(requiredOrganic, 1L);
-        long remainingOrganic = merged.deferredOrganic()
-                + organic.subList(Math.min(merged.organicExamined(), organic.size()), organic.size()).stream()
+        if (merged.lastWasPromotion() || merged.lastWasAnnouncement()) requiredOrganic = Math.max(requiredOrganic, 1L);
+        long remainingOrganic = organic.stream()
                 .filter(value -> isEligibleContinuation(value.candidate(), merged)).count();
         return remainingOrganic >= requiredOrganic;
     }
@@ -561,11 +638,12 @@ public class MusicianFeedMixer {
 
     private record ScoredCandidate(MusicianFeedCandidate candidate, long score) { }
     private record MergeResult(List<MusicianFeedItemResponse> items, List<MusicianFeedLane> itemLanes,
-                               int organicExamined, int deferredOrganic, int sponsorExamined,
+                               int sponsorExamined,
                                int organicEmitted, long organicSeen,
                                long nextPromotionAt, boolean lastWasPromotion,
-                               Set<String> deliveredTargets, Set<String> promotedTargets,
-                               ScoredCandidate lastDelivered) { }
+                               Set<String> deliveredItemIds, Set<String> deliveredTargets, Set<String> promotedTargets,
+                               ScoredCandidate lastDelivered, boolean announcementRemains,
+                               long nextAnnouncementAt, boolean lastWasAnnouncement) { }
 
     public record MixedPage(
             List<MusicianFeedItemResponse> items,

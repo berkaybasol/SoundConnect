@@ -73,6 +73,11 @@ import static org.awaitility.Awaitility.await;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TableGroupProfileSharePostgresTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore announcementAnalytics;
+
     @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("table_profile_shares").withUsername("table_test").withPassword("table_test").withReuse(false);
 

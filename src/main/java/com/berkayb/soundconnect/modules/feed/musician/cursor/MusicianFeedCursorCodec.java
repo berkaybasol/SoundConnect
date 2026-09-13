@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.cursor;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -49,12 +50,15 @@ public class MusicianFeedCursorCodec {
             MusicianFeedCursorState state,
             Set<MusicianFeedItemType> supportedTypes
     ) {
+        if (!state.announcementPlan().entries().isEmpty() && !supportedTypes.contains(MusicianFeedItemType.ANNOUNCEMENT)) {
+            throw invalidCursor();
+        }
         var after = state.after();
         CursorPayload payload = new CursorPayload(VERSION, schemaVersion, algorithmVersion,
                 state.viewerUserId(), state.feedSessionId(),
                 state.anchor().toEpochMilli(), after.rankKey(), after.occurredAt().toEpochMilli(),
                 after.itemId(), state.deliveredOrganicCount(), state.deliveredItemCount(),
-                state.rankingContextVersion(), supportedTypesHash(supportedTypes));
+                state.rankingContextVersion(), supportedTypesHash(supportedTypes), state.announcementPlan());
         try {
             byte[] body = objectMapper.writeValueAsBytes(payload);
             byte[] signature = sign(body);
@@ -107,6 +111,8 @@ public class MusicianFeedCursorCodec {
             byte[] suppliedSignature = DECODER.decode(parts[1]);
             if (!MessageDigest.isEqual(sign(body), suppliedSignature)) throw invalidCursor();
             CursorPayload payload = objectMapper.readValue(body, CursorPayload.class);
+            if (payload.announcementPlan() != null && !payload.announcementPlan().entries().isEmpty()
+                    && !supportedTypes.contains(MusicianFeedItemType.ANNOUNCEMENT)) throw invalidCursor();
             if (payload.version() != VERSION
                     || (enforceCurrentContract && (payload.schemaVersion() != schemaVersion
                         || !algorithmVersion.equals(payload.algorithmVersion())))
@@ -128,7 +134,7 @@ public class MusicianFeedCursorCodec {
                     new MusicianFeedCursorState.CursorPosition(payload.lastRankKey(),
                             Instant.ofEpochMilli(payload.lastOccurredAtEpochMillis()), payload.lastItemId()),
                     payload.deliveredOrganicCount(), payload.deliveredItemCount(),
-                    payload.rankingContextVersion());
+                    payload.rankingContextVersion(), payload.announcementPlan());
         } catch (SoundConnectException known) {
             throw known;
         } catch (Exception exception) {
@@ -175,6 +181,7 @@ public class MusicianFeedCursorCodec {
             long deliveredOrganicCount,
             long deliveredItemCount,
             String rankingContextVersion,
-            String supportedTypesHash
+            String supportedTypesHash,
+            MusicianFeedAnnouncementPlan announcementPlan
     ) { }
 }

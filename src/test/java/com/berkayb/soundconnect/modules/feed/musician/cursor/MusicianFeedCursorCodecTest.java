@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.cursor;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -12,6 +13,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import java.util.List;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -88,6 +94,47 @@ class MusicianFeedCursorCodecTest {
 
         assertThat(decoded).isEqualTo(state);
         assertInvalid(() -> codec.decode(token, viewer, TYPES, ANCHOR.plusSeconds(1), "changed-context"));
+    }
+
+    @Test
+    void announcementPlanSurvivesSingleNormalItemPagesAndReplayDecodeWithoutRedrawing() {
+        var plan = new MusicianFeedAnnouncementPlan(List.of(
+                new MusicianFeedAnnouncementPlan.Entry(UUID.randomUUID(), 2),
+                new MusicianFeedAnnouncementPlan.Entry(UUID.randomUUID(), 7),
+                new MusicianFeedAnnouncementPlan.Entry(UUID.randomUUID(), 4)));
+        var withPlan = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 1, 1, "frozen", plan);
+        var types = Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.ANNOUNCEMENT);
+        String token = codec.encode(withPlan, types);
+        assertThat(token.length()).isLessThan(4096);
+        assertThat(codec.decode(token, viewer, types, ANCHOR, "frozen")).isEqualTo(withPlan);
+        assertThat(codec.decodeForReplay(token, viewer, types, ANCHOR.plusSeconds(10)).announcementPlan()).isEqualTo(plan);
+        assertInvalid(() -> codec.encode(withPlan, TYPES));
+    }
+
+    @Test
+    void evenSignedInvalidAnnouncementPlanShapesAreRejectedAndOldMissingPlansStayEmpty() throws Exception {
+        String token = codec.encode(state, TYPES);
+        var mapper = new ObjectMapper();
+        var payload = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(Base64.getUrlDecoder().decode(token.split("\\.")[0]));
+        payload.remove("announcementPlan");
+        assertThat(codec.decode(sign(mapper.writeValueAsBytes(payload)), viewer, TYPES, ANCHOR).announcementPlan().entries()).isEmpty();
+        var types = Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.ANNOUNCEMENT);
+        var withPlan = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR, state.after(), 1, 1, "0",
+                new MusicianFeedAnnouncementPlan(List.of(new MusicianFeedAnnouncementPlan.Entry(UUID.randomUUID(), 1))));
+        payload = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(
+                Base64.getUrlDecoder().decode(codec.encode(withPlan, types).split("\\.")[0]));
+        var entries = (com.fasterxml.jackson.databind.node.ArrayNode) payload.path("announcementPlan").path("entries");
+        entries.add(entries.get(0).deepCopy());
+        String duplicated = sign(mapper.writeValueAsBytes(payload));
+        assertInvalid(() -> codec.decode(duplicated, viewer, types, ANCHOR));
+    }
+
+    private static String sign(byte[] body) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec("unit-test-musician-feed-secret-at-least-32-bytes".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(body) + "."
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(body));
     }
 
     private static void assertInvalid(Runnable call) {

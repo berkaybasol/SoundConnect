@@ -37,6 +37,7 @@ public class PromotionServiceImpl implements PromotionService{
 	
 	@Override
 	public PromotionResponseDto save(PromotionSaveRequestDto dto) {
+		requireLegacyPlacement(dto.placement());
 		log.info("promotion kaydi olusturuluyor. title={}, placement={}, type={}", dto.title(), dto.placement(), dto.type());
 		
 		validateDateRange(dto.startDate(), dto.endDate());
@@ -55,6 +56,7 @@ public class PromotionServiceImpl implements PromotionService{
 	
 	@Override
 	public PromotionResponseDto update(UUID id, PromotionUpdateRequestDto dto) {
+		requireLegacyPlacement(dto.placement());
 		log.info("promotion kaydi guncelleniyor. promotionId={}, placement={}, type={}",
 		         id, dto.placement(), dto.type());
 		
@@ -85,6 +87,7 @@ public class PromotionServiceImpl implements PromotionService{
 	@Override
 	@Transactional(readOnly = true)
 	public List<PromotionResponseDto> getDisplayableByPlacement(PromotionPlacement placement) {
+		requireLegacyPlacement(placement);
 		log.info("yayina uygun promotionlar getiriliyor. placement={}", placement);
 		
 		LocalDateTime now = LocalDateTime.now();
@@ -97,6 +100,7 @@ public class PromotionServiceImpl implements PromotionService{
 	@Override
 	@Transactional(readOnly = true)
 	public List<PromotionResponseDto> getAllByPlacement(PromotionPlacement placement) {
+		requireLegacyPlacement(placement);
 		log.info("placement alanina gore tum promotionlar getiriliyor. placement={}", placement);
 		
 		return promotionRepository.findAllByPlacementOrderByPriorityDescCreatedAtDesc(placement)
@@ -112,6 +116,7 @@ public class PromotionServiceImpl implements PromotionService{
 		
 		return promotionRepository.findAllByStatusOrderByCreatedAtDesc(status)
 				.stream()
+				.filter(value -> value.getPlacement() != PromotionPlacement.FEED)
 				.map(promotionMapper::toResponseDto)
 				.toList();
 	}
@@ -122,7 +127,8 @@ public class PromotionServiceImpl implements PromotionService{
 		log.info("type alanina gore promotionlar getiriliyor. type={}", type);
 		
 		return promotionRepository.findAllByTypeOrderByCreatedAtDesc(type)
-		                          .stream()
+				.stream()
+				.filter(value -> value.getPlacement() != PromotionPlacement.FEED)
 		                          .map(promotionMapper::toResponseDto)
 		                          .toList();
 	}
@@ -143,10 +149,17 @@ public class PromotionServiceImpl implements PromotionService{
 	//promotion kaydini id ile bulur
 	private Promotion findPromotionById(UUID id) {
 		return promotionRepository.findById(id)
+				.filter(value -> value.getPlacement() != PromotionPlacement.FEED)
 				.orElseThrow(() -> {
 					log.error("promotion kaydi bulunamadi. promotionId={}", id);
 					return new SoundConnectException(ErrorType.PROMOTION_NOT_FOUND);
 				});
+	}
+
+	private void requireLegacyPlacement(PromotionPlacement placement) {
+		if (placement == PromotionPlacement.FEED) {
+			throw new SoundConnectException(ErrorType.ANNOUNCEMENT_FORBIDDEN);
+		}
 	}
 	
 	// promotion icin kullanilacak media kaydini id ile bulur

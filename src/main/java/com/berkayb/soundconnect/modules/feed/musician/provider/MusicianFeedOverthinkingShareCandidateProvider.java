@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import static com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.*;
+
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPostResponseDto;
@@ -54,6 +56,7 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
               and not exists(select 1 from tbl_organizer_profile profile where profile.user_id=account.id)
               and not exists(select 1 from tbl_producer_profile profile where profile.user_id=account.id)
               and not exists(select 1 from tbl_venues owned_venue where owned_venue.owner_id=account.id)
+              and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
                     (feedback.action in ('HIDE','REPORT')
@@ -68,7 +71,8 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
                           and delivered.target_id=share.id)))
             order by share.published_at desc, share.id desc
             limit :limit
-            """;
+            """.replace("/* FEED_MODERATION */", allowed(item("'OVERTHINKING_PROFILE_SHARE:' || share.id::text"),
+                    target("'OVERTHINKING_PROFILE_SHARE'", "share.id")));
 
     private final NamedParameterJdbcTemplate jdbc;
     private final OverthinkingPostService posts;

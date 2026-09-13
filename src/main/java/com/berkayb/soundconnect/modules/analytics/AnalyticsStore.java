@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -21,9 +22,17 @@ public class AnalyticsStore {
     private final AnalyticsIdentity identity;
     private final TransactionTemplate write;
     private final TransactionTemplate read;
+    private final AnnouncementAnalyticsStore announcements;
 
     public AnalyticsStore(NamedParameterJdbcTemplate jdbc, PlatformTransactionManager manager, AnalyticsIdentity identity) {
+        this(jdbc, manager, identity, null);
+    }
+
+    @Autowired
+    public AnalyticsStore(NamedParameterJdbcTemplate jdbc, PlatformTransactionManager manager, AnalyticsIdentity identity,
+                          AnnouncementAnalyticsStore announcements) {
         this.jdbc = jdbc; this.identity = identity;
+        this.announcements = announcements;
         write = new TransactionTemplate(manager);
         write.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         write.setTimeout(5);
@@ -74,9 +83,15 @@ public class AnalyticsStore {
             var events = publicEvents(eventIds);
             var venues = publicVenues(venueIds);
             fresh.sort(Comparator.comparing(AnalyticsRequest.Observation::observedAt)
-                    .thenComparingInt(o -> o.type() == AnalyticsRequest.Type.EVENT_DETAIL_VIEW ? 0 : 1)
+                    .thenComparingInt(o -> o.type() == AnalyticsRequest.Type.EVENT_DETAIL_VIEW
+                            || o.type() == AnalyticsRequest.Type.ANNOUNCEMENT_VIDEO_START ? 0 : 1)
                     .thenComparing(o -> o.id().toString()));
             for (var observation : fresh) {
+                if (observation.type().announcement()) {
+                    if (announcements == null) throw AnalyticsIdentity.unavailable();
+                    announcements.observe(userId, observation, now);
+                    continue;
+                }
                 VenueContext venue;
                 if (observation.type() == AnalyticsRequest.Type.VENUE_PROFILE_VIEW) venue = venues.get(observation.venueId());
                 else venue = events.get(observation.eventId());
@@ -113,8 +128,10 @@ public class AnalyticsStore {
                             "expiry", Timestamp.from(now.plus(Duration.ofHours(26)))));
                 }
             }
-            jdbc.update("UPDATE tbl_venue_analytics_state SET tracking_started_at=:now WHERE singleton=true AND tracking_started_at IS NULL",
-                    Map.of("now", Timestamp.from(now)));
+            if (fresh.stream().anyMatch(observation -> !observation.type().announcement())) {
+                jdbc.update("UPDATE tbl_venue_analytics_state SET tracking_started_at=:now WHERE singleton=true AND tracking_started_at IS NULL",
+                        Map.of("now", Timestamp.from(now)));
+            }
         });
     }
 

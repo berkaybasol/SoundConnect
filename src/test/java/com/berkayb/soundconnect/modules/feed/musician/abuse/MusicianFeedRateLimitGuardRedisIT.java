@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.ArrayList;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 @Testcontainers(disabledWithoutDocker = true)
 @DataRedisTest
@@ -50,6 +52,8 @@ class MusicianFeedRateLimitGuardRedisIT {
         registry.add("app.feed.musician.rate-limit.shared-page-budget.refill-period", () -> "30s");
         registry.add("app.feed.musician.rate-limit.telemetry.burst-capacity", () -> 2);
         registry.add("app.feed.musician.rate-limit.telemetry.refill-period", () -> "30s");
+        registry.add("app.feed.musician.rate-limit.feedback.burst-capacity", () -> 2);
+        registry.add("app.feed.musician.rate-limit.feedback.refill-period", () -> "30s");
     }
 
     @Autowired StringRedisTemplate redisTemplate;
@@ -83,6 +87,76 @@ class MusicianFeedRateLimitGuardRedisIT {
         assertThatThrownBy(() -> guard.checkTelemetry(telemetryUser))
                 .isInstanceOf(RateLimitedException.class);
         assertThatCode(() -> guard.checkPage(telemetryUser, false)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void feedbackIsIndependentOfPageTelemetryAndOtherAccounts() {
+        UUID feedbackFirst = UUID.randomUUID();
+        guard.checkFeedback(feedbackFirst);
+        guard.checkFeedback(feedbackFirst);
+        assertThatThrownBy(() -> guard.checkFeedback(feedbackFirst))
+                .isInstanceOf(RateLimitedException.class);
+        assertThatCode(() -> {
+            guard.checkPage(feedbackFirst, false);
+            guard.checkTelemetry(feedbackFirst);
+        }).doesNotThrowAnyException();
+
+        UUID pagesFirst = UUID.randomUUID();
+        for (int request = 0; request < 4; request++) guard.checkPage(pagesFirst, true);
+        guard.checkTelemetry(pagesFirst);
+        guard.checkTelemetry(pagesFirst);
+        assertThatThrownBy(() -> guard.checkPage(pagesFirst, true))
+                .isInstanceOf(RateLimitedException.class);
+        assertThatThrownBy(() -> guard.checkTelemetry(pagesFirst))
+                .isInstanceOf(RateLimitedException.class);
+        assertThatCode(() -> {
+            guard.checkFeedback(pagesFirst);
+            guard.checkFeedback(pagesFirst);
+        }).doesNotThrowAnyException();
+        assertThatThrownBy(() -> guard.checkFeedback(pagesFirst))
+                .isInstanceOf(RateLimitedException.class);
+    }
+
+    @Test
+    void exhaustedFeedbackBudgetReplenishesUsingRedisTimeWithoutDeletingItsKey() {
+        MusicianFeedRateLimitGuard fastGuard = feedbackGuard(2, Duration.ofSeconds(1));
+        UUID userId = UUID.randomUUID();
+        String key = feedbackKey(userId);
+        fastGuard.checkFeedback(userId);
+        fastGuard.checkFeedback(userId);
+        long firstRefillAt = Long.parseLong((String) redisTemplate.opsForHash().get(key, "last_refill_ms"));
+        assertThatThrownBy(() -> fastGuard.checkFeedback(userId))
+                .isInstanceOf(RateLimitedException.class);
+
+        // Rejected polls preserve and refresh the same live key. Admission must
+        // therefore come from replenishment, not from expiry resetting capacity.
+        await().pollInterval(Duration.ofMillis(50)).atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> assertThatCode(() -> fastGuard.checkFeedback(userId))
+                        .doesNotThrowAnyException());
+
+        long nextRefillAt = Long.parseLong((String) redisTemplate.opsForHash().get(key, "last_refill_ms"));
+        assertThat(nextRefillAt - firstRefillAt).isGreaterThanOrEqualTo(1_000L);
+        assertThat((nextRefillAt - firstRefillAt) % 1_000L).isZero();
+        assertThat(redisTemplate.getExpire(key, TimeUnit.MILLISECONDS)).isBetween(1L, 4_000L);
+    }
+
+    @Test
+    void idleFeedbackBudgetExpiresAndNextUseReceivesTheFullBurst() {
+        MusicianFeedRateLimitGuard fastGuard = feedbackGuard(2, Duration.ofMillis(500));
+        UUID userId = UUID.randomUUID();
+        String key = feedbackKey(userId);
+        fastGuard.checkFeedback(userId);
+        fastGuard.checkFeedback(userId);
+        assertThat(redisTemplate.getExpire(key, TimeUnit.MILLISECONDS)).isBetween(1L, 2_000L);
+
+        await().pollInterval(Duration.ofMillis(50)).atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(redisTemplate.hasKey(key)).isFalse());
+
+        assertThatCode(() -> {
+            fastGuard.checkFeedback(userId);
+            fastGuard.checkFeedback(userId);
+        }).doesNotThrowAnyException();
+        assertThat(redisTemplate.hasKey(key)).isTrue();
     }
 
     @Test
@@ -150,5 +224,17 @@ class MusicianFeedRateLimitGuardRedisIT {
         assertThat(redisTemplate.hasKey(sharedKey)).isTrue();
         assertThat(redisTemplate.getExpire(initialKey, TimeUnit.MILLISECONDS)).isBetween(1L, 120_000L);
         assertThat(redisTemplate.getExpire(sharedKey, TimeUnit.MILLISECONDS)).isBetween(1L, 240_000L);
+    }
+
+    private MusicianFeedRateLimitGuard feedbackGuard(int capacity, Duration refillPeriod) {
+        MusicianFeedRateLimitProperties properties = new MusicianFeedRateLimitProperties();
+        properties.setEnabled(true);
+        properties.getFeedback().setBurstCapacity(capacity);
+        properties.getFeedback().setRefillPeriod(refillPeriod);
+        return new MusicianFeedRateLimitGuard(redisTemplate, properties);
+    }
+
+    private String feedbackKey(UUID userId) {
+        return "soundconnect:musician-feed:rate-limit:{" + userId + "}:feedback";
     }
 }

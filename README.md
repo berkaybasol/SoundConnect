@@ -132,8 +132,12 @@ while applying, in order, `2026-09-11-musician-feed-preferences.sql`,
 `2026-09-11-overthinking-profile-share-engagement.sql`,
 `2026-09-11-musician-feed-delivery.sql`,
 `2026-09-11-musician-feed-replay.sql`,
-`2026-09-11-musician-feed-feedback.sql`, and
-`2026-09-11-musician-feed-indexes.sql`. The last migration uses PostgreSQL
+`2026-09-11-musician-feed-feedback.sql`,
+`2026-09-11-musician-feed-indexes.sql`,
+`2026-09-13-musician-feed-feedback-lookup.sql`,
+`2026-09-13-musician-feed-moderation.sql`, and
+`2026-09-13-musician-feed-retention-lookup.sql`. The online-index migration
+(`2026-09-11-musician-feed-indexes.sql`) uses PostgreSQL
 `CREATE INDEX CONCURRENTLY` and therefore must run with autocommit enabled,
 outside a Flyway/framework transaction. Validate the schema, deploy the API
 with dedicated cursor and delivery secrets, then enable the flag. Roll back by
@@ -157,6 +161,25 @@ set. Expired or prior-schema/algorithm cursors return the stable
 `MUSICIAN_FEED_CURSOR_INVALID` code and must refresh from the first page.
 Durable hide/show-less/mute feedback and moderation evidence are not
 cascade-deleted with that operational ledger.
+
+SoundConnect announcements extend Promotion, private Media, generic Engagement,
+and the existing Analytics collector. Before deploying their API/worker/client
+changes, apply `2026-09-13-feed-announcements.sql`,
+`2026-09-13-announcement-feed-plan.sql`, and
+`2026-09-13-announcement-analytics.sql`, in that order after the existing feed and
+venue-analytics migrations. The local launcher includes this sequence; none of
+these migrations seeds content. Deploy the media worker with the API so private
+announcement videos can finish processing. The existing analytics collection
+and dedicated HMAC configuration also govern announcement measurement;
+publication requires enabled collection with valid identity configuration, and
+selection omits announcements during a required impression-history outage.
+Admin announcement reports require current MANAGE_PROMOTIONS authority; the
+venue-owner reporting launch flag retains its existing venue-only scope.
+The cursor algorithm changes to `musician-v1.1.0`: older continuation cursors
+require the existing first-page refresh recovery. See
+[`docs/announcements-feed.md`](docs/announcements-feed.md) and
+[`docs/announcement-analytics.md`](docs/announcement-analytics.md) for delivery
+and metric definitions.
 
 Production feed traffic is protected before candidate generation or database
 writes by an authenticated, per-user Redis limiter. Cursorless loads,

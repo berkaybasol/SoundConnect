@@ -39,7 +39,7 @@ class CommentServiceImplTest {
     final UUID actor = UUID.randomUUID(), target = UUID.randomUUID(), rootId = UUID.randomUUID();
 
     @BeforeEach void setup() {
-        service = new CommentServiceImpl(targets, repository, Mappers.getMapper(CommentMapper.class), finder, users, posts, authors, burstGuard,likes,notifications);
+        service = new CommentServiceImpl(targets, repository, Mappers.getMapper(CommentMapper.class), finder, users, posts, authors, burstGuard,likes,notifications, org.mockito.Mockito.mock(com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore.class));
         lenient().when(likes.lockActiveActor(any())).thenAnswer(i -> Optional.of(i.getArgument(0)));
     }
 

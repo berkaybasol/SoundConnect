@@ -1,11 +1,13 @@
 package com.berkayb.soundconnect.modules.feed.musician.core;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
 import com.berkayb.soundconnect.modules.feed.musician.cursor.*;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.*;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackService;
 import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
+import com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSource;
 import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedSponsorshipProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -24,18 +26,20 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @Slf4j
 public class MusicianFeedService {
     public static final int SCHEMA_VERSION = 1;
-    public static final String ALGORITHM_VERSION = "musician-v1.0.1";
+    public static final String ALGORITHM_VERSION = "musician-v1.1.0";
 
     private final MusicianFeedProperties properties;
     private final MusicianFeedViewerGuard viewerGuard;
     private final MusicianFeedCursorCodec cursors;
     private final MusicianFeedMixer mixer;
     private final MusicianFeedFeedbackService feedback;
+    private final MusicianFeedRestrictionGuard restrictions;
     private final MusicianFeedPersonalizationSource personalization;
     private final MusicianFeedDeliveryService deliveries;
     private final List<MusicianFeedCandidateProvider> providers;
@@ -50,13 +54,14 @@ public class MusicianFeedService {
             MusicianFeedCursorCodec cursors,
             MusicianFeedMixer mixer,
             MusicianFeedFeedbackService feedback,
+            MusicianFeedRestrictionGuard restrictions,
             MusicianFeedPersonalizationSource personalization,
             MusicianFeedDeliveryService deliveries,
             List<MusicianFeedCandidateProvider> providers,
             List<MusicianFeedSponsorshipProvider> sponsorshipProviders,
             @Qualifier("musicianFeedProviderExecutor") ExecutorService providerExecutor
     ) {
-        this(properties, viewerGuard, cursors, mixer, feedback, personalization,
+        this(properties, viewerGuard, cursors, mixer, feedback, restrictions, personalization,
                 deliveries, providers, sponsorshipProviders, providerExecutor, Clock.systemUTC());
     }
 
@@ -66,6 +71,7 @@ public class MusicianFeedService {
             MusicianFeedCursorCodec cursors,
             MusicianFeedMixer mixer,
             MusicianFeedFeedbackService feedback,
+            MusicianFeedRestrictionGuard restrictions,
             MusicianFeedPersonalizationSource personalization,
             MusicianFeedDeliveryService deliveries,
             List<MusicianFeedCandidateProvider> providers,
@@ -78,6 +84,7 @@ public class MusicianFeedService {
         this.cursors = cursors;
         this.mixer = mixer;
         this.feedback = feedback;
+        this.restrictions = restrictions;
         this.personalization = personalization;
         this.deliveries = deliveries;
         this.providers = providers.stream().sorted(Comparator.comparing(MusicianFeedCandidateProvider::providerId)).toList();
@@ -147,24 +154,31 @@ public class MusicianFeedService {
         int providerLimit = Math.max(pageLimit, Math.min(properties.getProviderLimit(), pageLimit * 8));
         var request = new MusicianFeedCandidateRequest(viewerUserId, musicianProfileId,
                 state.feedSessionId(), state.anchor(), generatedAt, providerLimit,
-                supportedTypes, personalizationSnapshot, feedbackSnapshot, deliverySnapshot);
+                supportedTypes, personalizationSnapshot, feedbackSnapshot, deliverySnapshot,
+                continuation ? state.announcementPlan() : null);
 
         CollectedCandidates collected = collectCandidates(request);
+        var candidateFeedback = feedback.forCandidates(viewerUserId, feedbackSnapshot,
+                collected.organic(), collected.promotions());
+        MusicianFeedAnnouncementPlan announcementPlan = continuation ? state.announcementPlan()
+                : new MusicianFeedAnnouncementPlan(collected.organic().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.ANNOUNCEMENT)
+                .map(MusicianFeedCandidate::announcementPlacement).toList());
         MusicianFeedMixer.MixedPage mixed = mixer.mix(viewerUserId, state.anchor(), pageLimit, supportedTypes,
-                feedbackSnapshot, collected.organic(), collected.promotions(), null,
+                candidateFeedback, collected.organic(), collected.promotions(), null,
                 state.deliveredOrganicCount(), deliverySnapshot.deliveredPromotionCount(),
                 deliverySnapshot.lastItemPromoted(), deliverySnapshot.lastItemType(),
                 deliverySnapshot.lastItemLane(),
                 deliverySnapshot.organicCountAtLastPromotion(),
                 deliverySnapshot.deliveredOverthinkingShareCount(),
-                deliverySnapshot.deliveredTableGroupShareCount());
+                deliverySnapshot.deliveredTableGroupShareCount(), announcementPlan, deliverySnapshot);
         long deliveredSize = mixed.items().size();
         boolean hasMore = !mixed.items().isEmpty() && mixed.hasMore()
                 && state.deliveredItemCount() + deliveredSize < maxSession;
         String nextCursor = hasMore && mixed.cursorBoundary() != null
                 ? cursors.encode(new MusicianFeedCursorState(viewerUserId, state.feedSessionId(), state.anchor(),
                         mixed.cursorBoundary(), mixed.deliveredOrganicCount(),
-                        state.deliveredItemCount() + deliveredSize, rankingContext), supportedTypes)
+                        state.deliveredItemCount() + deliveredSize, rankingContext, announcementPlan), supportedTypes)
                 : null;
         if (continuation) {
             return deliveries.recordPageAndReplay(viewerUserId, state.feedSessionId(), state.anchor(),
@@ -197,66 +211,86 @@ public class MusicianFeedService {
         return Set.copyOf(result);
     }
 
-    private CollectedCandidates collectCandidates(MusicianFeedCandidateRequest request) {
+    private CollectedCandidates collectCandidates(MusicianFeedCandidateRequest originalRequest) {
         List<Pending> pending = new ArrayList<>();
         List<MusicianFeedCandidate> organic = new ArrayList<>();
         List<MusicianFeedCandidate> promotions = new ArrayList<>();
         long deadline = System.nanoTime() + properties.getProviderDeadline().toNanos();
-        for (MusicianFeedCandidateProvider provider : providers.stream()
-                .sorted(Comparator.comparing(MusicianFeedCandidateProvider::optional)
-                        .thenComparing(MusicianFeedCandidateProvider::providerId)).toList()) {
-            Set<MusicianFeedItemType> providerTypes = provider.supportedTypes();
-            if (Collections.disjoint(providerTypes, request.supportedTypes())) continue;
-            if (provider.optional()) {
-                submit(pending, provider.providerId(), providerTypes, request, true, false,
-                        () -> provider.findCandidates(request), request.limit());
-            } else {
-                organic.addAll(required(provider.providerId(), providerTypes, request, false,
-                        () -> provider.findCandidates(request), request.limit(), deadline));
-            }
-        }
-        for (MusicianFeedSponsorshipProvider provider : sponsorshipProviders.stream()
-                .sorted(Comparator.comparing(MusicianFeedSponsorshipProvider::optional)
-                        .thenComparing(MusicianFeedSponsorshipProvider::providerId)).toList()) {
-            Set<MusicianFeedItemType> providerTypes = provider.supportedTypes();
-            if (Collections.disjoint(providerTypes, request.supportedTypes())) continue;
-            if (provider.optional()) {
-                submit(pending, provider.providerId(), providerTypes, request, true, true,
-                        () -> provider.findPlacements(request), request.limit());
-            } else {
-                promotions.addAll(required(provider.providerId(), providerTypes, request, true,
-                        () -> provider.findPlacements(request), request.limit(), deadline));
-            }
-        }
-        for (Pending task : pending) {
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0 && !task.future().isDone()) {
-                task.future().cancel(true);
-                if (!task.optional()) throw new IllegalStateException("Required feed provider deadline exceeded");
-                log.warn("Optional musician-feed provider exceeded global deadline: provider={}",
-                        task.providerId());
-                continue;
-            }
-            try {
-                List<MusicianFeedCandidate> values = task.future().isDone()
-                        ? task.future().get()
-                        : task.future().get(remaining, TimeUnit.NANOSECONDS);
-                if (task.promotion()) promotions.addAll(values); else organic.addAll(values);
-            } catch (TimeoutException timeout) {
-                task.future().cancel(true);
-                if (!task.optional()) throw new IllegalStateException("Required feed provider timed out", timeout);
-                log.warn("Optional musician-feed provider timed out: provider={}", task.providerId());
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Musician feed provider collection interrupted", interrupted);
-            } catch (ExecutionException failure) {
-                Throwable cause = failure.getCause();
-                if (!task.optional()) {
-                    if (cause instanceof RuntimeException runtime) throw runtime;
-                    throw new IllegalStateException(cause);
+        MusicianFeedCandidateRequest request = originalRequest.withProviderDeadline(deadline);
+        try {
+            for (MusicianFeedCandidateProvider provider : providers.stream()
+                    .sorted(Comparator.comparing(MusicianFeedCandidateProvider::optional)
+                            .thenComparing(MusicianFeedCandidateProvider::providerId)).toList()) {
+                Set<MusicianFeedItemType> providerTypes = provider.supportedTypes();
+                if (Collections.disjoint(providerTypes, request.supportedTypes())) continue;
+                if (provider.optional()) {
+                    submit(pending, provider.providerId(), providerTypes, request, true, false,
+                            () -> provider.findCandidates(request), request.limit(), deadline);
+                } else {
+                    organic.addAll(required(provider.providerId(), providerTypes, request, false,
+                            () -> provider.findCandidates(request), request.limit(), deadline));
                 }
-                log.warn("Optional musician-feed provider failed closed: provider={}",
-                        task.providerId(), cause);
+            }
+            for (MusicianFeedSponsorshipProvider provider : sponsorshipProviders.stream()
+                    .sorted(Comparator.comparing(MusicianFeedSponsorshipProvider::optional)
+                            .thenComparing(MusicianFeedSponsorshipProvider::providerId)).toList()) {
+                Set<MusicianFeedItemType> providerTypes = provider.supportedTypes();
+                if (Collections.disjoint(providerTypes, request.supportedTypes())) continue;
+                if (provider.optional()) {
+                    submit(pending, provider.providerId(), providerTypes, request, true, true,
+                            () -> provider.findPlacements(request), request.limit(), deadline);
+                } else {
+                    promotions.addAll(required(provider.providerId(), providerTypes, request, true,
+                            () -> provider.findPlacements(request), request.limit(), deadline));
+                }
+            }
+            for (Pending task : pending) {
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0 && !task.future().isDone()) {
+                    task.future().cancel(true);
+                    if (!task.started().get()) throw capacityUnavailable(new TimeoutException(
+                            "Feed provider deadline expired before execution"));
+                    if (!task.optional()) throw new IllegalStateException("Required feed provider deadline exceeded");
+                    log.warn("Optional musician-feed provider exceeded global deadline: provider={}",
+                            task.providerId());
+                    continue;
+                }
+                try {
+                    List<MusicianFeedCandidate> values = task.future().isDone()
+                            ? task.future().get()
+                            : task.future().get(remaining, TimeUnit.NANOSECONDS);
+                    if (task.promotion()) promotions.addAll(values); else organic.addAll(values);
+                } catch (TimeoutException timeout) {
+                    task.future().cancel(true);
+                    if (!task.started().get()) throw capacityUnavailable(timeout);
+                    if (!task.optional()) throw new IllegalStateException("Required feed provider timed out", timeout);
+                    log.warn("Optional musician-feed provider timed out: provider={}", task.providerId());
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw capacityUnavailable(interrupted);
+                } catch (CancellationException cancelled) {
+                    throw capacityUnavailable(cancelled);
+                } catch (ExecutionException failure) {
+                    Throwable cause = failure.getCause();
+                    if (!task.started().get()) throw capacityUnavailable(cause);
+                    if (!task.optional()) {
+                        if (cause instanceof RuntimeException runtime) throw runtime;
+                        throw new IllegalStateException(cause);
+                    }
+                    log.warn("Optional musician-feed provider failed closed: provider={}",
+                            task.providerId(), cause);
+                }
+            }
+        } finally {
+            // A later admission/required-provider failure must also stop earlier jobs.
+            // Removing cancelled queue entries promptly restores capacity for other pages.
+            for (Pending task : pending) {
+                if (!task.started().get()) task.future().cancel(true);
+            }
+            for (Pending task : pending) {
+                if (!task.future().isDone()) task.future().cancel(true);
+                if (task.future().isCancelled() && providerExecutor instanceof ThreadPoolExecutor pool
+                        && task.future() instanceof Runnable queued) pool.remove(queued);
             }
         }
         organic.removeIf(candidate -> candidate.promotion() != null
@@ -271,7 +305,7 @@ public class MusicianFeedService {
                 || request.delivery().itemIds().contains(candidate.itemId())
                 || request.delivery().targetKeys().contains(
                 MusicianFeedDeliverySnapshot.targetKey(candidate.target().type(), candidate.target().id())));
-        return new CollectedCandidates(List.copyOf(organic), List.copyOf(promotions));
+        return new CollectedCandidates(restrictions.filter(organic), restrictions.filter(promotions));
     }
 
     private List<MusicianFeedCandidate> required(String providerId,
@@ -298,16 +332,32 @@ public class MusicianFeedService {
                         Set<MusicianFeedItemType> providerTypes,
                         MusicianFeedCandidateRequest request,
                         boolean optional, boolean promotion,
-                        Callable<List<MusicianFeedCandidate>> source, int limit) {
+                        Callable<List<MusicianFeedCandidate>> source, int limit, long deadline) {
         try {
-            Future<List<MusicianFeedCandidate>> future = providerExecutor.submit(() ->
-                    MusicianFeedCandidateContract.validateBatch(providerId, providerTypes,
-                            request, source.call(), limit, promotion));
-            pending.add(new Pending(providerId, optional, promotion, future));
-        } catch (RejectedExecutionException rejected) {
-            if (!optional) throw rejected;
-            log.warn("Optional musician-feed provider rejected by bounded executor: provider={}", providerId, rejected);
+            AtomicBoolean started = new AtomicBoolean();
+            Callable<List<MusicianFeedCandidate>> validated = () -> {
+                if (deadline - System.nanoTime() <= 0) {
+                    throw new TimeoutException("Feed provider deadline expired before execution");
+                }
+                started.set(true);
+                return MusicianFeedCandidateContract.validateBatch(providerId, providerTypes,
+                        request, source.call(), limit, promotion);
+            };
+            Future<List<MusicianFeedCandidate>> future = providerExecutor instanceof MusicianFeedProviderExecutor bounded
+                    ? bounded.submitBefore(validated, deadline) : providerExecutor.submit(validated);
+            pending.add(new Pending(providerId, optional, promotion, future, started));
+        } catch (RejectedExecutionException | TimeoutException unavailable) {
+            throw capacityUnavailable(unavailable);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw capacityUnavailable(interrupted);
         }
+    }
+
+    private SoundConnectException capacityUnavailable(Throwable cause) {
+        SoundConnectException failure = new SoundConnectException(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE);
+        failure.initCause(cause);
+        return failure;
     }
 
     private String rankingContext(String feedbackVersion,
@@ -349,7 +399,7 @@ public class MusicianFeedService {
     }
 
     private record Pending(String providerId, boolean optional, boolean promotion,
-                           Future<List<MusicianFeedCandidate>> future) { }
+                           Future<List<MusicianFeedCandidate>> future, AtomicBoolean started) { }
     private record CollectedCandidates(List<MusicianFeedCandidate> organic,
                                        List<MusicianFeedCandidate> promotions) { }
 }

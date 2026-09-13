@@ -73,6 +73,6 @@ class EngagementTargetValidatorMediaLockTest {
                         assertThat(exception.getErrorType()).isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND));
     }
     private EngagementTargetValidatorImpl validator() {
-        return new EngagementTargetValidatorImpl(new CommentTargetAccessGuard(repository));
+        return new EngagementTargetValidatorImpl(new CommentTargetAccessGuard(repository, org.mockito.Mockito.mock(com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess.class)));
     }
 }

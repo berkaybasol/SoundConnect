@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.feed.musician.cursor.MusicianFeedCursorC
 import com.berkayb.soundconnect.modules.feed.musician.delivery.*;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.*;
 import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
+import com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSource;
 import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedSponsorshipProvider;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ class MusicianFeedFeatureFlagTest {
                 .withBean(MusicianFeedCursorCodec.class, () -> mock(MusicianFeedCursorCodec.class))
                 .withBean(MusicianFeedMixer.class, () -> mock(MusicianFeedMixer.class))
                 .withBean(MusicianFeedFeedbackService.class, () -> mock(MusicianFeedFeedbackService.class))
+                .withBean(MusicianFeedRestrictionGuard.class, () -> mock(MusicianFeedRestrictionGuard.class))
                 .withBean(MusicianFeedPersonalizationSource.class,
                         () -> mock(MusicianFeedPersonalizationSource.class))
                 .withBean(MusicianFeedDeliveryService.class, () -> mock(MusicianFeedDeliveryService.class))

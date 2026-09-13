@@ -22,6 +22,7 @@ public interface LikeService {
 	
 	// icerigin toplam begeni sayisi
 	long countLikes(EngagementTargetType targetType, UUID targetId);
+    long countLikes(UUID viewerId, EngagementTargetType targetType, UUID targetId);
 	
 	Map<UUID, Long> countLikesByTargets(EngagementTargetType targetType, Collection<UUID> targetIds);
 	
