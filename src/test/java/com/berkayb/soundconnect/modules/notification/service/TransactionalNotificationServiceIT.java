@@ -174,6 +174,7 @@ class TransactionalNotificationServiceIT {
     @Configuration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = Notification.class)
     @EnableJpaRepositories(basePackageClasses = NotificationRepository.class)
-    @Import({TransactionalNotificationService.class, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})
+    @Import({TransactionalNotificationService.class, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class,
+            com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class})
     static class ConfigurationForTest { }
 }

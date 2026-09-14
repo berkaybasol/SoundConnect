@@ -160,6 +160,44 @@ class EventCommentReadSecurityTest {
         verifyNoInteractions(service, comments, events);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"MEDIA", "ANNOUNCEMENT"})
+    void commentCountRequiresAuthenticationAndReturnsPrivateScalarEnvelope(String target) throws Exception {
+        String path = "/api/v1/comments/" + target + "/" + eventId + "/count";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        verifyNoInteractions(comments);
+
+        UUID actor = UUID.randomUUID();
+        var type = EngagementTargetType.valueOf(target);
+        when(comments.countReadableComments(actor, type, eventId)).thenReturn(7L);
+        mvc.perform(get(path).with(viewer(actor))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true)).andExpect(jsonPath("$.data").value(7))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("private")));
+        verify(comments).countReadableComments(actor, type, eventId);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MEDIA", "ANNOUNCEMENT"})
+    void hiddenTargetCountKeepsTheExistingNotFoundEnvelope(String target) throws Exception {
+        UUID actor = UUID.randomUUID();
+        var type = EngagementTargetType.valueOf(target);
+        var error = type == EngagementTargetType.ANNOUNCEMENT
+                ? ErrorType.ANNOUNCEMENT_NOT_FOUND : ErrorType.ENGAGEMENT_NOT_FOUND;
+        when(comments.countReadableComments(actor, type, eventId)).thenThrow(new SoundConnectException(error));
+        mvc.perform(get("/api/v1/comments/{type}/{id}/count", target, eventId).with(viewer(actor)))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(error.getCode()))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void malformedCommentCountTargetsNeverReachTheService() throws Exception {
+        var actor = viewer(UUID.randomUUID());
+        mvc.perform(get("/api/v1/comments/UNKNOWN/{id}/count", eventId).with(actor)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/comments/MEDIA/not-a-uuid/count").with(actor)).andExpect(status().isBadRequest());
+        verifyNoInteractions(comments);
+    }
+
     @Test
     void authenticatedCommentAndReplyWritesStillUseExistingActorAndRoute() throws Exception {
         UUID userId = UUID.randomUUID();

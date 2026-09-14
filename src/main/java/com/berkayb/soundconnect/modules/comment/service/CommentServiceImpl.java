@@ -195,6 +195,16 @@ public class CommentServiceImpl implements CommentService {
 	public long countComments(EngagementTargetType targetType, UUID targetId) {
 		return commentRepository.countByTargetTypeAndTargetId(targetType, targetId);
 	}
+
+	@Override
+	@Transactional(isolation = Isolation.REPEATABLE_READ)
+	public long countReadableComments(UUID viewerId, EngagementTargetType targetType, UUID targetId) {
+		if (viewerId == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		// Access guards lock current publication/privacy state in this transaction,
+		// just as comment list reads do. Do not expose the legacy unguarded count.
+		requireReadable(viewerId, targetType, targetId);
+		return commentRepository.countActiveByTarget(targetType, targetId);
+	}
 	
 	private void validateCommentText(String text) {
 		if (text == null || text.trim().isEmpty()) {

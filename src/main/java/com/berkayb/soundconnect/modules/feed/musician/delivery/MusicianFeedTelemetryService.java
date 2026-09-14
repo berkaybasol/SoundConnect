@@ -58,6 +58,12 @@ public class MusicianFeedTelemetryService {
         return recordAuthorized(viewerId, request);
     }
 
+    @Transactional
+    public MusicianFeedTelemetryResponse recordForStudio(UUID viewerId, MusicianFeedTelemetryRequest request) {
+        viewerGuard.requireStudioProfile(viewerId);
+        return recordAuthorized(viewerId, request, BackstageFeedAudience.STUDIO);
+    }
+
     private MusicianFeedTelemetryResponse recordAuthorized(UUID viewerId, MusicianFeedTelemetryRequest request) {
         return recordAuthorized(viewerId, request, null);
     }

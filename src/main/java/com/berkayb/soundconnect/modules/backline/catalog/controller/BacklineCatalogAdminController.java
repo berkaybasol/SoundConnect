@@ -28,7 +28,7 @@ import java.util.UUID;
 @Validated
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('MANAGE_BACKLINE_CATALOG')")
+@PreAuthorize("hasAuthority('MANAGE_BACKLINE_CATALOG') and !hasRole('LISTENER')")
 @RequestMapping("/api/v1/admin/backline/category-requests")
 @Tag(name = "Backline Catalog - Admin", description = "Backline category request review")
 public class BacklineCatalogAdminController {

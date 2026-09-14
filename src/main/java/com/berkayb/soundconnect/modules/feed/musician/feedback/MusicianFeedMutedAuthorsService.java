@@ -48,6 +48,12 @@ public class MusicianFeedMutedAuthorsService {
         return getAuthorized(viewerId, requestedLimit, cursor);
     }
 
+    @Transactional(readOnly = true)
+    public MusicianFeedMutedAuthorsResponse getForStudio(UUID viewerId, Integer requestedLimit, String cursor) {
+        viewers.requireStudioProfile(viewerId);
+        return getAuthorized(viewerId, requestedLimit, cursor);
+    }
+
     private MusicianFeedMutedAuthorsResponse getAuthorized(UUID viewerId, Integer requestedLimit, String cursor) {
         return getAuthorized(viewerId, requestedLimit, cursor, false);
     }

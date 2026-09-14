@@ -43,7 +43,7 @@ import java.util.UUID;
 @RequestMapping("/api/v1/user/studio-profiles/me/rooms")
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("hasRole('STUDIO')")
+@PreAuthorize("hasRole('STUDIO') and !hasRole('LISTENER')")
 @Tag(name = "FOR USERS / Studio Rooms", description = "Studio owner room and schedule management")
 public class StudioRoomOwnerController {
     private final StudioRoomService roomService;

@@ -20,6 +20,7 @@ import com.berkayb.soundconnect.modules.collab.repository.CollabReportRepository
 import com.berkayb.soundconnect.modules.collab.repository.CollabRepository;
 import com.berkayb.soundconnect.modules.collab.repository.CollabSavedListingRepository;
 import com.berkayb.soundconnect.modules.collab.support.CollabTimeProvider;
+import com.berkayb.soundconnect.modules.collab.support.CollabAccessGuard;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
@@ -54,12 +55,14 @@ public class CollabReportModerationService {
     private final UserEntityFinder userFinder;
     private final CollabTimeProvider timeProvider;
     private final ApplicationEventPublisher eventPublisher;
+    private final CollabAccessGuard access;
 
     @Transactional(readOnly = true)
-    public PageResponse<CollabReportAdminResponse> list(CollabReportStatus status,
+    public PageResponse<CollabReportAdminResponse> list(UUID viewerId, CollabReportStatus status,
                                                         CollabReportReason reason,
                                                         int page,
                                                         int size) {
+        access.requireModerator(viewerId);
         if (page < 0 || page > MAX_PAGE_NUMBER || size < 1 || size > MAX_PAGE_SIZE) {
             throw new SoundConnectException(ErrorType.COLLAB_PAGE_REQUEST_INVALID);
         }
@@ -73,6 +76,7 @@ public class CollabReportModerationService {
     public CollabReportAdminResponse review(UUID adminUserId,
                                             UUID reportId,
                                             CollabReportReviewRequest request) {
+        access.requireModerator(adminUserId);
         String resolutionNote = normalizeResolutionNote(request.resolutionNote());
         Collab listing = null;
         if (request.decision() == CollabReportDecision.REMOVE_LISTING) {

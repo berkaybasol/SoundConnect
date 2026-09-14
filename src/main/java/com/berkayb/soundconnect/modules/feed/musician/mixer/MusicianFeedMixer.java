@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.mixer;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemResponse;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads;
+import com.berkayb.soundconnect.modules.collab.enums.CollabWantedType;
 import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
@@ -310,7 +311,9 @@ public class MusicianFeedMixer {
      * Selects from the entire eligible pool using diversity at each slot. A dense
      * primary stream gives discovery about 10%; a sparse stream backfills with
      * discovery. The audience receives a 20% minimum for matched jobs/events
-     * (musician) or artists/performances (venue). These are supply-aware budgets.
+     * (musician) or artists/performances (venue). Studio reserves 25% for explicit
+     * studio requests and unfollowed artists, protecting both sources when they
+     * are available. These are supply-aware budgets, not fixed placements.
      */
     private List<ScoredCandidate> selectLaneWindow(List<ScoredCandidate> sorted, int slots,
                                                     MusicianFeedLane lastItemLane,
@@ -355,18 +358,25 @@ public class MusicianFeedMixer {
                 deliveredOverthinkingShareCount, deliveredTableGroupShareCount));
         int opportunityMinimum = Math.min(primaryCount,
                 Math.min((int) primary.stream().filter(value -> isMatchedOpportunity(value.candidate(), audience)).count(),
-                        remaining >= 5 ? Math.max(1, remaining / 5) : 0));
+                        opportunityBudget(remaining, audience)));
+        int studioRequestMinimum = audience == BackstageFeedAudience.STUDIO && opportunityMinimum > 0
+                && primary.stream().anyMatch(value -> isStudioRequest(value.candidate())) ? 1 : 0;
+        int studioArtistMinimum = audience == BackstageFeedAudience.STUDIO && opportunityMinimum > studioRequestMinimum
+                && primary.stream().anyMatch(value -> isStudioArtistDiscovery(value.candidate())) ? 1 : 0;
         int opportunityStride = Math.max(1, slots / (opportunityMinimum + 1));
         List<ScoredCandidate> pool = new ArrayList<>(sorted);
         List<ScoredCandidate> selected = new ArrayList<>(slots);
         List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent = new ArrayList<>(history);
         int primaryUsed = 0, discoveryUsed = 0, moduleUsed = 0, systemUsed = 0, opportunitiesUsed = 0;
+        int studioRequestsUsed = 0, studioArtistsUsed = 0;
         while (selected.size() < slots) {
             // Reserve opportunities near the front and throughout the page, so
             // later promotion insertion cannot trim all of them from its tail.
-            boolean opportunityDue = opportunitiesUsed < opportunityMinimum
-                    && (primaryCount - primaryUsed <= opportunityMinimum - opportunitiesUsed
-                    || (!selected.isEmpty() && opportunitiesUsed <= (selected.size() - 1) / opportunityStride));
+            int opportunitiesRemaining = unmetOpportunities(opportunityMinimum, opportunitiesUsed,
+                    studioRequestMinimum, studioRequestsUsed, studioArtistMinimum, studioArtistsUsed);
+            boolean opportunityDue = opportunitiesRemaining > 0
+                    && (primaryCount - primaryUsed <= opportunitiesRemaining
+                    || (!selected.isEmpty() && opportunityMinimum - opportunitiesRemaining <= (selected.size() - 1) / opportunityStride));
             int nonModuleRemaining = primaryCount - primaryUsed + discoveryCount - discoveryUsed + systemCount - systemUsed;
             boolean moduleDue = moduleUsed < moduleCount
                     && nonModuleRemaining < moduleCount - moduleUsed
@@ -382,7 +392,8 @@ public class MusicianFeedMixer {
                             && (selected.isEmpty() || selected.getLast().candidate().lane() != MusicianFeedLane.MODULE_SHARE);
                 };
                 if (!eligible || (moduleDue && candidate.lane() != MusicianFeedLane.MODULE_SHARE)
-                        || (!moduleDue && opportunityDue && !isMatchedOpportunity(candidate, audience))) continue;
+                        || (!moduleDue && opportunityDue && !isRequiredOpportunity(candidate, audience,
+                            studioRequestsUsed < studioRequestMinimum, studioArtistsUsed < studioArtistMinimum))) continue;
                 if (best == null || compareWithDiversity(value, best, recent) < 0) best = value;
             }
             if (best == null) break;
@@ -396,12 +407,17 @@ public class MusicianFeedMixer {
                 case SYSTEM -> systemUsed++;
             }
             if (isMatchedOpportunity(candidate, audience)) opportunitiesUsed++;
+            if (isStudioRequest(candidate)) studioRequestsUsed++;
+            if (isStudioArtistDiscovery(candidate)) studioArtistsUsed++;
             rememberOrganic(recent, candidate);
         }
         return List.copyOf(selected);
     }
 
     private static boolean isMatchedOpportunity(MusicianFeedCandidate candidate, BackstageFeedAudience audience) {
+        if (audience == BackstageFeedAudience.STUDIO) {
+            return isStudioRequest(candidate) || isStudioArtistDiscovery(candidate);
+        }
         if (audience == BackstageFeedAudience.LISTENER) {
             if (candidate.lane() != MusicianFeedLane.FOLLOWING
                     && candidate.lane() != MusicianFeedLane.RELEVANT_OPPORTUNITY) return false;
@@ -426,6 +442,43 @@ public class MusicianFeedMixer {
         return (candidate.lane() == MusicianFeedLane.RELEVANT_OPPORTUNITY
                 || (candidate.lane() == MusicianFeedLane.FOLLOWING && candidate.relevanceScore() > 0))
                 && (candidate.type() == MusicianFeedItemType.COLLAB || candidate.type() == MusicianFeedItemType.EVENT);
+    }
+
+    private static int opportunityBudget(int slots, BackstageFeedAudience audience) {
+        int divisor = audience == BackstageFeedAudience.STUDIO ? 4 : 5;
+        return slots >= divisor ? slots / divisor : 0;
+    }
+
+    private static boolean isStudioRequest(MusicianFeedCandidate candidate) {
+        return (candidate.lane() == MusicianFeedLane.FOLLOWING || candidate.lane() == MusicianFeedLane.RELEVANT_OPPORTUNITY)
+                && candidate.type() == MusicianFeedItemType.COLLAB
+                && candidate.payload() instanceof MusicianFeedPayloads.Collab collab
+                && collab.listing() != null && collab.listing().wantedType() == CollabWantedType.STUDIO;
+    }
+
+    private static boolean isStudioArtistDiscovery(MusicianFeedCandidate candidate) {
+        if (candidate.author() == null || candidate.author().followedByViewer()
+                || !Set.of("MUSICIAN", "BAND").contains(candidate.author().profileType())
+                || candidate.lane() != MusicianFeedLane.RELEVANT_OPPORTUNITY) return false;
+        return switch (candidate.type()) {
+            case PROFILE, TRACK -> true;
+            case PROFILE_MEDIA -> candidate.payload() instanceof MusicianFeedPayloads.ProfileMedia media
+                    && Set.of("VIDEO", "AUDIO").contains(media.kind());
+            default -> false;
+        };
+    }
+
+    private static int unmetOpportunities(int minimum, int used, int requestMinimum, int requestsUsed,
+                                          int artistMinimum, int artistsUsed) {
+        return Math.max(Math.max(0, minimum - used),
+                Math.max(0, requestMinimum - requestsUsed) + Math.max(0, artistMinimum - artistsUsed));
+    }
+
+    private static boolean isRequiredOpportunity(MusicianFeedCandidate candidate, BackstageFeedAudience audience,
+                                                   boolean requireStudioRequest, boolean requireStudioArtist) {
+        if (requireStudioRequest) return isStudioRequest(candidate);
+        if (requireStudioArtist) return isStudioArtistDiscovery(candidate);
+        return isMatchedOpportunity(candidate, audience);
     }
 
     private List<ScoredCandidate> selectModuleShares(List<ScoredCandidate> sorted, int slots,
@@ -523,7 +576,17 @@ public class MusicianFeedMixer {
         int organicEmitted = 0;
         Set<String> opportunityTargets = organic.stream().filter(value -> isMatchedOpportunity(value.candidate(), audience))
                 .map(value -> targetKey(value.candidate())).collect(java.util.stream.Collectors.toSet());
-        int opportunityMinimum = Math.min(opportunityTargets.size(), Math.max(1, pageSize / 5));
+        int opportunityMinimum = Math.min(opportunityTargets.size(), audience == BackstageFeedAudience.STUDIO
+                ? opportunityBudget(pageSize, audience) : Math.max(1, pageSize / 5));
+        Set<String> studioRequestTargets = audience != BackstageFeedAudience.STUDIO ? Set.of()
+                : organic.stream().filter(value -> isStudioRequest(value.candidate())).map(value -> targetKey(value.candidate()))
+                    .collect(java.util.stream.Collectors.toSet());
+        Set<String> studioArtistTargets = audience != BackstageFeedAudience.STUDIO ? Set.of()
+                : organic.stream().filter(value -> isStudioArtistDiscovery(value.candidate())).map(value -> targetKey(value.candidate()))
+                    .collect(java.util.stream.Collectors.toSet());
+        int studioRequestMinimum = opportunityMinimum > 0 && !studioRequestTargets.isEmpty() ? 1 : 0;
+        int studioArtistMinimum = opportunityMinimum > studioRequestMinimum && !studioArtistTargets.isEmpty() ? 1 : 0;
+        int studioRequestsEmitted = 0, studioArtistsEmitted = 0;
         int opportunitiesEmitted = 0;
         long organicSeen = deliveredOrganic;
         long nextPromotionAt = organicCountAtLastPromotion
@@ -547,12 +610,16 @@ public class MusicianFeedMixer {
         Deque<ScoredCandidate> deferredNativeTargets = new ArrayDeque<>();
         ScoredCandidate boundaryCandidate = null;
         while (output.size() < pageSize) {
-            boolean protectOpportunity = pageSize - output.size() <= opportunityMinimum - opportunitiesEmitted;
+            boolean protectOpportunity = pageSize - output.size() <= unmetOpportunities(opportunityMinimum, opportunitiesEmitted,
+                    studioRequestMinimum, studioRequestsEmitted, studioArtistMinimum, studioArtistsEmitted);
+            final boolean requireStudioRequest = studioRequestsEmitted < studioRequestMinimum;
+            final boolean requireStudioArtist = studioArtistsEmitted < studioArtistMinimum;
             if (protectOpportunity) {
                 boolean restored = false;
                 for (int index = organicIndex; index < organic.size(); index++) {
                     ScoredCandidate value = organic.get(index);
-                    if (isMatchedOpportunity(value.candidate(), audience) && !deliveredTargets.contains(targetKey(value.candidate()))) {
+                    if (isRequiredOpportunity(value.candidate(), audience, requireStudioRequest, requireStudioArtist)
+                            && !deliveredTargets.contains(targetKey(value.candidate()))) {
                         Collections.swap(organic, organicIndex, index);
                         restored = true;
                         break;
@@ -560,7 +627,7 @@ public class MusicianFeedMixer {
                 }
                 if (!restored) {
                     ScoredCandidate deferredOpportunity = deferredNativeTargets.stream()
-                            .filter(value -> isMatchedOpportunity(value.candidate(), audience)
+                            .filter(value -> isRequiredOpportunity(value.candidate(), audience, requireStudioRequest, requireStudioArtist)
                                     && !deliveredTargets.contains(targetKey(value.candidate())))
                             .findFirst().orElse(null);
                     if (deferredOpportunity != null) {
@@ -592,7 +659,8 @@ public class MusicianFeedMixer {
                     && organicSeen >= nextPromotionAt
                     && organicSeen >= 2
                     && !lastWasPromotion && !lastWasAnnouncement
-                    && (!protectOpportunity || (opportunityTargets.contains(targetKey(sponsors.get(sponsorIndex).candidate()))
+                    && (!protectOpportunity || ((requireStudioRequest ? studioRequestTargets : requireStudioArtist ? studioArtistTargets : opportunityTargets)
+                    .contains(targetKey(sponsors.get(sponsorIndex).candidate()))
                     && !deliveredTargets.contains(targetKey(sponsors.get(sponsorIndex).candidate()))));
             if (mayPromote) {
                 ScoredCandidate sponsor = null;
@@ -606,6 +674,8 @@ public class MusicianFeedMixer {
                     deliveredTargets.add(targetKey(sponsor.candidate()));
                     promotedTargets.add(targetKey(sponsor.candidate()));
                     if (opportunityTargets.contains(targetKey(sponsor.candidate()))) opportunitiesEmitted++;
+                    if (studioRequestTargets.contains(targetKey(sponsor.candidate()))) studioRequestsEmitted++;
+                    if (studioArtistTargets.contains(targetKey(sponsor.candidate()))) studioArtistsEmitted++;
                     boundaryCandidate = weaker(boundaryCandidate, sponsor);
                     lastWasPromotion = true;
                     lastWasAnnouncement = false;
@@ -635,6 +705,8 @@ public class MusicianFeedMixer {
                 organicSeen++;
                 organicEmitted++;
                 if (isMatchedOpportunity(candidate.candidate(), audience)) opportunitiesEmitted++;
+                if (studioRequestTargets.contains(targetKey(candidate.candidate()))) studioRequestsEmitted++;
+                if (studioArtistTargets.contains(targetKey(candidate.candidate()))) studioArtistsEmitted++;
                 rememberOrganic(recent, candidate.candidate());
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;
@@ -651,6 +723,8 @@ public class MusicianFeedMixer {
                 organicSeen++;
                 organicEmitted++;
                 if (isMatchedOpportunity(candidate.candidate(), audience)) opportunitiesEmitted++;
+                if (studioRequestTargets.contains(targetKey(candidate.candidate()))) studioRequestsEmitted++;
+                if (studioArtistTargets.contains(targetKey(candidate.candidate()))) studioArtistsEmitted++;
                 rememberOrganic(recent, candidate.candidate());
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;

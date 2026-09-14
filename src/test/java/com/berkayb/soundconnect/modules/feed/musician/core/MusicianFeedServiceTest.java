@@ -21,6 +21,9 @@ import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.*;
 import java.util.*;
@@ -227,19 +230,239 @@ class MusicianFeedServiceTest {
     }
 
     @Test
-    void optionalProviderFailureDoesNotDropHealthySources() {
+    void optionalProviderFailureDoesNotDropHealthySourcesWithARealContinuation() {
         MusicianFeedCandidateProvider failed = provider("a-failed", request -> {
             throw new IllegalStateException("optional source unavailable");
         });
         MusicianFeedCandidate kept = candidate("TRACK:kept", 900_000);
-        MusicianFeedCandidateProvider healthy = provider("z-healthy", request -> List.of(kept));
+        MusicianFeedCandidateProvider healthy = provider("z-healthy", request -> List.of(kept,
+                candidate("TRACK:healthy-tail", 800_000)));
 
         MusicianFeedPageResponse page = service(List.of(failed, healthy)).get(
-                viewer, 10, null, List.of("TRACK"));
+                viewer, 1, null, List.of("TRACK"));
 
         assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:kept");
         assertThat(page.schemaVersion()).isEqualTo(1);
         assertThat(page.algorithmVersion()).isEqualTo(MusicianFeedService.ALGORITHM_VERSION);
+        assertThat(page.hasMore()).isTrue();
+        assertThat(page.nextCursor()).isNotBlank();
+    }
+
+    @ParameterizedTest(name = "continuation={0}, healthy terminal content={1}, timeout={2}")
+    @CsvSource({
+            "false, false, false", "false, true, false",
+            "true, false, false", "true, true, false",
+            "false, false, true", "false, true, true",
+            "true, false, true", "true, true, true"
+    })
+    void unavailableOrganicSourceCannotCommitExhaustionAndTheSamePositionRecovers(
+            boolean continuation, boolean healthyTerminalContent, boolean timeout) {
+        properties.setProviderDeadline(Duration.ofMillis(250));
+        var unavailable = new java.util.concurrent.atomic.AtomicBoolean(!continuation);
+        var calls = new AtomicLong();
+        var first = candidate("TRACK:recover-first", 1_000_000);
+        var second = candidate("TRACK:recover-second", 900_000);
+        var healthy = candidate("TRACK:healthy-terminal", 800_000);
+        var recoverable = provider("recoverable-content", request -> {
+            calls.incrementAndGet();
+            if (unavailable.get()) {
+                if (timeout) {
+                    await(new CountDownLatch(1));
+                    return List.of();
+                }
+                throw new IllegalStateException("Isolated content-source outage");
+            }
+            return List.of(first, second);
+        });
+        var engine = service(List.of(recoverable, provider("healthy-content", request ->
+                healthyTerminalContent ? List.of(healthy) : List.of())));
+        MusicianFeedPageResponse initial = continuation
+                ? engine.get(viewer, 1, null, List.of("TRACK")) : null;
+        String cursor = initial == null ? null : initial.nextCursor();
+        long committedPosition = deliveredCount.get();
+        if (continuation) assertThat(cursor).isNotBlank();
+        unavailable.set(true);
+        clearInvocations(deliveries);
+
+        assertThatThrownBy(() -> engine.get(viewer, 10, cursor, List.of("TRACK")))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+
+        assertThat(deliveredCount.get()).isEqualTo(committedPosition);
+        assertNoPagePersisted();
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.results")
+                .tags("provider", "recoverable-content", "outcome", timeout ? "timeout" : "failure")
+                .counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.page.duration")
+                .tag("outcome", "error").timer().count()).isEqualTo(1);
+
+        unavailable.set(false);
+        var recovered = engine.get(viewer, 10, cursor, List.of("TRACK"));
+        assertThat(recovered.hasMore()).isFalse();
+        assertThat(recovered.nextCursor()).isNull();
+        var expected = new ArrayList<>(continuation ? List.of(second.itemId()) : List.of(first.itemId(), second.itemId()));
+        if (healthyTerminalContent) expected.add(healthy.itemId());
+        assertThat(recovered.items()).extracting(MusicianFeedItemResponse::id)
+                .containsExactlyInAnyOrderElementsOf(expected).doesNotHaveDuplicates();
+        assertThat(recovered.items()).extracting(MusicianFeedItemResponse::position)
+                .containsExactlyElementsOf(java.util.stream.LongStream.range(committedPosition,
+                        committedPosition + expected.size()).boxed().toList());
+        assertThat(deliveredCount.get()).isEqualTo(committedPosition + expected.size());
+        if (continuation) {
+            assertThat(recovered.feedSessionId()).isEqualTo(initial.feedSessionId());
+            verify(deliveries, times(1)).recordPageAndReplay(eq(viewer), eq(initial.feedSessionId()),
+                    eq(NOW), eq(1), eq(MusicianFeedService.ALGORITHM_VERSION), eq(committedPosition),
+                    anyString(), eq(10), eq(Set.of(MusicianFeedItemType.TRACK)), anyList(), anyList(),
+                    isNull(), eq(false), eq(NOW));
+            when(deliveries.replay(eq(viewer), eq(initial.feedSessionId()), eq(committedPosition),
+                    anyString(), eq(10), eq(Set.of(MusicianFeedItemType.TRACK)), eq(NOW)))
+                    .thenReturn(Optional.of(recovered));
+            long candidateCalls = calls.get();
+            assertThat(engine.get(viewer, 10, cursor, List.of("TRACK"))).isSameAs(recovered);
+            assertThat(calls.get()).isEqualTo(candidateCalls);
+            assertThat(deliveredCount.get()).isEqualTo(committedPosition + expected.size());
+        }
+    }
+
+    @Test
+    void healthyPartialContinuationMakesProgressWithoutSkippingRecoverableContent() {
+        var unavailable = new java.util.concurrent.atomic.AtomicBoolean();
+        var healthy = List.of(candidate("TRACK:healthy-1", 1_000_000),
+                candidate("TRACK:healthy-2", 900_000), candidate("TRACK:healthy-3", 800_000));
+        var recovered = candidate("TRACK:recovered", 700_000);
+        var engine = service(List.of(provider("healthy", request -> healthy), provider("recoverable", request -> {
+            if (unavailable.get()) throw new IllegalStateException("Isolated content-source outage");
+            return List.of(recovered);
+        })));
+        var first = engine.get(viewer, 1, null, List.of("TRACK"));
+        unavailable.set(true);
+
+        var partial = engine.get(viewer, 1, first.nextCursor(), List.of("TRACK"));
+
+        assertThat(partial.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:healthy-2");
+        assertThat(partial.hasMore()).isTrue();
+        unavailable.set(false);
+        var last = engine.get(viewer, 10, partial.nextCursor(), List.of("TRACK"));
+        assertThat(last.items()).extracting(MusicianFeedItemResponse::id)
+                .containsExactlyInAnyOrder("TRACK:healthy-3", "TRACK:recovered");
+        assertThat(last.hasMore()).isFalse();
+        var all = java.util.stream.Stream.of(first, partial, last)
+                .flatMap(page -> page.items().stream()).toList();
+        assertThat(all).extracting(MusicianFeedItemResponse::id).hasSize(4).doesNotHaveDuplicates();
+        assertThat(all).extracting(MusicianFeedItemResponse::position).containsExactly(0L, 1L, 2L, 3L);
+        assertThat(deliveredCount.get()).isEqualTo(4);
+    }
+
+    @ParameterizedTest
+    @EnumSource(BackstageFeedAudience.class)
+    void everyAudiencePreservesUnavailableOrganicContentUntilRetry(BackstageFeedAudience audience) {
+        when(guard.requireVenueProfile(viewer)).thenReturn(profile);
+        when(guard.requireStudioProfile(viewer)).thenReturn(profile);
+        when(guard.requireListenerProfile(viewer)).thenReturn(profile);
+        when(personalization.loadForVenue(viewer, profile)).thenReturn(MusicianFeedPersonalizationSnapshot.empty());
+        when(personalization.loadForStudio(viewer, profile)).thenReturn(MusicianFeedPersonalizationSnapshot.empty());
+        when(personalization.loadForListener(viewer, profile)).thenReturn(MusicianFeedPersonalizationSnapshot.empty());
+        var policy = mock(com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedContentPolicy.class);
+        when(policy.filterCandidates(eq(viewer), anyCollection())).thenAnswer(call -> List.copyOf(call.getArgument(1)));
+        var engine = service(List.of(provider("unavailable-content", request -> {
+            throw new IllegalStateException("Isolated content-source outage");
+        })));
+        engine.setListenerContentPolicy(policy);
+
+        assertThatThrownBy(() -> {
+            switch (audience) {
+                case MUSICIAN -> engine.get(viewer, 10, null, List.of("TRACK"));
+                case VENUE -> engine.getForVenue(viewer, 10, null, List.of("TRACK"));
+                case STUDIO -> engine.getForStudio(viewer, 10, null, List.of("TRACK"));
+                case LISTENER -> engine.getForListener(viewer, 10, null, List.of("TRACK"));
+            }
+        }).isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+        assertNoPagePersisted();
+    }
+
+    @Test
+    void actualEmptyInitialPageStillSucceedsWithoutAnOutage() {
+        var page = service(List.of(provider("tracks", request -> List.of())))
+                .get(viewer, 10, null, List.of("TRACK"));
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.hasMore()).isFalse();
+        assertThat(page.nextCursor()).isNull();
+        verify(deliveries).recordPage(eq(viewer), eq(page.feedSessionId()), eq(NOW), eq(1),
+                eq(MusicianFeedService.ALGORITHM_VERSION), eq(0L), eq(List.of()), eq(List.of()), eq(NOW));
+    }
+
+    @Test
+    void actualEmptyContinuationStillCommitsAReplayableTerminalPage() {
+        var exhausted = new java.util.concurrent.atomic.AtomicBoolean();
+        var engine = service(List.of(provider("tracks", request -> exhausted.get() ? List.of()
+                : List.of(candidate("TRACK:first", 1_000_000), candidate("TRACK:second", 900_000)))));
+        var first = engine.get(viewer, 1, null, List.of("TRACK"));
+        exhausted.set(true);
+        clearInvocations(deliveries);
+
+        var terminal = engine.get(viewer, 10, first.nextCursor(), List.of("TRACK"));
+
+        assertThat(terminal.items()).isEmpty();
+        assertThat(terminal.hasMore()).isFalse();
+        assertThat(terminal.nextCursor()).isNull();
+        verify(deliveries).recordPageAndReplay(eq(viewer), eq(first.feedSessionId()), eq(NOW), eq(1),
+                eq(MusicianFeedService.ALGORITHM_VERSION), eq(1L), anyString(), eq(10),
+                eq(Set.of(MusicianFeedItemType.TRACK)), eq(List.of()), eq(List.of()), isNull(), eq(false), eq(NOW));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = MusicianFeedItemType.class, names = {"ANNOUNCEMENT", "PROFILE_COMPLETION", "SPONSORED"})
+    void failedAncillaryProviderDoesNotPreventHealthyContentFromEnding(MusicianFeedItemType ancillaryType) {
+        var failed = provider("ancillary", Set.of(ancillaryType), request -> {
+            throw new IllegalStateException("Isolated ancillary outage");
+        });
+        var engine = service(List.of(failed, provider("tracks", request ->
+                List.of(candidate("TRACK:healthy-terminal", 1_000_000)))));
+
+        var page = engine.get(viewer, 10, null, List.of("TRACK", ancillaryType.name()));
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:healthy-terminal");
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void failedMixedProviderCountsOnlyContentTypesAdvertisedByThisRequest() {
+        var failed = provider("mixed-ancillary", Set.of(MusicianFeedItemType.ANNOUNCEMENT, MusicianFeedItemType.EVENT),
+                request -> { throw new IllegalStateException("Isolated ancillary outage"); });
+        var engine = service(List.of(failed, provider("tracks", request -> List.of(candidate("TRACK:healthy", 1_000_000)))));
+
+        var page = engine.get(viewer, 10, null, List.of("TRACK", "ANNOUNCEMENT"));
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void failedNativeSponsorshipDoesNotPreventHealthyContentFromEnding() {
+        var sponsor = sponsorship("native-sponsor", Set.of(MusicianFeedItemType.TRACK), request -> {
+            throw new IllegalStateException("Isolated sponsorship outage");
+        });
+        var page = service(List.of(provider("tracks", request -> List.of(candidate("TRACK:healthy", 1_000_000)))),
+                List.of(sponsor), executor).get(viewer, 10, null, List.of("TRACK"));
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:healthy");
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void explicitSessionCapacityStillTerminatesDespiteAnUnavailableContentSource() {
+        properties.setDefaultPageSize(1);
+        properties.setMaxPageSize(1);
+        properties.setMaxSessionDeliveries(1);
+        var failed = provider("unavailable", request -> { throw new IllegalStateException("Isolated outage"); });
+        var page = service(List.of(failed, provider("tracks", request -> List.of(candidate("TRACK:healthy", 1_000_000)))))
+                .get(viewer, 1, null, List.of("TRACK"));
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.hasMore()).isFalse();
+        assertThat(deliveredCount.get()).isEqualTo(1);
     }
 
     @Test
@@ -253,11 +476,12 @@ class MusicianFeedServiceTest {
 
         MusicianFeedPageResponse page = service(List.of(
                 provider("malformed-optional", request -> List.of(prefix, malformed)),
-                provider("healthy", request -> List.of(kept))))
-                .get(viewer, 10, null, List.of("TRACK"));
+                provider("healthy", request -> List.of(kept, candidate("TRACK:healthy-tail", 800_000)))))
+                .get(viewer, 1, null, List.of("TRACK"));
 
         assertThat(page.items()).extracting(MusicianFeedItemResponse::id)
                 .containsExactly("TRACK:healthy");
+        assertThat(page.hasMore()).isTrue();
     }
 
     @Test
@@ -319,13 +543,15 @@ class MusicianFeedServiceTest {
             return List.of();
         });
         MusicianFeedCandidate kept = candidate("TRACK:healthy-after-slow", 900_000);
-        MusicianFeedCandidateProvider healthy = provider("z-healthy", request -> List.of(kept));
+        MusicianFeedCandidateProvider healthy = provider("z-healthy", request -> List.of(kept,
+                candidate("TRACK:healthy-tail", 800_000)));
 
         MusicianFeedPageResponse page = service(List.of(slow, healthy)).get(
-                viewer, 10, null, List.of("TRACK"));
+                viewer, 1, null, List.of("TRACK"));
 
         assertThat(page.items()).extracting(MusicianFeedItemResponse::id)
                 .containsExactly("TRACK:healthy-after-slow");
+        assertThat(page.hasMore()).isTrue();
     }
 
     @Test
@@ -446,9 +672,10 @@ class MusicianFeedServiceTest {
             return result;
         });
 
-        MusicianFeedPageResponse page = service(List.of(oversized)).get(viewer, 1, null, List.of("TRACK"));
-
-        assertThat(page.items()).isEmpty();
+        assertThatThrownBy(() -> service(List.of(oversized)).get(viewer, 1, null, List.of("TRACK")))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CAPACITY_UNAVAILABLE));
+        assertNoPagePersisted();
     }
 
     @Test
@@ -869,10 +1096,12 @@ class MusicianFeedServiceTest {
     @Test
     void optionalFailureAndReturnedContentHaveBoundedOperationalMetrics() {
         var page = service(List.of(
-                provider("tracks", request -> List.of(candidate("TRACK:ok", 1_000_000))),
+                provider("tracks", request -> List.of(candidate("TRACK:ok", 1_000_000),
+                        candidate("TRACK:tail", 900_000))),
                 provider("unavailable", request -> { throw new IllegalStateException("Isolated source outage"); })))
-                .get(viewer, 20, null, List.of("TRACK"));
+                .get(viewer, 1, null, List.of("TRACK"));
         assertThat(page.items()).hasSize(1);
+        assertThat(page.hasMore()).isTrue();
         assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.results")
                 .tags("provider", "tracks", "outcome", "success").counter().count()).isEqualTo(1);
         assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.results")
@@ -880,7 +1109,7 @@ class MusicianFeedServiceTest {
         assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.execution")
                 .tag("provider", "tracks").timer().count()).isEqualTo(1);
         assertThat(metricsRegistry.get("soundconnect.musician.feed.candidates")
-                .tags("type", "TRACK", "lane", "FOLLOWING").counter().count()).isEqualTo(1);
+                .tags("type", "TRACK", "lane", "FOLLOWING").counter().count()).isEqualTo(2);
         assertThat(metricsRegistry.get("soundconnect.musician.feed.response.items")
                 .tag("type", "TRACK").counter().count()).isEqualTo(1);
         assertThat(metricsRegistry.getMeters()).allSatisfy(meter ->
@@ -915,9 +1144,16 @@ class MusicianFeedServiceTest {
             String id,
             java.util.function.Function<MusicianFeedCandidateRequest, List<MusicianFeedCandidate>> source
     ) {
+        return provider(id, Set.of(MusicianFeedItemType.TRACK), source);
+    }
+
+    private static MusicianFeedCandidateProvider provider(
+            String id, Set<MusicianFeedItemType> types,
+            java.util.function.Function<MusicianFeedCandidateRequest, List<MusicianFeedCandidate>> source
+    ) {
         return new MusicianFeedCandidateProvider() {
             @Override public String providerId() { return id; }
-            @Override public Set<MusicianFeedItemType> supportedTypes() { return Set.of(MusicianFeedItemType.TRACK); }
+            @Override public Set<MusicianFeedItemType> supportedTypes() { return types; }
             @Override public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
                 return source.apply(request);
             }

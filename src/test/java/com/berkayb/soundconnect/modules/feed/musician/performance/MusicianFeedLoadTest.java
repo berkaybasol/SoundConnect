@@ -301,6 +301,7 @@ class MusicianFeedLoadTest {
         return switch (AUDIENCE) {
             case MUSICIAN -> service.get(viewer, PAGE_SIZE, cursor, TYPES);
             case VENUE -> service.getForVenue(viewer, PAGE_SIZE, cursor, TYPES);
+            case STUDIO -> service.getForStudio(viewer, PAGE_SIZE, cursor, TYPES);
             case LISTENER -> service.getForListener(viewer, PAGE_SIZE, cursor, TYPES);
         };
     }
@@ -361,6 +362,7 @@ class MusicianFeedLoadTest {
         var personalization = switch (AUDIENCE) {
             case MUSICIAN -> fixturePreferences.load(viewer, profile);
             case VENUE -> fixturePreferences.loadForVenue(viewer, profile);
+            case STUDIO -> fixturePreferences.loadForStudio(viewer, profile);
             case LISTENER -> fixturePreferences.loadForListener(viewer, profile);
         };
         var request = new MusicianFeedCandidateRequest(viewer, profile, session, anchor, anchor,

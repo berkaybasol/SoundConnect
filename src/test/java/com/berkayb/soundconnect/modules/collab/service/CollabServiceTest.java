@@ -55,6 +55,7 @@ class CollabServiceTest {
     @Mock CollabTimeProvider timeProvider;
     @Mock CollabPublisherOwnershipGuard publisherOwnershipGuard;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock CollabAccessGuard access;
 
     @InjectMocks CollabService service;
 

@@ -29,7 +29,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioApplicati
 @RequestMapping(USER_BASE)
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("isAuthenticated() and !hasRole('LISTENER')")
 @Tag(name = "User / Studio Application", description = "Studio membership applications")
 public class UserStudioApplicationController {
 	private final StudioApplicationService applicationService;

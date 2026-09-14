@@ -148,6 +148,7 @@ class AnnouncementPostgresTest {
         verify(analytics, times(2)).recordEngagement(eq(musician), eq(id), any(), eq(AnnouncementAnalyticsStore.EngagementMetric.COMMENT), any());
         likes.setCommentLike(musician, reply, true);
         assertThat(reads.get(musician, id).engagement()).isEqualTo(new AnnouncementResponse.Engagement(1, 2, true));
+        assertThat(comments.countReadableComments(musician, EngagementTargetType.ANNOUNCEMENT, id)).isEqualTo(2);
         assertEngagementHidden(listener, id, root, reply);
         error(ErrorType.UNAUTHORIZED, () -> likes.countLikes(EngagementTargetType.ANNOUNCEMENT, id));
         admin.archive(administrator, id, new AnnouncementVersionAction(live.version()));
@@ -297,6 +298,7 @@ class AnnouncementPostgresTest {
         hidden(() -> likes.countLikes(viewer, EngagementTargetType.ANNOUNCEMENT, id));
         hidden(() -> likerList.get(viewer, EngagementTargetType.ANNOUNCEMENT, id, 20, null));
         hidden(() -> comments.getComments(viewer, EngagementTargetType.ANNOUNCEMENT, id, PageRequest.of(0, 20)));
+        hidden(() -> comments.countReadableComments(viewer, EngagementTargetType.ANNOUNCEMENT, id));
         hidden(() -> comments.getReplies(viewer, root, PageRequest.of(0, 20)));
         hidden(() -> comments.createComment(viewer, EngagementTargetType.ANNOUNCEMENT, id, new CommentCreateRequestDto("Hidden", root)));
         hidden(() -> likes.setCommentLike(viewer, reply, true));

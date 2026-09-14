@@ -67,4 +67,14 @@ class MainstageStudioAccessTest {
         var promotions = mock(PromotionServiceImpl.class, CALLS_REAL_METHODS);
         assertThat(promotions.getDisplayableByPlacement(PromotionPlacement.VENUE_MANAGEMENT_PANEL)).isEmpty();
     }
+
+    @Test void customerReservationPathsDenyListenersBeforeReadingHistoricalReservationsOrRoomPrices() {
+        var reservations = mock(StudioReservationService.class, CALLS_REAL_METHODS);
+        UUID viewer = UUID.randomUUID();
+        assertThatThrownBy(() -> reservations.create(viewer, null)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> reservations.listCustomer(viewer, 0, 20)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> reservations.listCustomerRoomDate(viewer, resource, day, 0, 20))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> reservations.cancelCustomer(viewer, resource, null)).isInstanceOf(SoundConnectException.class);
+    }
 }

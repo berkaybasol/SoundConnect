@@ -62,6 +62,17 @@ Removed likes/follows, deleted comments, inaccessible targets, closed/expired
 listings, invalid events, deleted attachments, and restricted listener content
 must not survive as feed candidates.
 
+After returning from a media or announcement detail, feed engagement is refreshed
+through the existing engagement APIs. Authenticated
+`GET /api/v1/comments/{targetType}/{targetId}/count` returns `BaseResponse<Long>`
+with the total of non-deleted root comments and replies for the exact target.
+It uses the same transaction and current source-visibility locks as comment list
+reads, including listener Mainstage restrictions and announcement audience checks,
+and returns `Cache-Control: private, no-store`. A surviving reply under a deleted
+root still counts; the deleted root placeholder does not. Root-page
+`totalElements` remains pagination metadata and is not the engagement total.
+The older internal comment-count methods retain their existing semantics.
+
 ## Personalization
 
 The first explicit personalization signals are:
@@ -514,7 +525,17 @@ support for them.
 - Database changes are additive and forward-compatible with the previous app
   version. Runtime seeders are not production migrations.
 - Feed rollout is feature-flagged and fails closed per optional candidate
-  provider; one broken optional source must not corrupt the whole page.
+  provider; one broken optional source must not corrupt the whole page. When a
+  normal organic content provider starts but fails or times out, healthy partial
+  pages still succeed if the mixer can prove a continuation from their remaining
+  eligible candidates. An empty or otherwise terminal result cannot establish
+  exhaustion in that condition: the service returns existing code 1324 / HTTP 503
+  before writing delivery or replay rows. Retrying the same continuation cursor
+  can therefore recover at the same position without skipping or duplicating
+  cards. Successful empty reads still establish normal exhaustion, and reaching
+  the explicit session delivery capacity remains terminal. Optional announcement-only,
+  profile-completion-only and sponsorship failures do not block normal-content
+  exhaustion. This rule is shared by musician, venue and listener feeds.
 - Authenticated feed reads are rate-limited per user before ranking begins.
   Initial loads and continuations use separate Redis-server-time token buckets,
   while both atomically reserve the same sustained page budget. This prevents

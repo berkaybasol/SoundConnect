@@ -82,6 +82,20 @@ class MusicianFeedAnnouncementCandidateProviderTest {
         verify(source, never()).findForFeedByIds(eq(VIEWER), eq("MUSICIAN"), anyList(), any());
     }
 
+    @Test void studioAudienceIsUsedForBothSelectionAndFrozenPlanReads() {
+        var announcement = MusicianFeedAnnouncementSelectorTest.value(92, NOW.minusSeconds(60));
+        when(source.findForFeedBatch(VIEWER, "STUDIO", NOW, null, 160))
+                .thenReturn(new AnnouncementPage(List.of(announcement), null, false));
+        var initial = provider.findCandidates(request(null).withAudience(BackstageFeedAudience.STUDIO));
+        assertThat(initial).singleElement().satisfies(value -> assertThat(value.target().id()).isEqualTo(announcement.id()));
+        var plan = new MusicianFeedAnnouncementPlan(initial.stream().map(MusicianFeedCandidate::announcementPlacement).toList());
+        when(source.findForFeedByIds(VIEWER, "STUDIO", List.of(announcement.id()), NOW)).thenReturn(List.of(announcement));
+        assertThat(provider.findCandidates(request(plan).withAudience(BackstageFeedAudience.STUDIO))).hasSize(1);
+        verify(source).findForFeedBatch(VIEWER, "STUDIO", NOW, null, 160);
+        verify(source).findForFeedByIds(VIEWER, "STUDIO", List.of(announcement.id()), NOW);
+        verifyNoMoreInteractions(source);
+    }
+
     @Test void hiddenNewestIsExcludedBeforeTheThreeSlotsAreChosen() {
         var hidden = MusicianFeedAnnouncementSelectorTest.value(1, NOW);
         var visible = MusicianFeedAnnouncementSelectorTest.value(2, NOW.minusSeconds(1));

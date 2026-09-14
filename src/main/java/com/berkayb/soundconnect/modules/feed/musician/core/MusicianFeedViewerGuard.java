@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.core;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
@@ -25,6 +26,7 @@ public class MusicianFeedViewerGuard {
     private final VenueRepository venues;
     private final VenueProfileRepository venueProfiles;
     private final ListenerProfileRepository listeners;
+    private final StudioProfileRepository studios;
 
     public MusicianFeedViewerGuard(UserRepository users, MusicianProfileRepository musicians) {
         this(users, musicians, null, null);
@@ -35,15 +37,22 @@ public class MusicianFeedViewerGuard {
         this(users, musicians, venues, venueProfiles, null);
     }
 
-    @Autowired
     public MusicianFeedViewerGuard(UserRepository users, MusicianProfileRepository musicians,
                                   VenueRepository venues, VenueProfileRepository venueProfiles,
                                   ListenerProfileRepository listeners) {
+        this(users, musicians, venues, venueProfiles, listeners, null);
+    }
+
+    @Autowired
+    public MusicianFeedViewerGuard(UserRepository users, MusicianProfileRepository musicians,
+                                  VenueRepository venues, VenueProfileRepository venueProfiles,
+                                  ListenerProfileRepository listeners, StudioProfileRepository studios) {
         this.users = users;
         this.musicians = musicians;
         this.venues = venues;
         this.venueProfiles = venueProfiles;
         this.listeners = listeners;
+        this.studios = studios;
     }
 
     public UUID requireMusicianProfile(UUID userId) {
@@ -73,8 +82,23 @@ public class MusicianFeedViewerGuard {
         return switch (audience) {
             case MUSICIAN -> requireMusicianProfile(userId);
             case VENUE -> requireVenueProfile(userId);
+            case STUDIO -> requireStudioProfile(userId);
             case LISTENER -> requireListenerProfile(userId);
         };
+    }
+
+    /** Pending/rejected memberships and stale or mismatched studio profiles never own a feed. */
+    public UUID requireStudioProfile(UUID userId) {
+        requireCanonicalRole(userId, "ROLE_STUDIO");
+        if (studios == null) throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+        return studios.findByUserId(userId)
+                .filter(profile -> profile.getId() != null && profile.getUser() != null
+                        && userId.equals(profile.getUser().getId())
+                        && profile.getUser().getStatus() == UserStatus.ACTIVE
+                        && Boolean.TRUE.equals(profile.getUser().getEmailVerified())
+                        && profile.getUser().getErasedAt() == null)
+                .map(profile -> profile.getId())
+                .orElseThrow(() -> new SoundConnectException(ErrorType.FORBIDDEN_ACCESS));
     }
 
     /** Feed consumption does not publish the viewer's identity, including ghost listeners. */

@@ -64,6 +64,7 @@ class RabbitToDbE2E {
 	})
 	@EnableJpaRepositories(basePackages = "com.berkayb.soundconnect.modules.notification.repository")
 	@Import({
+			com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class,
 			NotificationRabbitConfig.class,
 			NotificationEventListener.class,
 			com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class,

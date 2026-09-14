@@ -22,6 +22,7 @@ import com.berkayb.soundconnect.modules.collab.repository.CollabReportRepository
 import com.berkayb.soundconnect.modules.collab.repository.CollabRepository;
 import com.berkayb.soundconnect.modules.collab.repository.CollabSavedListingRepository;
 import com.berkayb.soundconnect.modules.collab.support.CollabTimeProvider;
+import com.berkayb.soundconnect.modules.collab.support.CollabAccessGuard;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -68,6 +69,7 @@ class CollabReportModerationServiceTest {
     @Mock UserEntityFinder userFinder;
     @Mock CollabTimeProvider timeProvider;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock CollabAccessGuard access;
 
     @InjectMocks CollabReportModerationService service;
 
@@ -85,7 +87,7 @@ class CollabReportModerationServiceTest {
                 eq(CollabReportStatus.OPEN), eq(CollabReportReason.SPAM), any()))
                 .thenReturn(new PageImpl<>(List.of(report)));
 
-        var page = service.list(CollabReportStatus.OPEN, CollabReportReason.SPAM, 0, 20);
+        var page = service.list(UUID.randomUUID(), CollabReportStatus.OPEN, CollabReportReason.SPAM, 0, 20);
 
         assertThat(page.content()).hasSize(1);
         CollabReportAdminResponse response = page.content().getFirst();

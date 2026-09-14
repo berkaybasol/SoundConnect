@@ -125,7 +125,7 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
         if (!request.supportedTypes().contains(MusicianFeedItemType.PROFILE)) return List.of();
         UUID cityId = request.personalization().opportunityCityId();
         int totalLimit = Math.min(request.limit(), 24);
-        boolean venue = MusicianFeedArtistDiscovery.forVenue(request);
+        boolean venue = MusicianFeedArtistDiscovery.forArtistDiscovery(request);
         int relevantLimit = venue ? totalLimit : totalLimit * 2 / 3;
         int generalLimit = totalLimit - relevantLimit;
         var parameters = new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.collab.service;
 import com.berkayb.soundconnect.modules.collab.dto.response.CollabActorSummary;
 import com.berkayb.soundconnect.modules.collab.entity.CollabActor;
 import com.berkayb.soundconnect.modules.collab.repository.CollabActorRepository;
+import com.berkayb.soundconnect.modules.collab.support.CollabAccessGuard;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.profile.shared.ownership.OwnedProfileTarget;
@@ -33,6 +34,7 @@ class CollabActorServiceTest {
     @Mock ProfileOwnershipResolver ownershipResolver;
     @Mock UserRepository userRepository;
     @Mock BandRepository bandRepository;
+    @Mock CollabAccessGuard access;
 
     @InjectMocks CollabActorService service;
 

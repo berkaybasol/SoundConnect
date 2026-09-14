@@ -40,9 +40,13 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 		}
 		
 		Map<String, UserProfileTargetDto> unique = new LinkedHashMap<>();
+		boolean studioRestricted = false;
 		for (UserProfileTargetDto item : raw) {
 			if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
-					&& "STUDIO".equalsIgnoreCase(item.type())) continue;
+					&& "STUDIO".equalsIgnoreCase(item.type())) {
+				studioRestricted = true;
+				continue;
+			}
 			String key = (safe(item.type()) + ":" + String.valueOf(item.profileId())).toLowerCase(Locale.ROOT);
 			unique.putIfAbsent(key, item);
 		}
@@ -73,7 +77,10 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 				                                                  .thenComparing(t -> safe(t.displayName())))
 		                                          .collect(Collectors.toList());
 		
-		return new UserProfilesResolveResponseDto(userId, sorted);
+		// Explain a blocked avatar navigation without exposing any studio target data.
+		// Ghost/pending privacy decisions above always take precedence over this marker.
+		return new UserProfilesResolveResponseDto(userId, sorted,
+				sorted.isEmpty() && studioRestricted ? "STUDIO_MAINSTAGE_RESTRICTED" : null);
 	}
 
 	private boolean isGhostListener(UserProfileTargetDto target) {

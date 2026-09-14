@@ -338,6 +338,7 @@ class NotificationReplayReceiptPostgresTest {
     @EntityScan(basePackageClasses = Notification.class)
     @EnableJpaRepositories(basePackageClasses = NotificationRepository.class)
     @Import({NotificationEventListener.class, NotificationServiceImpl.class, TransactionalNotificationService.class, NotificationCleanupService.class,
+            com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class,
             com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})
     static class TestConfiguration { }
 }

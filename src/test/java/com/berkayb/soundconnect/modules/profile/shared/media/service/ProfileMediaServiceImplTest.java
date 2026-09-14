@@ -57,6 +57,44 @@ class ProfileMediaServiceImplTest {
 	@Mock ListenerVisibilityPolicy listenerVisibilityPolicy;
 	@InjectMocks ProfileMediaServiceImpl service;
 
+	@org.junit.jupiter.api.AfterEach
+	void clearAudience() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+	void studioAttachmentManagementHonorsListenerVetoDespiteLegacyOwnership(boolean listener) {
+		var authorities = new java.util.ArrayList<org.springframework.security.core.authority.SimpleGrantedAuthority>();
+		authorities.add(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_STUDIO"));
+		if (listener) authorities.add(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"));
+		org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+				org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("studio", "n/a", authorities));
+		UUID actor = UUID.randomUUID(), profileId = UUID.randomUUID(), assetId = UUID.randomUUID(), attachmentId = UUID.randomUUID();
+		var profile = com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile.builder()
+				.id(profileId).user(User.builder().id(actor).build()).build();
+		var attachment = ProfileMedia.builder().id(attachmentId).profileType(ProfileType.STUDIO).profileId(profileId)
+				.mediaAssetId(assetId).role(ProfileMediaRole.GALLERY).build();
+		org.mockito.Mockito.lenient().when(studioProfileRepository.findById(profileId)).thenReturn(Optional.of(profile));
+		when(profileMediaRepository.findById(attachmentId)).thenReturn(Optional.of(attachment));
+		if (listener) {
+			assertThatThrownBy(() -> service.addMedia(actor, ProfileType.STUDIO, profileId, assetId, ProfileMediaRole.GALLERY, 0))
+					.isInstanceOf(SoundConnectException.class);
+			assertThatThrownBy(() -> service.removeMedia(actor, attachmentId)).isInstanceOf(SoundConnectException.class);
+			org.mockito.Mockito.verifyNoInteractions(studioProfileRepository, mediaAssetRepository);
+			verify(profileMediaRepository, never()).save(any());
+			verify(profileMediaRepository, never()).delete(any());
+		} else {
+			var asset = MediaAsset.builder().id(assetId).kind(MediaKind.IMAGE).status(MediaStatus.READY)
+					.visibility(MediaVisibility.PUBLIC).ownerType(MediaOwnerType.STUDIO_PROFILE).ownerId(profileId)
+					.sourceUrl("https://cdn.test/studio.jpg").build();
+			when(mediaAssetRepository.findByIdForUpdate(assetId)).thenReturn(Optional.of(asset));
+			when(profileMediaRepository.save(any(ProfileMedia.class))).thenAnswer(call -> call.getArgument(0));
+			assertThat(service.addMedia(actor, ProfileType.STUDIO, profileId, assetId, ProfileMediaRole.GALLERY, 0).getMediaAssetId())
+					.isEqualTo(assetId);
+			service.removeMedia(actor, attachmentId);
+			verify(profileMediaRepository).delete(attachment);
+		}
+	}
+
 	@Test
 	void addMediaLocksAssetUntilProfileReferenceCommits() {
 		UUID actingUserId = UUID.randomUUID();

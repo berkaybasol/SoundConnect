@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
@@ -18,9 +20,11 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class MusicianFeedArtistDiscoveryTest {
-    @Test void venuePrefersLocalArtistsWithoutChangingPayloadOrFollowingIdentity() {
+    @ParameterizedTest
+    @EnumSource(value = BackstageFeedAudience.class, names = {"VENUE", "STUDIO"})
+    void businessAudiencePrefersLocalArtistsWithoutChangingPayloadOrFollowingIdentity(BackstageFeedAudience audience) {
         var artist = candidate("MUSICIAN", MusicianFeedLane.GENERAL_DISCOVERY);
-        var request = request(BackstageFeedAudience.VENUE, UUID.randomUUID());
+        var request = request(audience, UUID.randomUUID());
         var local = MusicianFeedArtistDiscovery.prioritize(artist, request, true, true);
         var fallback = MusicianFeedArtistDiscovery.prioritize(artist, request, false, true);
         assertThat(local.lane()).isEqualTo(MusicianFeedLane.RELEVANT_OPPORTUNITY);
@@ -46,7 +50,9 @@ class MusicianFeedArtistDiscoveryTest {
                 .isSameAs(venue);
     }
 
-    @Test void sparseVenuePublicationsBackfillAllUnusedCapacityWithNationalArtists() {
+    @ParameterizedTest
+    @EnumSource(value = BackstageFeedAudience.class, names = {"VENUE", "STUDIO"})
+    void sparseBusinessPublicationsBackfillAllUnusedCapacityWithNationalArtists(BackstageFeedAudience audience) {
         var jdbc = mock(NamedParameterJdbcTemplate.class);
         List<Map<String, Object>> reads = new ArrayList<>();
         when(jdbc.query(anyString(), any(SqlParameterSource.class), org.mockito.ArgumentMatchers.<RowMapper<String>>any()))
@@ -60,7 +66,7 @@ class MusicianFeedArtistDiscoveryTest {
                     }
                     return List.of();
                 });
-        var result = MusicianFeedArtistDiscovery.findPublications(jdbc, "bounded", request(BackstageFeedAudience.VENUE, UUID.randomUUID()),
+        var result = MusicianFeedArtistDiscovery.findPublications(jdbc, "bounded", request(audience, UUID.randomUUID()),
                 (row, index) -> "unused");
         assertThat(result).hasSize(20);
         assertThat(reads).containsExactly(
@@ -83,6 +89,15 @@ class MusicianFeedArtistDiscoveryTest {
         MusicianFeedArtistDiscovery.findPublications(jdbc, "bounded", request(BackstageFeedAudience.MUSICIAN, UUID.randomUUID()),
                 (row, index) -> "unused");
         assertThat(limits).containsExactly(15, 5);
+    }
+
+    @Test void studioDoesNotClaimThatPhotosOrFollowedStudiosAreArtistOpportunities() {
+        var request = request(BackstageFeedAudience.STUDIO, UUID.randomUUID());
+        var photo = MusicianFeedArtistDiscovery.prioritize(candidate("MUSICIAN", MusicianFeedLane.GENERAL_DISCOVERY),
+                request, true, false);
+        assertThat(photo.lane()).isEqualTo(MusicianFeedLane.GENERAL_DISCOVERY);
+        var followedStudio = candidate("STUDIO", MusicianFeedLane.FOLLOWING);
+        assertThat(MusicianFeedArtistDiscovery.prioritize(followedStudio, request, true, true)).isSameAs(followedStudio);
     }
 
     @Test void listenerDiscoveryCanUseUnfilledFollowingCapacityWithoutRestrictingMusicToACity() {

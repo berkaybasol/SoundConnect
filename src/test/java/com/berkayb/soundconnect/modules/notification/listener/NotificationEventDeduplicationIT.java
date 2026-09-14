@@ -133,6 +133,7 @@ class NotificationEventDeduplicationIT {
     @Configuration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = Notification.class)
     @EnableJpaRepositories(basePackageClasses = NotificationRepository.class)
+    @org.springframework.context.annotation.Import(com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class)
     static class JpaTestConfiguration {
     }
 }

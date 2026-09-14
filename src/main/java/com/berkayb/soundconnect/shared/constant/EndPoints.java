@@ -234,6 +234,9 @@ public class EndPoints {
 		// ===== LIST ROOT COMMENTS ===== //
 		// GET /comments/{targetType}/{targetId}
 		public static final String LIST_BY_TARGET = "/{targetType}/{targetId}";
+
+		// GET /comments/{targetType}/{targetId}/count: live roots and replies.
+		public static final String COUNT_BY_TARGET = "/{targetType}/{targetId}/count";
 		
 		// ===== LIST REPLIES ===== //
 		// GET /comments/replies/{commentId}

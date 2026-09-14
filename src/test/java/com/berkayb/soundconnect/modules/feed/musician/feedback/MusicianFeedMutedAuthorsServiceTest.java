@@ -51,6 +51,22 @@ class MusicianFeedMutedAuthorsServiceTest {
     }
 
     @Test
+    void studioListUsesItsOwnViewerBoundaryAndTheSharedBoundedPreferenceRead() {
+        when(repository.findPage(eq(viewer), any(), isNull(), anyInt())).thenReturn(List.of());
+        assertThat(service.getForStudio(viewer, null, null).items()).isEmpty();
+        verify(viewers).requireStudioProfile(viewer);
+        verifyNoMoreInteractions(viewers);
+        verify(repository).findPage(eq(viewer), any(), isNull(), eq(31));
+    }
+
+    @Test
+    void studioListRejectsUnauthorizedCallerBeforeAnyRead() {
+        doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(viewers).requireStudioProfile(viewer);
+        assertThatThrownBy(() -> service.getForStudio(viewer, null, null)).isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(repository, cursors);
+    }
+
+    @Test
     void verifiesTheViewerBeforeAnyPreferenceRead() {
         doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(viewers).requireMusicianProfile(viewer);
         assertThatThrownBy(() -> service.get(viewer, null, null)).isInstanceOf(SoundConnectException.class);

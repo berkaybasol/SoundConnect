@@ -23,7 +23,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Collab.*;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(BASE)
-@PreAuthorize("hasAnyRole('MUSICIAN','VENUE','STUDIO')")
+@PreAuthorize("!hasRole('LISTENER') and hasAnyRole('MUSICIAN','VENUE','STUDIO')")
 public class CollabController {
     private final CollabService service;
 
@@ -190,8 +190,7 @@ public class CollabController {
             @AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID actorId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        userId(principal);
-        return ok(service.actorReviews(actorId, page, size), "Değerlendirmeler listelendi.");
+        return ok(service.actorReviews(userId(principal), actorId, page, size), "Değerlendirmeler listelendi.");
     }
 
     @PostMapping(REPORTS)
@@ -207,11 +206,13 @@ public class CollabController {
     }
 
     private <T> ResponseEntity<BaseResponse<T>> ok(T data, String message) {
-        return ResponseEntity.ok(BaseResponse.<T>builder().success(true).message(message).code(200).data(data).build());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+                .body(BaseResponse.<T>builder().success(true).message(message).code(200).data(data).build());
     }
 
     private <T> ResponseEntity<BaseResponse<T>> created(T data, String message) {
         return ResponseEntity.status(HttpStatus.CREATED)
+                .cacheControl(CacheControl.noStore().cachePrivate())
                 .body(BaseResponse.<T>builder().success(true).message(message).code(201).data(data).build());
     }
 }

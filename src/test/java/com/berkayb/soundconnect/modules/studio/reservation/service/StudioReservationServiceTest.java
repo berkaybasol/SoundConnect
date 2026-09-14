@@ -49,6 +49,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -108,6 +109,60 @@ class StudioReservationServiceTest {
         lenient().when(timeProvider.zoneOf(any())).thenReturn(ZoneId.of("Europe/Istanbul"));
         lenient().when(timeProvider.now()).thenReturn(Instant.parse("2026-07-21T10:00:00Z"));
         lenient().when(ghostListenerIdentityBatchResolver.resolve(any())).thenReturn(Map.of());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearViewerAudience() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SESSION", "ROLE", "PROFILE"})
+    void listenerCannotReadOrMutateAnyCustomerReservationPath(String source) {
+        switch (source) {
+            case "SESSION" -> org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                    org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+                            "listener", "n/a", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+            case "ROLE" -> {
+                when(userRepository.findByIdForUpdate(requesterId)).thenReturn(Optional.of(requester));
+                when(userRepository.findRoleNamesByUserId(requesterId)).thenReturn(Set.of("ROLE_LISTENER"));
+            }
+            case "PROFILE" -> {
+                when(userRepository.findByIdForUpdate(requesterId)).thenReturn(Optional.of(requester));
+                when(userRepository.findExistingPersonalProfileRoleNames(requesterId)).thenReturn(Set.of("ROLE_LISTENER"));
+            }
+        }
+        for (Runnable action : customerOperations(requesterId)) {
+            assertThatThrownBy(action::run).isInstanceOfSatisfying(SoundConnectException.class,
+                    error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.PROFILE_NOT_FOUND));
+        }
+        org.mockito.Mockito.verifyNoInteractions(roomRepository, reservationRepository, occupancyRepository,
+                timeProvider, eventPublisher, roomMapper);
+        if (source.equals("SESSION")) {
+            org.mockito.Mockito.verifyNoInteractions(userRepository);
+        } else {
+            var ordered = org.mockito.Mockito.inOrder(userRepository);
+            ordered.verify(userRepository).findByIdForUpdate(requesterId);
+            ordered.verify(userRepository, org.mockito.Mockito.calls(1)).findRoleNamesByUserId(requesterId);
+        }
+    }
+
+    @Test
+    void anonymousCustomerCannotReachAccountOrReservationData() {
+        for (Runnable action : customerOperations(null)) {
+            assertThatThrownBy(action::run).isInstanceOfSatisfying(SoundConnectException.class,
+                    error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.UNAUTHORIZED));
+        }
+        org.mockito.Mockito.verifyNoInteractions(userRepository, roomRepository, reservationRepository,
+                occupancyRepository, timeProvider, eventPublisher);
+    }
+
+    private List<Runnable> customerOperations(UUID actorId) {
+        return List.of(
+                () -> service.create(actorId, createRequest()),
+                () -> service.listCustomer(actorId, 0, 20),
+                () -> service.listCustomerRoomDate(actorId, roomId, LocalDate.of(2026, 9, 14), 0, 20),
+                () -> service.cancelCustomer(actorId, UUID.randomUUID(), new StudioVersionRequest(0L)));
     }
 
     @Test

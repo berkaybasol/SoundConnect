@@ -55,9 +55,11 @@ public class CollabService {
     private final CollabTimeProvider timeProvider;
     private final CollabPublisherOwnershipGuard publisherOwnershipGuard;
     private final ApplicationEventPublisher eventPublisher;
+    private final CollabAccessGuard access;
 
     @Transactional
     public List<CollabActorSummary> actorsMine(UUID userId) {
+        access.requireBackstage(userId);
         // Actor synchronization is transactional and may insert projections.
         // Spring will join the outer transaction while retaining a single API surface.
         return actorService.listMine(userId);
@@ -65,6 +67,7 @@ public class CollabService {
 
     @Transactional
     public CollabListingResponse createDraft(UUID userId, CollabDraftCreateRequest request) {
+        access.requireBackstage(userId);
         User owner = lockUser(userId);
         CanonicalListingPayload canonical = canonicalizeListing(
                 request.cadence(), request.wantedType(), request.instrumentId(), request.branch(),
@@ -97,6 +100,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabListingResponse update(UUID userId, UUID listingId, CollabUpdateRequest request) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
         if (listing.getStatus() != CollabListingStatus.DRAFT && listing.getStatus() != CollabListingStatus.OPEN) {
@@ -131,6 +135,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabListingResponse publish(UUID userId, UUID listingId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
         if (listing.getStatus() == CollabListingStatus.OPEN) {
@@ -157,6 +162,7 @@ public class CollabService {
 
     @Transactional
     public void deleteDraft(UUID userId, UUID listingId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
         if (listing.getStatus() != CollabListingStatus.DRAFT) {
@@ -168,6 +174,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabListingResponse close(UUID userId, UUID listingId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
         if (listing.getStatus() == CollabListingStatus.CLOSED
@@ -196,6 +203,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredListingNotFoundException.class)
     public CollabListingResponse detail(UUID userId, UUID listingId) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         Instant now = timeProvider.now();
         boolean expiredNow = listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, now);
@@ -219,6 +227,7 @@ public class CollabService {
 
     @Transactional(readOnly = true)
     public PageResponse<CollabListingResponse> discovery(UUID userId, CollabFilterRequest filter, int page, int size) {
+        access.requireBackstage(userId);
         validateFilter(filter);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("publishedAt"), Sort.Order.desc("id")));
         Page<Collab> result = listingRepository.findAll(
@@ -229,6 +238,7 @@ public class CollabService {
 
     @Transactional
     public PageResponse<CollabListingResponse> listingsMine(UUID userId, CollabListingStatus status, int page, int size) {
+        access.requireBackstage(userId);
         reconcileOwnedDue(userId);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Page<Collab> result = status == null
@@ -240,6 +250,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabListingResponse save(UUID userId, UUID listingId) {
+        access.requireBackstage(userId);
         lockUser(userId);
         Instant now = timeProvider.now();
         Collab listing = listingRepository
@@ -259,12 +270,14 @@ public class CollabService {
 
     @Transactional
     public void unsave(UUID userId, UUID listingId) {
+        access.requireBackstage(userId);
         lockUser(userId);
         savedRepository.deleteByUserIdAndListingId(userId, listingId);
     }
 
     @Transactional(readOnly = true)
     public PageResponse<CollabListingResponse> savedMine(UUID userId, int page, int size) {
+        access.requireBackstage(userId);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Page<CollabSavedListing> saved = savedRepository.findAll(
                 CollabSavedListingSpecifications.visible(userId, CollabListingStatus.OPEN, timeProvider.now()),
@@ -276,6 +289,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabApplicationResponse apply(UUID userId, UUID listingId, CollabApplicationCreateRequest request) {
+        access.requireBackstage(userId);
         User applicantUser = lockUser(userId);
         String phone = normalizePhone(request.phoneNumber());
         String message = normalizeOptional(request.message());
@@ -318,6 +332,7 @@ public class CollabService {
     @Transactional
     public PageResponse<CollabApplicationResponse> incoming(UUID userId, UUID listingId,
                                                             CollabApplicationStatus status, int page, int size) {
+        access.requireBackstage(userId);
         Collab listing = lockListing(listingId);
         requireOwner(listing, userId);
         if (listing.getStatus() == CollabListingStatus.OPEN && isDue(listing, timeProvider.now())) {
@@ -335,6 +350,7 @@ public class CollabService {
     @Transactional
     public PageResponse<CollabApplicationResponse> applicationsMine(UUID userId, CollabApplicationStatus status,
                                                                     int page, int size) {
+        access.requireBackstage(userId);
         reconcileApplicantDue(userId);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("submittedAt"), Sort.Order.desc("id")));
         Page<CollabApplication> result = status == null
@@ -347,6 +363,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabJobResponse accept(UUID userId, UUID applicationId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         UUID listingId = applicationRepository.findListingId(applicationId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_APPLICATION_NOT_FOUND));
         Collab listing = lockListing(listingId);
@@ -392,6 +409,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabApplicationResponse reject(UUID userId, UUID applicationId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         UUID listingId = applicationRepository.findListingId(applicationId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_APPLICATION_NOT_FOUND));
         Collab listing = lockListing(listingId);
@@ -417,6 +435,7 @@ public class CollabService {
 
     @Transactional(noRollbackFor = CollabExpiredException.class)
     public CollabApplicationResponse withdraw(UUID userId, UUID applicationId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         UUID listingId = applicationRepository.findListingId(applicationId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_APPLICATION_NOT_FOUND));
         Collab listing = lockListing(listingId);
@@ -444,6 +463,7 @@ public class CollabService {
 
     @Transactional(readOnly = true)
     public PageResponse<CollabJobResponse> jobsMine(UUID userId, CollabJobStatus status, int page, int size) {
+        access.requireBackstage(userId);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         Page<CollabJob> result = status == null
                 ? jobRepository.findMine(userId, pageable)
@@ -457,6 +477,7 @@ public class CollabService {
 
     @Transactional
     public CollabJobResponse confirmCompletion(UUID userId, UUID jobId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
         CollabJob job = jobRepository.findByIdForUpdate(jobId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_JOB_NOT_FOUND));
         boolean publisherSide = Objects.equals(job.getPublisherUser().getId(), userId);
@@ -506,6 +527,7 @@ public class CollabService {
 
     @Transactional
     public CollabReviewResponse review(UUID userId, UUID jobId, CollabReviewCreateRequest request) {
+        access.requireBackstage(userId);
         User reviewerUser = lockUser(userId);
         String comment = normalizeOptional(request.comment());
         String payloadHash = CollabPayloadHasher.hash(jobId, request.rating(), comment);
@@ -548,7 +570,8 @@ public class CollabService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<CollabReviewResponse> actorReviews(UUID actorId, int page, int size) {
+    public PageResponse<CollabReviewResponse> actorReviews(UUID userId, UUID actorId, int page, int size) {
+        access.requireBackstage(userId);
         if (!actorRepository.existsById(actorId)) throw new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND);
         Pageable pageable = page(page, size, Sort.by(Sort.Order.desc("submittedAt"), Sort.Order.desc("id")));
         return PageResponse.from(reviewRepository.findByTargetActorId(actorId, pageable).map(mapper::review));
@@ -556,6 +579,7 @@ public class CollabService {
 
     @Transactional
     public CollabReportResponse report(UUID userId, UUID listingId, CollabReportCreateRequest request) {
+        access.requireBackstage(userId);
         User reporterUser = lockUser(userId);
         String details = normalizeOptional(request.details());
         if (request.reason() == CollabReportReason.OTHER && details == null) {

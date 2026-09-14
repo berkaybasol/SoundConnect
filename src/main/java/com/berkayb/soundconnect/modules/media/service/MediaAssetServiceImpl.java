@@ -520,7 +520,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 			case ORGANIZER_PROFILE -> organizerProfileRepository.findById(ownerId)
 					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
 					.orElse(false);
-			case STUDIO_PROFILE -> studioProfileRepository.findById(ownerId)
+			case STUDIO_PROFILE -> !MediaContentAudiencePolicy.isListenerViewer() && studioProfileRepository.findById(ownerId)
 					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
 					.orElse(false);
 			case LISTENER_PROFILE -> listenerProfileRepository.findById(ownerId)

@@ -32,7 +32,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioApplicati
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("hasAuthority('MANAGE_STUDIO_APPLICATIONS')")
+@PreAuthorize("hasAuthority('MANAGE_STUDIO_APPLICATIONS') and !hasRole('LISTENER')")
 @Tag(name = "Admin / Studio Application", description = "Studio membership application review")
 public class StudioApplicationAdminController {
 	private final StudioApplicationService applicationService;

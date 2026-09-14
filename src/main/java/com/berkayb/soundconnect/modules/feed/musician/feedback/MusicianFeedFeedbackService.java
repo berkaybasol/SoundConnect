@@ -215,6 +215,19 @@ public class MusicianFeedFeedbackService {
         return muteAuthorized(viewerUserId, profileType, profileId);
     }
 
+    @Transactional
+    public MusicianFeedFeedbackResponse recordItemForStudio(
+            UUID viewerUserId, String itemId, MusicianFeedFeedbackRequest request) {
+        viewerGuard.requireStudioProfile(viewerUserId);
+        return recordItemAuthorized(viewerUserId, itemId, request, BackstageFeedAudience.STUDIO);
+    }
+
+    @Transactional
+    public MusicianFeedFeedbackResponse muteForStudio(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireStudioProfile(viewerUserId);
+        return muteAuthorized(viewerUserId, profileType, profileId);
+    }
+
     private MusicianFeedFeedbackResponse muteAuthorized(UUID viewerUserId, String profileType, UUID profileId) {
         String normalizedType = authorProfiles.requireEligibleNotOwned(viewerUserId, profileType, profileId);
         feedbackLock.viewer(viewerUserId);
@@ -241,6 +254,12 @@ public class MusicianFeedFeedbackService {
     @Transactional
     public void unmuteForVenue(UUID viewerUserId, String profileType, UUID profileId) {
         viewerGuard.requireVenueProfile(viewerUserId);
+        unmuteAuthorized(viewerUserId, profileType, profileId);
+    }
+
+    @Transactional
+    public void unmuteForStudio(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireStudioProfile(viewerUserId);
         unmuteAuthorized(viewerUserId, profileType, profileId);
     }
 

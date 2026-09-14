@@ -17,6 +17,14 @@ final class MusicianFeedArtistDiscovery {
         return request.audience() == BackstageFeedAudience.VENUE;
     }
 
+    static boolean forStudio(MusicianFeedCandidateRequest request) {
+        return request.audience() == BackstageFeedAudience.STUDIO;
+    }
+
+    static boolean forArtistDiscovery(MusicianFeedCandidateRequest request) {
+        return forVenue(request) || forStudio(request);
+    }
+
     static boolean forListener(MusicianFeedCandidateRequest request) {
         return request.audience() == BackstageFeedAudience.LISTENER;
     }
@@ -43,7 +51,8 @@ final class MusicianFeedArtistDiscovery {
 
     static <T> List<T> findPublications(NamedParameterJdbcTemplate jdbc, String sql,
                                       MusicianFeedCandidateRequest request, RowMapper<T> mapper) {
-        boolean venue = forVenue(request);
+        // The historical SQL parameter also serves studio artist discovery.
+        boolean venue = forArtistDiscovery(request);
         boolean listener = forListener(request);
         UUID city = request.personalization().opportunityCityId();
         int discoveryLimit = Math.max(1, request.limit() / (venue ? 2 : 4));
@@ -84,7 +93,7 @@ final class MusicianFeedArtistDiscovery {
                     followed ? MusicianFeedLane.FOLLOWING : MusicianFeedLane.RELEVANT_OPPORTUNITY,
                     value.ownedByViewer(), value.announcementPlacement());
         }
-        if (!forVenue(request) || value.author() == null
+        if (!forArtistDiscovery(request) || value.author() == null
                 || !Set.of("MUSICIAN", "BAND").contains(value.author().profileType())) return value;
         int relevance = performanceOrProfile ? (cityMatch ? 170_000 : 80_000) : (cityMatch ? 60_000 : 0);
         boolean followed = value.lane() == MusicianFeedLane.FOLLOWING;

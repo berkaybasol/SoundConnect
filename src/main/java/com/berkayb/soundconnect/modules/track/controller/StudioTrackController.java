@@ -31,7 +31,7 @@ public class StudioTrackController {
 	private final TrackService trackService;
 
 	@PostMapping
-	@PreAuthorize("hasRole('STUDIO')")
+	@PreAuthorize("hasRole('STUDIO') and !hasRole('LISTENER')")
 	public ResponseEntity<BaseResponse<TrackResponseDto>> create(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID studioProfileId,
@@ -61,7 +61,7 @@ public class StudioTrackController {
 	}
 
 	@DeleteMapping(EndPoints.StudioTrack.BY_ID)
-	@PreAuthorize("hasRole('STUDIO')")
+	@PreAuthorize("hasRole('STUDIO') and !hasRole('LISTENER')")
 	public ResponseEntity<BaseResponse<Void>> delete(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID studioProfileId,

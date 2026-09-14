@@ -8,6 +8,8 @@ import com.berkayb.soundconnect.modules.collab.dto.response.CollabReportAdminRes
 import com.berkayb.soundconnect.modules.collab.service.CollabReportModerationService;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -57,18 +59,35 @@ class CollabReportAdminControllerAuthorizationTest {
     }
 
     @Test
-    @WithMockUser(authorities = "MANAGE_COLLAB_REPORTS")
     void permissionAllowsReadingModerationQueue() throws Exception {
-        when(service.list(isNull(), isNull(), anyInt(), anyInt())).thenReturn(
+        UUID id = UUID.randomUUID();
+        UserDetailsImpl principal = mock(UserDetailsImpl.class);
+        when(principal.getId()).thenReturn(id);
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, List.of(new SimpleGrantedAuthority("MANAGE_COLLAB_REPORTS"))));
+        when(service.list(eq(id), isNull(), isNull(), anyInt(), anyInt())).thenReturn(
                 new PageResponse<CollabReportAdminResponse>(List.of(), 0, 20, 0, 0, true, true));
-
-        mockMvc.perform(get("/api/v1/admin/collab/reports"))
+        try {
+            mockMvc.perform(get("/api/v1/admin/collab/reports"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Collab raporları listelendi."))
                 .andExpect(jsonPath("$.data.content").isArray());
 
-        verify(service).list(null, null, 0, 20);
+            verify(service).list(id, null, null, 0, 20);
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    @WithMockUser(authorities = {"ROLE_LISTENER", "ROLE_ADMIN", "MANAGE_COLLAB_REPORTS"})
+    void listenerCannotUseAnAdditionalModerationPermission(boolean write) throws Exception {
+        if (write) {
+            mockMvc.perform(post("/api/v1/admin/collab/reports/{id}/review", UUID.randomUUID())
+                    .contentType("application/json").content("""
+                            {"decision":"DISMISS","expectedVersion":0,"resolutionNote":"İhlal tespit edilmedi."}
+                            """)).andExpect(status().isForbidden());
+        } else mockMvc.perform(get("/api/v1/admin/collab/reports")).andExpect(status().isForbidden());
+        verifyNoInteractions(service);
     }
 
     @Test

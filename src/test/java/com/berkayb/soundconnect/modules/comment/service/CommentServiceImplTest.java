@@ -69,6 +69,40 @@ class CommentServiceImplTest {
         assertError(() -> service.getReplies(actor, rootId, PageRequest.of(0, 20)), ErrorType.COMMENT_REPLY_DEPTH_NOT_ALLOWED);
     }
 
+    @Test void readableCountChecksMediaAccessBeforeCountingWithoutHydratingComments() {
+        when(repository.countActiveByTarget(EngagementTargetType.MEDIA, target)).thenReturn(7L);
+        assertThat(service.countReadableComments(actor, EngagementTargetType.MEDIA, target)).isEqualTo(7L);
+        var order = inOrder(targets, repository);
+        order.verify(targets).requireReadable(EngagementTargetType.MEDIA, target);
+        order.verify(repository).countActiveByTarget(EngagementTargetType.MEDIA, target);
+        verifyNoMoreInteractions(repository);
+        verifyNoInteractions(authors, finder, posts, likes, burstGuard);
+    }
+
+    @Test void readableCountCannotRevealAHiddenMediaTargetOrUseAnAnonymousViewer() {
+        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND))
+                .when(targets).requireReadable(EngagementTargetType.MEDIA, target);
+        assertError(() -> service.countReadableComments(actor, EngagementTargetType.MEDIA, target), ErrorType.ENGAGEMENT_NOT_FOUND);
+        assertError(() -> service.countReadableComments(null, EngagementTargetType.MEDIA, target), ErrorType.UNAUTHORIZED);
+        verifyNoInteractions(repository, authors);
+    }
+
+    @Test void readableAnnouncementCountPassesViewerToTheAudienceGuardBeforeCounting() {
+        when(repository.countActiveByTarget(EngagementTargetType.ANNOUNCEMENT, target)).thenReturn(3L);
+        assertThat(service.countReadableComments(actor, EngagementTargetType.ANNOUNCEMENT, target)).isEqualTo(3L);
+        var order = inOrder(targets, repository);
+        order.verify(targets).requireReadable(actor, EngagementTargetType.ANNOUNCEMENT, target);
+        order.verify(repository).countActiveByTarget(EngagementTargetType.ANNOUNCEMENT, target);
+        verify(targets, never()).requireReadable(EngagementTargetType.ANNOUNCEMENT, target);
+    }
+
+    @Test void announcementAudienceFailurePreventsTheCountQuery() {
+        doThrow(new SoundConnectException(ErrorType.ANNOUNCEMENT_NOT_FOUND))
+                .when(targets).requireReadable(actor, EngagementTargetType.ANNOUNCEMENT, target);
+        assertError(() -> service.countReadableComments(actor, EngagementTargetType.ANNOUNCEMENT, target), ErrorType.ANNOUNCEMENT_NOT_FOUND);
+        verifyNoInteractions(repository, authors);
+    }
+
     @Test void rootAndReplyPaginationOverrideUntrustedSortWithStableBoundedOrder() {
         when(repository.findByTargetTypeAndTargetIdAndParentCommentIsNull(any(), any(), any())).thenAnswer(i -> Page.empty(i.getArgument(2)));
         when(finder.getById(rootId)).thenReturn(comment(null));

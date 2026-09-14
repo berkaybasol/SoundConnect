@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -22,6 +23,7 @@ public class PreferenceBackedMusicianFeedPersonalizationSource implements Musici
     private final MusicianFeedPreferencesService preferences;
     private final VenueRepository venues;
     private final ListenerProfileRepository listeners;
+    private final StudioProfileRepository studios;
 
     public PreferenceBackedMusicianFeedPersonalizationSource(MusicianFeedPreferencesService preferences) {
         this(preferences, null);
@@ -32,12 +34,34 @@ public class PreferenceBackedMusicianFeedPersonalizationSource implements Musici
         this(preferences, venues, null);
     }
 
-    @Autowired
     public PreferenceBackedMusicianFeedPersonalizationSource(MusicianFeedPreferencesService preferences,
                                                              VenueRepository venues, ListenerProfileRepository listeners) {
+        this(preferences, venues, listeners, null);
+    }
+
+    @Autowired
+    public PreferenceBackedMusicianFeedPersonalizationSource(MusicianFeedPreferencesService preferences,
+                                                             VenueRepository venues, ListenerProfileRepository listeners,
+                                                             StudioProfileRepository studios) {
         this.preferences = preferences;
         this.venues = venues;
         this.listeners = listeners;
+        this.studios = studios;
+    }
+
+    @Override
+    @Transactional(readOnly = true, timeout = 5)
+    public MusicianFeedPersonalizationSnapshot loadForStudio(UUID userId, UUID studioProfileId) {
+        if (studios == null) throw new IllegalStateException("Studio feed personalization requires studio storage");
+        var profile = studios.findByUserId(userId)
+                .filter(value -> studioProfileId != null && studioProfileId.equals(value.getId())
+                        && value.getUser() != null && userId.equals(value.getUser().getId())
+                        && value.getUser().getStatus() == UserStatus.ACTIVE
+                        && Boolean.TRUE.equals(value.getUser().getEmailVerified())
+                        && value.getUser().getErasedAt() == null)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.FORBIDDEN_ACCESS));
+        UUID cityId = profile.getCity() == null ? null : profile.getCity().getId();
+        return new MusicianFeedPersonalizationSnapshot(cityId, Set.of(), null);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.notification.support.NotificationAudiencePolicy;
 import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,10 @@ public class NotificationDeliveryPolicy {
         if(event==null || event.recipientId()==null || event.type()==null) return false;
         Set<UUID> referenced=new LinkedHashSet<>(); collectIds(event.payload(),referenced,0);
         if(!accounts.canDeliver(event.recipientId(),referenced)) return false;
+        // canDeliver holds the existing account fence through receipt insertion
+        // and through final dispatch. Re-read roles here, never a sender/JWT snapshot.
+        if(NotificationAudiencePolicy.businessOnly(event.type()) && Boolean.TRUE.equals(jdbc.queryForObject(
+                NotificationAudiencePolicy.LISTENER_SQL, Map.of("recipient", event.recipientId()), Boolean.class))) return false;
         if(!"OVERTHINKING".equals(event.type().getCategory())) return true;
         UUID postId=uuid(event.payload(),"postId"), requestId=uuid(event.payload(),"revealRequestId");
         if(postId==null || requestId==null) return false;

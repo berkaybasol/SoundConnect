@@ -140,6 +140,11 @@ public class MusicianFeedService {
         return metrics.page(() -> getPage(viewerUserId, requestedLimit, cursor, advertisedTypes, BackstageFeedAudience.VENUE));
     }
 
+    public MusicianFeedPageResponse getForStudio(UUID viewerUserId, Integer requestedLimit,
+                                                String cursor, Collection<String> advertisedTypes) {
+        return metrics.page(() -> getPage(viewerUserId, requestedLimit, cursor, advertisedTypes, BackstageFeedAudience.STUDIO));
+    }
+
     public MusicianFeedPageResponse getForListener(UUID viewerUserId, Integer requestedLimit,
                                                   String cursor, Collection<String> advertisedTypes) {
         return metrics.page(() -> getPage(viewerUserId, requestedLimit, cursor, advertisedTypes, BackstageFeedAudience.LISTENER));
@@ -162,6 +167,7 @@ public class MusicianFeedService {
         UUID viewerProfileId = switch (audience) {
             case MUSICIAN -> viewerGuard.requireMusicianProfile(viewerUserId);
             case VENUE -> viewerGuard.requireVenueProfile(viewerUserId);
+            case STUDIO -> viewerGuard.requireStudioProfile(viewerUserId);
             case LISTENER -> viewerGuard.requireListenerProfile(viewerUserId);
         };
         if (audience == BackstageFeedAudience.LISTENER && listenerContent == null) {
@@ -198,6 +204,7 @@ public class MusicianFeedService {
         var personalizationSnapshot = switch (audience) {
             case MUSICIAN -> personalization.load(viewerUserId, viewerProfileId);
             case VENUE -> personalization.loadForVenue(viewerUserId, viewerProfileId);
+            case STUDIO -> personalization.loadForStudio(viewerUserId, viewerProfileId);
             case LISTENER -> personalization.loadForListener(viewerUserId, viewerProfileId);
         };
         String rankingContext = rankingContext(feedbackSnapshot.rankingContextVersion(), personalizationSnapshot,
@@ -228,7 +235,8 @@ public class MusicianFeedService {
         if (audience == BackstageFeedAudience.LISTENER) {
             collected = new CollectedCandidates(
                     listenerContent.filterCandidates(viewerUserId, collected.organic()),
-                    listenerContent.filterCandidates(viewerUserId, collected.promotions()));
+                    listenerContent.filterCandidates(viewerUserId, collected.promotions()),
+                    collected.organicSourceUnavailable());
         }
         // Use only qualified views recorded before this session's fixed anchor. Prefetch and
         // views from this session must not change continuation ranking underneath its cursor.
@@ -262,6 +270,15 @@ public class MusicianFeedService {
         long deliveredSize = mixed.items().size();
         boolean hasMore = !mixed.items().isEmpty() && mixed.hasMore()
                 && state.deliveredItemCount() + deliveredSize < maxSession;
+        if (collected.organicSourceUnavailable() && !hasMore
+                && state.deliveredItemCount() + deliveredSize < maxSession) {
+            // A failed content source cannot prove exhaustion. Keep this position
+            // unwritten so the same cursor can recover after the source recovers.
+            // Healthy partial pages with a real continuation still make progress;
+            // the explicit session capacity remains an independent terminal bound.
+            throw capacityUnavailable(new IllegalStateException(
+                    "Cannot confirm feed exhaustion while an organic content source is unavailable"));
+        }
         String nextCursor = hasMore && mixed.cursorBoundary() != null
                 ? cursors.encode(new MusicianFeedCursorState(viewerUserId, state.feedSessionId(), state.anchor(),
                         mixed.cursorBoundary(), mixed.deliveredOrganicCount(),
@@ -310,6 +327,7 @@ public class MusicianFeedService {
         List<Pending> pending = new ArrayList<>();
         List<MusicianFeedCandidate> organic = new ArrayList<>();
         List<MusicianFeedCandidate> promotions = new ArrayList<>();
+        boolean organicSourceUnavailable = false;
         long deadline = System.nanoTime() + properties.getProviderDeadline().toNanos();
         MusicianFeedCandidateRequest request = originalRequest.withProviderDeadline(deadline);
         try {
@@ -347,6 +365,7 @@ public class MusicianFeedService {
                     if (!task.started().get()) throw capacityUnavailable(new TimeoutException(
                             "Feed provider deadline expired before execution"));
                     if (!task.optional()) throw new IllegalStateException("Required feed provider deadline exceeded");
+                    organicSourceUnavailable |= task.organicContent();
                     log.warn("Optional musician-feed provider exceeded global deadline: provider={}",
                             task.providerId());
                     continue;
@@ -362,6 +381,7 @@ public class MusicianFeedService {
                     metrics.providerResult(task.providerId(), task.started().get() ? "timeout" : "capacity");
                     if (!task.started().get()) throw capacityUnavailable(timeout);
                     if (!task.optional()) throw new IllegalStateException("Required feed provider timed out", timeout);
+                    organicSourceUnavailable |= task.organicContent();
                     log.warn("Optional musician-feed provider timed out: provider={}", task.providerId());
                 } catch (InterruptedException interrupted) {
                     metrics.providerResult(task.providerId(), "interrupted");
@@ -378,6 +398,7 @@ public class MusicianFeedService {
                         if (cause instanceof RuntimeException runtime) throw runtime;
                         throw new IllegalStateException(cause);
                     }
+                    organicSourceUnavailable |= task.organicContent();
                     log.warn("Optional musician-feed provider failed closed: provider={}",
                             task.providerId(), cause);
                 }
@@ -406,7 +427,8 @@ public class MusicianFeedService {
                 || request.delivery().itemIds().contains(candidate.itemId())
                 || request.delivery().targetKeys().contains(
                 MusicianFeedDeliverySnapshot.targetKey(candidate.target().type(), candidate.target().id())));
-        var result = new CollectedCandidates(restrictions.filter(organic), restrictions.filter(promotions));
+        var result = new CollectedCandidates(restrictions.filter(organic), restrictions.filter(promotions),
+                organicSourceUnavailable);
         metrics.candidates(result.organic());
         metrics.candidates(result.promotions());
         return result;
@@ -452,7 +474,12 @@ public class MusicianFeedService {
             };
             Future<List<MusicianFeedCandidate>> future = providerExecutor instanceof MusicianFeedProviderExecutor bounded
                     ? bounded.submitBefore(validated, deadline) : providerExecutor.submit(validated);
-            pending.add(new Pending(providerId, optional, promotion, future, started));
+            boolean organicContent = !promotion && providerTypes.stream()
+                    .filter(request.supportedTypes()::contains)
+                    .anyMatch(type -> type != MusicianFeedItemType.ANNOUNCEMENT
+                            && type != MusicianFeedItemType.PROFILE_COMPLETION
+                            && type != MusicianFeedItemType.SPONSORED);
+            pending.add(new Pending(providerId, optional, promotion, organicContent, future, started));
         } catch (RejectedExecutionException | TimeoutException unavailable) {
             metrics.providerResult(providerId, "capacity");
             throw capacityUnavailable(unavailable);
@@ -511,8 +538,8 @@ public class MusicianFeedService {
         return new SoundConnectException(ErrorType.MUSICIAN_FEED_CURSOR_INVALID);
     }
 
-    private record Pending(String providerId, boolean optional, boolean promotion,
+    private record Pending(String providerId, boolean optional, boolean promotion, boolean organicContent,
                            Future<List<MusicianFeedCandidate>> future, AtomicBoolean started) { }
     private record CollectedCandidates(List<MusicianFeedCandidate> organic,
-                                       List<MusicianFeedCandidate> promotions) { }
+                                       List<MusicianFeedCandidate> promotions, boolean organicSourceUnavailable) { }
 }

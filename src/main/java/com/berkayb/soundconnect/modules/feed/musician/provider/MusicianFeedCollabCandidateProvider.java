@@ -59,6 +59,9 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
               and actor.profile_type in ('MUSICIAN','BAND','VENUE','STUDIO')
               and account.status='ACTIVE' and account.email_verified and account.erased_at is null
               and listing.owner_user_id<>:viewerId
+              and (not :studioAudience or listing.wanted_type='STUDIO'
+                   or (case when actor.profile_type='BAND' then band_follow.id is not null
+                            else following.id is not null end))
               and not (actor.profile_type='BAND' and exists (
                     select 1 from tbl_band_member own_member
                     where own_member.band_id=actor.source_profile_id
@@ -106,6 +109,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                              or (:hasInstruments and listing.instrument_id in (:instrumentIds))))
               )
             order by
+              case when :studioAudience and listing.wanted_type='STUDIO' then 0 else 1 end,
               case
                 when listing.city_id=:cityId and :hasCity
                      and listing.instrument_id in (:instrumentIds) and :hasInstruments then 0
@@ -136,7 +140,8 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
         if (MusicianFeedArtistDiscovery.forListener(request)) return List.of();
         if (!request.supportedTypes().contains(MusicianFeedItemType.COLLAB)) return List.of();
         UUID cityId = request.personalization().opportunityCityId();
-        Set<UUID> instruments = request.personalization().instrumentIds();
+        boolean studio = MusicianFeedArtistDiscovery.forStudio(request);
+        Set<UUID> instruments = studio ? Set.of() : request.personalization().instrumentIds();
         var parameters = new MapSqlParameterSource()
                 .addValue("viewerId", request.viewerUserId())
                 .addValue("feedSessionId", request.feedSessionId())
@@ -144,6 +149,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 .addValue("readAt", MusicianFeedJdbcSupport.timestamp(request.readAt()))
                 .addValue("cityId", cityId == null ? EMPTY_UUID : cityId)
                 .addValue("hasCity", cityId != null)
+                .addValue("studioAudience", studio)
                 .addValue("instrumentIds", instruments.isEmpty() ? List.of(EMPTY_UUID) : instruments)
                 .addValue("hasInstruments", !instruments.isEmpty());
         int followingLimit = request.limit() / 2;
@@ -152,8 +158,10 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
         List<ListingRow> rows = new ArrayList<>(request.limit());
         if (followingLimit > 0) rows.addAll(jdbc.query(SQL, parameters.addValue("pool", "FOLLOWING")
                 .addValue("limit", followingLimit), this::row));
+        if (studio) relevantLimit = request.limit() - rows.size();
         if (relevantLimit > 0) rows.addAll(jdbc.query(SQL, parameters.addValue("pool", "RELEVANT")
                 .addValue("limit", relevantLimit), this::row));
+        if (studio) generalLimit = request.limit() - rows.size();
         if (generalLimit > 0) rows.addAll(jdbc.query(SQL, parameters.addValue("pool", "GENERAL")
                 .addValue("limit", generalLimit), this::row));
         if (rows.isEmpty()) return List.of();
@@ -162,7 +170,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
             UUID listingId = MusicianFeedJdbcSupport.uuid(result, "collab_id");
             genres.computeIfAbsent(listingId, ignored -> new ArrayList<>()).add(result.getString("genre"));
         });
-        return rows.stream().map(value -> candidate(value, genres.getOrDefault(value.id(), List.of()))).toList();
+        return rows.stream().map(value -> candidate(value, genres.getOrDefault(value.id(), List.of()), studio)).toList();
     }
 
     private ListingRow row(ResultSet row, int index) throws SQLException {
@@ -207,7 +215,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
         return username == null || username.isBlank() ? "Müzisyen" : username;
     }
 
-    private MusicianFeedCandidate candidate(ListingRow value, List<String> genres) {
+    private MusicianFeedCandidate candidate(ListingRow value, List<String> genres, boolean studio) {
         CollabFeeStatus feeStatus = value.feeAmountMinor() != null ? CollabFeeStatus.SPECIFIED
                 : value.cadence() == CollabCadence.EXTRA || value.actor().profileType() == ProfileType.VENUE
                 ? CollabFeeStatus.UNSPECIFIED : CollabFeeStatus.NOT_APPLICABLE;
@@ -226,6 +234,12 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 : value.cityMatch() ? MusicianFeedReasonCode.CITY_MATCH
                 : value.instrumentMatch() ? MusicianFeedReasonCode.INSTRUMENT_MATCH
                 : MusicianFeedReasonCode.DISCOVERY;
+        if (studio) {
+            boolean studioRequest = value.wantedType() == CollabWantedType.STUDIO;
+            relevance = studioRequest ? (value.cityMatch() ? 260_000 : 140_000) : 0;
+            relevanceReason = studioRequest && value.cityMatch()
+                    ? MusicianFeedReasonCode.CITY_MATCH : MusicianFeedReasonCode.DISCOVERY;
+        }
         var reason = value.author().followedByViewer()
                 ? MusicianFeedJdbcSupport.publicationReason(value.author(), relevanceReason)
                 : new MusicianFeedItemResponse.Reason(relevanceReason, List.of(), 0);

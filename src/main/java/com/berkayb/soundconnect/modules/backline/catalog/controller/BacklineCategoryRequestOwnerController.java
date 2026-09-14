@@ -30,7 +30,7 @@ import java.util.UUID;
 @Validated
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('STUDIO')")
+@PreAuthorize("hasRole('STUDIO') and !hasRole('LISTENER')")
 @RequestMapping("/api/v1/user/studio-profiles/me/category-requests")
 @Tag(name = "Backline Category Requests - Owner", description = "Studio-owned backline category requests")
 public class BacklineCategoryRequestOwnerController {

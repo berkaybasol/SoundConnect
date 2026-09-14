@@ -71,6 +71,7 @@ class NotificationServiceImplIT {
 			"com.berkayb.soundconnect.modules.notification.repository"
 	})
 	@Import({
+			com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class,
 			NotificationServiceImpl.class,          // service
 			NotificationBadgeCacheHelper.class,     // redis helper
 			NotificationMapperImpl.class            // mapstruct impl

@@ -32,7 +32,7 @@ import java.time.LocalDate;
 @RequestMapping("/api/v1/user/studio-reservations")
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("isAuthenticated()")
+@PreAuthorize("isAuthenticated() and !hasRole('LISTENER')")
 @Tag(name = "FOR USERS / Studio Reservations", description = "Customer studio reservations")
 public class StudioReservationUserController {
     private final StudioReservationService reservationService;

@@ -17,7 +17,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioProfile.*
 @RestController
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('MANAGE_PROFILES')")
+@PreAuthorize("hasAuthority('MANAGE_PROFILES') and !hasRole('LISTENER')")
 @Tag(name = "FOR ADMIN / Studio Profile", description = "Admin tüm kullanıcıların stüdyo profillerini yönetir")
 public class StudioProfileAdminController {
 	private final StudioProfileService studioProfileService;

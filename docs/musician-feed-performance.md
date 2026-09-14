@@ -50,8 +50,13 @@ before the deadline returns the existing API error envelope with code 1324 and
 HTTP 503. It must not persist an empty page or continuation replay. Queued work
 is removed on cancellation; an already running provider still occupies its
 worker until it exits. This does not claim that interrupting a future instantly
-stops JDBC. Execution failure after an optional provider has actually started
-retains the established optional-provider policy.
+stops JDBC. A normal organic content provider that starts but fails or times out
+still permits a healthy partial page when eligible candidates prove a real
+continuation. If the result would otherwise be empty or terminal, it returns
+the same 1324 / HTTP 503 without committing delivery or replay, allowing the
+same cursor to recover later. Successful empty reads, explicit session capacity,
+and optional announcement/completion/sponsorship failures preserve normal
+termination. The policy is shared by all three audiences.
 
 This is a closed workload: each viewer awaits a response before requesting its
 next page. It is a bounded development regression check, not an arrival-rate

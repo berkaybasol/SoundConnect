@@ -206,11 +206,13 @@ class CommentServicePostgresTest {
             jdbc.update("update tbl_media_asset set visibility=? where id=?",visibility,asset);
             assertHidden(() -> service.getReplies(actor.getId(),root,PageRequest.of(0,20)));
             assertHidden(() -> likeService.countLikes(EngagementTargetType.MEDIA,asset));
+            assertHidden(() -> service.countReadableComments(actor.getId(),EngagementTargetType.MEDIA,asset));
         }
         jdbc.update("update tbl_media_asset set visibility='PUBLIC',status='DELETION_PENDING' where id=?",asset);
         assertHidden(() -> service.getComments(actor.getId(),EngagementTargetType.MEDIA,asset,PageRequest.of(0,20)));
         jdbc.update("update tbl_media_asset set status='READY' where id=?",asset);
         jdbc.update("update \"tbl_listener-profile\" set visibility_mode='GHOST' where id=?",profile);
+        assertHidden(() -> service.countReadableComments(actor.getId(),EngagementTargetType.MEDIA,asset));
         assertHidden(() -> service.getReplies(actor.getId(),root,PageRequest.of(0,20)));
         assertHidden(() -> likeService.like(actor.getId(),EngagementTargetType.MEDIA,asset));
         assertHidden(() -> likeService.unlike(actor.getId(),EngagementTargetType.MEDIA,asset));
@@ -231,6 +233,54 @@ class CommentServicePostgresTest {
         jdbc.update("delete from tbl_overthinking_post where id=?",post);
         assertHidden(() -> service.getComments(viewer,EngagementTargetType.OVERTHINKING,post,PageRequest.of(0,20)));
         assertHidden(() -> service.getReplies(viewer,root,PageRequest.of(0,20)));
+    }
+
+    @Test void readableCountIncludesLiveRepliesButExcludesDeletedPlaceholdersAndOtherTargets() {
+        UUID root = create(event, null);
+        create(event, root);
+        create(event, root);
+        UUID deletedReply = create(event, root);
+        UUID deletedRoot = create(event, null);
+        create(event, deletedRoot); // Its surviving reply remains part of the discussion.
+        service.deleteComment(actor.getId(), deletedReply);
+        service.deleteComment(actor.getId(), deletedRoot);
+        tx(() -> {
+            persist(Comment.builder().user(em.getReference(User.class, actor.getId()))
+                    .targetType(EngagementTargetType.MEDIA).targetId(event).text("Other namespace").build());
+            persist(Comment.builder().user(em.getReference(User.class, actor.getId()))
+                    .targetType(EngagementTargetType.EVENT).targetId(UUID.randomUUID()).text("Other target").build());
+            return null;
+        });
+        assertThat(service.getComments(actor.getId(), EngagementTargetType.EVENT, event, PageRequest.of(0, 1))
+                .getTotalElements()).isEqualTo(2);
+        assertThat(service.countReadableComments(actor.getId(), EngagementTargetType.EVENT, event)).isEqualTo(4);
+        assertThat(service.countComments(EngagementTargetType.EVENT, event)).isEqualTo(6); // Legacy contract is unchanged.
+        jdbc.update("update tbl_venues set status='PENDING' where id=?", venue.getId());
+        assertHidden(() -> service.countReadableComments(actor.getId(), EngagementTargetType.EVENT, event));
+    }
+
+    @Test void readableMediaCountRechecksMainstageAudienceAndPublicProcessingState() {
+        UUID profile = tx(() -> persist(MusicianProfile.builder()
+                .user(em.getReference(User.class, actor.getId())).build()).getId());
+        UUID asset = tx(() -> persist(MediaAsset.builder().kind(MediaKind.IMAGE).status(MediaStatus.READY)
+                .visibility(MediaVisibility.PUBLIC).ownerType(MediaOwnerType.MUSICIAN_PROFILE).ownerId(profile)
+                .size(100L).mimeType("image/jpeg").sourceUrl("https://cdn.test/count.jpg").build()).getId());
+        assertThat(service.countReadableComments(actor.getId(), EngagementTargetType.MEDIA, asset)).isZero();
+        service.createComment(actor.getId(), EngagementTargetType.MEDIA, asset, new CommentCreateRequestDto("Visible", null));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+                        "listener", "n/a", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+        try {
+            assertThat(service.countReadableComments(actor.getId(), EngagementTargetType.MEDIA, asset)).isEqualTo(1);
+            jdbc.update("update tbl_media_asset set content_audience='BACKSTAGE' where id=?", asset);
+            assertHidden(() -> service.countReadableComments(actor.getId(), EngagementTargetType.MEDIA, asset));
+            jdbc.update("update tbl_media_asset set content_audience='MAINSTAGE',visibility='PRIVATE' where id=?", asset);
+            assertHidden(() -> service.countReadableComments(actor.getId(), EngagementTargetType.MEDIA, asset));
+            jdbc.update("update tbl_media_asset set visibility='PUBLIC',status='DELETION_PENDING' where id=?", asset);
+            assertHidden(() -> service.countReadableComments(actor.getId(), EngagementTargetType.MEDIA, asset));
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
     }
 
     @Test void legacyCrossTargetRepliesCannotLeakThroughReadableRootOrInflateReplyCount() {

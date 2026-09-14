@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.time.Instant;
 import java.util.List;
@@ -46,12 +48,13 @@ class MusicianFeedCompletionCandidateProviderTest {
                 null))).isEmpty();
     }
 
-    @Test
-    void venueAudienceCannotReceiveTheMusicianCompletionCard() {
+    @ParameterizedTest
+    @EnumSource(value = BackstageFeedAudience.class, names = {"VENUE", "STUDIO", "LISTENER"})
+    void otherAudiencesCannotReceiveTheMusicianCompletionCard(BackstageFeedAudience audience) {
         var task = new MusicianFeedPayloads.CompletionTask("INSTRUMENTS", "Enstrümanlarını ekle",
                 "Daha iyi eşleşmeler al.", "Ekle", "/profile/musician/edit", 2, false);
         var request = request(UUID.randomUUID(), Set.of(MusicianFeedItemType.PROFILE_COMPLETION),
-                new MusicianFeedPayloads.Completion(0, 1, List.of(task))).withAudience(BackstageFeedAudience.VENUE);
+                new MusicianFeedPayloads.Completion(0, 1, List.of(task))).withAudience(audience);
         assertThat(provider.findCandidates(request)).isEmpty();
     }
 

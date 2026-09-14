@@ -82,9 +82,12 @@ public class StudioReservationService {
 
     @Transactional
     public StudioReservationResponse create(UUID requesterId, StudioReservationCreateRequest request) {
+        requireCustomerAudience(requesterId);
         String contactPhone = normalizeContactPhone(request.contactPhone());
         User requester = userRepository.findByIdForUpdate(requesterId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+        // Profile acquisition and role replacement use this same account-row lock.
+        requireCustomerProfileAccess(requesterId);
 
         StudioRoomReservation existing = reservationRepository
                 .findByRequesterIdAndClientRequestId(requesterId, request.clientRequestId())
@@ -231,6 +234,7 @@ public class StudioReservationService {
             UUID reservationId,
             StudioVersionRequest request
     ) {
+        requireCustomerAccess(requesterId);
         StudioRoomReservation reference = reservationRepository
                 .findByIdAndRequesterId(reservationId, requesterId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
@@ -335,6 +339,7 @@ public class StudioReservationService {
 
     @Transactional(readOnly = true)
     public StudioPageResponse<StudioReservationResponse> listCustomer(UUID requesterId, int page, int size) {
+        requireCustomerAccess(requesterId);
         Page<StudioReservationResponse> result = reservationRepository
                 .findByRequesterId(requesterId, reservationPage(page, size))
                 .map(this::toCustomer);
@@ -349,6 +354,7 @@ public class StudioReservationService {
             int page,
             int size
     ) {
+        requireCustomerAccess(requesterId);
         int boundedPage = safePage(page);
         int boundedSize = safeSize(size);
         StudioRoom room = roomRepository.findByIdAndArchivedAtIsNull(roomId)
@@ -496,6 +502,25 @@ public class StudioReservationService {
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
         return roomRepository.findActiveByIdAndStudioProfileId(roomId, profile.getId())
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
+    }
+
+    private void requireCustomerAccess(UUID requesterId) {
+        requireCustomerAudience(requesterId);
+        requireCustomerProfileAccess(requesterId);
+    }
+
+    private void requireCustomerAudience(UUID requesterId) {
+        if (requesterId == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
+    }
+
+    private void requireCustomerProfileAccess(UUID requesterId) {
+        // Recheck canonical account data for internal callers and stale sessions.
+        // No reservation, room or price is read before this audience boundary.
+        if (userRepository.findRoleNamesByUserId(requesterId).contains("ROLE_LISTENER")
+                || userRepository.findExistingPersonalProfileRoleNames(requesterId).contains("ROLE_LISTENER")) {
+            throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+        }
     }
 
     private StudioRoom lockActiveRoom(UUID roomId) {

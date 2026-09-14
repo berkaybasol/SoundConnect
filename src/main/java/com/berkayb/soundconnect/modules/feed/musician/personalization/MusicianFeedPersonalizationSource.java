@@ -12,6 +12,11 @@ public interface MusicianFeedPersonalizationSource {
         return MusicianFeedPersonalizationSnapshot.empty();
     }
 
+    /** Studio relevance starts from its business location, without musician completion tasks. */
+    default MusicianFeedPersonalizationSnapshot loadForStudio(UUID userId, UUID studioProfileId) {
+        return MusicianFeedPersonalizationSnapshot.empty();
+    }
+
     default MusicianFeedPersonalizationSnapshot loadForListener(UUID userId, UUID listenerProfileId) {
         return MusicianFeedPersonalizationSnapshot.empty();
     }

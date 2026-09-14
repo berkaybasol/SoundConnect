@@ -85,7 +85,7 @@ class MusicianFeedFeedbackServiceTest {
 
     @Test
     void listenerRejectsFormerMusicianOrVenueDeliveryBeforePersistingOrEchoingItsTarget() {
-        for (String algorithm : List.of("musician-v1.2.0", "venue-v1.0.0")) {
+        for (String algorithm : List.of("musician-v1.2.0", "venue-v1.0.0", "studio-v1.0.0")) {
             when(deliveries.require("signed.old-role", viewer, "TRACK:old-role", NOW))
                     .thenReturn(delivered("TRACK:old-role", MusicianFeedItemType.TRACK, algorithm));
             assertThatThrownBy(() -> service.recordItemForListener(viewer, "TRACK:old-role",
@@ -104,6 +104,47 @@ class MusicianFeedFeedbackServiceTest {
         assertThatThrownBy(() -> service.unmuteForListener(viewer, "STUDIO", studio)).isInstanceOf(SoundConnectException.class);
         verify(authorProfiles, never()).requireEligibleNotOwned(any(), any(), any());
         verifyNoInteractions(repository, reports, deliveries, feedbackLock);
+    }
+
+    @Test
+    void studioActionsUseDeliveredStudioIdentityAndSharedPreferenceStorage() {
+        var request = new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.HIDE, null, "signed.studio");
+        when(deliveries.require("signed.studio", viewer, "TRACK:studio-target", NOW))
+                .thenReturn(delivered("TRACK:studio-target", MusicianFeedItemType.TRACK, "studio-v1.0.0"));
+        service.recordItemForStudio(viewer, "TRACK:studio-target", request);
+        UUID profile = UUID.randomUUID();
+        when(authorProfiles.requireEligibleNotOwned(viewer, "MUSICIAN", profile)).thenReturn("MUSICIAN");
+        when(authorProfiles.normalize("MUSICIAN", profile)).thenReturn("MUSICIAN");
+        service.muteForStudio(viewer, "MUSICIAN", profile);
+        service.unmuteForStudio(viewer, "MUSICIAN", profile);
+        verify(guard, times(3)).requireStudioProfile(viewer);
+        verifyNoMoreInteractions(guard);
+        verify(deliveries).require("signed.studio", viewer, "TRACK:studio-target", NOW);
+        verify(repository, times(2)).save(any(MusicianFeedFeedback.class));
+        verify(repository).deleteByViewerUserIdAndActionAndScopeKey(viewer,
+                MusicianFeedFeedbackAction.MUTE_AUTHOR, "AUTHOR:MUSICIAN:" + profile);
+    }
+
+    @Test
+    void unauthorizedStudioCannotMutateThroughAnySharedWrite() {
+        doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(guard).requireStudioProfile(viewer);
+        assertThatThrownBy(() -> service.recordItemForStudio(viewer, "TRACK:ignored", null)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.muteForStudio(viewer, "MUSICIAN", UUID.randomUUID())).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.unmuteForStudio(viewer, "MUSICIAN", UUID.randomUUID())).isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(repository, deliveries, reports, authorProfiles, feedbackLock);
+    }
+
+    @Test
+    void studioRejectsEveryOtherAudienceReceiptBeforePreferenceOrReportWrites() {
+        for (String algorithm : List.of("musician-v1.2.0", "venue-v1.0.0", "listener-v1.0.0")) {
+            when(deliveries.require("signed.old-role", viewer, "TRACK:old-role", NOW))
+                    .thenReturn(delivered("TRACK:old-role", MusicianFeedItemType.TRACK, algorithm));
+            assertThatThrownBy(() -> service.recordItemForStudio(viewer, "TRACK:old-role",
+                    new MusicianFeedFeedbackRequest(MusicianFeedFeedbackAction.REPORT, "reason", "signed.old-role")))
+                    .isInstanceOfSatisfying(SoundConnectException.class,
+                            error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST));
+        }
+        verifyNoInteractions(repository, reports, feedbackLock, authorProfiles);
     }
 
     @Test

@@ -60,6 +60,14 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
 	// bir icerikte toplam kac yorum oldugunu getirir.
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
 
+	/** Feed totals include live roots and replies, never soft-deleted placeholders. */
+	@Query("""
+			select count(c) from Comment c
+			where c.targetType = :targetType and c.targetId = :targetId and c.deleted = false
+			""")
+	long countActiveByTarget(@Param("targetType") EngagementTargetType targetType,
+	                        @Param("targetId") UUID targetId);
+
 	/** Delete replies first so the self-referencing parent foreign key stays valid. */
 	@Modifying(flushAutomatically = true)
 	@Query("""

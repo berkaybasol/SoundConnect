@@ -157,6 +157,67 @@ class MediaContentAudienceServiceTest {
         assertThatThrownBy(MediaContentAudiencePolicy::requireStudioAccess).isInstanceOf(SoundConnectException.class);
     }
 
+    @Test void legacyStudioOwnerWithListenerAuthorityCannotUseGenericOwnerMetadataOrUploadPaths() {
+        mixedStudioListener();
+        var studio = StudioProfile.builder().user(User.builder().id(owner).build()).build();
+        lenient().when(studios.findById(owner)).thenReturn(Optional.of(studio));
+        var page = PageRequest.of(0, 20);
+        assertThatThrownBy(() -> service.listByOwner(owner, MediaOwnerType.STUDIO_PROFILE, owner, page))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.listByOwnerAndKind(owner, MediaOwnerType.STUDIO_PROFILE, owner, MediaKind.AUDIO, page))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.initUpload(owner, MediaOwnerType.STUDIO_PROFILE, owner, MediaKind.AUDIO,
+                MediaVisibility.PRIVATE, "audio/mpeg", 128L, "private.mp3"))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.validateAssignableMedia(owner, id, MediaOwnerType.STUDIO_PROFILE, owner, MediaKind.AUDIO))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.delete(id, owner, MediaOwnerType.STUDIO_PROFILE, owner))
+                .isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(studios, repository, storageClient, mediaUploadAbuseGuard);
+    }
+
+    @Test void legacyStudioOwnerWithListenerAuthorityCannotMintPrivateUrlsOrReplayMediaWrites() {
+        mixedStudioListener();
+        var media = asset(MediaVisibility.PRIVATE, MediaContentAudience.BACKSTAGE);
+        media.setOwnerType(MediaOwnerType.STUDIO_PROFILE);
+        media.setStorageKey("protected/media/" + id + "/source.mp3");
+        when(repository.findById(id)).thenReturn(Optional.of(media));
+        when(repository.findByIdForUpdate(id)).thenReturn(Optional.of(media));
+        lenient().when(studios.findById(owner)).thenReturn(Optional.of(
+                StudioProfile.builder().user(User.builder().id(owner).build()).build()));
+        assertThatThrownBy(() -> service.createOwnerAccessUrl(owner, id)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.completeUpload(owner, id)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.updateContentAudience(owner, id, MediaContentAudience.MAINSTAGE))
+                .isInstanceOf(SoundConnectException.class);
+        assertThat(media.getContentAudience()).isEqualTo(MediaContentAudience.BACKSTAGE);
+        verifyNoInteractions(studios, storageClient);
+        verify(repository, never()).save(any());
+    }
+
+    @Test void normalStudioOwnerRetainsGenericMetadataAndProtectedUrlAccess() {
+        viewer("ROLE_STUDIO");
+        var media = asset(MediaVisibility.PRIVATE, MediaContentAudience.BACKSTAGE);
+        media.setOwnerType(MediaOwnerType.STUDIO_PROFILE);
+        media.setStorageKey("protected/media/" + id + "/source.mp3");
+        var page = PageRequest.of(0, 20);
+        var result = new org.springframework.data.domain.PageImpl<>(List.of(media), page, 1);
+        when(studios.findById(owner)).thenReturn(Optional.of(
+                StudioProfile.builder().user(User.builder().id(owner).build()).build()));
+        when(repository.findByOwnerTypeAndOwnerId(MediaOwnerType.STUDIO_PROFILE, owner, page)).thenReturn(result);
+        when(repository.findByOwnerTypeAndOwnerIdAndKind(MediaOwnerType.STUDIO_PROFILE, owner, MediaKind.AUDIO, page)).thenReturn(result);
+        when(repository.findById(id)).thenReturn(Optional.of(media));
+        when(storageClient.createPresignedGetUrl(media.getStorageKey())).thenReturn(
+                new com.berkayb.soundconnect.modules.media.storage.StorageAccessUrl("https://signed.test/audio", java.time.Instant.now().plusSeconds(60)));
+        assertThat(service.listByOwner(owner, MediaOwnerType.STUDIO_PROFILE, owner, page)).isSameAs(result);
+        assertThat(service.listByOwnerAndKind(owner, MediaOwnerType.STUDIO_PROFILE, owner, MediaKind.AUDIO, page)).isSameAs(result);
+        assertThat(service.createOwnerAccessUrl(owner, id).accessUrl()).isEqualTo("https://signed.test/audio");
+    }
+
+    private void mixedStudioListener() {
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                "legacy-studio", "n/a", List.of(new SimpleGrantedAuthority("ROLE_STUDIO"), new SimpleGrantedAuthority("ROLE_LISTENER"))));
+    }
+
     private MediaAsset asset(MediaVisibility visibility, MediaContentAudience audience) {
         return MediaAsset.builder().id(id).ownerType(MediaOwnerType.USER).ownerId(owner).kind(MediaKind.AUDIO)
                 .status(MediaStatus.READY).visibility(visibility).contentAudience(audience)

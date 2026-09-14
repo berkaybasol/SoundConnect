@@ -28,6 +28,9 @@ public interface CommentService {
 	
 	// belirli bir icerik uzerindeki toplam yorum sayisini doner
 	long countComments(EngagementTargetType targetType, UUID targetId);
+
+	// Caller-visible total: live root comments and replies after target access validation.
+	long countReadableComments(UUID viewerId, EngagementTargetType targetType, UUID targetId);
 	
 	Map<UUID, Long> countCommentsByTargets(EngagementTargetType targetType, Collection<UUID> targetIds);
 	

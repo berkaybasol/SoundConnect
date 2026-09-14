@@ -110,11 +110,47 @@ class MusicianFeedCursorCodecTest {
                 .isEqualTo(listener);
         assertThat(codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId)).isEqualTo(listener);
         assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, listenerId));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO, listenerId));
         assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR));
         assertInvalid(() -> codec.decodeForReplay(token, UUID.randomUUID(), TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId));
         assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, UUID.randomUUID()));
         assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER));
         assertInvalid(() -> codec.decodeForReplay(codec.encode(state, TYPES), viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId));
+    }
+
+    @Test
+    void studioCursorBindsProfileAndAudienceBeforeReplayOrContinuation() throws Exception {
+        UUID studioId = UUID.randomUUID();
+        var studio = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR, state.after(), 17, 17,
+                "studio-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.STUDIO, studioId);
+        String token = codec.encode(studio, TYPES);
+        assertThat(codec.decode(token, viewer, TYPES, ANCHOR, "studio-context", BackstageFeedAudience.STUDIO, studioId))
+                .isEqualTo(studio);
+        assertThat(codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO, studioId)).isEqualTo(studio);
+        for (BackstageFeedAudience other : BackstageFeedAudience.values()) {
+            if (other == BackstageFeedAudience.STUDIO) continue;
+            assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, other, studioId));
+            var otherState = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR, state.after(), 17, 17,
+                    "studio-context", MusicianFeedAnnouncementPlan.EMPTY, other, studioId);
+            assertInvalid(() -> codec.decodeForReplay(codec.encode(otherState, TYPES), viewer, TYPES, ANCHOR,
+                    BackstageFeedAudience.STUDIO, studioId));
+        }
+        assertInvalid(() -> codec.decodeForReplay(token, UUID.randomUUID(), TYPES, ANCHOR, BackstageFeedAudience.STUDIO, studioId));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO, UUID.randomUUID()));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO));
+        assertInvalid(() -> codec.decode(token, viewer, TYPES, ANCHOR, "changed-city", BackstageFeedAudience.STUDIO, studioId));
+        assertInvalid(() -> codec.encode(new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 17, 17, "studio-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.STUDIO), TYPES));
+        var mapper = new ObjectMapper();
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(
+                Base64.getUrlDecoder().decode(token.split("\\.")[0]));
+        body.remove("viewerProfileId");
+        String missingIdentity = sign(mapper.writeValueAsBytes(body));
+        assertInvalid(() -> codec.decodeForReplay(missingIdentity, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO, studioId));
+        body.put("viewerProfileId", studioId.toString());
+        body.put("algorithmVersion", "studio-v0.9.0");
+        String wrongAlgorithm = sign(mapper.writeValueAsBytes(body));
+        assertInvalid(() -> codec.decodeForReplay(wrongAlgorithm, viewer, TYPES, ANCHOR, BackstageFeedAudience.STUDIO, studioId));
     }
 
     @Test

@@ -288,17 +288,19 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
         int followingLimit = request.limit() * 6 / 10;
         int relevantLimit = request.limit() * 3 / 10;
         int generalLimit = request.limit() - followingLimit - relevantLimit;
+        boolean studio = MusicianFeedArtistDiscovery.forStudio(request);
+        org.springframework.jdbc.core.RowMapper<MusicianFeedCandidate> mapper = (row, index) -> candidate(row, index, studio);
         List<MusicianFeedCandidate> result = new ArrayList<>(request.limit());
         if (followingLimit > 0) result.addAll(jdbc.query(SQL, parameters.addValue("pool", "FOLLOWING")
-                .addValue("limit", followingLimit), this::candidate));
+                .addValue("limit", followingLimit), mapper));
         if (relevantLimit > 0) result.addAll(jdbc.query(SQL, parameters.addValue("pool", "RELEVANT")
-                .addValue("limit", relevantLimit), this::candidate));
+                .addValue("limit", relevantLimit), mapper));
         if (generalLimit > 0) result.addAll(jdbc.query(SQL, parameters.addValue("pool", "GENERAL")
-                .addValue("limit", generalLimit), this::candidate));
+                .addValue("limit", generalLimit), mapper));
         return List.copyOf(result);
     }
 
-    private MusicianFeedCandidate candidate(java.sql.ResultSet row, int index) throws java.sql.SQLException {
+    private MusicianFeedCandidate candidate(java.sql.ResultSet row, int index, boolean studio) throws java.sql.SQLException {
             UUID eventId = MusicianFeedJdbcSupport.uuid(row, "id");
             var author = MusicianFeedJdbcSupport.author(row);
             var venueAuthor = new MusicianFeedItemResponse.Author(
@@ -344,8 +346,8 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                     MusicianFeedJdbcSupport.engagement(row, "EVENT", eventId), null,
                     MusicianFeedJdbcSupport.standardFeedback(), new MusicianFeedPayloads.Event(event, null, null),
                     sociallyFollowed ? 880_000L : 260_000L,
-                    cityMatch ? 110_000 : 0, sociallyFollowed ? MusicianFeedLane.FOLLOWING
-                            : cityMatch ? MusicianFeedLane.RELEVANT_OPPORTUNITY
+                    cityMatch ? (studio && !sociallyFollowed ? 50_000 : 110_000) : 0, sociallyFollowed ? MusicianFeedLane.FOLLOWING
+                            : cityMatch && !studio ? MusicianFeedLane.RELEVANT_OPPORTUNITY
                             : MusicianFeedLane.GENERAL_DISCOVERY, row.getBoolean("owned_by_viewer"));
     }
 

@@ -57,7 +57,7 @@ class MusicianFeedListenerTelemetryServiceTest {
 
     @Test
     void listenerCannotReuseHistoricalBusinessOrMusicianFeedReceiptsForTelemetry() {
-        for (String algorithm : List.of("musician-v1.2.0", "venue-v1.0.0")) {
+        for (String algorithm : List.of("musician-v1.2.0", "venue-v1.0.0", "studio-v1.0.0")) {
             var delivery = new MusicianFeedDeliveredItem(UUID.randomUUID(), viewer, UUID.randomUUID(), "TRACK:former-role",
                     MusicianFeedItemType.TRACK, "MEDIA", UUID.randomUUID(), "STUDIO", UUID.randomUUID(),
                     "FOLLOWING_PUBLICATION", Set.of(MusicianFeedFeedbackAction.HIDE), 1, algorithm, 0,
