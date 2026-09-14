@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.media.dto.request;
 
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import jakarta.validation.constraints.NotBlank;
@@ -33,6 +34,11 @@ public record UploadInitRequestDto(
 		long sizeBytes,
 		
 		@Size(max = 255)
-		String originalFileName
+		String originalFileName,
+		MediaContentAudience contentAudience
 ){
+	public UploadInitRequestDto(MediaOwnerType ownerType, UUID ownerId, MediaKind kind,
+			MediaVisibility visibility, String mimeType, long sizeBytes, String originalFileName) {
+		this(ownerType, ownerId, kind, visibility, mimeType, sizeBytes, originalFileName, null);
+	}
 }

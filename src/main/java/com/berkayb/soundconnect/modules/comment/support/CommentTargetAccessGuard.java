@@ -31,7 +31,7 @@ public class CommentTargetAccessGuard {
             case EVENT_POST -> readableEventPost(id);
             case TABLE_GROUP_POST -> readableTablePost(id);
             case OVERTHINKING_PROFILE_SHARE -> readableOverthinkingProfileShare(id);
-            case OVERTHINKING -> repository.lockPost(id).isPresent();
+            case OVERTHINKING -> lockReadablePost(id);
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
             case COMMENT -> false;
@@ -74,7 +74,7 @@ public class CommentTargetAccessGuard {
         if (repository.lockActivePostAuthor(owner.getUserId()).isEmpty()
                 || !repository.eligibleListenerPostAuthor(owner.getUserId())
                 || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
-                || repository.lockPost(owner.getSourcePostId()).isEmpty()) return false;
+                || !lockReadablePost(owner.getSourcePostId())) return false;
         return repository.lockPublishedOverthinkingProfileShare(
                 id, owner.getUserId(), owner.getSourcePostId()).isPresent();
     }
@@ -88,6 +88,14 @@ public class CommentTargetAccessGuard {
             if (!repository.lockListenerVisibility(owner.getOwnerId(), listener).orElse(!listener)) return false;
         }
         // Recheck owner after locking: ownership cannot change between the privacy check and access.
+        if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()) {
+            return repository.lockMainstagePublicMedia(id, owner.getOwnerType(), owner.getOwnerId()).isPresent();
+        }
         return repository.lockPublicMedia(id, owner.getOwnerType(), owner.getOwnerId()).isPresent();
+    }
+
+    private boolean lockReadablePost(UUID id) {
+        return com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+                ? repository.lockMainstagePost(id).isPresent() : repository.lockPost(id).isPresent();
     }
 }

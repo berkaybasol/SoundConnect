@@ -97,6 +97,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     partition by user_id order by profile_priority, profile_id) as profile_rank
                     from actor_profile_candidates candidate) ranked
                 where profile_rank=1
+                  and (not :listenerAudience or profile_type<>'STUDIO')
             ), media_access as (
                 select 'MEDIA'::varchar as target_type, media.id as target_id
                 from tbl_media_asset media
@@ -123,6 +124,8 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     order by priority, publication_id limit 1
                 ) publication on true
                 where :includeMedia and media.status='READY' and media.visibility='PUBLIC'
+                  and (not :listenerAudience or media.owner_type<>'STUDIO_PROFILE')
+                  and (not :listenerAudience or media.content_audience='MAINSTAGE')
                   and coalesce(nullif(trim(media.playback_url),''), nullif(trim(media.source_url),'')) is not null
                   and (
                     (media.owner_type='MUSICIAN_PROFILE' and exists(select 1 from tbl_musician_profile profile
@@ -283,6 +286,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     and listener.visibility_choice_completed
                 join tbl_overthinking_post source on source.id=share.source_post_id
                 where :includeOverthinkingPosts and share.published_at<=:anchor and publisher.id<>:viewerId
+                  and (not :listenerAudience or /* MAINSTAGE_SOURCE */)
                   and publisher.status='ACTIVE' and publisher.email_verified and publisher.erased_at is null
                   and exists(select 1 from user_roles membership join tbl_role role on role.id=membership.role_id
                       where membership.user_id=publisher.id and role.name='ROLE_LISTENER')
@@ -379,6 +383,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                      visible_activity.actor_rank
             """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS)
+            .replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"))
             .replace("/* EVENT_SOURCE_MODERATION */", allowed(target("'EVENT'", "event.id")))
             .replace("/* FEED_MODERATION */", allowed(item("case when activity.action='COMMENT' then "
                     + "'ACTIVITY_COMMENT:' || activity.activity_id::text else 'ACTIVITY_LIKE:' || activity.target_type "
@@ -386,7 +391,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
 
     private static final String MEDIA_TARGET_SQL = """
             select media.id as target_id, media.kind, media.source_url, media.playback_url,
-                   media.thumbnail_url, media.title as media_title, media.description as media_description,
+                   media.thumbnail_url, media.title as media_title, media.description as media_description, media.content_audience,
                    media.duration_seconds as media_duration_seconds, media.width, media.height,
                    publication.renderer_type, publication.publication_id, publication.track_title,
                    publication.track_duration_seconds, publication.bpm,
@@ -422,6 +427,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 order by priority, publication_id limit 1
             ) publication on true
             where media.id in (:targetIds) and media.status='READY' and media.visibility='PUBLIC'
+              and (not :listenerAudience or (media.owner_type<>'STUDIO_PROFILE' and media.content_audience='MAINSTAGE'))
               and coalesce(nullif(trim(media.playback_url),''), nullif(trim(media.source_url),'')) is not null
               and (
                 (media.owner_type='MUSICIAN_PROFILE' and exists(select 1 from tbl_musician_profile profile
@@ -645,6 +651,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                 and listener.visibility_choice_completed
             join tbl_overthinking_post source on source.id=share.source_post_id
             where share.id in (:targetIds) and share.published_at<=:anchor and publisher.id<>:viewerId
+              and (not :listenerAudience or /* MAINSTAGE_SOURCE */)
               and publisher.status='ACTIVE' and publisher.email_verified and publisher.erased_at is null
               and exists(select 1 from user_roles membership join tbl_role role on role.id=membership.role_id
                   where membership.user_id=publisher.id and role.name='ROLE_LISTENER')
@@ -656,7 +663,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
               and not exists(select 1 from tbl_organizer_profile profile where profile.user_id=publisher.id)
               and not exists(select 1 from tbl_producer_profile profile where profile.user_id=publisher.id)
               and not exists(select 1 from tbl_venues owned_venue where owned_venue.owner_id=publisher.id)
-            """;
+            """.replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"));
 
     private final NamedParameterJdbcTemplate jdbc;
     private final EventShareUrlBuilder shareUrls;
@@ -739,6 +746,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
 
     private MapSqlParameterSource baseParameters(MusicianFeedCandidateRequest request, ZonedDateTime now) {
         return new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())
+                .addValue("listenerAudience", MusicianFeedArtistDiscovery.forListener(request))
                 .addValue("feedSessionId", request.feedSessionId())
                 .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()))
                 .addValue("readAt", MusicianFeedJdbcSupport.timestamp(request.readAt()))
@@ -838,7 +846,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
             itemType = MusicianFeedItemType.TRACK;
             payload = new MusicianFeedPayloads.Track(MusicianFeedJdbcSupport.uuid(row, "publication_id"), mediaId,
                     row.getString("track_title"), firstText(row.getString("playback_url"), row.getString("source_url")),
-                    (Integer) row.getObject("track_duration_seconds"), (Integer) row.getObject("bpm"));
+                    (Integer) row.getObject("track_duration_seconds"), (Integer) row.getObject("bpm"), row.getString("content_audience"));
         } else {
             itemType = MusicianFeedItemType.PROFILE_MEDIA;
             String kind = row.getString("kind");
@@ -849,7 +857,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
             payload = new MusicianFeedPayloads.ProfileMedia(mediaId, kind, display,
                     firstText(playback, source), row.getString("thumbnail_url"), row.getString("media_title"),
                     row.getString("media_description"), (Integer) row.getObject("media_duration_seconds"),
-                    (Integer) row.getObject("width"), (Integer) row.getObject("height"));
+                    (Integer) row.getObject("width"), (Integer) row.getObject("height"), row.getString("content_audience"));
         }
         return new TargetProjection(itemType, payload,
                 MusicianFeedJdbcSupport.engagement(row, "MEDIA", mediaId));

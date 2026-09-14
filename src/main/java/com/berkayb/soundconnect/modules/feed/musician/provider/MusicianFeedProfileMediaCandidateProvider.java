@@ -4,7 +4,6 @@ import static com.berkayb.soundconnect.modules.feed.musician.moderation.Musician
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -64,10 +63,12 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                 where media.status='READY' and media.visibility='PUBLIC'
                   and coalesce(media.playback_url, media.source_url) is not null
                   and attachment.profile_type in ('MUSICIAN','LISTENER','STUDIO','VENUE','BAND')
+                  and (not :listenerAudience or attachment.profile_type<>'STUDIO')
                   and attachment.role in ('GALLERY','FEATURED_VIDEO','INTRO_VIDEO')
                   and attachment.created_at <= :anchor
             )
-            select publication.*, media.kind, media.source_url, media.playback_url, media.thumbnail_url,
+            select publication.*, media.kind, media.source_url, media.playback_url, media.thumbnail_url, media.content_audience,
+                   /* ARTIST_CITY_MATCH */ as artist_city_match,
                    media.title, media.description, media.duration_seconds, media.width, media.height,
                    account.user_name as author_username,
                    coalesce(publication.profile_display_name, account.user_name) as author_display_name,
@@ -91,6 +92,7 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
             left join tbl_band_follow band_follow on publication.profile_type='BAND'
                 and band_follow.follower_id=:viewerId and band_follow.band_id=publication.profile_id
             where account.status='ACTIVE' and account.email_verified and account.erased_at is null
+              and (not :listenerAudience or media.content_audience='MAINSTAGE')
               and (publication.profile_type<>'LISTENER'
                    or (publication.listener_visibility='STANDARD' and publication.listener_choice
                        and exists(select 1 from user_roles membership join tbl_role role on role.id=membership.role_id
@@ -120,10 +122,17 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                           and delivered.target_id=publication.media_asset_id)))
               and (case when publication.profile_type='BAND' then band_follow.id is not null
                         else following.id is not null end)=:followingPool
-            order by publication.created_at desc, publication.attachment_id desc
+              and (:followingPool or not :venueAudience or publication.profile_type in ('MUSICIAN','BAND'))
+              and (:artistCityPool='ALL'
+                   or (:artistCityPool='LOCAL' and media.kind in ('VIDEO','AUDIO') and /* ARTIST_CITY_MATCH */)
+                   or (:artistCityPool='OTHER' and not (media.kind in ('VIDEO','AUDIO') and /* ARTIST_CITY_MATCH */)))
+            order by case when :venueAudience and not :followingPool and media.kind in ('VIDEO','AUDIO') then 0 else 1 end,
+                     publication.created_at desc, publication.attachment_id desc
             limit :limit
             """.replace("/* FEED_MODERATION */", allowed(item("'PROFILE_MEDIA:' || publication.attachment_id::text"),
-                    target("'MEDIA'", "publication.media_asset_id")));
+                    target("'MEDIA'", "publication.media_asset_id")))
+            .replace("/* ARTIST_CITY_MATCH */", MusicianFeedArtistDiscovery.cityMatchSql(
+                    "publication.author_profile_type", "publication.author_profile_id", "account.city_id"));
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -138,18 +147,10 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
         if (!request.supportedTypes().contains(MusicianFeedItemType.PROFILE_MEDIA)) return List.of();
-        int discoveryLimit = Math.max(1, request.limit() / 4);
-        int followingLimit = Math.max(0, request.limit() - discoveryLimit);
-        var parameters = new MapSqlParameterSource()
-                .addValue("viewerId", request.viewerUserId())
-                .addValue("feedSessionId", request.feedSessionId())
-                .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()));
-        List<MusicianFeedCandidate> result = new ArrayList<>(request.limit());
-        if (followingLimit > 0) result.addAll(jdbc.query(SQL, parameters
-                .addValue("followingPool", true).addValue("limit", followingLimit), this::candidate));
-        result.addAll(jdbc.query(SQL, parameters.addValue("followingPool", false)
-                .addValue("limit", discoveryLimit), this::candidate));
-        return List.copyOf(result);
+        return MusicianFeedArtistDiscovery.findPublications(jdbc, SQL, request,
+                (row, index) -> MusicianFeedArtistDiscovery.prioritize(candidate(row, index), request,
+                        row.getBoolean("artist_city_match"),
+                        Set.of("VIDEO", "AUDIO").contains(row.getString("kind"))));
     }
 
     private MusicianFeedCandidate candidate(ResultSet row, int index) throws SQLException {
@@ -166,7 +167,7 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                     playback == null ? source : playback, row.getString("thumbnail_url"),
                     row.getString("title"), row.getString("description"),
                     (Integer) row.getObject("duration_seconds"), (Integer) row.getObject("width"),
-                    (Integer) row.getObject("height"));
+                    (Integer) row.getObject("height"), row.getString("content_audience"));
             return new MusicianFeedCandidate("PROFILE_MEDIA:" + attachmentId,
                     MusicianFeedItemType.PROFILE_MEDIA, 1,
                     MusicianFeedJdbcSupport.instant(row, "created_at"),

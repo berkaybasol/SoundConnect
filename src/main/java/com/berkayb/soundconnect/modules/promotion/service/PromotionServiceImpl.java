@@ -88,6 +88,9 @@ public class PromotionServiceImpl implements PromotionService{
 	@Transactional(readOnly = true)
 	public List<PromotionResponseDto> getDisplayableByPlacement(PromotionPlacement placement) {
 		requireLegacyPlacement(placement);
+		// The only legacy placement is VENUE_MANAGEMENT_PANEL. Its writers do not
+		// set a listener audience or validate redirect destinations; do not guess.
+		if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()) return List.of();
 		log.info("yayina uygun promotionlar getiriliyor. placement={}", placement);
 		
 		LocalDateTime now = LocalDateTime.now();

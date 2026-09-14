@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.feed.musician.feedback;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedViewerGuard;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveredItem;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveryService;
@@ -138,11 +139,29 @@ public class MusicianFeedFeedbackService {
             MusicianFeedFeedbackRequest request
     ) {
         viewerGuard.requireMusicianProfile(viewerUserId);
+        return recordItemAuthorized(viewerUserId, itemId, request);
+    }
+
+    @Transactional
+    public MusicianFeedFeedbackResponse recordItemForVenue(
+            UUID viewerUserId, String itemId, MusicianFeedFeedbackRequest request) {
+        viewerGuard.requireVenueProfile(viewerUserId);
+        return recordItemAuthorized(viewerUserId, itemId, request);
+    }
+
+    private MusicianFeedFeedbackResponse recordItemAuthorized(
+            UUID viewerUserId, String itemId, MusicianFeedFeedbackRequest request) {
+        return recordItemAuthorized(viewerUserId, itemId, request, null);
+    }
+
+    private MusicianFeedFeedbackResponse recordItemAuthorized(
+            UUID viewerUserId, String itemId, MusicianFeedFeedbackRequest request, BackstageFeedAudience expectedAudience) {
         if (request == null || !ITEM_ACTIONS.contains(request.action())
                 || request.impressionToken() == null || request.impressionToken().isBlank()) throw invalid();
         Instant now = now();
         MusicianFeedDeliveredItem delivery = deliveries.require(
                 request.impressionToken(), viewerUserId, itemId, now);
+        if (expectedAudience != null && !expectedAudience.algorithmVersion().equals(delivery.algorithmVersion())) throw invalid();
         if (!delivery.feedbackCapabilities().contains(request.action())) throw invalid();
         MusicianFeedItemType itemType = delivery.itemType();
         String normalizedReason = normalizeReason(request.reason());
@@ -180,6 +199,23 @@ public class MusicianFeedFeedbackService {
     @Transactional
     public MusicianFeedFeedbackResponse mute(UUID viewerUserId, String profileType, UUID profileId) {
         viewerGuard.requireMusicianProfile(viewerUserId);
+        return muteAuthorized(viewerUserId, profileType, profileId);
+    }
+
+    @Transactional
+    public MusicianFeedFeedbackResponse recordItemForListener(
+            UUID viewerUserId, String itemId, MusicianFeedFeedbackRequest request) {
+        viewerGuard.requireListenerProfile(viewerUserId);
+        return recordItemAuthorized(viewerUserId, itemId, request, BackstageFeedAudience.LISTENER);
+    }
+
+    @Transactional
+    public MusicianFeedFeedbackResponse muteForVenue(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireVenueProfile(viewerUserId);
+        return muteAuthorized(viewerUserId, profileType, profileId);
+    }
+
+    private MusicianFeedFeedbackResponse muteAuthorized(UUID viewerUserId, String profileType, UUID profileId) {
         String normalizedType = authorProfiles.requireEligibleNotOwned(viewerUserId, profileType, profileId);
         feedbackLock.viewer(viewerUserId);
         String scope = "AUTHOR:" + normalizedType + ":" + profileId;
@@ -193,11 +229,39 @@ public class MusicianFeedFeedbackService {
     @Transactional
     public void unmute(UUID viewerUserId, String profileType, UUID profileId) {
         viewerGuard.requireMusicianProfile(viewerUserId);
+        unmuteAuthorized(viewerUserId, profileType, profileId);
+    }
+
+    @Transactional
+    public MusicianFeedFeedbackResponse muteForListener(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireListenerProfile(viewerUserId);
+        return muteAuthorized(viewerUserId, listenerAuthorType(profileType, profileId), profileId);
+    }
+
+    @Transactional
+    public void unmuteForVenue(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireVenueProfile(viewerUserId);
+        unmuteAuthorized(viewerUserId, profileType, profileId);
+    }
+
+    private void unmuteAuthorized(UUID viewerUserId, String profileType, UUID profileId) {
         String normalizedType = authorProfiles.normalize(profileType, profileId);
         feedbackLock.viewer(viewerUserId);
         repository.deleteByViewerUserIdAndActionAndScopeKey(viewerUserId,
                 MusicianFeedFeedbackAction.MUTE_AUTHOR,
                 "AUTHOR:" + normalizedType + ":" + profileId);
+    }
+
+    @Transactional
+    public void unmuteForListener(UUID viewerUserId, String profileType, UUID profileId) {
+        viewerGuard.requireListenerProfile(viewerUserId);
+        unmuteAuthorized(viewerUserId, listenerAuthorType(profileType, profileId), profileId);
+    }
+
+    private String listenerAuthorType(String profileType, UUID profileId) {
+        String type = authorProfiles.normalize(profileType, profileId);
+        if (!Set.of("LISTENER", "MUSICIAN", "BAND", "VENUE").contains(type)) throw invalid();
+        return type;
     }
 
     private MusicianFeedFeedbackResponse response(MusicianFeedFeedback value) {

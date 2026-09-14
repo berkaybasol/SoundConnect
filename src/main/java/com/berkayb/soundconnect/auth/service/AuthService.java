@@ -24,6 +24,7 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.EmailVerificationRequiredException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -110,6 +111,10 @@ public class AuthService {
 			throw new SoundConnectException(ErrorType.INVALID_CREDENTIALS);
 		}
 
+		if (user.getErasedAt() != null) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
+		}
+
 		// Beklemedeki mekan basvurulari, admin onayi tamamlanmadan uygulamaya giremez.
 		// Bu kontrol parola dogrulamasindan sonra yapilir; boylece hesap durumu
 		// yanlis parola kullanan bir istemciye sizdirilmaz.
@@ -125,7 +130,7 @@ public class AuthService {
 		
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-			throw new SoundConnectException(ErrorType.UNAUTHORIZED, List.of("E-posta adresiniz henüz doğrulanmamış. Lütfen gelen kutunuzu kontrol edin."));
+			throw new EmailVerificationRequiredException(user.getEmail());
 		}
 		
 		if (user.getStatus() != UserStatus.ACTIVE) {
@@ -458,10 +463,7 @@ public class AuthService {
 	}
 
 	private SoundConnectException invalidOtp() {
-		return new SoundConnectException(
-				ErrorType.VALIDATION_ERROR,
-				List.of("Dogrulama kodu gecersiz veya suresi dolmus.")
-		);
+		return new SoundConnectException(ErrorType.EMAIL_VERIFICATION_CODE_INVALID);
 	}
 
 	private User saveIdentityAndFlush(User user) {

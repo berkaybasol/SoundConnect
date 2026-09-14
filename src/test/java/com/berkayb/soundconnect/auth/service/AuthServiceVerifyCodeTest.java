@@ -66,8 +66,8 @@ class AuthServiceVerifyCodeTest {
 				() -> authService.verifyCode(request), SoundConnectException.class
 		);
 
-		assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR);
-		assertThat(exception.getDetails()).containsExactly("Dogrulama kodu gecersiz veya suresi dolmus.");
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_CODE_INVALID);
+		assertThat(exception.getDetails()).isNull();
 		verify(userRepository, never()).saveAndFlush(any());
 		verifyNoInteractions(jwtTokenProvider);
 	}
@@ -82,8 +82,45 @@ class AuthServiceVerifyCodeTest {
 				() -> authService.verifyCode(request), SoundConnectException.class
 		);
 
-		assertThat(exception.getErrorType()).isEqualTo(ErrorType.VALIDATION_ERROR);
-		assertThat(exception.getDetails()).containsExactly("Dogrulama kodu gecersiz veya suresi dolmus.");
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_CODE_INVALID);
+		assertThat(exception.getDetails()).isNull();
+		verify(userRepository, never()).saveAndFlush(any());
+		verifyNoInteractions(jwtTokenProvider);
+	}
+
+	@Test
+	void invalidOrExpiredCodeForAnExistingUnverifiedAccountUsesTheSamePublicError() {
+		User user = activeCandidateWithRole(RoleEnum.ROLE_MUSICIAN);
+		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(false);
+		when(userRepository.findByEmailForUpdate("user@example.com")).thenReturn(Optional.of(user));
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.verifyCode(request), SoundConnectException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_CODE_INVALID);
+		assertThat(exception.getDetails()).isNull();
+		assertThat(user.getEmailVerified()).isFalse();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+		verify(userRepository, never()).saveAndFlush(any());
+		verifyNoInteractions(jwtTokenProvider);
+	}
+
+	@Test
+	void validOtpClaimCannotRevealAnUnknownOrAlreadyVerifiedAccount() {
+		User verified = User.builder().emailVerified(true).status(UserStatus.ACTIVE).build();
+		when(otpService.verifyOtp("user@example.com", "123456")).thenReturn(true);
+		when(userRepository.findByEmailForUpdate("user@example.com"))
+				.thenReturn(Optional.empty(), Optional.of(verified));
+
+		SoundConnectException unknownError = catchThrowableOfType(
+				() -> authService.verifyCode(request), SoundConnectException.class);
+		SoundConnectException verifiedError = catchThrowableOfType(
+				() -> authService.verifyCode(request), SoundConnectException.class);
+
+		assertThat(unknownError.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_CODE_INVALID);
+		assertThat(verifiedError.getErrorType()).isEqualTo(unknownError.getErrorType());
+		assertThat(unknownError.getDetails()).isNull();
+		assertThat(verifiedError.getDetails()).isNull();
 		verify(userRepository, never()).saveAndFlush(any());
 		verifyNoInteractions(jwtTokenProvider);
 	}

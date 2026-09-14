@@ -41,6 +41,8 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 		
 		Map<String, UserProfileTargetDto> unique = new LinkedHashMap<>();
 		for (UserProfileTargetDto item : raw) {
+			if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+					&& "STUDIO".equalsIgnoreCase(item.type())) continue;
 			String key = (safe(item.type()) + ":" + String.valueOf(item.profileId())).toLowerCase(Locale.ROOT);
 			unique.putIfAbsent(key, item);
 		}

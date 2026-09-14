@@ -17,6 +17,7 @@ class MusicianFeedMigrationOrderTest {
         int replay = runner.indexOf("2026-09-11-musician-feed-replay.sql");
         int feedback = runner.indexOf("2026-09-11-musician-feed-feedback.sql");
         int indexes = runner.indexOf("2026-09-11-musician-feed-indexes.sql");
+        int recentViews = runner.indexOf("2026-09-14-musician-feed-recent-views.sql");
 
         assertThat(preferences).isGreaterThanOrEqualTo(0);
         assertThat(overthinkingEngagement).isGreaterThan(preferences);
@@ -24,5 +25,6 @@ class MusicianFeedMigrationOrderTest {
         assertThat(replay).isGreaterThan(delivery);
         assertThat(feedback).isGreaterThan(replay);
         assertThat(indexes).isGreaterThan(feedback);
+        assertThat(recentViews).isGreaterThan(indexes);
     }
 }

@@ -78,6 +78,28 @@ class MusicianFeedMutedAuthorsPostgresTest {
     }
 
     @Test
+    void listenerFiltersHistoricalStudioPreferencesBeforeLimitAndCursorPagination() {
+        viewer = person("LISTENER").user();
+        Person studio = person("STUDIO");
+        mute(viewer, studio.type(), studio.profile(), UUID.randomUUID(), NOW.minusSeconds(1));
+        List<Person> artists = new ArrayList<>();
+        for (int index = 0; index < 3; index++) {
+            Person artist = person("MUSICIAN");
+            artists.add(artist);
+            mute(viewer, artist.type(), artist.profile(), UUID.randomUUID(), NOW.minusSeconds(2 + index));
+        }
+        var first = service.getForListener(viewer, 2, null);
+        assertThat(first.items()).extracting(MusicianFeedMutedAuthorResponse::profileId)
+                .containsExactly(artists.get(0).profile(), artists.get(1).profile());
+        assertThat(first.hasMore()).isTrue();
+        var second = service.getForListener(viewer, 2, first.nextCursor());
+        assertThat(second.items()).extracting(MusicianFeedMutedAuthorResponse::profileId)
+                .containsExactly(artists.get(2).profile());
+        assertThat(second.hasMore()).isFalse();
+        assertThat(service.get(viewer, 30, null).items()).hasSize(4);
+    }
+
+    @Test
     void resolvesAllFivePublicProfileTypesInOneBoundedQueryWithCanonicalMusicianName() {
         List<Person> authors = new ArrayList<>();
         for (String type : List.of("MUSICIAN", "LISTENER", "STUDIO", "VENUE", "BAND")) {

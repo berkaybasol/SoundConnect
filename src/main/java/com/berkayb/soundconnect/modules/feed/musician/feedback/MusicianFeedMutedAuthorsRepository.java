@@ -86,14 +86,24 @@ public class MusicianFeedMutedAuthorsRepository {
 
     public List<Row> findPage(UUID viewerId, Instant anchor,
                               MusicianFeedMutedAuthorsCursorCodec.Position after, int limit) {
+        return findPage(viewerId, anchor, after, limit, false);
+    }
+
+    public List<Row> findPageForListener(UUID viewerId, Instant anchor,
+                                         MusicianFeedMutedAuthorsCursorCodec.Position after, int limit) {
+        return findPage(viewerId, anchor, after, limit, true);
+    }
+
+    private List<Row> findPage(UUID viewerId, Instant anchor,
+                               MusicianFeedMutedAuthorsCursorCodec.Position after, int limit, boolean listener) {
         if (viewerId == null || anchor == null || limit < 1 || limit > 51) {
             throw new IllegalArgumentException("Invalid muted-author query bounds");
         }
         var parameters = new MapSqlParameterSource().addValue("viewerId", viewerId)
                 .addValue("anchor", Timestamp.from(anchor)).addValue("limit", limit);
-        String keyset = "";
+        String keyset = listener ? "and muted.author_profile_type<>'STUDIO'" : "";
         if (after != null) {
-            keyset = "and (muted.created_at,muted.id)<(:mutedAt,:feedbackId)";
+            keyset += " and (muted.created_at,muted.id)<(:mutedAt,:feedbackId)";
             parameters.addValue("mutedAt", Timestamp.from(after.mutedAt()))
                     .addValue("feedbackId", after.feedbackId());
         }

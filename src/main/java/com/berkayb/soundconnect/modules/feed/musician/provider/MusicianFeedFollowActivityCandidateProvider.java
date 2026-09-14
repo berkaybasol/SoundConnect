@@ -72,6 +72,7 @@ public class MusicianFeedFollowActivityCandidateProvider implements MusicianFeed
                     partition by user_id order by profile_priority, profile_id) as profile_rank
                     from profile_candidates candidate) ranked
                 where profile_rank=1
+                  and (not :listenerAudience or profile_type<>'STUDIO')
             ), follow_stories as (
                 select activity.id as activity_id,
                        coalesce(activity.followed_at, activity.created_at) as occurred_at,
@@ -187,6 +188,7 @@ public class MusicianFeedFollowActivityCandidateProvider implements MusicianFeed
         if (!request.supportedTypes().contains(MusicianFeedItemType.ACTIVITY_FOLLOW)
                 || !request.supportedTypes().contains(MusicianFeedItemType.PROFILE)) return List.of();
         var parameters = new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())
+                .addValue("listenerAudience", MusicianFeedArtistDiscovery.forListener(request))
                 .addValue("feedSessionId", request.feedSessionId())
                 .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()))
                 .addValue("visibleActorLimit", MAX_VISIBLE_ACTORS)

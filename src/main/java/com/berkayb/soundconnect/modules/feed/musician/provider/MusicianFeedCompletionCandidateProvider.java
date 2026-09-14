@@ -15,6 +15,7 @@ public class MusicianFeedCompletionCandidateProvider implements MusicianFeedCand
 
     @Override
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
+        if (MusicianFeedArtistDiscovery.forVenue(request) || MusicianFeedArtistDiscovery.forListener(request)) return List.of();
         var completion = request.personalization().completion();
         if (!request.supportedTypes().contains(MusicianFeedItemType.PROFILE_COMPLETION)
                 || completion == null || completion.tasks().isEmpty()) return List.of();

@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -25,12 +26,27 @@ import java.util.stream.Collectors;
 public class MusicianFeedDeliveryService {
     private static final int MAX_EVIDENCE_BYTES = 32_768;
     private static final int MAX_REPLAY_BYTES = 4_194_304;
+    static final int MAX_RECENT_VIEW_TARGETS = 8_192;
+    static final Duration RECENT_VIEW_WINDOW = Duration.ofHours(24);
     static final String SNAPSHOT_SQL = """
-            select item_id,item_type,feed_lane,target_type,target_id,absolute_position,campaign_id
+            select item_id,item_type,feed_lane,target_type,target_id,absolute_position,campaign_id,
+                   author_profile_type,author_profile_id
             from tbl_musician_feed_delivery
             where viewer_user_id=:viewerId and feed_session_id=:sessionId and expires_at>:now
             order by absolute_position
             limit :snapshotLimit
+            """;
+    static final String RECENTLY_VIEWED_TARGETS_SQL = """
+            select distinct delivered.target_type,delivered.target_id
+            from tbl_musician_feed_telemetry_event event
+            join tbl_musician_feed_delivery delivered on delivered.id=event.delivery_id
+                and delivered.viewer_user_id=event.viewer_user_id
+            where event.viewer_user_id=:viewerId and event.event_type='IMPRESSION'
+              and event.recorded_at>:since and event.recorded_at<=:anchor
+              and delivered.feed_session_id<>:currentSessionId
+              and delivered.campaign_id is null
+              and delivered.item_type not in ('ANNOUNCEMENT','PROFILE_COMPLETION','SPONSORED')
+              and (delivered.target_type || ':' || delivered.target_id::text) in (:targetKeys)
             """;
     private static final String INSERT = """
             insert into tbl_musician_feed_delivery(
@@ -117,11 +133,49 @@ public class MusicianFeedDeliveryService {
         long tableGroupShareCount = session.stream()
                 .filter(value -> value.itemType() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
                 .count();
+        List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> organicHistory = session.stream()
+                .filter(value -> value.campaignId() == null
+                        && value.itemType() != MusicianFeedItemType.ANNOUNCEMENT
+                        && value.itemType() != MusicianFeedItemType.PROFILE_COMPLETION
+                        && value.itemType() != MusicianFeedItemType.SPONSORED)
+                .map(value -> new MusicianFeedDeliverySnapshot.OrganicHistoryEntry(
+                        value.authorProfileId() == null ? null
+                                : value.authorProfileType() + ":" + value.authorProfileId(),
+                        value.itemType(), value.lane()))
+                .toList();
         return new MusicianFeedDeliverySnapshot(itemIds, targets, organicTargets, promotedTargets,
                 sessionCampaigns, next, promotionCount, organicAtLastPromotion, lastPromoted,
                 session.isEmpty() ? null : session.getLast().itemType(),
                 session.isEmpty() ? null : session.getLast().lane(),
-                overthinkingShareCount, tableGroupShareCount, announcementIds, organicCount, normalAtLastAnnouncement);
+                overthinkingShareCount, tableGroupShareCount, announcementIds, organicCount, normalAtLastAnnouncement,
+                Set.of(), organicHistory);
+    }
+
+    /**
+     * Reuses verified impression telemetry, never delivery/prefetch alone. The server-recorded
+     * time and explicit current-session exclusion freeze the 24-hour ranking signal at the
+     * session anchor, including when an impression arrives during pagination. Expired delivery
+     * tokens remain useful history until normal retention; they do not authorize new actions.
+     */
+    @Transactional(readOnly = true, timeout = 3)
+    public Set<String> recentlyViewedTargetKeys(UUID viewerId, UUID currentSessionId, Instant anchor,
+                                                Set<String> candidateTargetKeys) {
+        Objects.requireNonNull(viewerId, "viewerId");
+        Objects.requireNonNull(currentSessionId, "currentSessionId");
+        Objects.requireNonNull(anchor, "anchor");
+        if (candidateTargetKeys == null || candidateTargetKeys.isEmpty()) return Set.of();
+        if (candidateTargetKeys.size() > MAX_RECENT_VIEW_TARGETS) {
+            throw new IllegalArgumentException("Recent feed view target batch exceeds bound");
+        }
+        Set<String> targetKeys = Set.copyOf(candidateTargetKeys);
+        List<String> viewed = jdbc.query(RECENTLY_VIEWED_TARGETS_SQL,
+                new MapSqlParameterSource().addValue("viewerId", viewerId)
+                        .addValue("currentSessionId", currentSessionId)
+                        .addValue("since", Timestamp.from(anchor.minus(RECENT_VIEW_WINDOW)))
+                        .addValue("anchor", Timestamp.from(anchor)).addValue("targetKeys", targetKeys),
+                (row, index) -> MusicianFeedDeliverySnapshot.targetKey(
+                        row.getString("target_type"), row.getObject("target_id", UUID.class)));
+        return Set.copyOf(viewed);
     }
 
     private SnapshotDelivery mapSnapshot(ResultSet row, int index) throws SQLException {
@@ -140,8 +194,12 @@ public class MusicianFeedDeliveryService {
             }
             MusicianFeedItemType itemType = MusicianFeedItemType.valueOf(itemTypeValue);
             MusicianFeedLane lane = MusicianFeedLane.valueOf(laneValue);
+            String authorType = row.getString("author_profile_type");
+            UUID authorId = row.getObject("author_profile_id", UUID.class);
+            if ((authorType == null) != (authorId == null)
+                    || (authorType != null && authorType.isBlank())) throw corruptSnapshot();
             return new SnapshotDelivery(itemId, itemType, lane, targetType, targetId,
-                    position, row.getObject("campaign_id", UUID.class));
+                    position, row.getObject("campaign_id", UUID.class), authorType, authorId);
         } catch (IllegalArgumentException invalidEnum) {
             throw corruptSnapshot(invalidEnum);
         }
@@ -517,5 +575,6 @@ public class MusicianFeedDeliveryService {
                                  Instant expiresAt) { }
     private record SnapshotDelivery(String itemId, MusicianFeedItemType itemType,
                                     MusicianFeedLane lane, String targetType, UUID targetId,
-                                    long absolutePosition, UUID campaignId) { }
+                                    long absolutePosition, UUID campaignId,
+                                    String authorProfileType, UUID authorProfileId) { }
 }

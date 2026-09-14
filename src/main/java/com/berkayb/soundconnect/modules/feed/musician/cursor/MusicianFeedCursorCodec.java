@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedService;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,15 +51,19 @@ public class MusicianFeedCursorCodec {
             MusicianFeedCursorState state,
             Set<MusicianFeedItemType> supportedTypes
     ) {
+        if (state.audience() != BackstageFeedAudience.MUSICIAN && state.viewerProfileId() == null) {
+            throw invalidCursor();
+        }
         if (!state.announcementPlan().entries().isEmpty() && !supportedTypes.contains(MusicianFeedItemType.ANNOUNCEMENT)) {
             throw invalidCursor();
         }
         var after = state.after();
-        CursorPayload payload = new CursorPayload(VERSION, schemaVersion, algorithmVersion,
+        CursorPayload payload = new CursorPayload(VERSION, schemaVersion, algorithmVersionFor(state.audience()),
                 state.viewerUserId(), state.feedSessionId(),
                 state.anchor().toEpochMilli(), after.rankKey(), after.occurredAt().toEpochMilli(),
                 after.itemId(), state.deliveredOrganicCount(), state.deliveredItemCount(),
-                state.rankingContextVersion(), supportedTypesHash(supportedTypes), state.announcementPlan());
+                state.rankingContextVersion(), supportedTypesHash(supportedTypes), state.announcementPlan(),
+                state.audience(), state.viewerProfileId());
         try {
             byte[] body = objectMapper.writeValueAsBytes(payload);
             byte[] signature = sign(body);
@@ -76,7 +81,21 @@ public class MusicianFeedCursorCodec {
             String expectedRankingContextVersion
     ) {
         return decodeInternal(token, expectedViewer, supportedTypes, now,
-                expectedRankingContextVersion, true, true);
+                expectedRankingContextVersion, true, true, BackstageFeedAudience.MUSICIAN, null);
+    }
+
+    public MusicianFeedCursorState decode(String token, UUID expectedViewer,
+            Set<MusicianFeedItemType> supportedTypes, Instant now,
+            String expectedRankingContextVersion, BackstageFeedAudience audience) {
+        return decodeInternal(token, expectedViewer, supportedTypes, now,
+                expectedRankingContextVersion, true, true, audience, null);
+    }
+
+    public MusicianFeedCursorState decode(String token, UUID expectedViewer,
+            Set<MusicianFeedItemType> supportedTypes, Instant now,
+            String expectedRankingContextVersion, BackstageFeedAudience audience, UUID expectedViewerProfileId) {
+        return decodeInternal(token, expectedViewer, supportedTypes, now,
+                expectedRankingContextVersion, true, true, audience, expectedViewerProfileId);
     }
 
     /**
@@ -91,7 +110,19 @@ public class MusicianFeedCursorCodec {
             Set<MusicianFeedItemType> supportedTypes,
             Instant now
     ) {
-        return decodeInternal(token, expectedViewer, supportedTypes, now, null, false, true);
+        return decodeForReplay(token, expectedViewer, supportedTypes, now, BackstageFeedAudience.MUSICIAN);
+    }
+
+    public MusicianFeedCursorState decodeForReplay(String token, UUID expectedViewer,
+            Set<MusicianFeedItemType> supportedTypes, Instant now, BackstageFeedAudience audience) {
+        return decodeInternal(token, expectedViewer, supportedTypes, now, null, false, true, audience, null);
+    }
+
+    public MusicianFeedCursorState decodeForReplay(String token, UUID expectedViewer,
+            Set<MusicianFeedItemType> supportedTypes, Instant now, BackstageFeedAudience audience,
+            UUID expectedViewerProfileId) {
+        return decodeInternal(token, expectedViewer, supportedTypes, now, null, false, true,
+                audience, expectedViewerProfileId);
     }
 
     private MusicianFeedCursorState decodeInternal(
@@ -101,7 +132,9 @@ public class MusicianFeedCursorCodec {
             Instant now,
             String expectedRankingContextVersion,
             boolean enforceRankingContext,
-            boolean enforceCurrentContract
+            boolean enforceCurrentContract,
+            BackstageFeedAudience expectedAudience,
+            UUID expectedViewerProfileId
     ) {
         try {
             if (token == null || token.isBlank() || token.length() > 4096) throw invalidCursor();
@@ -111,11 +144,20 @@ public class MusicianFeedCursorCodec {
             byte[] suppliedSignature = DECODER.decode(parts[1]);
             if (!MessageDigest.isEqual(sign(body), suppliedSignature)) throw invalidCursor();
             CursorPayload payload = objectMapper.readValue(body, CursorPayload.class);
+            // Existing musician cursors predate the audience claim. Any newer audience cursor
+            // always carries it, and is rejected before any replay lookup on the other endpoint.
+            BackstageFeedAudience actualAudience = payload.audience() == null
+                    ? BackstageFeedAudience.MUSICIAN : payload.audience();
             if (payload.announcementPlan() != null && !payload.announcementPlan().entries().isEmpty()
                     && !supportedTypes.contains(MusicianFeedItemType.ANNOUNCEMENT)) throw invalidCursor();
-            if (payload.version() != VERSION
+            if (payload.version() != VERSION || expectedAudience != actualAudience
+                    // The active profile is an immutable
+                    // session identity fence, so it applies before cached replay too.
+                    || (actualAudience != BackstageFeedAudience.MUSICIAN
+                        && (expectedViewerProfileId == null || payload.viewerProfileId() == null
+                            || !expectedViewerProfileId.equals(payload.viewerProfileId())))
                     || (enforceCurrentContract && (payload.schemaVersion() != schemaVersion
-                        || !algorithmVersion.equals(payload.algorithmVersion())))
+                        || !algorithmVersionFor(expectedAudience).equals(payload.algorithmVersion())))
                     || !expectedViewer.equals(payload.viewerUserId())
                     || !supportedTypesHash(supportedTypes).equals(payload.supportedTypesHash())
                     || (enforceRankingContext
@@ -134,7 +176,7 @@ public class MusicianFeedCursorCodec {
                     new MusicianFeedCursorState.CursorPosition(payload.lastRankKey(),
                             Instant.ofEpochMilli(payload.lastOccurredAtEpochMillis()), payload.lastItemId()),
                     payload.deliveredOrganicCount(), payload.deliveredItemCount(),
-                    payload.rankingContextVersion(), payload.announcementPlan());
+                    payload.rankingContextVersion(), payload.announcementPlan(), actualAudience, payload.viewerProfileId());
         } catch (SoundConnectException known) {
             throw known;
         } catch (Exception exception) {
@@ -168,6 +210,10 @@ public class MusicianFeedCursorCodec {
         return new SoundConnectException(ErrorType.MUSICIAN_FEED_CURSOR_INVALID);
     }
 
+    private String algorithmVersionFor(BackstageFeedAudience audience) {
+        return audience == BackstageFeedAudience.MUSICIAN ? algorithmVersion : audience.algorithmVersion();
+    }
+
     private record CursorPayload(
             int version,
             int schemaVersion,
@@ -182,6 +228,8 @@ public class MusicianFeedCursorCodec {
             long deliveredItemCount,
             String rankingContextVersion,
             String supportedTypesHash,
-            MusicianFeedAnnouncementPlan announcementPlan
+            MusicianFeedAnnouncementPlan announcementPlan,
+            BackstageFeedAudience audience,
+            UUID viewerProfileId
     ) { }
 }

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.search.service;
 
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
@@ -138,7 +139,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		              .forEach(candidates::add);
 		}
 
-		if (requestedTypes.contains(ProfileSearchType.STUDIO)) {
+		if (requestedTypes.contains(ProfileSearchType.STUDIO) && !MediaContentAudiencePolicy.isListenerViewer()) {
 			studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, perTypePage)
 		                       .stream()
 		                       .limit(perTypeLimit)

@@ -14,6 +14,29 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class PreferenceBackedMusicianFeedPersonalizationSourceTest {
+
+	@Test
+	void venueUsesItsOwnedPublicCityWithoutReadingOrCreatingMusicianPreferences() {
+		var preferences = mock(MusicianFeedPreferencesService.class);
+		var venues = mock(com.berkayb.soundconnect.modules.venue.repository.VenueRepository.class);
+		var venue = mock(com.berkayb.soundconnect.modules.venue.entity.Venue.class);
+		var owner = mock(com.berkayb.soundconnect.modules.user.entity.User.class);
+		var city = mock(com.berkayb.soundconnect.modules.location.entity.City.class);
+		UUID userId = UUID.randomUUID(), venueId = UUID.randomUUID(), cityId = UUID.randomUUID();
+		when(venues.findPubliclyVisibleById(venueId)).thenReturn(java.util.Optional.of(venue));
+		when(venue.getOwner()).thenReturn(owner);
+		when(owner.getId()).thenReturn(userId);
+		when(venue.getCity()).thenReturn(city);
+		when(city.getId()).thenReturn(cityId);
+		var result = new PreferenceBackedMusicianFeedPersonalizationSource(preferences, venues).loadForVenue(userId, venueId);
+		assertThat(result.opportunityCityId()).isEqualTo(cityId);
+		assertThat(result.instrumentIds()).isEmpty();
+		assertThat(result.completion()).isNull();
+		org.mockito.Mockito.verifyNoInteractions(preferences);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+				new PreferenceBackedMusicianFeedPersonalizationSource(preferences, venues).loadForVenue(UUID.randomUUID(), venueId))
+				.isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);
+	}
 	@Test
 	void emitsBioOnlyCompletionCopyAndKeepsTheLegacyCodeReadable() {
 		MusicianFeedPreferencesService preferences = mock(MusicianFeedPreferencesService.class);

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.cursor;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +52,84 @@ class MusicianFeedCursorCodecTest {
 
         assertThat(decoded).isEqualTo(state);
         assertThat(token).doesNotContain(viewer.toString()).doesNotContain("TRACK:");
+    }
+
+    @Test
+    void venueCursorIsAudienceBoundBeforeReplayEvenForTheSameAccountAndCapabilities() {
+        UUID venueId = UUID.randomUUID();
+        var venueState = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 17, 17, "venue-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.VENUE, venueId);
+        String venueToken = codec.encode(venueState, TYPES);
+        assertThat(codec.decode(venueToken, viewer, TYPES, ANCHOR, "venue-context", BackstageFeedAudience.VENUE, venueId))
+                .isEqualTo(venueState);
+        assertThat(codec.decodeForReplay(venueToken, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, venueId))
+                .isEqualTo(venueState);
+        assertInvalid(() -> codec.decodeForReplay(venueToken, viewer, TYPES, ANCHOR));
+        assertInvalid(() -> codec.decodeForReplay(codec.encode(state, TYPES), viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, venueId));
+    }
+
+    @Test
+    void changedVenueIdentityCannotReplayOrContinueEvenWhenViewerAndRankingContextMatch() {
+        UUID venueId = UUID.randomUUID();
+        var venueState = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 17, 17, "venue-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.VENUE, venueId);
+        String token = codec.encode(venueState, TYPES);
+        UUID changedVenue = UUID.randomUUID();
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, changedVenue));
+        assertInvalid(() -> codec.decode(token, viewer, TYPES, ANCHOR, "venue-context", BackstageFeedAudience.VENUE, changedVenue));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, null));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE));
+        assertThat(codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, venueId))
+                .isEqualTo(venueState);
+        assertInvalid(() -> codec.decode(token, viewer, TYPES, ANCHOR, "changed-mutable-preferences", BackstageFeedAudience.VENUE, venueId));
+    }
+
+    @Test
+    void venueIdentityIsMandatoryWhenSigningAndCannotBeOmittedEvenFromAValidSignature() throws Exception {
+        var missingIdentity = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 17, 17, "venue-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.VENUE);
+        assertInvalid(() -> codec.encode(missingIdentity, TYPES));
+        UUID venueId = UUID.randomUUID();
+        var venueState = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR,
+                state.after(), 17, 17, "venue-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.VENUE, venueId);
+        var mapper = new ObjectMapper();
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(
+                Base64.getUrlDecoder().decode(codec.encode(venueState, TYPES).split("\\.")[0]));
+        body.remove("viewerProfileId");
+        String missingClaim = sign(mapper.writeValueAsBytes(body));
+        assertInvalid(() -> codec.decodeForReplay(missingClaim, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, venueId));
+    }
+
+    @Test
+    void listenerCursorRequiresItsProfileAndCannotCrossAnyOtherAudienceOrAccount() {
+        UUID listenerId = UUID.randomUUID();
+        var listener = new MusicianFeedCursorState(viewer, state.feedSessionId(), ANCHOR, state.after(), 17, 17,
+                "listener-context", MusicianFeedAnnouncementPlan.EMPTY, BackstageFeedAudience.LISTENER, listenerId);
+        String token = codec.encode(listener, TYPES);
+        assertThat(codec.decode(token, viewer, TYPES, ANCHOR, "listener-context", BackstageFeedAudience.LISTENER, listenerId))
+                .isEqualTo(listener);
+        assertThat(codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId)).isEqualTo(listener);
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE, listenerId));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR));
+        assertInvalid(() -> codec.decodeForReplay(token, UUID.randomUUID(), TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, UUID.randomUUID()));
+        assertInvalid(() -> codec.decodeForReplay(token, viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER));
+        assertInvalid(() -> codec.decodeForReplay(codec.encode(state, TYPES), viewer, TYPES, ANCHOR, BackstageFeedAudience.LISTENER, listenerId));
+    }
+
+    @Test
+    void missingAudienceKeepsExistingMusicianCursorsCompatibleWithoutAdmittingThemToVenue() throws Exception {
+        var mapper = new ObjectMapper();
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(
+                Base64.getUrlDecoder().decode(codec.encode(state, TYPES).split("\\.")[0]));
+        body.remove("audience");
+        body.remove("viewerProfileId");
+        String oldToken = sign(mapper.writeValueAsBytes(body));
+        assertThat(codec.decode(oldToken, viewer, TYPES, ANCHOR)).isEqualTo(state);
+        assertInvalid(() -> codec.decodeForReplay(oldToken, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE));
+        body.put("audience", "VENUE");
+        String wrongAlgorithm = sign(mapper.writeValueAsBytes(body));
+        assertInvalid(() -> codec.decodeForReplay(wrongAlgorithm, viewer, TYPES, ANCHOR, BackstageFeedAudience.VENUE));
     }
 
     @Test

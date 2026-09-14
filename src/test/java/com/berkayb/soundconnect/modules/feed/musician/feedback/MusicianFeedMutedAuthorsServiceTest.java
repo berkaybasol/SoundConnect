@@ -19,6 +19,38 @@ class MusicianFeedMutedAuthorsServiceTest {
     private final UUID viewer = UUID.randomUUID();
 
     @Test
+    void listenerUsesItsOwnGuardAndBoundedMutedList() {
+        when(repository.findPageForListener(eq(viewer), any(), isNull(), anyInt())).thenReturn(List.of());
+        assertThat(service.getForListener(viewer, null, null).items()).isEmpty();
+        verify(viewers).requireListenerProfile(viewer);
+        verify(viewers, never()).requireMusicianProfile(viewer);
+        verify(repository).findPageForListener(eq(viewer), any(), isNull(), eq(31));
+    }
+
+    @Test
+    void unauthorizedListenerCannotReadMutedAuthors() {
+        doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(viewers).requireListenerProfile(viewer);
+        assertThatThrownBy(() -> service.getForListener(viewer, null, null)).isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(repository, cursors);
+    }
+
+    @Test
+    void venueListUsesItsOwnViewerBoundaryAndTheSameBoundedPreferenceRead() {
+        when(repository.findPage(eq(viewer), any(), isNull(), anyInt())).thenReturn(List.of());
+        assertThat(service.getForVenue(viewer, null, null).items()).isEmpty();
+        verify(viewers).requireVenueProfile(viewer);
+        verify(viewers, never()).requireMusicianProfile(viewer);
+        verify(repository).findPage(eq(viewer), any(), isNull(), eq(31));
+    }
+
+    @Test
+    void venueListRejectsUnauthorizedCallerBeforeAnyRead() {
+        doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(viewers).requireVenueProfile(viewer);
+        assertThatThrownBy(() -> service.getForVenue(viewer, null, null)).isInstanceOf(SoundConnectException.class);
+        verifyNoInteractions(repository, cursors);
+    }
+
+    @Test
     void verifiesTheViewerBeforeAnyPreferenceRead() {
         doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(viewers).requireMusicianProfile(viewer);
         assertThatThrownBy(() -> service.get(viewer, null, null)).isInstanceOf(SoundConnectException.class);

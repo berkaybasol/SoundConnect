@@ -57,6 +57,7 @@ class MediaAssetMapperTest {
 		assertThat(dto.kind()).isEqualTo(e.getKind());
 		assertThat(dto.status()).isEqualTo(e.getStatus());
 		assertThat(dto.visibility()).isEqualTo(e.getVisibility());
+		assertThat(dto.contentAudience()).isEqualTo(e.getContentAudience());
 		assertThat(dto.ownerType()).isEqualTo(e.getOwnerType());
 		assertThat(dto.ownerId()).isEqualTo(e.getOwnerId());
 		assertThat(dto.sourceUrl()).isEqualTo(e.getSourceUrl());

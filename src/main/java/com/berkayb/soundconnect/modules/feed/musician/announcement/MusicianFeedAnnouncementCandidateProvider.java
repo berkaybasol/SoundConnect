@@ -34,18 +34,19 @@ public class MusicianFeedAnnouncementCandidateProvider implements MusicianFeedCa
         String cursor = null;
         do {
             requireTime(request);
-            var page = announcements.findForFeedBatch(request.viewerUserId(), "MUSICIAN", request.anchor(), cursor, BATCH_SIZE);
+            var page = announcements.findForFeedBatch(request.viewerUserId(), request.audience().name(), request.anchor(), cursor, BATCH_SIZE);
             if (page == null || page.items().size() > BATCH_SIZE) throw new IllegalStateException("Invalid announcement batch");
             List<MusicianFeedCandidate> probes = page.items().stream()
                     .map(value -> candidate(value, new MusicianFeedAnnouncementPlan.Entry(value.id(), 4))).toList();
             var preferences = feedback.forCandidates(request.viewerUserId(), request.feedback(), probes, List.of());
             List<UUID> ids = page.items().stream().map(AnnouncementResponse::id).toList();
-            Map<UUID, Long> counts = ids.isEmpty() ? Map.of()
-                    : impressions.qualifiedImpressionCounts(request.viewerUserId(), ids, request.anchor());
+            Map<UUID, AnnouncementImpressionHistory.QualifiedImpressions> history = ids.isEmpty() ? Map.of()
+                    : impressions.qualifiedImpressionHistory(request.viewerUserId(), ids, request.anchor());
             requireTime(request);
             for (AnnouncementResponse value : page.items()) {
-                if (!preferences.hiddenItemIds().contains(itemId(value.id()))) {
-                    selector.consider(value, counts.getOrDefault(value.id(), 0L));
+                var qualified = history.getOrDefault(value.id(), AnnouncementImpressionHistory.QualifiedImpressions.NONE);
+                if (!preferences.hiddenItemIds().contains(itemId(value.id())) && qualified.eligibleAt(request.anchor())) {
+                    selector.consider(value, qualified.totalCount());
                 }
             }
             if (!page.hasMore()) break;
@@ -63,7 +64,7 @@ public class MusicianFeedAnnouncementCandidateProvider implements MusicianFeedCa
                 .filter(entry -> !request.delivery().itemIds().contains(itemId(entry.id()))).toList();
         if (remaining.isEmpty()) return List.of();
         requireTime(request);
-        var values = announcements.findForFeedByIds(request.viewerUserId(), "MUSICIAN",
+        var values = announcements.findForFeedByIds(request.viewerUserId(), request.audience().name(),
                 remaining.stream().map(MusicianFeedAnnouncementPlan.Entry::id).toList(), request.readAt());
         Map<UUID, AnnouncementResponse> byId = new HashMap<>();
         for (AnnouncementResponse value : values) {

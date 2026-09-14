@@ -28,7 +28,7 @@ public class AnnouncementReadService {
     private final PromotionRepository promotions;
     private final NamedParameterJdbcTemplate jdbc;
 
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, timeout = 5, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public AnnouncementPage directory(UUID viewerId, String cursor, int limit) {
         ProfileType profile = access.viewerProfile(viewerId);
         return batch(viewerId, profile, null, cursor, limit, "DIRECTORY", 50);
@@ -43,19 +43,19 @@ public class AnnouncementReadService {
     @Transactional
     public void requireVisible(UUID viewerId, UUID id) { access.requireVisible(viewerId, id); }
 
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, timeout = 5, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<AnnouncementResponse> findForFeed(UUID viewerId, String profileType, Instant anchor, int limit) {
         return findForFeedBatch(viewerId, profileType, anchor, null, limit).items();
     }
 
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, timeout = 5, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public AnnouncementPage findForFeedBatch(UUID viewerId, String profileType, Instant anchor, String cursor, int limit) {
         ProfileType profile = requireProfile(viewerId, profileType);
         if (anchor == null) throw invalid();
         return batch(viewerId, profile, anchor, cursor, limit, "FEED", 160);
     }
 
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, timeout = 5, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<AnnouncementResponse> findForFeedByIds(UUID viewerId, String profileType, Collection<UUID> ids, Instant now) {
         ProfileType profile = requireProfile(viewerId, profileType);
         if (ids == null || ids.size() > 160 || ids.stream().anyMatch(Objects::isNull) || now == null) throw invalid();
@@ -99,7 +99,7 @@ public class AnnouncementReadService {
     }
 
     /** Bounded batch projection shared with admin reads; no access URLs are generated or stored. */
-    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @Transactional(readOnly = true, timeout = 5, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     List<AnnouncementResponse> project(UUID viewerId, Collection<UUID> ids) {
         if (ids.isEmpty()) return List.of();
         if (ids.size() > 160) throw invalid();

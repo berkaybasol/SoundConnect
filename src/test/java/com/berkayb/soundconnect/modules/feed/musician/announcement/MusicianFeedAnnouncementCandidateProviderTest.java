@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.feed.musician.announcement;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.*;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
@@ -27,23 +28,23 @@ class MusicianFeedAnnouncementCandidateProviderTest {
     @BeforeEach void prepare() {
         when(feedback.forCandidates(eq(VIEWER), any(), anyCollection(), anyCollection()))
                 .thenReturn(MusicianFeedFeedbackSnapshot.empty());
-        when(history.qualifiedImpressionCounts(eq(VIEWER), anyList(), eq(NOW))).thenReturn(Map.of());
+        when(history.qualifiedImpressionHistory(eq(VIEWER), anyList(), eq(NOW))).thenReturn(Map.of());
     }
 
     @Test void oldUnseenCandidatePastTheFirstBatchRemainsEligibleWithoutInheritingEarlyPriority() {
         List<AnnouncementResponse> recent = new ArrayList<>();
-        Map<UUID, Long> recentCounts = new HashMap<>();
+        Map<UUID, AnnouncementImpressionHistory.QualifiedImpressions> recentCounts = new HashMap<>();
         for (int index = 1; index <= 160; index++) {
             var value = MusicianFeedAnnouncementSelectorTest.value(index, NOW.minusSeconds(index));
             recent.add(value);
-            recentCounts.put(value.id(), 10L);
+            recentCounts.put(value.id(), new AnnouncementImpressionHistory.QualifiedImpressions(10, 0, NOW.minusSeconds(90_000)));
         }
         var old = MusicianFeedAnnouncementSelectorTest.value(161, NOW.minusSeconds(1000));
         when(source.findForFeedBatch(VIEWER, "MUSICIAN", NOW, null, 160))
                 .thenReturn(new AnnouncementPage(recent, "older", true));
         when(source.findForFeedBatch(VIEWER, "MUSICIAN", NOW, "older", 160))
                 .thenReturn(new AnnouncementPage(List.of(old), null, false));
-        when(history.qualifiedImpressionCounts(VIEWER, recent.stream().map(AnnouncementResponse::id).toList(), NOW))
+        when(history.qualifiedImpressionHistory(VIEWER, recent.stream().map(AnnouncementResponse::id).toList(), NOW))
                 .thenReturn(recentCounts);
         int oldSelections = 0;
         Set<List<UUID>> selectedPlans = new HashSet<>();
@@ -64,7 +65,21 @@ class MusicianFeedAnnouncementCandidateProviderTest {
         assertThat(selectedPlans).hasSizeGreaterThan(1);
         verify(source, times(64)).findForFeedBatch(VIEWER, "MUSICIAN", NOW, null, 160);
         verify(source, times(64)).findForFeedBatch(VIEWER, "MUSICIAN", NOW, "older", 160);
-        verify(history, times(64)).qualifiedImpressionCounts(VIEWER, List.of(old.id()), NOW);
+        verify(history, times(64)).qualifiedImpressionHistory(VIEWER, List.of(old.id()), NOW);
+    }
+
+    @Test void venueAudienceIsUsedForBothSelectionAndFrozenPlanReads() {
+        var announcement = MusicianFeedAnnouncementSelectorTest.value(91, NOW.minusSeconds(60));
+        when(source.findForFeedBatch(VIEWER, "VENUE", NOW, null, 160))
+                .thenReturn(new AnnouncementPage(List.of(announcement), null, false));
+        var venueRequest = request(null).withAudience(BackstageFeedAudience.VENUE);
+        var initial = provider.findCandidates(venueRequest);
+        assertThat(initial).singleElement().satisfies(value -> assertThat(value.target().id()).isEqualTo(announcement.id()));
+        var plan = new MusicianFeedAnnouncementPlan(initial.stream().map(MusicianFeedCandidate::announcementPlacement).toList());
+        when(source.findForFeedByIds(VIEWER, "VENUE", List.of(announcement.id()), NOW)).thenReturn(List.of(announcement));
+        assertThat(provider.findCandidates(request(plan).withAudience(BackstageFeedAudience.VENUE))).hasSize(1);
+        verify(source, never()).findForFeedBatch(eq(VIEWER), eq("MUSICIAN"), any(), any(), anyInt());
+        verify(source, never()).findForFeedByIds(eq(VIEWER), eq("MUSICIAN"), anyList(), any());
     }
 
     @Test void hiddenNewestIsExcludedBeforeTheThreeSlotsAreChosen() {
@@ -91,6 +106,38 @@ class MusicianFeedAnnouncementCandidateProviderTest {
         });
         verifyNoInteractions(history, feedback);
         verify(source, never()).findForFeedBatch(any(), anyString(), any(), any(), anyInt());
+    }
+
+    @Test void newPlanOmitsRecentAndDailyLimitedAnnouncementsWhilePreservingEligibleSeenWeights() {
+        var cooling = MusicianFeedAnnouncementSelectorTest.value(1, NOW);
+        var twice = MusicianFeedAnnouncementSelectorTest.value(2, NOW.minusSeconds(1));
+        var cooldownBoundary = MusicianFeedAnnouncementSelectorTest.value(3, NOW.minusSeconds(2));
+        var olderSeen = MusicianFeedAnnouncementSelectorTest.value(4, NOW.minusSeconds(3));
+        var unseen = MusicianFeedAnnouncementSelectorTest.value(5, NOW.minusSeconds(4));
+        var values = List.of(cooling, twice, cooldownBoundary, olderSeen, unseen);
+        when(source.findForFeedBatch(VIEWER, "MUSICIAN", NOW, null, 160))
+                .thenReturn(new AnnouncementPage(values, null, false));
+        when(history.qualifiedImpressionHistory(VIEWER, values.stream().map(AnnouncementResponse::id).toList(), NOW))
+                .thenReturn(Map.of(
+                        cooling.id(), new AnnouncementImpressionHistory.QualifiedImpressions(1, 1, NOW.minusSeconds(21_599)),
+                        twice.id(), new AnnouncementImpressionHistory.QualifiedImpressions(2, 2, NOW.minusSeconds(25_200)),
+                        cooldownBoundary.id(), new AnnouncementImpressionHistory.QualifiedImpressions(1, 1, NOW.minusSeconds(21_600)),
+                        olderSeen.id(), new AnnouncementImpressionHistory.QualifiedImpressions(10, 0, NOW.minusSeconds(90_000))));
+
+        var result = provider.findCandidates(request(null));
+        assertThat(result).extracting(value -> value.target().id())
+                .containsExactlyInAnyOrder(cooldownBoundary.id(), olderSeen.id(), unseen.id());
+        // The newest frequency-eligible announcement has already been seen, so no older candidate inherits its early slot.
+        assertThat(result).allSatisfy(value -> assertThat(value.announcementPlacement().gap()).isBetween(4, 8));
+    }
+
+    @Test void singleRecentlySeenAnnouncementCanLeaveThePlanEmptyWithoutPreventingOrganicFeed() {
+        var value = MusicianFeedAnnouncementSelectorTest.value(1, NOW);
+        when(source.findForFeedBatch(VIEWER, "MUSICIAN", NOW, null, 160))
+                .thenReturn(new AnnouncementPage(List.of(value), null, false));
+        when(history.qualifiedImpressionHistory(VIEWER, List.of(value.id()), NOW))
+                .thenReturn(Map.of(value.id(), new AnnouncementImpressionHistory.QualifiedImpressions(1, 1, NOW)));
+        assertThat(provider.findCandidates(request(null))).isEmpty();
     }
 
     @Test void exhaustedSharedDeadlineNeverStartsTheFirstReadAndFailureNeverReturnsAPartialPlan() {

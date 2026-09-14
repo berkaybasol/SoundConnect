@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.provider;
 import com.berkayb.soundconnect.modules.event.support.EventShareUrlBuilder;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingPostService;
@@ -94,7 +95,108 @@ class MusicianFeedProviderSqlPostgresTest {
             assertThatCode(() -> assertThat(provider.findCandidates(request)).isEmpty())
                     .as(provider.providerId())
                     .doesNotThrowAnyException();
+            assertThatCode(() -> assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.VENUE))).isEmpty())
+                    .as(provider.providerId() + " venue audience")
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.LISTENER))).isEmpty())
+                    .as(provider.providerId() + " listener audience")
+                    .doesNotThrowAnyException();
         }
+    }
+
+    @Test
+    void venueDiscoveryMatchesPrivateOpportunityPreferencesWithoutExposingThemAndKeepsUnknownCityFallback() {
+        JdbcTemplate sql = new JdbcTemplate(dataSource);
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(dataSource);
+        Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
+        Timestamp created = Timestamp.from(anchor.minusSeconds(600));
+        UUID viewer = UUID.randomUUID(), city = UUID.randomUUID(), otherCity = UUID.randomUUID();
+        insertAccount(sql, viewer, "venue-discovery-viewer", "ACTIVE", true);
+        sql.update("insert into tbl_city(id,created_at,updated_at,name) values (?,?,?,?),(?,?,?,?)",
+                city, created, created, "Venue city", otherCity, created, created, "Public other city");
+        UUID preferredUser = UUID.randomUUID(), preferredProfile = UUID.randomUUID();
+        UUID localUser = UUID.randomUUID(), localProfile = UUID.randomUUID();
+        UUID remoteUser = UUID.randomUUID(), remoteProfile = UUID.randomUUID();
+        UUID unknownUser = UUID.randomUUID(), unknownProfile = UUID.randomUUID();
+        UUID listener = UUID.randomUUID(), listenerProfile = UUID.randomUUID(), band = UUID.randomUUID();
+        insertMusician(sql, preferredUser, preferredProfile, "artist-preferred");
+        insertMusician(sql, localUser, localProfile, "artist-local");
+        insertMusician(sql, remoteUser, remoteProfile, "artist-remote");
+        insertMusician(sql, unknownUser, unknownProfile, "artist-unknown");
+        insertListener(sql, listener, listenerProfile, "venue-social-listener");
+        sql.update("update tbl_user set city_id=? where id=?", otherCity, preferredUser);
+        sql.update("update tbl_user set city_id=? where id in (?,?)", city, localUser, remoteUser);
+        sql.update("insert into tbl_musician_feed_preferences(musician_profile_id,opportunity_city_id,version) values (?,?,0),(?,?,0)",
+                preferredProfile, city, remoteProfile, otherCity);
+        sql.update("insert into tbl_band(id,created_at,updated_at,name) values (?,?,?,?)", band, created, created, "Venue discovery band");
+        insertBandMember(sql, band, remoteUser, "FOUNDER");
+        insertBandMember(sql, band, preferredUser, "MEMBER");
+        record Publisher(UUID profile, String type) { }
+        for (var publisher : List.of(new Publisher(preferredProfile, "MUSICIAN"), new Publisher(localProfile, "MUSICIAN"),
+                new Publisher(remoteProfile, "MUSICIAN"), new Publisher(unknownProfile, "MUSICIAN"),
+                new Publisher(listenerProfile, "LISTENER"), new Publisher(band, "BAND"))) {
+            UUID media = UUID.randomUUID();
+            insertPublicAudio(sql, media, publisher.profile(), anchor.minusSeconds(300));
+            String ownerType = publisher.type().equals("BAND") ? "BAND" : publisher.type() + "_PROFILE";
+            sql.update("update tbl_media_asset set owner_type=? where id=?", ownerType, media);
+            sql.update("insert into tbl_tracks(id,created_at,updated_at,media_asset_id,owner_type,owner_id,title) values (?,?,?,?,?,?,?)",
+                    UUID.randomUUID(), created, created, media, ownerType, publisher.profile(), "Artist publication");
+            sql.update("insert into tbl_profile_media(id,created_at,updated_at,profile_type,profile_id,media_asset_id,role,order_index) values (?,?,?,?,?,?,'GALLERY',0)",
+                    UUID.randomUUID(), created, created, publisher.type(), publisher.profile(), media);
+        }
+        var request = new MusicianFeedCandidateRequest(viewer, UUID.randomUUID(), UUID.randomUUID(), anchor, anchor, 20,
+                Set.of(MusicianFeedItemType.PROFILE, MusicianFeedItemType.TRACK, MusicianFeedItemType.PROFILE_MEDIA),
+                new MusicianFeedPersonalizationSnapshot(city, Set.of(), null), MusicianFeedFeedbackSnapshot.empty())
+                .withAudience(BackstageFeedAudience.VENUE);
+        List<MusicianFeedCandidateProvider> providers = List.of(new MusicianFeedProfileDiscoveryCandidateProvider(jdbc),
+                new MusicianFeedTrackCandidateProvider(jdbc), new MusicianFeedProfileMediaCandidateProvider(jdbc));
+        for (var provider : providers) {
+            var candidates = provider.findCandidates(request);
+            assertThat(candidates).as(provider.providerId()).hasSize(5);
+            assertThat(candidates).extracting(value -> value.author().profileId())
+                    .containsExactlyInAnyOrder(preferredProfile, localProfile, remoteProfile, unknownProfile, band);
+            assertThat(candidates).filteredOn(value -> Set.of(preferredProfile, localProfile, band).contains(value.author().profileId()))
+                    .allSatisfy(value -> assertThat(value.reason().code()).isEqualTo(com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedReasonCode.CITY_MATCH));
+            assertThat(candidates).filteredOn(value -> Set.of(remoteProfile, unknownProfile).contains(value.author().profileId()))
+                    .allSatisfy(value -> assertThat(value.reason().code()).isEqualTo(com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedReasonCode.DISCOVERY));
+        }
+        var preferredCard = new MusicianFeedProfileDiscoveryCandidateProvider(jdbc).findCandidates(request).stream()
+                .filter(value -> value.author().profileId().equals(preferredProfile)).findFirst().orElseThrow();
+        assertThat(((com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads.Profile) preferredCard.payload()).location())
+                .isEqualTo("Public other city");
+        insertFollow(sql, viewer, listener, anchor.minusSeconds(120));
+        assertThat(new MusicianFeedTrackCandidateProvider(jdbc).findCandidates(request))
+                .filteredOn(value -> value.author().profileId().equals(listenerProfile)).singleElement()
+                .satisfies(value -> assertThat(value.lane()).isEqualTo(MusicianFeedLane.FOLLOWING));
+        sql.update("update tbl_user set email_verified=false where id=?", preferredUser);
+        assertThat(new MusicianFeedProfileDiscoveryCandidateProvider(jdbc).findCandidates(request))
+                .filteredOn(value -> value.author().profileId().equals(band)).singleElement()
+                .satisfies(value -> assertThat(value.reason().code()).isEqualTo(com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedReasonCode.DISCOVERY));
+    }
+
+    @Test
+    void venueMediaCandidateLimitPrefersPerformancesOverNewerPhotosWithoutChangingMusicianOrder() {
+        JdbcTemplate sql = new JdbcTemplate(dataSource);
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(dataSource);
+        Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
+        UUID viewer = UUID.randomUUID(), artist = UUID.randomUUID(), profile = UUID.randomUUID();
+        insertAccount(sql, viewer, "venue-performance-viewer", "ACTIVE", true);
+        insertMusician(sql, artist, profile, "venue-performance-artist");
+        for (int index = 0; index < 3; index++) {
+            UUID media = UUID.randomUUID();
+            Instant createdAt = anchor.minusSeconds(300 - index * 60L);
+            insertPublicAudio(sql, media, profile, createdAt);
+            if (index > 0) sql.update("update tbl_media_asset set kind='IMAGE',mime_type='image/jpeg' where id=?", media);
+            sql.update("insert into tbl_profile_media(id,created_at,updated_at,profile_type,profile_id,media_asset_id,role,order_index) values (?,?,?,'MUSICIAN',?,?,'GALLERY',?)",
+                    UUID.randomUUID(), Timestamp.from(createdAt), Timestamp.from(createdAt), profile, media, index);
+        }
+        var request = new MusicianFeedCandidateRequest(viewer, UUID.randomUUID(), UUID.randomUUID(), anchor, anchor, 1,
+                Set.of(MusicianFeedItemType.PROFILE_MEDIA), MusicianFeedPersonalizationSnapshot.empty(), MusicianFeedFeedbackSnapshot.empty());
+        var provider = new MusicianFeedProfileMediaCandidateProvider(jdbc);
+        assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.VENUE))).singleElement()
+                .satisfies(value -> assertThat(((com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads.ProfileMedia) value.payload()).kind()).isEqualTo("AUDIO"));
+        assertThat(provider.findCandidates(request)).singleElement()
+                .satisfies(value -> assertThat(((com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads.ProfileMedia) value.payload()).kind()).isEqualTo("IMAGE"));
     }
 
     @Test
@@ -626,6 +728,14 @@ class MusicianFeedProviderSqlPostgresTest {
         sql.update("update tbl_user set status='ACTIVE' where id=?", performer);
         List<MusicianFeedCandidate> listenerShares = provider.findCandidates(request);
         assertThat(listenerShares).hasSize(1);
+        assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.LISTENER)))
+                .extracting(MusicianFeedCandidate::itemId).containsExactly("EVENT_PROFILE_SHARE:" + post);
+        sql.update("update tbl_event_audience_intent set published_on_profile=false where post_id=?", post);
+        assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.LISTENER))).isEmpty();
+        sql.update("update tbl_event_audience_intent set published_on_profile=true where post_id=?", post);
+        sql.update("update \"tbl_listener-profile\" set visibility_mode='GHOST' where id=?", listenerProfile);
+        assertThat(provider.findCandidates(request.withAudience(BackstageFeedAudience.LISTENER))).isEmpty();
+        sql.update("update \"tbl_listener-profile\" set visibility_mode='STANDARD' where id=?", listenerProfile);
         var listenerEvent = (com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads.Event)
                 listenerShares.getFirst().payload();
         assertThat(listenerEvent.event().performerName()).isEqualTo("invalid-performer");
@@ -906,6 +1016,14 @@ class MusicianFeedProviderSqlPostgresTest {
             assertThat(candidate.author().followedByViewer()).isTrue();
             assertThat(candidate.lane()).isEqualTo(MusicianFeedLane.FOLLOWING);
         });
+        var listenerRequest = request.withAudience(BackstageFeedAudience.LISTENER);
+        assertThat(provider.findCandidates(listenerRequest)).extracting(candidate -> candidate.author().profileType())
+                .containsExactlyInAnyOrder("MUSICIAN", "LISTENER", "VENUE", "BAND");
+        sql.update("update tbl_media_asset set content_audience='BACKSTAGE' where owner_id=?", venueProfile);
+        assertThat(provider.findCandidates(listenerRequest)).extracting(candidate -> candidate.author().profileType())
+                .containsExactlyInAnyOrder("MUSICIAN", "LISTENER", "BAND");
+        assertThat(provider.findCandidates(request)).extracting(candidate -> candidate.author().profileType())
+                .containsExactlyInAnyOrder("MUSICIAN", "LISTENER", "STUDIO", "VENUE", "BAND");
         insertBandMember(sql, band, viewer, "MEMBER");
         assertThat(provider.findCandidates(request)).extracting(candidate -> candidate.author().profileType())
                 .containsExactlyInAnyOrder("MUSICIAN", "LISTENER", "STUDIO", "VENUE");
@@ -1096,6 +1214,70 @@ class MusicianFeedProviderSqlPostgresTest {
                 .allMatch(candidate -> candidate.author().followedByViewer());
         assertThat(candidates).filteredOn(candidate -> candidate.itemId().equals("TRACK:" + tracks.get(7)))
                 .allMatch(candidate -> !candidate.author().followedByViewer());
+    }
+
+    @Test
+    void listenerQueriesExcludeBusinessBeforeLimitsAndKeepFollowedListenerMediaAndSocialActivity() {
+        JdbcTemplate sql = new JdbcTemplate(dataSource);
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(dataSource);
+        Instant anchor = Instant.parse("2026-09-11T12:00:00Z");
+        Timestamp created = Timestamp.from(anchor.minusSeconds(600));
+        UUID viewer = UUID.randomUUID(), viewerProfile = UUID.randomUUID();
+        UUID musician = UUID.randomUUID(), musicianProfile = UUID.randomUUID();
+        UUID listener = UUID.randomUUID(), listenerProfile = UUID.randomUUID();
+        UUID studio = UUID.randomUUID(), studioProfile = UUID.randomUUID();
+        insertAccount(sql, viewer, "mainstage-viewer", "ACTIVE", true);
+        insertMusician(sql, musician, musicianProfile, "mainstage-artist");
+        insertListener(sql, listener, listenerProfile, "mainstage-friend");
+        insertAccount(sql, studio, "mainstage-studio", "ACTIVE", true);
+        sql.update("insert into tbl_studio_profile(id,created_at,updated_at,user_id,name,time_zone,version)"
+                + " values (?,?,?,?,?,'Europe/Istanbul',0)", studioProfile, created, created, studio, "Business studio");
+        for (UUID publisher : List.of(musician, listener, studio)) insertFollow(sql, viewer, publisher, anchor.minusSeconds(700));
+        UUID publicTrack = UUID.randomUUID(), businessTrack = UUID.randomUUID(), listenerMedia = UUID.randomUUID();
+        List<UUID> assets = new ArrayList<>(List.of(publicTrack, businessTrack, listenerMedia));
+        for (int index = 0; index < 15; index++) assets.add(UUID.randomUUID());
+        for (int index = 0; index < assets.size(); index++) {
+            UUID id = assets.get(index);
+            UUID profile = index < 2 ? musicianProfile : index == 2 ? listenerProfile : studioProfile;
+            String type = index < 2 ? "MUSICIAN" : index == 2 ? "LISTENER" : "STUDIO";
+            Instant at = anchor.minusSeconds(index < 3 ? 500 : 100 - index);
+            insertPublicAudio(sql, id, profile, at);
+            sql.update("update tbl_media_asset set owner_type=?,content_audience=? where id=?",
+                    type + "_PROFILE", index == 1 ? "BACKSTAGE" : "MAINSTAGE", id);
+            sql.update("insert into tbl_tracks(id,created_at,updated_at,media_asset_id,owner_type,owner_id,title)"
+                    + " values (?,?,?,?,?,?,?)", UUID.randomUUID(), Timestamp.from(at), Timestamp.from(at), id,
+                    type + "_PROFILE", profile, type + " publication");
+            sql.update("insert into tbl_profile_media(id,created_at,updated_at,profile_type,profile_id,media_asset_id,role,order_index)"
+                    + " values (?,?,?,?,?,?,'GALLERY',0)", UUID.randomUUID(), Timestamp.from(at), Timestamp.from(at), type, profile, id);
+            insertLike(sql, listener, id, "MEDIA", at.plusSeconds(10));
+        }
+        var request = new MusicianFeedCandidateRequest(viewer, viewerProfile, UUID.randomUUID(), anchor, anchor, 6,
+                EnumSet.allOf(MusicianFeedItemType.class), MusicianFeedPersonalizationSnapshot.empty(),
+                MusicianFeedFeedbackSnapshot.empty()).withAudience(BackstageFeedAudience.LISTENER);
+        var tracks = new MusicianFeedTrackCandidateProvider(jdbc).findCandidates(request);
+        assertThat(tracks).extracting(value -> value.target().id()).containsExactlyInAnyOrder(publicTrack, listenerMedia);
+        assertThat(tracks).filteredOn(value -> value.author().profileType().equals("LISTENER"))
+                .singleElement().satisfies(value -> assertThat(value.lane()).isEqualTo(MusicianFeedLane.FOLLOWING));
+        assertThat(new MusicianFeedProfileMediaCandidateProvider(jdbc).findCandidates(request))
+                .extracting(value -> value.target().id()).containsExactlyInAnyOrder(publicTrack, listenerMedia);
+        var activities = mediaActivityProvider().findCandidates(request);
+        assertThat(activities).extracting(value -> value.target().id()).containsExactlyInAnyOrder(publicTrack, listenerMedia);
+        assertThat(activities).allSatisfy(value -> assertThat(value.author().profileType()).isEqualTo("LISTENER"));
+        // A studio actor liking public music is not a Mainstage social story either.
+        insertLike(sql, studio, publicTrack, "MEDIA", anchor.minusSeconds(1));
+        assertThat(mediaActivityProvider().findCandidates(request)).allSatisfy(value -> {
+            assertThat(value.author().profileType()).isEqualTo("LISTENER");
+            assertThat(value.reason().secondaryActorCount()).isZero();
+        });
+        var policy = new com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedContentPolicy(jdbc,
+                new ObjectMapper().findAndRegisterModules());
+        assertThat(policy.filterCandidates(viewer, tracks)).containsExactlyElementsOf(tracks);
+        var page = new com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPageResponse(1, "listener-v1.0.0",
+                UUID.randomUUID(), anchor, tracks.stream().map(MusicianFeedCandidate::toResponse).toList(), null, false);
+        assertThatCode(() -> policy.requireReplayEligible(viewer, page, anchor)).doesNotThrowAnyException();
+        sql.update("update tbl_media_asset set content_audience='BACKSTAGE' where id=?", publicTrack);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> policy.requireReplayEligible(viewer, page, anchor))
+                .isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);
     }
 
     private static UUID insertFutureVenueEvent(JdbcTemplate sql, UUID venueOwner, Instant anchor) {

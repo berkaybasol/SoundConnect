@@ -151,11 +151,12 @@ tasks.register('venueAnalyticsLoadTest', Test) {
 // a fresh Testcontainers database; no application configuration or DB is loaded.
 tasks.register('musicianFeedLoadTest', Test) {
     group = 'verification'
-    description = 'Measures real musician-feed providers, service and replay on disposable PostgreSQL.'
+    description = 'Measures shared musician, venue or listener feed providers, service and replay on disposable PostgreSQL.'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'feed-load' }
     systemProperty 'feedLoad.diagnosticsOnly', project.findProperty('feedLoadDiagnosticsOnly') ?: 'false'
+    systemProperty 'feedLoad.audience', project.findProperty('feedLoadAudience') ?: 'MUSICIAN'
     maxParallelForks = 1
     maxHeapSize = '2g'
     jvmArgs '-XX:+EnableDynamicAgentLoading'

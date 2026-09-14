@@ -67,8 +67,7 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
                    coalesce(profile.display_name, account.user_name) as author_display_name,
                    coalesce(avatar.playback_url, avatar.source_url, avatar.thumbnail_url, account.profile_picture) as author_avatar_url,
                    false as followed_by_viewer, profile.bio, profile.location, profile.created_at,
-                   (:hasCity and profile.city_id=:cityId
-                       and profile.profile_type in ('VENUE','STUDIO')) as city_match,
+                   /* RELEVANT_MATCH */ as city_match,
                    exists(select 1 from tbl_band_member member where profile.profile_type='BAND'
                        and member.band_id=profile.profile_id and member.user_id=:viewerId
                        and member.status='ACTIVE') as owned_band
@@ -86,6 +85,8 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
                     where profile.profile_type='BAND' and own_member.band_id=profile.profile_id
                       and own_member.user_id=:viewerId and own_member.status='ACTIVE')
               and following.id is null and band_follow.id is null
+              and (not :venueAudience or profile.profile_type in ('MUSICIAN','BAND'))
+              and (not :listenerAudience or profile.profile_type<>'STUDIO')
               and /* FEED_MODERATION */
               and not exists(select 1 from tbl_musician_feed_feedback feedback
                   where feedback.viewer_user_id=:viewerId and (
@@ -99,14 +100,15 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
                     and (delivered.item_id='PROFILE:' || profile.profile_id::text
                       or (delivered.item_type<>'ACTIVITY_COMMENT' and delivered.target_type='PROFILE'
                           and delivered.target_id=profile.profile_id)))
-              and ((:pool='RELEVANT' and :hasCity and profile.city_id=:cityId
-                         and profile.profile_type in ('VENUE','STUDIO'))
-                   or (:pool='GENERAL' and not (:hasCity and profile.city_id=:cityId
-                         and profile.profile_type in ('VENUE','STUDIO'))))
+              and ((:pool='RELEVANT' and /* RELEVANT_MATCH */)
+                   or (:pool='GENERAL' and not /* RELEVANT_MATCH */))
             order by profile.created_at desc, profile.profile_id desc
             limit :limit
             """.replace("/* FEED_MODERATION */", allowed(item("'PROFILE:' || profile.profile_id::text"),
-                    profile("profile.profile_type", "profile.profile_id")));
+                    profile("profile.profile_type", "profile.profile_id")))
+            .replace("/* RELEVANT_MATCH */", "(case when :venueAudience then "
+                    + MusicianFeedArtistDiscovery.cityMatchSql("profile.profile_type", "profile.profile_id", "profile.city_id")
+                    + " else (:hasCity and profile.city_id=:cityId and profile.profile_type in ('VENUE','STUDIO')) end)");
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -123,18 +125,24 @@ public class MusicianFeedProfileDiscoveryCandidateProvider implements MusicianFe
         if (!request.supportedTypes().contains(MusicianFeedItemType.PROFILE)) return List.of();
         UUID cityId = request.personalization().opportunityCityId();
         int totalLimit = Math.min(request.limit(), 24);
-        int relevantLimit = totalLimit * 2 / 3;
+        boolean venue = MusicianFeedArtistDiscovery.forVenue(request);
+        int relevantLimit = venue ? totalLimit : totalLimit * 2 / 3;
         int generalLimit = totalLimit - relevantLimit;
         var parameters = new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())
                 .addValue("feedSessionId", request.feedSessionId())
                 .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()))
                 .addValue("cityId", cityId == null ? new UUID(0, 0) : cityId)
-                .addValue("hasCity", cityId != null);
+                .addValue("hasCity", cityId != null)
+                .addValue("venueAudience", venue)
+                .addValue("listenerAudience", MusicianFeedArtistDiscovery.forListener(request));
+        org.springframework.jdbc.core.RowMapper<MusicianFeedCandidate> mapper = (row, index) ->
+                MusicianFeedArtistDiscovery.prioritize(candidate(row, index), request, row.getBoolean("city_match"), true);
         List<MusicianFeedCandidate> result = new ArrayList<>(totalLimit);
         if (relevantLimit > 0) result.addAll(jdbc.query(SQL, parameters.addValue("pool", "RELEVANT")
-                .addValue("limit", relevantLimit), this::candidate));
+                .addValue("limit", relevantLimit), mapper));
+        if (venue || MusicianFeedArtistDiscovery.forListener(request)) generalLimit = totalLimit - result.size();
         if (generalLimit > 0) result.addAll(jdbc.query(SQL, parameters.addValue("pool", "GENERAL")
-                .addValue("limit", generalLimit), this::candidate));
+                .addValue("limit", generalLimit), mapper));
         return List.copyOf(result);
     }
 

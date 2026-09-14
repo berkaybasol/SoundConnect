@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.feed.musician.provider;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidateRequest;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,15 @@ class MusicianFeedCompletionCandidateProviderTest {
                 new MusicianFeedPayloads.Completion(0, 5, List.of())))).isEmpty();
         assertThat(provider.findCandidates(request(profileId, Set.of(MusicianFeedItemType.PROFILE_COMPLETION),
                 null))).isEmpty();
+    }
+
+    @Test
+    void venueAudienceCannotReceiveTheMusicianCompletionCard() {
+        var task = new MusicianFeedPayloads.CompletionTask("INSTRUMENTS", "Enstrümanlarını ekle",
+                "Daha iyi eşleşmeler al.", "Ekle", "/profile/musician/edit", 2, false);
+        var request = request(UUID.randomUUID(), Set.of(MusicianFeedItemType.PROFILE_COMPLETION),
+                new MusicianFeedPayloads.Completion(0, 1, List.of(task))).withAudience(BackstageFeedAudience.VENUE);
+        assertThat(provider.findCandidates(request)).isEmpty();
     }
 
     @Test

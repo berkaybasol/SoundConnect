@@ -42,6 +42,7 @@ class MusicianFeedServiceTest {
     private MusicianFeedProperties properties;
     private MusicianFeedDeliveryService deliveries;
     private ExecutorService executor;
+    private io.micrometer.core.instrument.simple.SimpleMeterRegistry metricsRegistry;
     private final AtomicLong deliveredCount = new AtomicLong();
     private final Set<String> deliveredIds = ConcurrentHashMap.newKeySet();
     private final Set<String> deliveredTargets = ConcurrentHashMap.newKeySet();
@@ -69,6 +70,7 @@ class MusicianFeedServiceTest {
         properties = new MusicianFeedProperties();
         deliveries = mock(MusicianFeedDeliveryService.class);
         executor = Executors.newFixedThreadPool(4);
+        metricsRegistry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         deliveredCount.set(0);
         deliveredIds.clear();
         deliveredTargets.clear();
@@ -837,6 +839,65 @@ class MusicianFeedServiceTest {
         assertThat(second.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:tail");
     }
 
+    @Test
+    void qualifiedHistoryIsBatchedForTheViewerAndSessionAnchorAndSoftlyChangesSelection() {
+        var seen = candidate("TRACK:seen", 1_000_000);
+        var unseen = candidate("TRACK:unseen", 990_000);
+        String seenKey = MusicianFeedDeliverySnapshot.targetKey(seen.target().type(), seen.target().id());
+        String unseenKey = MusicianFeedDeliverySnapshot.targetKey(unseen.target().type(), unseen.target().id());
+        when(deliveries.recentlyViewedTargetKeys(eq(viewer), any(), eq(NOW), eq(Set.of(seenKey, unseenKey))))
+                .thenReturn(Set.of(seenKey));
+        var page = service(List.of(provider("tracks", request -> List.of(seen, unseen))))
+                .get(viewer, 1, null, List.of("TRACK"));
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:unseen");
+        verify(deliveries).recentlyViewedTargetKeys(viewer, page.feedSessionId(), NOW, Set.of(seenKey, unseenKey));
+        assertThat(page.algorithmVersion()).isEqualTo("musician-v1.2.0");
+    }
+
+    @Test
+    void historyReadFailureRetainsContentAndIsObservable() {
+        when(deliveries.recentlyViewedTargetKeys(eq(viewer), any(), eq(NOW), anySet()))
+                .thenThrow(new org.springframework.dao.QueryTimeoutException("Isolated test timeout"));
+        var page = service(List.of(provider("tracks", request -> List.of(candidate("TRACK:retained", 1_000_000)))))
+                .get(viewer, 20, null, List.of("TRACK"));
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:retained");
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.history.unavailable").counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.page.duration").tag("outcome", "success")
+                .timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void optionalFailureAndReturnedContentHaveBoundedOperationalMetrics() {
+        var page = service(List.of(
+                provider("tracks", request -> List.of(candidate("TRACK:ok", 1_000_000))),
+                provider("unavailable", request -> { throw new IllegalStateException("Isolated source outage"); })))
+                .get(viewer, 20, null, List.of("TRACK"));
+        assertThat(page.items()).hasSize(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.results")
+                .tags("provider", "tracks", "outcome", "success").counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.results")
+                .tags("provider", "unavailable", "outcome", "failure").counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.provider.execution")
+                .tag("provider", "tracks").timer().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.candidates")
+                .tags("type", "TRACK", "lane", "FOLLOWING").counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.response.items")
+                .tag("type", "TRACK").counter().count()).isEqualTo(1);
+        assertThat(metricsRegistry.getMeters()).allSatisfy(meter ->
+                assertThat(meter.getId().getTags()).allSatisfy(tag -> assertThat(tag.getKey())
+                        .isIn("provider", "outcome", "type", "lane")));
+    }
+
+    @Test
+    void historyTransactionTimeoutAlsoDegradesWithoutDiscardingThePage() {
+        when(deliveries.recentlyViewedTargetKeys(eq(viewer), any(), eq(NOW), anySet()))
+                .thenThrow(new org.springframework.transaction.TransactionTimedOutException("Isolated transaction timeout"));
+        var page = service(List.of(provider("tracks", request -> List.of(candidate("TRACK:retained", 1_000_000)))))
+                .get(viewer, 20, null, List.of("TRACK"));
+        assertThat(page.items()).hasSize(1);
+        assertThat(metricsRegistry.get("soundconnect.musician.feed.history.unavailable").counter().count()).isEqualTo(1);
+    }
+
     private MusicianFeedService service(List<MusicianFeedCandidateProvider> providers) {
         return service(providers, List.of(), executor);
     }
@@ -847,7 +908,7 @@ class MusicianFeedServiceTest {
         return new MusicianFeedService(properties, guard,
                 new MusicianFeedCursorCodec(new ObjectMapper(), properties), new MusicianFeedMixer(),
                 feedback, restrictions, personalization, deliveries, providers, sponsors, selectedExecutor,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), new MusicianFeedMetrics(metricsRegistry));
     }
 
     private static MusicianFeedCandidateProvider provider(

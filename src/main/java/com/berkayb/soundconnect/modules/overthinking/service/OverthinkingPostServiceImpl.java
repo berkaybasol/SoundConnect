@@ -16,6 +16,7 @@ import com.berkayb.soundconnect.modules.overthinking.mapper.OverthinkingPostMapp
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingPostRepository;
 import com.berkayb.soundconnect.modules.overthinking.repository.OverthinkingRevealRequestRepository;
 import com.berkayb.soundconnect.modules.overthinking.support.OverthinkingPagination;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
@@ -103,6 +104,10 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	@Override
 	public Page<OverthinkingPostResponseDto> getMyPosts(UUID userId, Pageable pageable) {
 		userEntityFinder.getUser(userId);
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return mapPage(postRepository.findMainstagePage(userId, null, false,
+					OverthinkingPagination.page(pageable, Sort.unsorted())), userId);
+		}
 		
 		Page<OverthinkingPost> page = postRepository.findByAuthorId(userId, OverthinkingPagination.newest(pageable));
 		return mapPage(page, userId);
@@ -110,6 +115,10 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	
 	@Override
 	public Page<OverthinkingPostResponseDto> getPostsByArtist(UUID artistId, UUID viewerId, Pageable pageable) {
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return mapPage(postRepository.findMainstagePage(null, artistId, false,
+					OverthinkingPagination.page(pageable, Sort.unsorted())), viewerId);
+		}
 		Page<OverthinkingPost> page = postRepository.findByArtistId(artistId, OverthinkingPagination.newest(pageable));
 		return mapPage(page, viewerId);
 	}
@@ -121,6 +130,12 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 
 	@Override
 	public Page<OverthinkingPostResponseDto> getAll(UUID viewerId, Pageable pageable, OverthinkingFeedOrder order) {
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			Pageable safe = OverthinkingPagination.page(pageable, Sort.unsorted());
+			return mapPage(order == OverthinkingFeedOrder.MOST_LIKED
+					? postRepository.findMainstageMostLiked(safe)
+					: postRepository.findMainstagePage(null, null, order == OverthinkingFeedOrder.OLDEST, safe), viewerId);
+		}
 		// The explicit feed order is authoritative; arbitrary Pageable.sort must
 		// not append a conflicting database order or replace the stable tie-breaker.
 		Page<OverthinkingPost> page;
@@ -197,6 +212,12 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	}
 	
 	private Page<OverthinkingPostResponseDto> mapPage(Page<OverthinkingPost> page, UUID viewerId) {
+		if (MediaContentAudiencePolicy.isListenerViewer() && !page.isEmpty()) {
+			Set<UUID> visible = Set.copyOf(postRepository.findMainstageVisibleIds(
+					page.stream().map(OverthinkingPost::getId).toList()));
+			page = new PageImpl<>(page.stream().filter(post -> visible.contains(post.getId())).toList(),
+					page.getPageable(), page.getTotalElements());
+		}
 		List<OverthinkingPost> posts = page.getContent();
 		
 		Map<UUID, Long> likeCounts = getLikeCounts(posts);
@@ -223,7 +244,8 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	}
 	
 	private OverthinkingPostResponseDto toViewerAwareDto(OverthinkingPost post, UUID viewerId) {
-		return mapPage(new PageImpl<>(List.of(post)), viewerId).getContent().getFirst();
+		return mapPage(new PageImpl<>(List.of(post)), viewerId).stream().findFirst()
+				.orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_POST_NOT_FOUND));
 	}
 	
 	private OverthinkingPostResponseDto toViewerAwareDto(

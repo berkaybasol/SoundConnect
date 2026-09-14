@@ -39,12 +39,27 @@ public class MusicianFeedMutedAuthorsService {
     @Transactional(readOnly = true)
     public MusicianFeedMutedAuthorsResponse get(UUID viewerId, Integer requestedLimit, String cursor) {
         viewers.requireMusicianProfile(viewerId);
+        return getAuthorized(viewerId, requestedLimit, cursor);
+    }
+
+    @Transactional(readOnly = true)
+    public MusicianFeedMutedAuthorsResponse getForVenue(UUID viewerId, Integer requestedLimit, String cursor) {
+        viewers.requireVenueProfile(viewerId);
+        return getAuthorized(viewerId, requestedLimit, cursor);
+    }
+
+    private MusicianFeedMutedAuthorsResponse getAuthorized(UUID viewerId, Integer requestedLimit, String cursor) {
+        return getAuthorized(viewerId, requestedLimit, cursor, false);
+    }
+
+    private MusicianFeedMutedAuthorsResponse getAuthorized(UUID viewerId, Integer requestedLimit, String cursor, boolean listener) {
         int limit = requestedLimit == null ? 30 : requestedLimit;
         if (limit < 1 || limit > 50) throw new SoundConnectException(ErrorType.BAD_REQUEST);
         Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         var after = cursor == null || cursor.isBlank() ? null : cursors.decode(cursor, viewerId, now);
         Instant anchor = after == null ? now : after.anchor();
-        var rows = repository.findPage(viewerId, anchor, after, limit + 1);
+        var rows = listener ? repository.findPageForListener(viewerId, anchor, after, limit + 1)
+                : repository.findPage(viewerId, anchor, after, limit + 1);
         boolean hasMore = rows.size() > limit;
         var selected = rows.subList(0, Math.min(limit, rows.size()));
         String nextCursor = null;
@@ -55,5 +70,11 @@ public class MusicianFeedMutedAuthorsService {
         }
         return new MusicianFeedMutedAuthorsResponse(selected.stream().map(
                 MusicianFeedMutedAuthorsRepository.Row::author).toList(), nextCursor, hasMore);
+    }
+
+    @Transactional(readOnly = true)
+    public MusicianFeedMutedAuthorsResponse getForListener(UUID viewerId, Integer requestedLimit, String cursor) {
+        viewers.requireListenerProfile(viewerId);
+        return getAuthorized(viewerId, requestedLimit, cursor, true);
     }
 }

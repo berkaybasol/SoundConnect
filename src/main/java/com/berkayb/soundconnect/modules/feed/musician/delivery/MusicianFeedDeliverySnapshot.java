@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.delivery;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -22,8 +23,34 @@ public record MusicianFeedDeliverySnapshot(
         long deliveredTableGroupShareCount,
         Set<UUID> deliveredAnnouncementIds,
         long deliveredNormalCount,
-        long normalCountAtLastAnnouncement
+        long normalCountAtLastAnnouncement,
+        Set<String> recentlyViewedTargetKeys,
+        List<OrganicHistoryEntry> recentOrganicHistory
 ) {
+    public static final int ORGANIC_HISTORY_WINDOW = 5;
+
+    /** Delivery order, oldest to newest; system and promotional cards do not reset organic diversity. */
+    public record OrganicHistoryEntry(String authorKey, MusicianFeedItemType itemType, MusicianFeedLane lane) {
+        public OrganicHistoryEntry {
+            if (itemType == null || lane == null) throw new IllegalArgumentException("Missing organic history identity");
+        }
+    }
+
+    public MusicianFeedDeliverySnapshot(Set<String> itemIds, Set<String> targetKeys,
+                                        Set<String> organicTargetKeys, Set<String> promotedTargetKeys,
+                                        Set<UUID> campaignIds, long nextAbsolutePosition, long deliveredPromotionCount,
+                                        long organicCountAtLastPromotion, boolean lastItemPromoted,
+                                        MusicianFeedItemType lastItemType, MusicianFeedLane lastItemLane,
+                                        long deliveredOverthinkingShareCount, long deliveredTableGroupShareCount,
+                                        Set<UUID> deliveredAnnouncementIds, long deliveredNormalCount,
+                                        long normalCountAtLastAnnouncement) {
+        this(itemIds, targetKeys, organicTargetKeys, promotedTargetKeys, campaignIds,
+                nextAbsolutePosition, deliveredPromotionCount, organicCountAtLastPromotion,
+                lastItemPromoted, lastItemType, lastItemLane, deliveredOverthinkingShareCount,
+                deliveredTableGroupShareCount, deliveredAnnouncementIds, deliveredNormalCount,
+                normalCountAtLastAnnouncement, Set.of(), List.of());
+    }
+
     public MusicianFeedDeliverySnapshot(Set<String> itemIds, Set<String> targetKeys,
                                         Set<String> organicTargetKeys, Set<String> promotedTargetKeys,
                                         Set<UUID> campaignIds, long nextAbsolutePosition, long deliveredPromotionCount,
@@ -43,6 +70,12 @@ public record MusicianFeedDeliverySnapshot(
         promotedTargetKeys = promotedTargetKeys == null ? Set.of() : Set.copyOf(promotedTargetKeys);
         campaignIds = campaignIds == null ? Set.of() : Set.copyOf(campaignIds);
         deliveredAnnouncementIds = deliveredAnnouncementIds == null ? Set.of() : Set.copyOf(deliveredAnnouncementIds);
+        recentlyViewedTargetKeys = recentlyViewedTargetKeys == null ? Set.of() : Set.copyOf(recentlyViewedTargetKeys);
+        recentOrganicHistory = recentOrganicHistory == null ? List.of() : List.copyOf(recentOrganicHistory);
+        if (recentOrganicHistory.size() > ORGANIC_HISTORY_WINDOW) {
+            recentOrganicHistory = List.copyOf(recentOrganicHistory.subList(
+                    recentOrganicHistory.size() - ORGANIC_HISTORY_WINDOW, recentOrganicHistory.size()));
+        }
         if (deliveredNormalCount < 0 || normalCountAtLastAnnouncement < 0
                 || normalCountAtLastAnnouncement > deliveredNormalCount) {
             throw new IllegalArgumentException("Invalid announcement cadence state");
@@ -81,5 +114,13 @@ public record MusicianFeedDeliverySnapshot(
 
     public static String targetKey(String type, UUID id) {
         return type + ":" + id;
+    }
+
+    public MusicianFeedDeliverySnapshot withRecentlyViewedTargetKeys(Set<String> viewedTargetKeys) {
+        return new MusicianFeedDeliverySnapshot(itemIds, targetKeys, organicTargetKeys, promotedTargetKeys,
+                campaignIds, nextAbsolutePosition, deliveredPromotionCount, organicCountAtLastPromotion,
+                lastItemPromoted, lastItemType, lastItemLane, deliveredOverthinkingShareCount,
+                deliveredTableGroupShareCount, deliveredAnnouncementIds, deliveredNormalCount,
+                normalCountAtLastAnnouncement, viewedTargetKeys, recentOrganicHistory);
     }
 }

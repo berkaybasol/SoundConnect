@@ -28,6 +28,8 @@ class ErrorTypeContractTest {
 	void securityAndRequestErrorsUseHttpSemantics() {
 		assertThat(ErrorType.INVALID_CREDENTIALS.getHttpStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
 		assertThat(ErrorType.UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(ErrorType.EMAIL_VERIFICATION_REQUIRED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+		assertThat(ErrorType.EMAIL_VERIFICATION_CODE_INVALID.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(ErrorType.FORBIDDEN_ACCESS.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.TRACK_OWNER_INVALID.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.INVALID_PARAMETER.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);

@@ -51,12 +51,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
+		boolean audienceSessionRequired = OptionalPublicAudienceRequestPolicy.requiresAuthenticatedBearer(request);
 		
 		// Header null mu, "Bearer " ile mi basliyor onu kontrol ediyoruz ve headerdan tokeni kesip aliyoruz.
 		// bunu metodlastirdim cunku baska yerlerde de lazim oluyor
 		String token = jwtUtil.getTokenFromRequest(request);
 		if (token == null) {
-			filterChain.doFilter(request, response);
+			continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 			return;
 		}
 		
@@ -64,7 +65,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		try {
 			if (!jwtTokenProvider.validateToken(token)) {
 				SecurityContextHolder.clearContext();
-				filterChain.doFilter(request, response);
+				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 				return;
 			}
 			userId = jwtTokenProvider.getUserIdFromToken(token);
@@ -73,7 +74,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			// infrastructure exceptions are intentionally not caught here so the
 			// server can surface them as 5xx instead of a false 401.
 			rejectAuthentication(request, exception);
-			filterChain.doFilter(request, response);
+			continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 			return;
 		}
 
@@ -83,14 +84,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				userDetails = userDetailsService.loadUserById(userId);
 			} catch (UsernameNotFoundException exception) {
 				rejectAuthentication(request, exception);
-				filterChain.doFilter(request, response);
+				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 				return;
 			} catch (SoundConnectException exception) {
 				if (exception.getErrorType() != ErrorType.USER_NOT_FOUND) {
 					throw exception;
 				}
 				rejectAuthentication(request, exception);
-				filterChain.doFilter(request, response);
+				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 				return;
 			}
 			if (canAuthenticate(userDetails, request)) {
@@ -100,6 +101,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			}
 		}
 		
+		var authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (audienceSessionRequired && (authentication == null || !authentication.isAuthenticated())) {
+			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
+			return;
+		}
+
 		if (listenerProfileChoiceGate.shouldReject(
 				request,
 				SecurityContextHolder.getContext().getAuthentication()
@@ -115,6 +122,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		// filtre -> controller -> service vs zincir devam etsin
 		filterChain.doFilter(request, response);
 		
+	}
+
+	private void continueWithoutAuthentication(HttpServletRequest request, HttpServletResponse response,
+			FilterChain filterChain, boolean audienceSessionRequired) throws IOException, ServletException {
+		if (audienceSessionRequired) {
+			SecurityContextHolder.clearContext();
+			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
+		} else {
+			filterChain.doFilter(request, response);
+		}
 	}
 
 	private void rejectAuthentication(HttpServletRequest request, RuntimeException exception) {

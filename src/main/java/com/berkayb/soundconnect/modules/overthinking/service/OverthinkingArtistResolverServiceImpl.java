@@ -140,7 +140,10 @@ public class OverthinkingArtistResolverServiceImpl implements OverthinkingArtist
 			throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 		}
 		String mediaOwnerType = expectedOwnerType == TrackOwnerType.BAND ? "BAND" : "MUSICIAN_PROFILE";
-		if (mediaAccess.lockPublicMedia(track.getMediaAssetId(), mediaOwnerType, track.getOwnerId()).isEmpty()) {
+		var readable = com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+				? mediaAccess.lockMainstagePublicMedia(track.getMediaAssetId(), mediaOwnerType, track.getOwnerId())
+				: mediaAccess.lockPublicMedia(track.getMediaAssetId(), mediaOwnerType, track.getOwnerId());
+		if (readable.isEmpty()) {
 			if (!trackRepository.existsById(trackId)) {
 				throw new SoundConnectException(ErrorType.TRACK_NOT_FOUND);
 			}

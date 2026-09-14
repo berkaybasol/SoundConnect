@@ -61,6 +61,24 @@ class EngagementTargetValidatorMediaLockTest {
         assertThat(transaction.propagation()).isEqualTo(Propagation.MANDATORY);
     }
 
+    @Test void listenerMediaAndSourceEngagementUseCurrentMainstageFences() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("viewer", "n/a",
+                        java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+        try {
+            owner("MUSICIAN_PROFILE");
+            assertHidden();
+            verify(repository).lockMainstagePublicMedia(asset, "MUSICIAN_PROFILE", owner);
+            verify(repository, never()).lockPublicMedia(any(), any(), any());
+            assertThatThrownBy(() -> validator().validateExists(EngagementTargetType.OVERTHINKING, asset))
+                    .isInstanceOf(SoundConnectException.class);
+            verify(repository).lockMainstagePost(asset);
+            verify(repository, never()).lockPost(any());
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
     private void owner(String type) {
         var metadata = mock(CommentTargetAccessRepository.MediaOwner.class);
         when(metadata.getOwnerType()).thenReturn(type);

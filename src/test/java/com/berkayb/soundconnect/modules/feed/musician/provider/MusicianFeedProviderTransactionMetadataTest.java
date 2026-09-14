@@ -10,6 +10,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MusicianFeedProviderTransactionMetadataTest {
 
     @Test
+    void announcementFeedReadsBoundJdbcWorkWithinTheirTransaction() throws Exception {
+        Class<?> type = com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementReadService.class;
+        for (var method : type.getDeclaredMethods()) {
+            if (!java.util.Set.of("directory", "findForFeed", "findForFeedBatch", "findForFeedByIds", "project")
+                    .contains(method.getName())) continue;
+            var transaction = method.getAnnotation(Transactional.class);
+            assertThat(transaction).as(method.getName()).isNotNull();
+            assertThat(transaction.timeout()).as(method.getName()).isEqualTo(5);
+            assertThat(transaction.isolation()).isEqualTo(org.springframework.transaction.annotation.Isolation.REPEATABLE_READ);
+        }
+    }
+
+    @Test
     void overthinkingProjectionProvidersUseWritableRequiresNewBoundaries() throws Exception {
         assertLockCapableBoundary(MusicianFeedOverthinkingShareCandidateProvider.class);
         assertLockCapableBoundary(MusicianFeedMediaActivityCandidateProvider.class);

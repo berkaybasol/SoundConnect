@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.track.service;
 
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
@@ -47,21 +49,38 @@ public class TrackServiceImpl implements TrackService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
-		List<Track> tracks = trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
+		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		List<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
+				? trackRepository.findMainstageByOwner(ownerId, ownerType)
+				: trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
 		Map<UUID, String> playbackUrls = mediaAssetService.getPlaybackUrlMap(
 				tracks.stream().map(Track::getMediaAssetId).toList()
 		);
-		return tracks.stream().map(track -> toDto(track, playbackUrls)).toList();
+		Map<UUID, MediaContentAudience> audiences = mediaAssetService.getContentAudienceMap(
+				tracks.stream().map(Track::getMediaAssetId).toList());
+		return tracks.stream()
+				.filter(track -> !MediaContentAudiencePolicy.isListenerViewer() || playbackUrls.containsKey(track.getMediaAssetId()))
+				.map(track -> toDto(track, playbackUrls, audiences)).toList();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public Page<TrackResponseDto> listTracks(UUID ownerId, TrackOwnerType ownerType, Pageable pageable) {
-		Page<Track> tracks = trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
+		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		Page<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
+				? trackRepository.findMainstageByOwner(ownerId, ownerType, pageable)
+				: trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
 		Map<UUID, String> playbackUrls = mediaAssetService.getPlaybackUrlMap(
 				tracks.getContent().stream().map(Track::getMediaAssetId).toList()
 		);
-		return tracks.map(track -> toDto(track, playbackUrls));
+		Map<UUID, MediaContentAudience> audiences = mediaAssetService.getContentAudienceMap(
+				tracks.getContent().stream().map(Track::getMediaAssetId).toList());
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return new org.springframework.data.domain.PageImpl<>(tracks.getContent().stream()
+					.filter(track -> playbackUrls.containsKey(track.getMediaAssetId()))
+					.map(track -> toDto(track, playbackUrls, audiences)).toList(), pageable, tracks.getTotalElements());
+		}
+		return tracks.map(track -> toDto(track, playbackUrls, audiences));
 	}
 
 	@Override
@@ -201,14 +220,16 @@ public class TrackServiceImpl implements TrackService {
 		};
 	}
 
-	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls) {
+	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls,
+			Map<UUID, MediaContentAudience> audiences) {
 		return new TrackResponseDto(
 				track.getId(),
 				track.getMediaAssetId(),
 				track.getTitle(),
 				playbackUrls.get(track.getMediaAssetId()),
 				track.getDurationSeconds(),
-				track.getBpm()
+				track.getBpm(),
+				audiences.getOrDefault(track.getMediaAssetId(), MediaContentAudience.MAINSTAGE)
 		);
 	}
 }

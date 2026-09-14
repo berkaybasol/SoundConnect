@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.shared.media.service;
 
 import com.berkayb.soundconnect.modules.media.mapper.MediaAssetMapper;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
@@ -33,6 +34,7 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 	@Override
 	@Transactional
 	public ProfileMediaUiResponseDto getProfileMedia(ProfileType profileType, UUID profileId) {
+		if (profileType == ProfileType.STUDIO) MediaContentAudiencePolicy.requireStudioAccess();
 		if (profileType == ProfileType.LISTENER
 				&& listenerVisibilityPolicy.lockForReadAndIsPubliclyRestrictedProfile(profileId)) {
 			return new ProfileMediaUiResponseDto(null, List.of(), List.of());

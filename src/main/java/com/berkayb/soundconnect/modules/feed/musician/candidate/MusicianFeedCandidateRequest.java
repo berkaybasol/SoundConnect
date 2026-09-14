@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedb
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 
 import java.time.Instant;
 import java.util.Set;
@@ -22,8 +23,28 @@ public record MusicianFeedCandidateRequest(
         MusicianFeedFeedbackSnapshot feedback,
         MusicianFeedDeliverySnapshot delivery,
         MusicianFeedAnnouncementPlan announcementPlan,
-        long providerDeadlineNanos
+        long providerDeadlineNanos,
+        BackstageFeedAudience audience
 ) {
+    public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
+                                        Instant anchor, Instant readAt, int limit,
+                                        Set<MusicianFeedItemType> supportedTypes,
+                                        MusicianFeedPersonalizationSnapshot personalization,
+                                        MusicianFeedFeedbackSnapshot feedback, MusicianFeedDeliverySnapshot delivery,
+                                        MusicianFeedAnnouncementPlan announcementPlan, long providerDeadlineNanos) {
+        this(viewerUserId, musicianProfileId, feedSessionId, anchor, readAt, limit,
+                supportedTypes, personalization, feedback, delivery, announcementPlan, providerDeadlineNanos,
+                BackstageFeedAudience.MUSICIAN);
+    }
+
+    /** For VENUE the legacy profile-id field carries the canonical venue target ID. */
+    public UUID viewerProfileId() { return musicianProfileId; }
+
+    public MusicianFeedCandidateRequest withAudience(BackstageFeedAudience requestedAudience) {
+        return new MusicianFeedCandidateRequest(viewerUserId, musicianProfileId, feedSessionId,
+                anchor, readAt, limit, supportedTypes, personalization, feedback, delivery,
+                announcementPlan, providerDeadlineNanos, requestedAudience);
+    }
     public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
                                         Instant anchor, Instant readAt, int limit,
                                         Set<MusicianFeedItemType> supportedTypes,
@@ -37,7 +58,7 @@ public record MusicianFeedCandidateRequest(
     public MusicianFeedCandidateRequest withProviderDeadline(long deadlineNanos) {
         return new MusicianFeedCandidateRequest(viewerUserId, musicianProfileId, feedSessionId,
                 anchor, readAt, limit, supportedTypes, personalization, feedback, delivery,
-                announcementPlan, deadlineNanos);
+                announcementPlan, deadlineNanos, audience);
     }
 
     public MusicianFeedCandidateRequest(UUID viewerUserId, UUID musicianProfileId, UUID feedSessionId,
@@ -61,5 +82,6 @@ public record MusicianFeedCandidateRequest(
     public MusicianFeedCandidateRequest {
         supportedTypes = Set.copyOf(supportedTypes);
         delivery = delivery == null ? MusicianFeedDeliverySnapshot.empty(0) : delivery;
+        audience = java.util.Objects.requireNonNull(audience, "audience");
     }
 }

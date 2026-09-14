@@ -128,14 +128,105 @@ class MusicianFeedDeliveryServicePostgresTest {
     }
 
     @Test
+    void recentViewsUseOnlyThisViewersQualifiedImpressionsBeforeTheSessionAnchor() throws Exception {
+        UUID priorSession = UUID.randomUUID(), otherViewer = UUID.randomUUID();
+        execute("INSERT INTO tbl_user(id) VALUES ('" + otherViewer + "')");
+        UUID seen = UUID.randomUUID(), prefetched = UUID.randomUUID(), opened = UUID.randomUUID();
+        UUID tooOld = UUID.randomUUID(), atAnchor = UUID.randomUUID(), late = UUID.randomUUID();
+        UUID otherAccount = UUID.randomUUID(), currentSessionTarget = UUID.randomUUID();
+        UUID announcement = UUID.randomUUID(), sponsored = UUID.randomUUID(), completion = UUID.randomUUID();
+        List<MusicianFeedItemResponse> previous = List.of(
+                item("TRACK:seen", MusicianFeedItemType.TRACK, "MEDIA", seen, null),
+                item("TRACK:prefetched", MusicianFeedItemType.TRACK, "MEDIA", prefetched, null),
+                item("TRACK:opened", MusicianFeedItemType.TRACK, "MEDIA", opened, null),
+                item("TRACK:old", MusicianFeedItemType.TRACK, "MEDIA", tooOld, null),
+                item("TRACK:anchor", MusicianFeedItemType.TRACK, "MEDIA", atAnchor, null),
+                item("TRACK:late", MusicianFeedItemType.TRACK, "MEDIA", late, null),
+                item("ANNOUNCEMENT:seen", MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", announcement, null),
+                item("SPONSORED:seen", MusicianFeedItemType.SPONSORED, "MEDIA", sponsored,
+                        new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Open", "/open")),
+                item("PROFILE_COMPLETION:seen", MusicianFeedItemType.PROFILE_COMPLETION, "PROFILE", completion, null));
+        service.recordPage(viewer, priorSession, now.minusSeconds(3600), 1, "history-test", 0, previous, now.minusSeconds(3600));
+        recordHistoryEvent(viewer, "TRACK:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "TRACK:opened", "OPEN", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "TRACK:old", "IMPRESSION", now.minusSeconds(86_400));
+        recordHistoryEvent(viewer, "TRACK:anchor", "IMPRESSION", now);
+        recordHistoryEvent(viewer, "TRACK:late", "IMPRESSION", now.plusNanos(1_000));
+        recordHistoryEvent(viewer, "ANNOUNCEMENT:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "SPONSORED:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "PROFILE_COMPLETION:seen", "IMPRESSION", now.minusSeconds(1));
+        service.recordPage(otherViewer, UUID.randomUUID(), now, 1, "history-test", 0,
+                List.of(item("TRACK:other", MusicianFeedItemType.TRACK, "MEDIA", otherAccount, null)), now);
+        recordHistoryEvent(otherViewer, "TRACK:other", "IMPRESSION", now);
+        service.recordPage(viewer, session, now, 1, "history-test", 0,
+                List.of(item("TRACK:current", MusicianFeedItemType.TRACK, "MEDIA", currentSessionTarget, null)), now);
+        recordHistoryEvent(viewer, "TRACK:current", "IMPRESSION", now);
+
+        Set<String> keys = new HashSet<>();
+        previous.forEach(value -> keys.add(MusicianFeedDeliverySnapshot.targetKey(value.target().type(), value.target().id())));
+        keys.add(MusicianFeedDeliverySnapshot.targetKey("MEDIA", otherAccount));
+        keys.add(MusicianFeedDeliverySnapshot.targetKey("MEDIA", currentSessionTarget));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, keys)).containsExactlyInAnyOrder(
+                MusicianFeedDeliverySnapshot.targetKey("MEDIA", seen), MusicianFeedDeliverySnapshot.targetKey("MEDIA", atAnchor));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now,
+                Set.of(MusicianFeedDeliverySnapshot.targetKey("MEDIA", prefetched)))).isEmpty();
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now.plusSeconds(1), keys))
+                .contains(MusicianFeedDeliverySnapshot.targetKey("MEDIA", late))
+                .doesNotContain(MusicianFeedDeliverySnapshot.targetKey("MEDIA", currentSessionTarget));
+    }
+
+    @Test
+    void expiredDeliveryStillContributesRecentViewsUntilCleanupWithoutExtendingSessionState() {
+        UUID previous = UUID.randomUUID(), target = UUID.randomUUID();
+        Instant deliveredAt = now.minusSeconds(90_000);
+        service.recordPage(viewer, previous, deliveredAt, 1, "history-test", 0,
+                List.of(item("TRACK:expired-history", MusicianFeedItemType.TRACK, "MEDIA", target, null)), deliveredAt);
+        recordHistoryEvent(viewer, "TRACK:expired-history", "IMPRESSION", now.minusSeconds(7200));
+        String key = MusicianFeedDeliverySnapshot.targetKey("MEDIA", target);
+
+        assertThat(service.snapshot(viewer, previous, now).recentOrganicHistory()).isEmpty();
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, Set.of(key))).containsExactly(key);
+        jdbc.update("delete from tbl_musician_feed_delivery where viewer_user_id=:viewer and feed_session_id=:session",
+                Map.of("viewer", viewer, "session", previous));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, Set.of(key))).isEmpty();
+        assertThat(number("select count(*) from tbl_musician_feed_telemetry_event")).isZero();
+    }
+
+    @Test
+    void recentViewIndexBuildsIdempotentlyOutsideATransaction() throws Exception {
+        String migration = Files.readString(Path.of("scripts/db/2026-09-14-musician-feed-recent-views.sql"));
+        String withoutComments = migration.lines().filter(line -> !line.stripLeading().startsWith("--"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        for (int repeat = 0; repeat < 2; repeat++) {
+            for (String statement : withoutComments.split(";")) if (!statement.isBlank()) execute(statement);
+        }
+        assertThat(number("select count(*) from pg_index i join pg_class c on c.oid=i.indexrelid "
+                + "where c.relname='idx_musician_feed_impression_viewer_time' and i.indisvalid and i.indisready"))
+                .isEqualTo(1);
+        assertThat(number("select count(*) from soundconnect_schema_migrations "
+                + "where migration_id='2026-09-14-musician-feed-recent-views'")) .isEqualTo(1);
+    }
+
+    private void recordHistoryEvent(UUID eventViewer, String itemId, String eventType, Instant recordedAt) {
+        jdbc.update("""
+                insert into tbl_musician_feed_telemetry_event(
+                    id,viewer_user_id,client_event_id,delivery_id,event_type,recorded_at)
+                select :eventId,:viewer,:clientId,id,:eventType,:recordedAt
+                from tbl_musician_feed_delivery where viewer_user_id=:viewer and item_id=:itemId
+                """, Map.of("eventId", UUID.randomUUID(), "viewer", eventViewer,
+                "clientId", UUID.randomUUID(), "eventType", eventType,
+                "recordedAt", Timestamp.from(recordedAt), "itemId", itemId));
+    }
+
+    @Test
     void snapshotUsesMinimalProjectionAndPreservesAllMixerState() {
         String projection = MusicianFeedDeliveryService.SNAPSHOT_SQL.substring(0,
                 MusicianFeedDeliveryService.SNAPSHOT_SQL.toLowerCase(Locale.ROOT).indexOf("from"))
                 .toLowerCase(Locale.ROOT);
         assertThat(projection)
                 .contains("item_id", "item_type", "feed_lane", "target_type", "target_id",
-                        "absolute_position", "campaign_id")
-                .doesNotContain("*", "evidence_json", "feedback_capabilities", "author_profile",
+                        "absolute_position", "campaign_id", "author_profile_type", "author_profile_id")
+                .doesNotContain("*", "evidence_json", "feedback_capabilities",
                         "reason_code", "schema_version", "algorithm_version", "delivered_at",
                         "expires_at", "purge_after");
 

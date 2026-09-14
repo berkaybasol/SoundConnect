@@ -4,11 +4,16 @@ import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.UsernameAvailabilityRequestDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
+import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetMailService;
+import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
+import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -17,6 +22,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.EmailVerificationRequiredException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,11 +34,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +60,134 @@ class AuthServiceSecurityTest {
 	@Mock StudioApplicationService studioApplicationService;
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
 	@InjectMocks AuthService authService;
+
+	@Test
+	void interruptedRegistrationReturnsCanonicalOtpDestinationOnlyAfterPasswordVerification() {
+		User user = unverifiedUser();
+		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+		EmailVerificationRequiredException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto(" BeRNa ", "secret")),
+				EmailVerificationRequiredException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_REQUIRED);
+		assertThat(exception.getEmail()).isEqualTo("berna@example.com");
+		assertThat(user.getEmailVerified()).isFalse();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+		verifyNoInteractions(jwtTokenProvider, otpService, otpMailService);
+		verify(userRepository, never()).save(any());
+		verify(userRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void unverifiedAccountWithWrongPasswordDoesNotRevealEmailOrRecoveryState() {
+		User user = unverifiedUser();
+		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("wrong", "encoded")).thenReturn(false);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("berna", "wrong")),
+				SoundConnectException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_CREDENTIALS);
+		assertThat(exception).isNotInstanceOf(EmailVerificationRequiredException.class);
+		assertThat(exception.getDetails()).isNull();
+		verifyNoInteractions(jwtTokenProvider, otpService, otpMailService);
+	}
+
+	@Test
+	void erasedAccountCannotResumeVerificationEvenWithMatchingPassword() {
+		User user = unverifiedUser();
+		user.setErasedAt(LocalDateTime.now());
+		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("berna", "secret")),
+				SoundConnectException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETED);
+		assertThat(exception).isNotInstanceOf(EmailVerificationRequiredException.class);
+		assertThat(exception.getDetails()).isNull();
+		verifyNoInteractions(jwtTokenProvider, otpService, otpMailService);
+	}
+
+	@Test
+	void verifiedInactiveAccountCannotUseEmailRecoveryToBypassItsStatus() {
+		User user = unverifiedUser();
+		user.setEmailVerified(true);
+		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
+
+		SoundConnectException exception = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("berna", "secret")),
+				SoundConnectException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS);
+		assertThat(exception).isNotInstanceOf(EmailVerificationRequiredException.class);
+		assertThat(exception.getDetails()).isNull();
+		verifyNoInteractions(jwtTokenProvider, otpService, otpMailService);
+	}
+
+	@Test
+	void passwordResetAfterInterruptedRegistrationStillRequiresOtpBeforeTheNewPasswordCanLogIn() {
+		User user = unverifiedUser();
+		user.setId(UUID.randomUUID());
+		user.setRoles(Set.of(Role.builder().name(RoleEnum.ROLE_MUSICIAN.name()).build()));
+		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
+		when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+		when(otpService.verifyPasswordResetOtp("berna@example.com", "654321")).thenReturn(true);
+		when(passwordEncoder.encode("new-password")).thenReturn("new-hash");
+		PasswordResetService passwordResetService = new PasswordResetService(
+				userRepository, otpService, mock(PasswordResetMailService.class), passwordEncoder,
+				accountRateLimitGuard, mock(PublicProfileResolverService.class));
+
+		var resetResponse = passwordResetService.resetPassword(new ResetPasswordRequestDto(
+				"berna", "654321", "new-password", "new-password"));
+
+		assertThat(resetResponse.getSuccess()).isTrue();
+		assertThat(user.getPassword()).isEqualTo("new-hash");
+		assertThat(user.getEmailVerified()).isFalse();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+		when(passwordEncoder.matches("new-password", "new-hash")).thenReturn(true);
+		when(passwordEncoder.matches("secret", "new-hash")).thenReturn(false);
+
+		SoundConnectException oldPasswordError = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("berna", "secret")),
+				SoundConnectException.class);
+		assertThat(oldPasswordError.getErrorType()).isEqualTo(ErrorType.INVALID_CREDENTIALS);
+		EmailVerificationRequiredException pendingError = catchThrowableOfType(
+				() -> authService.login(new LoginRequestDto("berna", "new-password")),
+				EmailVerificationRequiredException.class);
+		assertThat(pendingError.getEmail()).isEqualTo("berna@example.com");
+		verifyNoInteractions(jwtTokenProvider, otpMailService);
+
+		when(otpService.verifyOtp("berna@example.com", "123456")).thenReturn(true);
+		when(userRepository.findByEmailForUpdate("berna@example.com")).thenReturn(Optional.of(user));
+		var verificationResponse = authService.verifyCode(
+				new VerifyCodeRequestDto(pendingError.getEmail(), "123456"));
+		assertThat(verificationResponse.getData()).isNull();
+		assertThat(user.getEmailVerified()).isTrue();
+		assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+
+		when(jwtTokenProvider.generateToken(any())).thenReturn("musician-token");
+		var loginResponse = authService.login(new LoginRequestDto("berna", "new-password"));
+
+		assertThat(loginResponse.getSuccess()).isTrue();
+		assertThat(loginResponse.getData().token()).isEqualTo("musician-token");
+		assertThat(loginResponse.getData().status()).isEqualTo(UserStatus.ACTIVE);
+	}
+
+	private static User unverifiedUser() {
+		return User.builder()
+				.username("berna")
+				.email(" Berna@Example.COM ")
+				.password("encoded")
+				.emailVerified(false)
+				.status(UserStatus.INACTIVE)
+				.build();
+	}
 
 	@Test
 	void activeListenerLoginCarriesTheServerAuthoritativeChooserDecision() {

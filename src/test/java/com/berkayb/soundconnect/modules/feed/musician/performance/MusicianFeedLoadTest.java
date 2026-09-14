@@ -13,10 +13,13 @@ import com.berkayb.soundconnect.modules.feed.musician.feedback.*;
 import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
 import com.berkayb.soundconnect.modules.feed.musician.moderation.*;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.*;
+import com.berkayb.soundconnect.modules.feed.musician.preference.service.MusicianFeedPreferencesService;
 import com.berkayb.soundconnect.modules.feed.musician.provider.*;
 import com.berkayb.soundconnect.modules.overthinking.service.OverthinkingPostService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
+import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -62,8 +65,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * Service/JDBC development regression, NOT HTTP, Redis quota, media delivery or deployment capacity.
  * Actual Hibernate schema, production SQL providers, viewer repositories, feedback reader,
  * restriction guard, mixer, signed cursor, delivery transactions and replay visibility checks.
- * Only preference storage is replaced with fixed city/no-city snapshots; unused feedback write
- * collaborators and the unadvertised Overthinking service are absent/mocked explicitly.
+ * Musician preference storage uses fixed city/no-city snapshots. Venue city and ownership
+ * and listener account cities use the production transactional personalization source.
+ * Unused feedback write collaborators and the unadvertised Overthinking service are absent/mocked explicitly.
  */
 @Tag("feed-load")
 @DataJpaTest(showSql = false, properties = {
@@ -90,7 +94,10 @@ class MusicianFeedLoadTest {
     private static final int HISTORY_PER_VIEWER = 1_000;
     private static final List<String> TYPES = List.of("TRACK", "EVENT", "PROFILE");
     private static final UUID CITY = id("city");
-    private static final Path REPORT = Path.of("build", "reports", "musician-feed-load", "report.json");
+    private static final BackstageFeedAudience AUDIENCE = BackstageFeedAudience.valueOf(
+            System.getProperty("feedLoad.audience", "MUSICIAN").trim().toUpperCase(Locale.ROOT));
+    private static final Path REPORT = Path.of("build", "reports",
+            AUDIENCE.name().toLowerCase(Locale.ROOT) + "-feed-load", "report.json");
     @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("musician_feed_load_isolated")
             .withUsername("feed_load_test").withPassword("test-only-feed-load-password").withReuse(false);
@@ -117,18 +124,30 @@ class MusicianFeedLoadTest {
     void largeFixturesAndConcurrentPageWalksKeepDeliveryAndReplayCorrect() throws Exception {
         var report = new LinkedHashMap<String, Object>();
         report.put("setupComplete", false);
+        report.put("audience", AUDIENCE.name());
         report.put("scope", "Production service/JDBC boundary; real PostgreSQL schema/providers/guards/delivery/replay. No HTTP or Redis.");
         report.put("model", "Closed workload, each viewer awaits a page. Bounded development regression, not arrival-rate/soak/capacity proof.");
         report.put("fixture", Map.of("tracks", TRACKS, "futureEvents", EVENTS, "musicianAuthors", AUTHORS,
                 "viewers", VIEWERS, "feedbackRows", VIEWERS * HISTORY_PER_VIEWER + VIEWERS,
-                "historicalDeliveryRows", VIEWERS * HISTORY_PER_VIEWER, "likes", TRACKS * 2,
-                "comments", TRACKS, "venueProfiles", 40));
+                "historicalDeliveryRows", VIEWERS * HISTORY_PER_VIEWER, "qualifiedRecentViews", VIEWERS * 200, "likes", TRACKS * 2,
+                "comments", TRACKS, "venueProfiles", 40 + (AUDIENCE == BackstageFeedAudience.VENUE ? VIEWERS : 0)));
+        report.put("cityMatchingFixture", AUDIENCE == BackstageFeedAudience.LISTENER
+                ? "Listener accounts use the fixture city for events; music discovery remains national."
+                : AUDIENCE == BackstageFeedAudience.VENUE
+                ? "All viewer venues use the fixture city; existing non-followed authors 128-255 match it, remaining authors have no city."
+                : "Existing musician fixture: half of viewer snapshots use the fixture city, author city remains absent.");
         report.put("bounds", Map.of("providerWorkers", 6, "providerQueue", 24, "providerDeadlineMs", 4000,
                 "jdbcPool", 10, "pageSize", PAGE_SIZE));
         report.put("provisionalDevelopmentGatesMs", Map.of("serialP95", 1000, "eightViewersP95", 1000,
                 "sixteenViewersP95", 2000, "sameCursorRaceP95", 2000));
         report.put("notCovered", List.of("HTTP/authentication transport", "Redis quotas", "all ten provider families",
-                "preference storage", "media network/decoding", "production infrastructure", "long running soak"));
+                "musician preference storage (fixed snapshots in MUSICIAN mode)", "media network/decoding",
+                "production infrastructure", "long running soak"));
+        report.put("personalization", AUDIENCE == BackstageFeedAudience.LISTENER
+                ? "Production transactional listener profile/account city lookup, shared current content-audience checks."
+                : AUDIENCE == BackstageFeedAudience.VENUE
+                ? "Production transactional venue city/ownership lookup through real VenueRepository. No musician preferences read."
+                : "Fixed city/no-city musician snapshots; musician preference storage is outside this measurement.");
         var serviceLogger = (Logger) LoggerFactory.getLogger(MusicianFeedService.class);
         var diagnostics = new ConcurrentLinkedQueue<String>();
         var appender = new AppenderBase<ILoggingEvent>() {
@@ -224,11 +243,12 @@ class MusicianFeedLoadTest {
         UUID session = null;
         for (int pageNumber = 0; pageNumber < PAGES_PER_WALK; pageNumber++) {
             long started = System.nanoTime();
-            var page = service.get(viewer, PAGE_SIZE, cursor, TYPES);
+            var page = page(viewer, cursor);
             samples.add(milliseconds(started));
             assertThat(page.items().size()).as("page %s item count", pageNumber).isEqualTo(PAGE_SIZE);
             assertThat(page.hasMore()).isTrue();
             assertThat(page.nextCursor()).isNotBlank();
+            assertThat(page.algorithmVersion()).isEqualTo(AUDIENCE.algorithmVersion());
             if (session == null) session = page.feedSessionId();
             assertThat(page.feedSessionId()).isEqualTo(session);
             for (int itemIndex = 0; itemIndex < page.items().size(); itemIndex++) {
@@ -248,13 +268,13 @@ class MusicianFeedLoadTest {
 
     private Map<String, Object> sameCursorRace() throws Exception {
         UUID viewer = id("viewer-31");
-        var first = service.get(viewer, PAGE_SIZE, null, TYPES);
+        var first = page(viewer, null);
         var responses = new ConcurrentLinkedQueue<MusicianFeedPageResponse>();
         var samples = new ConcurrentLinkedQueue<Double>();
         long started = System.nanoTime();
         parallel(16, worker -> {
             long callStart = System.nanoTime();
-            responses.add(service.get(viewer, PAGE_SIZE, first.nextCursor(), TYPES));
+            responses.add(page(viewer, first.nextCursor()));
             samples.add(milliseconds(callStart));
         });
         double elapsed = milliseconds(started);
@@ -275,6 +295,14 @@ class MusicianFeedLoadTest {
         result.put("ledgerItems", PAGE_SIZE * 2);
         result.put("replayRows", 1);
         return result;
+    }
+
+    private MusicianFeedPageResponse page(UUID viewer, String cursor) {
+        return switch (AUDIENCE) {
+            case MUSICIAN -> service.get(viewer, PAGE_SIZE, cursor, TYPES);
+            case VENUE -> service.getForVenue(viewer, PAGE_SIZE, cursor, TYPES);
+            case LISTENER -> service.getForListener(viewer, PAGE_SIZE, cursor, TYPES);
+        };
     }
 
     private static void parallel(int workers, Worker operation) throws Exception {
@@ -312,7 +340,8 @@ class MusicianFeedLoadTest {
             jdbc.getJdbcTemplate().execute(Files.readString(Path.of("scripts", "db", name)));
         }
         // Online indexes explicitly require separate autocommit statements.
-        String online = Files.readString(Path.of("scripts/db/2026-09-11-musician-feed-indexes.sql"));
+        String online = Files.readString(Path.of("scripts/db/2026-09-11-musician-feed-indexes.sql"))
+                + "\n" + Files.readString(Path.of("scripts/db/2026-09-14-musician-feed-recent-views.sql"));
         String uncommented = online.lines().filter(line -> !line.stripLeading().startsWith("--"))
                 .reduce("", (left, right) -> left + "\n" + right);
         try (var connection = datasource.getConnection(); var command = connection.createStatement()) {
@@ -326,12 +355,17 @@ class MusicianFeedLoadTest {
         assertThat(directory.startsWith(Path.of("build").toAbsolutePath().normalize())).isTrue();
         Files.createDirectories(directory);
         UUID viewer = id("viewer-0");
-        UUID profile = id("viewer-profile-0");
+        UUID profile = id(AUDIENCE == BackstageFeedAudience.VENUE ? "viewer-venue-0" : "viewer-profile-0");
         UUID session = id("diagnostic-session");
         Instant anchor = Instant.now();
+        var personalization = switch (AUDIENCE) {
+            case MUSICIAN -> fixturePreferences.load(viewer, profile);
+            case VENUE -> fixturePreferences.loadForVenue(viewer, profile);
+            case LISTENER -> fixturePreferences.loadForListener(viewer, profile);
+        };
         var request = new MusicianFeedCandidateRequest(viewer, profile, session, anchor, anchor,
                 properties.getProviderLimit(), EnumSet.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.EVENT,
-                MusicianFeedItemType.PROFILE), fixturePreferences.load(viewer, profile), MusicianFeedFeedbackSnapshot.empty());
+                MusicianFeedItemType.PROFILE), personalization, MusicianFeedFeedbackSnapshot.empty()).withAudience(AUDIENCE);
         var latency = new LinkedHashMap<String, Object>();
         for (MusicianFeedCandidateProvider provider : diagnosticProviders) {
             var samples = new ArrayList<Double>();
@@ -358,6 +392,11 @@ class MusicianFeedLoadTest {
         var parameters = new HashMap<String, Object>();
         parameters.put("viewerId", viewer); parameters.put("feedSessionId", session);
         parameters.put("anchor", Timestamp.from(anchor));
+        parameters.put("venueAudience", AUDIENCE == BackstageFeedAudience.VENUE);
+        parameters.put("listenerAudience", AUDIENCE == BackstageFeedAudience.LISTENER);
+        parameters.put("hasCity", AUDIENCE == BackstageFeedAudience.VENUE);
+        parameters.put("cityId", AUDIENCE == BackstageFeedAudience.VENUE ? CITY : new UUID(0, 0));
+        parameters.put("artistCityPool", "ALL");
         var plans = new ArrayList<String>();
         for (int delivered : List.of(0, 60)) {
             if (delivered > 0) {
@@ -373,12 +412,19 @@ class MusicianFeedLoadTest {
             }
             for (boolean following : List.of(true, false)) {
                 parameters.put("followingPool", following);
-                parameters.put("limit", following ? 120 : 40);
-                String name = "track-plan-" + (following ? "following" : "discovery") + "-delivered-" + delivered + ".json";
-                String plan = planJdbc.queryForObject("EXPLAIN (ANALYZE,BUFFERS,SETTINGS,FORMAT JSON) " + productionSql,
-                        parameters, String.class);
-                Files.writeString(directory.resolve(name), plan);
-                plans.add(name);
+                parameters.put("limit", AUDIENCE == BackstageFeedAudience.VENUE ? 80 : following ? 120 : 40);
+                List<String> cityPools = AUDIENCE == BackstageFeedAudience.VENUE && !following
+                        ? List.of("LOCAL", "OTHER") : List.of("ALL");
+                for (String cityPool : cityPools) {
+                    parameters.put("artistCityPool", cityPool);
+                    String name = "track-plan-" + (following ? "following" : "discovery")
+                            + (cityPool.equals("ALL") ? "" : "-" + cityPool.toLowerCase(Locale.ROOT))
+                            + "-delivered-" + delivered + ".json";
+                    String plan = planJdbc.queryForObject("EXPLAIN (ANALYZE,BUFFERS,SETTINGS,FORMAT JSON) " + productionSql,
+                            parameters, String.class);
+                    Files.writeString(directory.resolve(name), plan);
+                    plans.add(name);
+                }
             }
         }
         var eventField = MusicianFeedEventCandidateProvider.class.getDeclaredField("SQL");
@@ -403,7 +449,7 @@ class MusicianFeedLoadTest {
                 eventPlans.add(name);
             }
         }
-        return Map.of("providerLatency", latency, "trackPlanFiles", plans, "eventPlanFiles", eventPlans, "diagnosticDeliveryRows", 60,
+        return Map.of("audience", AUDIENCE.name(), "providerLatency", latency, "trackPlanFiles", plans, "eventPlanFiles", eventPlans, "diagnosticDeliveryRows", 60,
                 "scope", "Direct production-provider calls and exact SQL plans before timed workload; no planner settings changed.");
     }
 
@@ -415,6 +461,8 @@ class MusicianFeedLoadTest {
         parameters.put("authors", AUTHORS); parameters.put("viewers", VIEWERS);
         parameters.put("tracks", TRACKS); parameters.put("events", EVENTS);
         parameters.put("history", HISTORY_PER_VIEWER); parameters.put("city", CITY);
+        parameters.put("venueAudience", AUDIENCE == BackstageFeedAudience.VENUE);
+        parameters.put("listenerAudience", AUDIENCE == BackstageFeedAudience.LISTENER);
         jdbc.update("""
                 insert into tbl_user(id,created_at,updated_at,public_code,user_name,password,email,status,provider,email_verified)
                 select md5(kind||'-'||n)::uuid,:now,:now,'SC-'||substr(md5(kind||'-'||n),1,20),
@@ -427,9 +475,27 @@ class MusicianFeedLoadTest {
                 select md5(kind||'-profile-'||n)::uuid,:now,:now,md5(kind||'-'||n)::uuid,kind||'-'||n,kind||'-'||n
                 from (select 'author' kind,generate_series(0,:authors-1) n union all
                       select 'viewer',generate_series(0,:viewers-1)) people
+                where kind='author' or (not :venueAudience and not :listenerAudience)
                 """, parameters);
         jdbc.update("insert into tbl_role(id,created_at,updated_at,name) values(md5('musician-role')::uuid,:now,:now,'ROLE_MUSICIAN')", parameters);
-        jdbc.update("insert into user_roles(user_id,role_id) select id,md5('musician-role')::uuid from tbl_user", parameters);
+        if (AUDIENCE == BackstageFeedAudience.VENUE) {
+            jdbc.update("insert into tbl_role(id,created_at,updated_at,name) values(md5('venue-role')::uuid,:now,:now,'ROLE_VENUE')", parameters);
+        }
+        if (AUDIENCE == BackstageFeedAudience.LISTENER) {
+            jdbc.update("insert into tbl_role(id,created_at,updated_at,name) values(md5('listener-role')::uuid,:now,:now,'ROLE_LISTENER')", parameters);
+            jdbc.update("""
+                    insert into "tbl_listener-profile"(id,created_at,updated_at,user_id,name,visibility_mode,
+                        visibility_choice_completed,version,playlist_revision)
+                    select md5('viewer-profile-'||n)::uuid,:now,:now,md5('viewer-'||n)::uuid,'Viewer '||n,
+                        'STANDARD',true,0,0 from generate_series(0,:viewers-1) n
+                    """, parameters);
+        }
+        jdbc.update("""
+                insert into user_roles(user_id,role_id)
+                select id,case when :venueAudience and user_name like 'viewer-%' then md5('venue-role')::uuid
+                    when :listenerAudience and user_name like 'viewer-%' then md5('listener-role')::uuid
+                    else md5('musician-role')::uuid end from tbl_user
+                """, parameters);
         jdbc.update("""
                 insert into tbl_follow(id,created_at,updated_at,follower_id,following_id,followed_at)
                 select md5('follow-'||v||'-'||a)::uuid,:now,:now,md5('viewer-'||v)::uuid,md5('author-'||a)::uuid,:now
@@ -460,8 +526,30 @@ class MusicianFeedLoadTest {
                 from generate_series(1,:tracks) n
                 """, parameters);
         jdbc.update("insert into tbl_city(id,created_at,updated_at,name) values(:city,:now,:now,'Fixture city')", parameters);
+        if (AUDIENCE == BackstageFeedAudience.LISTENER) {
+            jdbc.update("update tbl_user set city_id=:city where user_name like 'viewer-%'", parameters);
+        }
         jdbc.update("insert into tbl_district(id,created_at,updated_at,name,city_id) values(md5('district')::uuid,:now,:now,'Fixture district',:city)", parameters);
         jdbc.update("insert into tbl_neighborhood(id,created_at,updated_at,name,district_id) values(md5('neighborhood')::uuid,:now,:now,'Fixture neighborhood',md5('district')::uuid)", parameters);
+        if (AUDIENCE == BackstageFeedAudience.VENUE) {
+            // Reuse the same isolated authors and location chain; exercise local and fallback
+            // discovery without changing the default musician workload or duplicating fixtures.
+            jdbc.update("""
+                    update tbl_user set city_id=:city
+                    where id in (select md5('author-'||n)::uuid from generate_series(128,255) n)
+                    """, parameters);
+            jdbc.update("""
+                    insert into tbl_venues(id,created_at,updated_at,name,address,city_id,district_id,neighborhood_id,status,owner_id)
+                    select md5('viewer-venue-'||n)::uuid,:now,:now,'Viewer venue '||n,'Fixture address',:city,
+                        md5('district')::uuid,md5('neighborhood')::uuid,'APPROVED',md5('viewer-'||n)::uuid
+                    from generate_series(0,:viewers-1) n
+                    """, parameters);
+            jdbc.update("""
+                    insert into tbl_venue_profile(id,created_at,updated_at,venue_id,bio)
+                    select md5('viewer-venue-profile-'||n)::uuid,:now,:now,md5('viewer-venue-'||n)::uuid,
+                        'Synthetic viewer venue profile' from generate_series(0,:viewers-1) n
+                    """, parameters);
+        }
         jdbc.update("""
                 insert into tbl_venues(id,created_at,updated_at,name,address,city_id,district_id,neighborhood_id,status,owner_id)
                 select md5('venue-'||n)::uuid,:now,:now,'Fixture venue '||n,'Fixture address',:city,md5('district')::uuid,
@@ -500,6 +588,22 @@ class MusicianFeedLoadTest {
                     '{}'::jsonb,cast(:now as timestamptz)-interval '2 days',cast(:now as timestamptz)-interval '1 day',
                     cast(:now as timestamptz)+interval '88 days'
                 from generate_series(0,:viewers-1) v cross join generate_series(1,:history) n
+                """, parameters);
+        // Keep actual recent-view history in the isolated load fixture. The source
+        // rows and telemetry exist only in the explicitly asserted Testcontainer.
+        jdbc.update("""
+                update tbl_musician_feed_delivery
+                set target_id=md5('media-'||(absolute_position+21))::uuid,
+                    delivered_at=cast(:now as timestamptz)-interval '2 seconds',
+                    expires_at=cast(:now as timestamptz)+interval '1 day'
+                where algorithm_version='fixture' and absolute_position<200
+                """, parameters);
+        jdbc.update("""
+                insert into tbl_musician_feed_telemetry_event(id,viewer_user_id,client_event_id,delivery_id,
+                    event_type,client_occurred_at,recorded_at)
+                select md5('impression-'||id)::uuid,viewer_user_id,md5('impression-'||id)::uuid,id,
+                    'IMPRESSION',:now,:now from tbl_musician_feed_delivery
+                where algorithm_version='fixture' and absolute_position<200
                 """, parameters);
         jdbc.getJdbcTemplate().execute("ANALYZE");
         assertThat(jdbc.queryForObject("select count(*) from tbl_tracks", Map.of(), Integer.class)).isEqualTo(TRACKS);
@@ -554,6 +658,7 @@ class MusicianFeedLoadTest {
     @Import({MusicianFeedConfiguration.class, MusicianFeedTrackCandidateProvider.class,
             MusicianFeedEventCandidateProvider.class, MusicianFeedProfileDiscoveryCandidateProvider.class,
             MusicianFeedDeliveryService.class, MusicianFeedFeedbackReader.class,
+            com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedContentPolicy.class,
             com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliveryLookup.class})
     static class Wiring {
         @Bean static BeanPostProcessor countDataSource() {
@@ -569,8 +674,10 @@ class MusicianFeedLoadTest {
         @Bean MusicianFeedDeliveryTokenCodec tokens(ObjectMapper mapper, MusicianFeedProperties properties) {
             return new MusicianFeedDeliveryTokenCodec(mapper, properties);
         }
-        @Bean MusicianFeedViewerGuard viewer(UserRepository users, MusicianProfileRepository musicians) {
-            return new MusicianFeedViewerGuard(users, musicians);
+        @Bean MusicianFeedViewerGuard viewer(UserRepository users, MusicianProfileRepository musicians,
+                                            VenueRepository venues, VenueProfileRepository venueProfiles,
+                                            com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository listeners) {
+            return new MusicianFeedViewerGuard(users, musicians, venues, venueProfiles, listeners);
         }
         @Bean MusicianFeedRestrictionGuard restrictions(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper) {
             return new MusicianFeedRestrictionGuard(new MusicianFeedRestrictionRepository(jdbc), new MusicianFeedModerationScopeResolver(mapper));
@@ -584,9 +691,26 @@ class MusicianFeedLoadTest {
             // No write operation is called. Read production code uses only the real JDBC reader.
             return new MusicianFeedFeedbackService(null, viewer, null, null, null, null, reader);
         }
-        @Bean @Primary MusicianFeedPersonalizationSource fixturePreferences() {
-            return (viewer, profile) -> new MusicianFeedPersonalizationSnapshot(
-                    (viewer.getLeastSignificantBits() & 1) == 0 ? CITY : null, Set.of(), null);
+        @Bean MusicianFeedPersonalizationSource venuePreferenceStorage(VenueRepository venues,
+                com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository listeners) {
+            // Spring proxies the production method's @Transactional boundary. The musician
+            // collaborator is never used in this audience; no parallel fixed venue snapshot.
+            return new PreferenceBackedMusicianFeedPersonalizationSource(mock(MusicianFeedPreferencesService.class), venues, listeners);
+        }
+        @Bean @Primary MusicianFeedPersonalizationSource fixturePreferences(
+                @Qualifier("venuePreferenceStorage") MusicianFeedPersonalizationSource venuePreferences) {
+            return new MusicianFeedPersonalizationSource() {
+                @Override public MusicianFeedPersonalizationSnapshot load(UUID viewer, UUID profile) {
+                    return new MusicianFeedPersonalizationSnapshot(
+                            (viewer.getLeastSignificantBits() & 1) == 0 ? CITY : null, Set.of(), null);
+                }
+                @Override public MusicianFeedPersonalizationSnapshot loadForVenue(UUID viewer, UUID venue) {
+                    return venuePreferences.loadForVenue(viewer, venue);
+                }
+                @Override public MusicianFeedPersonalizationSnapshot loadForListener(UUID viewer, UUID listener) {
+                    return venuePreferences.loadForListener(viewer, listener);
+                }
+            };
         }
         @Bean ProviderAudit audit() { return new ProviderAudit(); }
         @Bean MusicianFeedService feed(MusicianFeedProperties properties, MusicianFeedViewerGuard viewer,

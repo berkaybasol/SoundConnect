@@ -4,7 +4,6 @@ import static com.berkayb.soundconnect.modules.feed.musician.moderation.Musician
 
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.*;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -70,10 +69,12 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                 where media.status='READY' and media.visibility='PUBLIC'
                   and coalesce(media.playback_url, media.source_url) is not null
                   and track.owner_type in ('MUSICIAN_PROFILE','LISTENER_PROFILE','STUDIO_PROFILE','VENUE_PROFILE','BAND')
+                  and (not :listenerAudience or track.owner_type<>'STUDIO_PROFILE')
                   and track.created_at <= :anchor
                   and track.id=source_track.id
             )
-            select publication.*, media.playback_url, media.source_url,
+            select publication.*, media.playback_url, media.source_url, media.content_audience,
+                   /* ARTIST_CITY_MATCH */ as artist_city_match,
                    account.user_name as author_username,
                    coalesce(publication.profile_display_name, account.user_name) as author_display_name,
                    coalesce(avatar.playback_url, avatar.source_url, avatar.thumbnail_url, account.profile_picture) as author_avatar_url,
@@ -96,6 +97,7 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
             left join tbl_band_follow band_follow on publication.owner_type='BAND'
                 and band_follow.follower_id=:viewerId and band_follow.band_id=publication.owner_id
             where account.status='ACTIVE' and account.email_verified and account.erased_at is null
+              and (not :listenerAudience or media.content_audience='MAINSTAGE')
               and (publication.owner_type<>'LISTENER_PROFILE'
                    or (publication.listener_visibility='STANDARD' and publication.listener_choice
                        and exists(select 1 from user_roles membership join tbl_role role on role.id=membership.role_id
@@ -129,9 +131,15 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                     and delivered.target_id=publication.media_asset_id offset 0)
               and (case when publication.owner_type='BAND' then band_follow.id is not null
                         else following.id is not null end)=:followingPool
+              and (:followingPool or not :venueAudience or publication.author_profile_type in ('MUSICIAN','BAND'))
+              and (:artistCityPool='ALL'
+                   or (:artistCityPool='LOCAL' and /* ARTIST_CITY_MATCH */)
+                   or (:artistCityPool='OTHER' and not /* ARTIST_CITY_MATCH */))
             offset 0
             """.replace("/* FEED_MODERATION */", allowed(item("'TRACK:' || publication.track_id::text"),
-                    target("'MEDIA'", "publication.media_asset_id")));
+                    target("'MEDIA'", "publication.media_asset_id")))
+            .replace("/* ARTIST_CITY_MATCH */", MusicianFeedArtistDiscovery.cityMatchSql(
+                    "publication.author_profile_type", "publication.author_profile_id", "account.city_id"));
 
     // ORDER BY contains only publication keys. The lateral boundary keeps every
     // eligibility check before the outer LIMIT while preventing PostgreSQL from
@@ -143,6 +151,8 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                 select track.id,track.created_at from tbl_tracks track
                 where track.created_at<=:anchor
                   and track.owner_type in ('MUSICIAN_PROFILE','LISTENER_PROFILE','STUDIO_PROFILE','VENUE_PROFILE','BAND')
+                  and (not :listenerAudience or track.owner_type<>'STUDIO_PROFILE')
+                  and (:followingPool or not :venueAudience or track.owner_type in ('MUSICIAN_PROFILE','BAND'))
                   and (case track.owner_type
                     when 'MUSICIAN_PROFILE' then track.owner_id in (
                         select profile.id from tbl_musician_profile profile join tbl_follow followed
@@ -181,18 +191,9 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
         if (!request.supportedTypes().contains(MusicianFeedItemType.TRACK)) return List.of();
-        int discoveryLimit = Math.max(1, request.limit() / 4);
-        int followingLimit = Math.max(0, request.limit() - discoveryLimit);
-        var parameters = new MapSqlParameterSource()
-                .addValue("viewerId", request.viewerUserId())
-                .addValue("feedSessionId", request.feedSessionId())
-                .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()));
-        List<MusicianFeedCandidate> result = new ArrayList<>(request.limit());
-        if (followingLimit > 0) result.addAll(jdbc.query(SQL, parameters
-                .addValue("followingPool", true).addValue("limit", followingLimit), this::candidate));
-        result.addAll(jdbc.query(SQL, parameters.addValue("followingPool", false)
-                .addValue("limit", discoveryLimit), this::candidate));
-        return List.copyOf(result);
+        return MusicianFeedArtistDiscovery.findPublications(jdbc, SQL, request,
+                (row, index) -> MusicianFeedArtistDiscovery.prioritize(candidate(row, index), request,
+                        row.getBoolean("artist_city_match"), true));
     }
 
     private MusicianFeedCandidate candidate(ResultSet row, int index) throws SQLException {
@@ -202,7 +203,7 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
         String playback = row.getString("playback_url");
         if (playback == null || playback.isBlank()) playback = row.getString("source_url");
         var payload = new MusicianFeedPayloads.Track(trackId, mediaId, row.getString("title"), playback,
-                (Integer) row.getObject("duration_seconds"), (Integer) row.getObject("bpm"));
+                (Integer) row.getObject("duration_seconds"), (Integer) row.getObject("bpm"), row.getString("content_audience"));
         return new MusicianFeedCandidate("TRACK:" + trackId, MusicianFeedItemType.TRACK, 1,
                 MusicianFeedJdbcSupport.instant(row, "created_at"),
                 MusicianFeedJdbcSupport.publicationReason(author, MusicianFeedReasonCode.DISCOVERY),

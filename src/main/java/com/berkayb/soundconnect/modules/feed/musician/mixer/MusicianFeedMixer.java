@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.feed.musician.mixer;
 
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemResponse;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
+import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedPayloads;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
@@ -19,6 +21,7 @@ import java.util.*;
 public class MusicianFeedMixer {
     private static final long MAX_FRESHNESS_BONUS = 120_000L;
     private static final long SHOW_LESS_PENALTY = 45_000L;
+    private static final long RECENTLY_VIEWED_PENALTY = 240_000L;
 
     public MixedPage mix(
             UUID viewerUserId,
@@ -148,26 +151,49 @@ public class MusicianFeedMixer {
                          MusicianFeedLane lastItemLane, long organicCountAtLastPromotion,
                          long deliveredOverthinkingShareCount, long deliveredTableGroupShareCount,
                          MusicianFeedAnnouncementPlan announcementPlan, MusicianFeedDeliverySnapshot deliveryState) {
+        return mix(viewerUserId, anchor, pageSize, supportedTypes, feedback, organicCandidates, sponsorCandidates,
+                after, deliveredOrganicCount, deliveredPromotionCount, lastItemPromoted, lastItemType,
+                lastItemLane, organicCountAtLastPromotion, deliveredOverthinkingShareCount,
+                deliveredTableGroupShareCount, announcementPlan, deliveryState, BackstageFeedAudience.MUSICIAN);
+    }
+
+    public MixedPage mix(UUID viewerUserId, Instant anchor, int pageSize,
+                         Set<MusicianFeedItemType> supportedTypes, MusicianFeedFeedbackSnapshot feedback,
+                         Collection<MusicianFeedCandidate> organicCandidates, Collection<MusicianFeedCandidate> sponsorCandidates,
+                         MusicianFeedCursorState.CursorPosition after, long deliveredOrganicCount,
+                         long deliveredPromotionCount, boolean lastItemPromoted, MusicianFeedItemType lastItemType,
+                         MusicianFeedLane lastItemLane, long organicCountAtLastPromotion,
+                         long deliveredOverthinkingShareCount, long deliveredTableGroupShareCount,
+                         MusicianFeedAnnouncementPlan announcementPlan, MusicianFeedDeliverySnapshot deliveryState,
+                         BackstageFeedAudience audience) {
+        Objects.requireNonNull(audience, "audience");
         Map<UUID, ScoredCandidate> announcements = new LinkedHashMap<>();
         for (ScoredCandidate value : scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
                 organicCandidates.stream().filter(candidate -> candidate != null && candidate.type() == MusicianFeedItemType.ANNOUNCEMENT).toList(), false)) {
             announcements.put(value.candidate().target().id(), value);
         }
         List<ScoredCandidate> organic = scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
-                organicCandidates.stream().filter(candidate -> candidate != null && candidate.type() != MusicianFeedItemType.ANNOUNCEMENT).toList(), false);
+                organicCandidates.stream().filter(candidate -> candidate != null && candidate.type() != MusicianFeedItemType.ANNOUNCEMENT)
+                        .filter(candidate -> audience == BackstageFeedAudience.MUSICIAN
+                                || candidate.type() != MusicianFeedItemType.PROFILE_COMPLETION).toList(), false);
+        Set<String> recentlyViewed = deliveryState == null ? Set.of() : deliveryState.recentlyViewedTargetKeys();
+        organic.replaceAll(value -> recentlyViewed.contains(targetKey(value.candidate()))
+                && value.candidate().lane() != MusicianFeedLane.SYSTEM
+                ? new ScoredCandidate(value.candidate(), value.score() - RECENTLY_VIEWED_PENALTY) : value);
         organic.sort(SCORED_ORDER);
         // Continuation is session-ledger based. A single global boundary cannot
         // represent quota-selected lanes without skipping unconsumed higher lanes.
 
-        List<ScoredCandidate> sponsors = scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
-                sponsorCandidates, true).stream().sorted(SCORED_ORDER).toList();
+        List<ScoredCandidate> sponsors = audience == BackstageFeedAudience.LISTENER ? List.of()
+                : scoreAndFilter(viewerUserId, anchor, supportedTypes, feedback,
+                    sponsorCandidates, true).stream().sorted(SCORED_ORDER).toList();
 
         List<ScoredCandidate> basePage = selectLaneWindow(organic, pageSize, lastItemLane,
-                deliveredOverthinkingShareCount, deliveredTableGroupShareCount);
-        List<ScoredCandidate> diversePage = diversify(basePage);
-        MergeResult merged = mergePromotions(viewerUserId, anchor, diversePage, sponsors, pageSize, deliveredOrganicCount,
+                deliveredOverthinkingShareCount, deliveredTableGroupShareCount,
+                deliveryState == null ? List.of() : deliveryState.recentOrganicHistory(), audience);
+        MergeResult merged = mergePromotions(viewerUserId, anchor, basePage, organic, sponsors, pageSize, deliveredOrganicCount,
                 deliveredPromotionCount, lastItemPromoted, organicCountAtLastPromotion,
-                announcements, announcementPlan, deliveryState, lastItemType);
+                announcements, announcementPlan, deliveryState, lastItemType, audience);
         MusicianFeedCursorState.CursorPosition boundary = merged.lastDelivered() == null
                 ? null : position(merged.lastDelivered());
 
@@ -281,15 +307,17 @@ public class MusicianFeedMixer {
     }
 
     /**
-     * General exploration has an explicit bounded budget. Relevant Collab/Event/
-     * place opportunities remain in the primary stream and are not throttled as
-     * random discovery. A sparse primary pool intentionally does not let general
-     * discovery take over the entire page.
+     * Selects from the entire eligible pool using diversity at each slot. A dense
+     * primary stream gives discovery about 10%; a sparse stream backfills with
+     * discovery. The audience receives a 20% minimum for matched jobs/events
+     * (musician) or artists/performances (venue). These are supply-aware budgets.
      */
     private List<ScoredCandidate> selectLaneWindow(List<ScoredCandidate> sorted, int slots,
                                                     MusicianFeedLane lastItemLane,
                                                     long deliveredOverthinkingShareCount,
-                                                    long deliveredTableGroupShareCount) {
+                                                    long deliveredTableGroupShareCount,
+                                                    List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> history,
+                                                    BackstageFeedAudience audience) {
         if (slots <= 0 || sorted.isEmpty()) return List.of();
         List<ScoredCandidate> system = sorted.stream()
                 .filter(value -> value.candidate().lane() == MusicianFeedLane.SYSTEM)
@@ -307,31 +335,97 @@ public class MusicianFeedMixer {
 
         int systemCount = Math.min(system.size(), slots);
         int remaining = slots - systemCount;
-        int discoveryCount = discovery.isEmpty() || remaining == 0 ? 0
-                : Math.min(discovery.size(), Math.max(1, (int) Math.ceil(remaining / 10.0d)));
+        int discoveryCount = Math.min(discovery.size(), remaining / 10);
         boolean previousWasModuleShare = lastItemLane == MusicianFeedLane.MODULE_SHARE;
         int moduleCount = moduleShares.isEmpty() || remaining == 0 || previousWasModuleShare ? 0
                 : Math.min(moduleShares.size(), Math.max(1, (int) Math.ceil(remaining / 10.0d)));
+        // Low-frequency reservations must not consume the only primary slot.
+        moduleCount = Math.min(moduleCount, Math.max(0, remaining - discoveryCount - Math.min(1, primary.size())));
         int primaryCount = Math.min(primary.size(), Math.max(0, remaining - discoveryCount - moduleCount));
+
+        discoveryCount += Math.min(discovery.size() - discoveryCount,
+                remaining - primaryCount - discoveryCount - moduleCount);
 
         // A module share needs a non-module separator on either side. When the
         // feed is otherwise sparse, return fewer items rather than a module wall.
         int maxSeparatedModules = systemCount + discoveryCount + primaryCount + 1;
         moduleCount = Math.min(moduleCount, maxSeparatedModules);
 
-        // Unused low-frequency reservations are work-conserving for the two
-        // product-primary lanes, never for random discovery or module shares.
-        int unfilled = remaining - primaryCount - discoveryCount - moduleCount;
-        if (unfilled > 0) primaryCount += Math.min(unfilled, primary.size() - primaryCount);
-
-        List<ScoredCandidate> selected = new ArrayList<>(systemCount + primaryCount + discoveryCount + moduleCount);
-        selected.addAll(system.subList(0, systemCount));
-        selected.addAll(primary.subList(0, primaryCount));
-        selected.addAll(discovery.subList(0, discoveryCount));
-        selected.addAll(selectModuleShares(moduleShares, moduleCount,
+        Set<ScoredCandidate> chosenModules = new HashSet<>(selectModuleShares(moduleShares, moduleCount,
                 deliveredOverthinkingShareCount, deliveredTableGroupShareCount));
-        selected.sort(SCORED_ORDER);
-        return selected;
+        int opportunityMinimum = Math.min(primaryCount,
+                Math.min((int) primary.stream().filter(value -> isMatchedOpportunity(value.candidate(), audience)).count(),
+                        remaining >= 5 ? Math.max(1, remaining / 5) : 0));
+        int opportunityStride = Math.max(1, slots / (opportunityMinimum + 1));
+        List<ScoredCandidate> pool = new ArrayList<>(sorted);
+        List<ScoredCandidate> selected = new ArrayList<>(slots);
+        List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent = new ArrayList<>(history);
+        int primaryUsed = 0, discoveryUsed = 0, moduleUsed = 0, systemUsed = 0, opportunitiesUsed = 0;
+        while (selected.size() < slots) {
+            // Reserve opportunities near the front and throughout the page, so
+            // later promotion insertion cannot trim all of them from its tail.
+            boolean opportunityDue = opportunitiesUsed < opportunityMinimum
+                    && (primaryCount - primaryUsed <= opportunityMinimum - opportunitiesUsed
+                    || (!selected.isEmpty() && opportunitiesUsed <= (selected.size() - 1) / opportunityStride));
+            int nonModuleRemaining = primaryCount - primaryUsed + discoveryCount - discoveryUsed + systemCount - systemUsed;
+            boolean moduleDue = moduleUsed < moduleCount
+                    && nonModuleRemaining < moduleCount - moduleUsed
+                    && (selected.isEmpty() || selected.getLast().candidate().lane() != MusicianFeedLane.MODULE_SHARE);
+            ScoredCandidate best = null;
+            for (ScoredCandidate value : pool) {
+                MusicianFeedCandidate candidate = value.candidate();
+                boolean eligible = switch (candidate.lane()) {
+                    case FOLLOWING, RELEVANT_OPPORTUNITY -> primaryUsed < primaryCount;
+                    case GENERAL_DISCOVERY -> discoveryUsed < discoveryCount;
+                    case SYSTEM -> systemUsed < systemCount && system.contains(value);
+                    case MODULE_SHARE -> moduleUsed < moduleCount && chosenModules.contains(value)
+                            && (selected.isEmpty() || selected.getLast().candidate().lane() != MusicianFeedLane.MODULE_SHARE);
+                };
+                if (!eligible || (moduleDue && candidate.lane() != MusicianFeedLane.MODULE_SHARE)
+                        || (!moduleDue && opportunityDue && !isMatchedOpportunity(candidate, audience))) continue;
+                if (best == null || compareWithDiversity(value, best, recent) < 0) best = value;
+            }
+            if (best == null) break;
+            selected.add(best);
+            pool.remove(best);
+            MusicianFeedCandidate candidate = best.candidate();
+            switch (candidate.lane()) {
+                case FOLLOWING, RELEVANT_OPPORTUNITY -> primaryUsed++;
+                case GENERAL_DISCOVERY -> discoveryUsed++;
+                case MODULE_SHARE -> moduleUsed++;
+                case SYSTEM -> systemUsed++;
+            }
+            if (isMatchedOpportunity(candidate, audience)) opportunitiesUsed++;
+            rememberOrganic(recent, candidate);
+        }
+        return List.copyOf(selected);
+    }
+
+    private static boolean isMatchedOpportunity(MusicianFeedCandidate candidate, BackstageFeedAudience audience) {
+        if (audience == BackstageFeedAudience.LISTENER) {
+            if (candidate.lane() != MusicianFeedLane.FOLLOWING
+                    && candidate.lane() != MusicianFeedLane.RELEVANT_OPPORTUNITY) return false;
+            return switch (candidate.type()) {
+                case TRACK, EVENT, EVENT_PROFILE_SHARE -> true;
+                case PROFILE_MEDIA -> candidate.payload() instanceof MusicianFeedPayloads.ProfileMedia media
+                        && Set.of("VIDEO", "AUDIO").contains(media.kind());
+                default -> false;
+            };
+        }
+        if (audience == BackstageFeedAudience.VENUE) {
+            if (candidate.author() == null || !Set.of("MUSICIAN", "BAND").contains(candidate.author().profileType())
+                    || (candidate.lane() != MusicianFeedLane.FOLLOWING
+                    && candidate.lane() != MusicianFeedLane.RELEVANT_OPPORTUNITY)) return false;
+            return switch (candidate.type()) {
+                case PROFILE, TRACK, EVENT -> true;
+                case PROFILE_MEDIA -> candidate.payload() instanceof MusicianFeedPayloads.ProfileMedia media
+                        && Set.of("VIDEO", "AUDIO").contains(media.kind());
+                default -> false;
+            };
+        }
+        return (candidate.lane() == MusicianFeedLane.RELEVANT_OPPORTUNITY
+                || (candidate.lane() == MusicianFeedLane.FOLLOWING && candidate.relevanceScore() > 0))
+                && (candidate.type() == MusicianFeedItemType.COLLAB || candidate.type() == MusicianFeedItemType.EVENT);
     }
 
     private List<ScoredCandidate> selectModuleShares(List<ScoredCandidate> sorted, int slots,
@@ -370,43 +464,32 @@ public class MusicianFeedMixer {
         return List.copyOf(selected);
     }
 
-    /** Reorders exactly the selected keyset window; no candidate is dropped or moved across a cursor boundary. */
-    private List<ScoredCandidate> diversify(List<ScoredCandidate> selected) {
-        if (selected.size() < 2) return List.copyOf(selected);
-        List<ScoredCandidate> remaining = new ArrayList<>(selected);
-        List<ScoredCandidate> output = new ArrayList<>(selected.size());
-        while (!remaining.isEmpty()) {
-            ScoredCandidate best = remaining.stream().min((left, right) -> {
-                long leftAdjusted = diversityAdjusted(left, output);
-                long rightAdjusted = diversityAdjusted(right, output);
-                int score = Long.compare(rightAdjusted, leftAdjusted);
-                return score != 0 ? score : SCORED_ORDER.compare(left, right);
-            }).orElseThrow();
-            output.add(best);
-            remaining.remove(best);
-        }
-        return List.copyOf(output);
+    private int compareWithDiversity(ScoredCandidate left, ScoredCandidate right,
+                                     List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent) {
+        int score = Long.compare(diversityAdjusted(right, recent), diversityAdjusted(left, recent));
+        return score != 0 ? score : SCORED_ORDER.compare(left, right);
     }
 
-    private long diversityAdjusted(ScoredCandidate candidate, List<ScoredCandidate> selected) {
+    private long diversityAdjusted(ScoredCandidate candidate,
+                                   List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> selected) {
         long adjusted = candidate.score();
         String author = authorKey(candidate.candidate());
         int from = Math.max(0, selected.size() - 5);
         int authorCount = 0;
         int typeCount = 0;
         for (int index = from; index < selected.size(); index++) {
-            MusicianFeedCandidate previous = selected.get(index).candidate();
-            if (author != null && author.equals(authorKey(previous))) authorCount++;
-            if (previous.type() == candidate.candidate().type()) typeCount++;
+            var previous = selected.get(index);
+            if (author != null && author.equals(previous.authorKey())) authorCount++;
+            if (previous.itemType() == candidate.candidate().type()) typeCount++;
         }
         adjusted -= authorCount * 90_000L;
         adjusted -= typeCount * 45_000L;
         if (!selected.isEmpty()) {
-            MusicianFeedCandidate previous = selected.getLast().candidate();
-            if (author != null && author.equals(authorKey(previous))) {
+            var previous = selected.getLast();
+            if (author != null && author.equals(previous.authorKey())) {
                 adjusted -= 160_000L;
             }
-            if (previous.type() == candidate.candidate().type()) adjusted -= 70_000L;
+            if (previous.itemType() == candidate.candidate().type()) adjusted -= 70_000L;
             if (previous.lane() == MusicianFeedLane.MODULE_SHARE
                     && candidate.candidate().lane() == MusicianFeedLane.MODULE_SHARE) {
                 adjusted -= 1_000_000_000L;
@@ -419,6 +502,7 @@ public class MusicianFeedMixer {
             UUID viewerId,
             Instant anchor,
             List<ScoredCandidate> organic,
+            List<ScoredCandidate> organicPool,
             List<ScoredCandidate> sponsors,
             int pageSize,
             long deliveredOrganic,
@@ -428,13 +512,19 @@ public class MusicianFeedMixer {
             Map<UUID, ScoredCandidate> announcements,
             MusicianFeedAnnouncementPlan announcementPlan,
             MusicianFeedDeliverySnapshot deliveryState,
-            MusicianFeedItemType previousItemType
+            MusicianFeedItemType previousItemType,
+            BackstageFeedAudience audience
     ) {
+        organic = new ArrayList<>(organic);
         List<MusicianFeedItemResponse> output = new ArrayList<>(pageSize);
         List<MusicianFeedLane> outputLanes = new ArrayList<>(pageSize);
         int organicIndex = 0;
         int sponsorIndex = 0;
         int organicEmitted = 0;
+        Set<String> opportunityTargets = organic.stream().filter(value -> isMatchedOpportunity(value.candidate(), audience))
+                .map(value -> targetKey(value.candidate())).collect(java.util.stream.Collectors.toSet());
+        int opportunityMinimum = Math.min(opportunityTargets.size(), Math.max(1, pageSize / 5));
+        int opportunitiesEmitted = 0;
         long organicSeen = deliveredOrganic;
         long nextPromotionAt = organicCountAtLastPromotion
                 + MusicianFeedPromotionCadence.organicGap(viewerId, anchor, deliveredPromotions);
@@ -448,16 +538,40 @@ public class MusicianFeedMixer {
         Set<String> deliveredTargets = new HashSet<>();
         Set<String> promotedTargets = new HashSet<>();
         Set<String> emittedAggregationKeys = new HashSet<>();
+        Set<String> scheduledItemIds = new HashSet<>();
+        organic.forEach(value -> scheduledItemIds.add(value.candidate().itemId()));
+        List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent = new ArrayList<>(
+                deliveryState == null ? List.of() : deliveryState.recentOrganicHistory());
         Set<String> sponsorTargets = new HashSet<>();
         sponsors.forEach(value -> sponsorTargets.add(targetKey(value.candidate())));
         Deque<ScoredCandidate> deferredNativeTargets = new ArrayDeque<>();
         ScoredCandidate boundaryCandidate = null;
-        while (output.size() < pageSize && (organicIndex < organic.size()
-                || !deferredNativeTargets.isEmpty() || sponsorIndex < sponsors.size()
-                || announcementIndex < remainingAnnouncements.size())) {
+        while (output.size() < pageSize) {
+            boolean protectOpportunity = pageSize - output.size() <= opportunityMinimum - opportunitiesEmitted;
+            if (protectOpportunity) {
+                boolean restored = false;
+                for (int index = organicIndex; index < organic.size(); index++) {
+                    ScoredCandidate value = organic.get(index);
+                    if (isMatchedOpportunity(value.candidate(), audience) && !deliveredTargets.contains(targetKey(value.candidate()))) {
+                        Collections.swap(organic, organicIndex, index);
+                        restored = true;
+                        break;
+                    }
+                }
+                if (!restored) {
+                    ScoredCandidate deferredOpportunity = deferredNativeTargets.stream()
+                            .filter(value -> isMatchedOpportunity(value.candidate(), audience)
+                                    && !deliveredTargets.contains(targetKey(value.candidate())))
+                            .findFirst().orElse(null);
+                    if (deferredOpportunity != null) {
+                        deferredNativeTargets.remove(deferredOpportunity);
+                        organic.add(organicIndex, deferredOpportunity);
+                    }
+                }
+            }
             if (announcementIndex < remainingAnnouncements.size()
                     && announcementIds.size() < MusicianFeedAnnouncementPlan.MAX_ANNOUNCEMENTS
-                    && !lastWasPromotion && !lastWasAnnouncement && organicSeen >= 1) {
+                    && !lastWasPromotion && !lastWasAnnouncement && organicSeen >= 1 && !protectOpportunity) {
                 var entry = remainingAnnouncements.get(announcementIndex);
                 long threshold = announcementThreshold(entry, announcementIds.size(), normalAtLastAnnouncement);
                 if (organicSeen >= threshold) {
@@ -477,7 +591,9 @@ public class MusicianFeedMixer {
             boolean mayPromote = sponsorIndex < sponsors.size()
                     && organicSeen >= nextPromotionAt
                     && organicSeen >= 2
-                    && !lastWasPromotion && !lastWasAnnouncement;
+                    && !lastWasPromotion && !lastWasAnnouncement
+                    && (!protectOpportunity || (opportunityTargets.contains(targetKey(sponsors.get(sponsorIndex).candidate()))
+                    && !deliveredTargets.contains(targetKey(sponsors.get(sponsorIndex).candidate()))));
             if (mayPromote) {
                 ScoredCandidate sponsor = null;
                 while (sponsorIndex < sponsors.size() && sponsor == null) {
@@ -489,6 +605,7 @@ public class MusicianFeedMixer {
                     outputLanes.add(sponsor.candidate().lane());
                     deliveredTargets.add(targetKey(sponsor.candidate()));
                     promotedTargets.add(targetKey(sponsor.candidate()));
+                    if (opportunityTargets.contains(targetKey(sponsor.candidate()))) opportunitiesEmitted++;
                     boundaryCandidate = weaker(boundaryCandidate, sponsor);
                     lastWasPromotion = true;
                     lastWasAnnouncement = false;
@@ -500,9 +617,12 @@ public class MusicianFeedMixer {
             }
             if (organicIndex < organic.size()) {
                 ScoredCandidate candidate = organic.get(organicIndex++);
+                if (candidate.candidate().lane() == MusicianFeedLane.MODULE_SHARE && !outputLanes.isEmpty()
+                        && outputLanes.getLast() == MusicianFeedLane.MODULE_SHARE) continue;
                 if (promotedTargets.contains(targetKey(candidate.candidate()))
                         || !emittedAggregationKeys.add(aggregationKey(candidate.candidate()))) continue;
                 if (!isActivity(candidate.candidate().type())
+                        && !protectOpportunity
                         && sponsorTargets.contains(targetKey(candidate.candidate()))
                         && organicSeen < nextPromotionAt && output.size() + 1 < pageSize) {
                     emittedAggregationKeys.remove(aggregationKey(candidate.candidate()));
@@ -514,11 +634,15 @@ public class MusicianFeedMixer {
                 deliveredTargets.add(targetKey(candidate.candidate()));
                 organicSeen++;
                 organicEmitted++;
+                if (isMatchedOpportunity(candidate.candidate(), audience)) opportunitiesEmitted++;
+                rememberOrganic(recent, candidate.candidate());
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;
                 lastWasAnnouncement = false;
             } else if (!deferredNativeTargets.isEmpty()) {
                 ScoredCandidate candidate = deferredNativeTargets.removeFirst();
+                if (candidate.candidate().lane() == MusicianFeedLane.MODULE_SHARE && !outputLanes.isEmpty()
+                        && outputLanes.getLast() == MusicianFeedLane.MODULE_SHARE) continue;
                 if (promotedTargets.contains(targetKey(candidate.candidate()))
                         || !emittedAggregationKeys.add(aggregationKey(candidate.candidate()))) continue;
                 output.add(candidate.candidate().toResponse());
@@ -526,11 +650,20 @@ public class MusicianFeedMixer {
                 deliveredTargets.add(targetKey(candidate.candidate()));
                 organicSeen++;
                 organicEmitted++;
+                if (isMatchedOpportunity(candidate.candidate(), audience)) opportunitiesEmitted++;
+                rememberOrganic(recent, candidate.candidate());
                 boundaryCandidate = weaker(boundaryCandidate, candidate);
                 lastWasPromotion = false;
                 lastWasAnnouncement = false;
             } else {
-                break;
+                // A promoted target can suppress multiple selected comment
+                // stories. Fill those holes from the already-fetched pool;
+                // system/module reservations never receive a second budget.
+                ScoredCandidate refill = selectBackfill(organicPool, scheduledItemIds,
+                        deliveredTargets, promotedTargets, recent);
+                if (refill == null) break;
+                organic.add(refill);
+                scheduledItemIds.add(refill.candidate().itemId());
             }
         }
         Set<String> deliveredItemIds = output.stream().map(MusicianFeedItemResponse::id)
@@ -562,10 +695,38 @@ public class MusicianFeedMixer {
 
     private boolean isEligibleContinuation(MusicianFeedCandidate candidate, MergeResult merged) {
         if (merged.deliveredItemIds().contains(candidate.itemId())) return false;
+        if (candidate.lane() == MusicianFeedLane.MODULE_SHARE && !merged.itemLanes().isEmpty()
+                && merged.itemLanes().getLast() == MusicianFeedLane.MODULE_SHARE) return false;
         String target = targetKey(candidate);
         if (merged.promotedTargets().contains(target)) return false;
         return candidate.type() == MusicianFeedItemType.ACTIVITY_COMMENT
                 || !merged.deliveredTargets().contains(target);
+    }
+
+    private ScoredCandidate selectBackfill(List<ScoredCandidate> pool, Set<String> scheduledItemIds,
+                                           Set<String> deliveredTargets, Set<String> promotedTargets,
+                                           List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent) {
+        ScoredCandidate best = null;
+        for (ScoredCandidate value : pool) {
+            MusicianFeedCandidate candidate = value.candidate();
+            if (candidate.lane() == MusicianFeedLane.SYSTEM || candidate.lane() == MusicianFeedLane.MODULE_SHARE
+                    || scheduledItemIds.contains(candidate.itemId())
+                    || promotedTargets.contains(targetKey(candidate))
+                    || (candidate.type() != MusicianFeedItemType.ACTIVITY_COMMENT
+                    && deliveredTargets.contains(targetKey(candidate)))) continue;
+            boolean discovery = candidate.lane() == MusicianFeedLane.GENERAL_DISCOVERY;
+            boolean bestDiscovery = best != null && best.candidate().lane() == MusicianFeedLane.GENERAL_DISCOVERY;
+            if (best == null || (bestDiscovery && !discovery)
+                    || (discovery == bestDiscovery && compareWithDiversity(value, best, recent) < 0)) best = value;
+        }
+        return best;
+    }
+
+    private void rememberOrganic(List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> recent,
+                                 MusicianFeedCandidate candidate) {
+        if (candidate.lane() == MusicianFeedLane.SYSTEM) return;
+        recent.add(new MusicianFeedDeliverySnapshot.OrganicHistoryEntry(authorKey(candidate), candidate.type(), candidate.lane()));
+        if (recent.size() > MusicianFeedDeliverySnapshot.ORGANIC_HISTORY_WINDOW) recent.removeFirst();
     }
 
     private ScoredCandidate weaker(ScoredCandidate current, ScoredCandidate candidate) {

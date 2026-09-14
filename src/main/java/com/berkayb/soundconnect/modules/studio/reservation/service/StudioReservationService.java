@@ -436,6 +436,7 @@ public class StudioReservationService {
             LocalDate from,
             LocalDate to
     ) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         StudioRoom room = roomRepository.findByIdAndArchivedAtIsNull(roomId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND));
         if (!room.getStudioProfile().getId().equals(profileId)) {

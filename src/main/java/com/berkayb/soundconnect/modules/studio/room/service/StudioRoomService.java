@@ -244,6 +244,7 @@ public class StudioRoomService {
 
     @Transactional(readOnly = true)
     public StudioPageResponse<StudioRoomPublicResponse> listPublic(UUID profileId, int page, int size) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         PageRequest pageable = roomPage(page, size);
         StudioProfile profile = studioProfileRepository.findById(profileId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
@@ -267,6 +268,7 @@ public class StudioRoomService {
 
     @Transactional(readOnly = true)
     public StudioRoomPublicResponse getPublic(UUID profileId, UUID roomId) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         StudioRoom room = activeRoom(roomId);
         if (!room.getStudioProfile().getId().equals(profileId)) {
             throw new SoundConnectException(ErrorType.STUDIO_ROOM_NOT_FOUND);

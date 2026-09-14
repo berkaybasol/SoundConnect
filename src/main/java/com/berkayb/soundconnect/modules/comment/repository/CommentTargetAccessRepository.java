@@ -100,6 +100,11 @@ public interface CommentTargetAccessRepository extends Repository<Comment, UUID>
     @Query(value = "select id from tbl_overthinking_post where id=:id for share", nativeQuery = true)
     Optional<UUID> lockPost(@Param("id") UUID id);
 
+    @Query(value = "select post.id from tbl_overthinking_post post where post.id=:id and "
+            + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL
+            + " for share of post", nativeQuery = true)
+    Optional<UUID> lockMainstagePost(@Param("id") UUID id);
+
     @Query(value = "select owner_type as \"ownerType\",owner_id as \"ownerId\" from tbl_media_asset where id=:id", nativeQuery = true)
     Optional<MediaOwner> mediaOwner(@Param("id") UUID id);
 
@@ -111,6 +116,16 @@ public interface CommentTargetAccessRepository extends Repository<Comment, UUID>
             """, nativeQuery = true)
     Optional<UUID> lockPublicMedia(@Param("id") UUID id, @Param("ownerType") String ownerType,
                                  @Param("ownerId") UUID ownerId);
+
+    @Query(value = """
+            select id from tbl_media_asset where id=:id and owner_type=:ownerType and owner_id=:ownerId
+                and status='READY' and visibility='PUBLIC'
+                and content_audience='MAINSTAGE' and owner_type<>'STUDIO_PROFILE'
+                and (nullif(trim(playback_url),'') is not null or nullif(trim(source_url),'') is not null)
+            for share
+            """, nativeQuery = true)
+    Optional<UUID> lockMainstagePublicMedia(@Param("id") UUID id, @Param("ownerType") String ownerType,
+                                          @Param("ownerId") UUID ownerId);
 
     @Query(value = """
             select visibility_choice_completed and visibility_mode='STANDARD'

@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementCleanu
 import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.image.ImageThumbnailRequestedEvent;
 import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionRequestedEvent;
@@ -64,8 +65,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional(readOnly = true)
 	public Map<UUID, String> getPlaybackUrlMap(List<UUID> mediaAssetIds) {
 		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		var readableIds = currentAudienceIds(mediaAssetIds);
 		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
 		                           .filter(this::isPubliclyPlayable)
+		                           .filter(asset -> readableIds.contains(asset.getId()))
 		                           .collect(Collectors.toMap(MediaAsset::getId, MediaAsset::getPlaybackUrl));
 	}
 
@@ -73,9 +76,12 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional(readOnly = true)
 	public Map<UUID, String> getDisplayUrlMap(List<UUID> mediaAssetIds) {
 		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		var readableIds = currentAudienceIds(mediaAssetIds);
 		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
 				.filter(asset -> asset.getStatus() == MediaStatus.READY)
 				.filter(asset -> asset.getVisibility() == MediaVisibility.PUBLIC)
+				.filter(MediaContentAudiencePolicy::canRead)
+				.filter(asset -> readableIds.contains(asset.getId()))
 				.filter(asset -> displayUrlOrNull(asset) != null)
 				.collect(Collectors.toUnmodifiableMap(
 						MediaAsset::getId,
@@ -92,6 +98,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional(readOnly = true)
 	public String getPlaybackUrl(UUID mediaAssetId) {
+		requireCurrentAudience(mediaAssetId);
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 		                                       .orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		if (!isPubliclyPlayable(asset)) {
@@ -104,9 +111,11 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional(readOnly = true)
 	public String getDisplayUrl(UUID mediaAssetId) {
+		requireCurrentAudience(mediaAssetId);
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
-		if (asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC) {
+		if (asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC
+				|| !MediaContentAudiencePolicy.canRead(asset)) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
 		String displayUrl = displayUrlOrNull(asset);
@@ -127,6 +136,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional(readOnly = true)
 	public MediaAsset getPublicReadyById(UUID mediaAssetId) {
+		requireCurrentAudience(mediaAssetId);
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		if (!isPubliclyPlayable(asset)) {
@@ -189,7 +199,31 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private boolean isPubliclyPlayable(MediaAsset asset) {
 		return asset.getStatus() == MediaStatus.READY
 				&& asset.getVisibility() == MediaVisibility.PUBLIC
+				&& MediaContentAudiencePolicy.canRead(asset)
 				&& StringUtils.hasText(asset.getPlaybackUrl());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, MediaContentAudience> getContentAudienceMap(List<UUID> mediaAssetIds) {
+		if (mediaAssetIds == null || mediaAssetIds.isEmpty()) return Map.of();
+		var readableIds = currentAudienceIds(mediaAssetIds);
+		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
+				.filter(MediaContentAudiencePolicy::canRead)
+				.filter(asset -> readableIds.contains(asset.getId()))
+				.collect(Collectors.toUnmodifiableMap(MediaAsset::getId, MediaAsset::getContentAudience));
+	}
+
+	private java.util.Set<UUID> currentAudienceIds(List<UUID> ids) {
+		return java.util.Set.copyOf(MediaContentAudiencePolicy.isListenerViewer()
+				? mediaAssetRepository.findMainstagePublicIds(ids.stream().distinct().toList()) : ids);
+	}
+
+	private void requireCurrentAudience(UUID id) {
+		if (MediaContentAudiencePolicy.isListenerViewer()
+				&& !currentAudienceIds(List.of(id)).contains(id)) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
+		}
 	}
 	
 	private final MediaAssetRepository mediaAssetRepository;
@@ -232,6 +266,14 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Override
 	@Transactional
 	public UploadInitResultResponseDto initUpload(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId, MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes, String originalFileName) {
+		return initUpload(actingUserId, ownerType, ownerId, kind, visibility, mimeType, sizeBytes, originalFileName, null);
+	}
+
+	@Override
+	@Transactional
+	public UploadInitResultResponseDto initUpload(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId,
+			MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes,
+			String originalFileName, MediaContentAudience contentAudience) {
 		assertCanActForOwner(actingUserId, ownerType, ownerId);
 		if (ownerType == MediaOwnerType.PROMOTION) {
 			announcementAccess.requireUploadOwner(actingUserId, ownerId);
@@ -255,6 +297,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 				.kind(kind)
 				.status(MediaStatus.UPLOADING)
 				.visibility(visibility)
+				.contentAudience(MediaContentAudience.forOwner(ownerType, contentAudience))
 				.ownerType(ownerType)
 				.ownerId(ownerId)
 				.mimeType(mimeType)
@@ -318,6 +361,18 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 				assetId, asset.getOwnerType(), asset.getOwnerId());
 	}
 
+	@Override
+	@Transactional
+	public MediaAsset updateContentAudience(UUID actingUserId, UUID assetId, MediaContentAudience contentAudience) {
+		if (contentAudience == null) throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_INVALID_REQUEST);
+		MediaAsset asset = mediaAssetRepository.findByIdForUpdate(assetId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
+		assertCanActForOwner(actingUserId, asset.getOwnerType(), asset.getOwnerId());
+		// Reuses the same asset row fence as likes/comments, deletion and attachment.
+		asset.setContentAudience(MediaContentAudience.forOwner(asset.getOwnerType(), contentAudience));
+		return mediaAssetRepository.save(asset);
+	}
+
 	// belirli bir owner'a ait tum assetleri her statu ve gorunlurlukte sayfali olarak dondurur.
 	@Override
 	@Transactional (readOnly = true)
@@ -341,6 +396,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
 			return Page.empty(pageable);
 		}
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return mediaAssetRepository.findMainstagePublicByOwner(ownerType, ownerId, null, pageable);
+		}
 		return mediaAssetRepository.findByOwnerTypeAndOwnerIdAndVisibilityAndStatus(
 				ownerType, ownerId, MediaVisibility.PUBLIC, MediaStatus.READY, pageable
 		);
@@ -352,6 +410,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	public Page<MediaAsset> listPublicByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable) {
 		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
 			return Page.empty(pageable);
+		}
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return mediaAssetRepository.findMainstagePublicByOwner(ownerType, ownerId, kind, pageable);
 		}
 		return mediaAssetRepository.findByOwnerTypeAndOwnerIdAndKindAndVisibilityAndStatus(
 				ownerType, ownerId, kind, MediaVisibility.PUBLIC, MediaStatus.READY, pageable);

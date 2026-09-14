@@ -81,6 +81,26 @@ class CommentAuthorBatchResolverTest {
         verify(repository,never()).candidates(any()); verifyNoInteractions(media);
     }
 
+    @Test void listenerGetsNoStudioIdentityOrRouteWhileBackstageKeepsTheSameDiscussionAuthor() {
+        var row = candidate();
+        when(row.getStudioAccount()).thenReturn(true);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("viewer", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+        try {
+            var result = resolver.resolve(Set.of(author));
+            assertThat(result).containsOnlyKeys(author);
+            assertThat(result.get(author).id()).isNull();
+            assertThat(result.get(author).avatarUrl()).isNull();
+            assertThat(result.get(author).username()).isEqualTo("Anonymous Author");
+            verifyNoInteractions(media);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+        assertThat(resolver.resolve(Set.of(author)).get(author).id()).isEqualTo(author);
+        assertThat(resolver.resolve(Set.of(author)).get(author).username()).isEqualTo("canonical");
+    }
+
     private CommentAuthorRepository.Candidate candidate() {
         var row=mock(CommentAuthorRepository.Candidate.class);
         when(row.getUserId()).thenReturn(author); when(row.getUsername()).thenReturn("canonical");

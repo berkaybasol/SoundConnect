@@ -133,6 +133,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
     @Override
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, timeout = 5)
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
+        if (MusicianFeedArtistDiscovery.forListener(request)) return List.of();
         if (!request.supportedTypes().contains(MusicianFeedItemType.COLLAB)) return List.of();
         UUID cityId = request.personalization().opportunityCityId();
         Set<UUID> instruments = request.personalization().instrumentIds();

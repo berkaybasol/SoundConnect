@@ -63,6 +63,10 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		// Serialize the existence check/insert with retries, visibility changes and deletion.
 		OverthinkingPost post = postRepository.findByIdForUpdate(postId)
 		                                      .orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_POST_NOT_FOUND));
+		if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+				&& !postRepository.findMainstageVisibleIds(List.of(postId)).contains(postId)) {
+			throw new SoundConnectException(ErrorType.OVERTHINKING_POST_NOT_FOUND);
+		}
 		
 		if (!post.isAnonymous()) {
 			throw new SoundConnectException(ErrorType.OVERTHINKING_POST_NOT_ANONYMOUS);

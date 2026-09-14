@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.feed.musician.delivery;
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedViewerGuard;
+import com.berkayb.soundconnect.modules.feed.musician.core.BackstageFeedAudience;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,9 +49,25 @@ public class MusicianFeedTelemetryService {
     @Transactional
     public MusicianFeedTelemetryResponse record(UUID viewerId, MusicianFeedTelemetryRequest request) {
         viewerGuard.requireMusicianProfile(viewerId);
+        return recordAuthorized(viewerId, request);
+    }
+
+    @Transactional
+    public MusicianFeedTelemetryResponse recordForVenue(UUID viewerId, MusicianFeedTelemetryRequest request) {
+        viewerGuard.requireVenueProfile(viewerId);
+        return recordAuthorized(viewerId, request);
+    }
+
+    private MusicianFeedTelemetryResponse recordAuthorized(UUID viewerId, MusicianFeedTelemetryRequest request) {
+        return recordAuthorized(viewerId, request, null);
+    }
+
+    private MusicianFeedTelemetryResponse recordAuthorized(UUID viewerId, MusicianFeedTelemetryRequest request,
+                                                           BackstageFeedAudience expectedAudience) {
         if (request == null || request.clientEventId() == null || request.eventType() == null) throw invalid();
         Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         MusicianFeedDeliveredItem delivery = deliveries.require(request.impressionToken(), viewerId, null, now);
+        if (expectedAudience != null && !expectedAudience.algorithmVersion().equals(delivery.algorithmVersion())) throw invalid();
         validateEvent(request.eventType(), delivery);
         Instant clientTime = request.occurredAt();
         if (clientTime != null && (clientTime.isBefore(delivery.deliveredAt().minus(properties.getTelemetryClockSkew()))
@@ -83,6 +100,12 @@ public class MusicianFeedTelemetryService {
         StoredEvent existing = findByDeliveryEvent(viewerId, delivery.deliveryId(), request.eventType())
                 .orElseThrow(this::invalid);
         return duplicate(existing, request);
+    }
+
+    @Transactional
+    public MusicianFeedTelemetryResponse recordForListener(UUID viewerId, MusicianFeedTelemetryRequest request) {
+        viewerGuard.requireListenerProfile(viewerId);
+        return recordAuthorized(viewerId, request, BackstageFeedAudience.LISTENER);
     }
 
     private Optional<StoredEvent> findByClientId(UUID viewerId, UUID clientEventId) {

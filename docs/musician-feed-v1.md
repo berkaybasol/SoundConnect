@@ -1,5 +1,8 @@
 # Musician Feed v1
 
+The approved venue adaptation reuses this engine with artist discovery and no
+profile completion. Its differences are documented in [Venue feed v1](venue-feed-v1.md).
+
 This document is the product and engineering source of truth for the first
 Backstage feed shown to a musician account. Changes to the decisions below
 require an explicit product decision; implementation details may evolve while
@@ -72,9 +75,10 @@ existing canonical City row. The Location and Collab core workflows remain
 unchanged.
 
 Missing preferences never block the feed. The mixer falls back to following,
-freshness, quality, and limited exploration. Exact city + instrument Collab
-matches rank first, followed by same-city opportunities, instrument matches in
-other cities, and low-rate general discovery. Relevance is normally a soft
+freshness and exploration, filling a sparse primary stream with available
+discovery. City/instrument matches increase opportunity relevance; source
+weights, diversity and opportunity reservations also affect final order.
+Relevance is normally a soft
 score; visibility, status, authorization, and safety are hard filters.
 Opportunity city is also a soft relevance signal for eligible future Events
 and Venue/Studio profile discovery; it is never a visibility filter.
@@ -108,8 +112,9 @@ musician display identity in this feed is the account username.
 - Same-target likes/follows may aggregate into one reason row; comments remain
   individual. The strongest reason is primary and other activity is secondary
   social proof.
-- Non-followed organic discovery appears substantially less often than followed
-  content.
+- A dense primary stream reserves roughly 10% for general discovery; unused
+  primary capacity can be filled by discovery so new accounts do not receive
+  two-card pages when useful candidates are available.
 - Candidate providers are bounded. The feed mixer owns cross-source ranking,
   author/type diversity, deduplication, and cursor stability.
 - Cards expose a machine-readable reason code; copy is rendered by the client.
@@ -117,6 +122,41 @@ musician display identity in this feed is the account username.
   show-less, mute-author, and report. These actions are persisted and affect
   future ranking/eligibility.
 - Discovery profile cards include Follow.
+
+### Algorithm v1.2.0 — 14 September 2026
+
+The user approved the musician-feed audit fixes before venue-feed work.
+Diversity now affects selection from the full bounded candidate pool at each
+slot. Reordering only an already truncated page would never admit an author
+outside that page. The last five organic author/type identities from the
+delivery ledger also influence the next page. These are soft penalties, so a
+sparse pool is still usable.
+
+When available, relevant Collab/Event opportunities receive a minimum of
+`floor(normal selection slots / 5)` from five slots upward (four for twenty
+normal slots). Venue/Studio profile suggestions do not satisfy this opportunity
+reservation. Opportunities cannot all be displaced by later promotional
+insertion. Completion remains at most one, module shares keep their budget and
+separation rules, and a one-card request retains useful primary content.
+
+Qualified organic impressions from the preceding 24 hours subtract 240,000
+ranking points. This is neither permanent exclusion nor learned engagement
+prediction. The query uses the fixed session anchor and excludes the current
+session; prefetched cards are not views. A storage/transaction failure in this
+soft enrichment retains valid content and increments an operational counter.
+Provider limits stay unchanged: no claim is made that unseen content beyond a
+provider's bounded candidate window will always reach the mixer.
+
+See [seen history and announcement frequency](musician-feed-recent-views.md).
+The algorithm version participates in cursor ranking context. Old-version
+continuations use the existing refresh-required path after deployment.
+
+On the client, returning from media or announcement details reconciles the
+existing engagement target through the shared engagement repositories. It
+preserves loaded pages, cursor and feed session, updates all target aliases,
+and rejects outdated reads after account/content/local mutation changes.
+Successful follow overlays expire after a subsequent authoritative first-page
+read, allowing an unfollow from another screen to become visible.
 
 ## Feedback capacity and reads
 

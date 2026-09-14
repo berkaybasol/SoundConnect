@@ -24,6 +24,7 @@ class MusicianFeedFeatureFlagTest {
         new ApplicationContextRunner()
                 .withUserConfiguration(MusicianFeedService.class)
                 .withBean(MusicianFeedProperties.class, MusicianFeedProperties::new)
+                .withBean(MusicianFeedMetrics.class, MusicianFeedMetrics::unbound)
                 .withBean(MusicianFeedViewerGuard.class, () -> mock(MusicianFeedViewerGuard.class))
                 .withBean(MusicianFeedCursorCodec.class, () -> mock(MusicianFeedCursorCodec.class))
                 .withBean(MusicianFeedMixer.class, () -> mock(MusicianFeedMixer.class))
@@ -49,11 +50,15 @@ class MusicianFeedFeatureFlagTest {
                 .withBean(MusicianFeedFeedbackService.class, () -> mock(MusicianFeedFeedbackService.class))
                 .withBean(MusicianFeedTelemetryService.class, () -> mock(MusicianFeedTelemetryService.class))
                 .withUserConfiguration(MusicianFeedController.class,
-                        MusicianFeedFeedbackController.class, MusicianFeedTelemetryController.class)
+                        MusicianFeedFeedbackController.class, MusicianFeedTelemetryController.class,
+                        com.berkayb.soundconnect.modules.feed.venue.api.VenueFeedController.class,
+                        com.berkayb.soundconnect.modules.feed.listener.api.ListenerFeedController.class)
                 .run(context -> {
                     assertThat(context).doesNotHaveBean(MusicianFeedController.class);
                     assertThat(context).doesNotHaveBean(MusicianFeedFeedbackController.class);
                     assertThat(context).doesNotHaveBean(MusicianFeedTelemetryController.class);
+                    assertThat(context).doesNotHaveBean(com.berkayb.soundconnect.modules.feed.venue.api.VenueFeedController.class);
+                    assertThat(context).doesNotHaveBean(com.berkayb.soundconnect.modules.feed.listener.api.ListenerFeedController.class);
                 });
     }
 

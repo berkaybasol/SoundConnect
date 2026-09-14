@@ -21,6 +21,24 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
+	/** Scalar audience read avoids an OSIV-cached asset reviving changed content. */
+	@Query(value = """
+			select id from tbl_media_asset where id in (:ids)
+			  and content_audience='MAINSTAGE' and owner_type<>'STUDIO_PROFILE'
+			  and status='READY' and visibility='PUBLIC'
+			""", nativeQuery = true)
+	List<UUID> findMainstagePublicIds(@Param("ids") List<UUID> ids);
+	@Query("""
+			select asset from MediaAsset asset
+			where asset.ownerType=:ownerType and asset.ownerId=:ownerId
+			  and (:kind is null or asset.kind=:kind)
+			  and asset.visibility=com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PUBLIC
+			  and asset.status=com.berkayb.soundconnect.modules.media.enums.MediaStatus.READY
+			  and asset.contentAudience=com.berkayb.soundconnect.modules.media.enums.MediaContentAudience.MAINSTAGE
+			  and asset.ownerType<>com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.STUDIO_PROFILE
+			""")
+	Page<MediaAsset> findMainstagePublicByOwner(@Param("ownerType") MediaOwnerType ownerType,
+			@Param("ownerId") UUID ownerId, @Param("kind") MediaKind kind, Pageable pageable);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select asset from MediaAsset asset where asset.id = :assetId")

@@ -31,6 +31,8 @@ public enum ErrorType {
 	PASSWORD_RESET_PROVIDER_UNSUPPORTED(1110, "Password reset is not supported for this account provider", HttpStatus.CONFLICT, "Bu hesap harici bir sağlayıcıyla giriş yapıyor. Şifre sıfırlama desteklenmiyor."),
 	PASSWORD_RESET_DELIVERY_FAILED(1111, "Password reset email could not be queued", HttpStatus.SERVICE_UNAVAILABLE, "Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin."),
 	STUDIO_APPLICATION_REJECTED(1112, "Studio application was rejected", HttpStatus.FORBIDDEN, "Stüdyo başvurunuz reddedildi. İtiraz veya bilgi için destek ekibimizle iletişime geçebilirsiniz."),
+	EMAIL_VERIFICATION_REQUIRED(1113, "Email verification is required", HttpStatus.FORBIDDEN, "Giriş yapmak için e-posta adresini doğrulamalısın."),
+	EMAIL_VERIFICATION_CODE_INVALID(1114, "Email verification code is invalid or expired", HttpStatus.BAD_REQUEST, "Doğrulama kodu geçersiz veya süresi dolmuş. Yeni kod isteyip tekrar deneyin."),
 	
 	// FOLLOW (1200-1299)
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),

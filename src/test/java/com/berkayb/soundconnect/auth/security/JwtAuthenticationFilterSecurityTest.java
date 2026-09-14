@@ -15,6 +15,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -175,6 +177,130 @@ class JwtAuthenticationFilterSecurityTest {
 				.isEqualTo(ErrorType.INTERNAL_ERROR);
 
 		verifyNoInteractions(filterChain);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"/api/v1/public/search/profiles", "/api/v1/public/media/owner/BAND/id",
+			"/api/v1/profiles/MUSICIAN/id/media", "/api/v1/public/studio-profiles/id/rooms",
+			"/api/v1/public/studio-profiles/id/equipment", "/api/v1/public/bands/id",
+			"/api/v1/promotions/displayable/VENUE_MANAGEMENT_PANEL"})
+	void invalidOrExpiredBearerOnAudienceSourceReturnsAuthContractAndNeverReadsGuestData(String path) throws Exception {
+		audienceRequest(path);
+		when(jwtUtil.getTokenFromRequest(request)).thenReturn("expired-token");
+		when(jwtTokenProvider.validateToken("expired-token")).thenReturn(false);
+		filter.doFilterInternal(request, response, filterChain);
+		verify(securityErrorResponseWriter).write(request, response, ErrorType.UNAUTHORIZED);
+		verifyNoInteractions(filterChain, userDetailsService);
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"DELETED", "MISSING", "INACTIVE", "ROLELESS"})
+	void revokedOrUnusableAudienceSessionCannotDowngradeToGuest(String failure) throws Exception {
+		audienceRequest("/api/v1/public/search/profiles");
+		UUID userId = UUID.randomUUID();
+		when(jwtUtil.getTokenFromRequest(request)).thenReturn("token");
+		when(jwtTokenProvider.validateToken("token")).thenReturn(true);
+		when(jwtTokenProvider.getUserIdFromToken("token")).thenReturn(userId);
+		switch (failure) {
+			case "DELETED" -> when(userDetailsService.loadUserById(userId))
+					.thenThrow(new SoundConnectException(ErrorType.USER_NOT_FOUND));
+			case "MISSING" -> when(userDetailsService.loadUserById(userId))
+					.thenThrow(new org.springframework.security.core.userdetails.UsernameNotFoundException("removed"));
+			case "INACTIVE" -> {
+				var principal = rolelessGooglePrincipal(userId);
+				principal.getUser().setStatus(UserStatus.INACTIVE);
+				when(userDetailsService.loadUserById(userId)).thenReturn(principal);
+			}
+			default -> when(userDetailsService.loadUserById(userId)).thenReturn(rolelessGooglePrincipal(userId));
+		}
+		filter.doFilterInternal(request, response, filterChain);
+		verify(securityErrorResponseWriter).write(request, response, ErrorType.UNAUTHORIZED);
+		verifyNoInteractions(filterChain);
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	@Test void malformedAudienceTokenUsesAuthContractInsteadOfGuestProjection() throws Exception {
+		audienceRequest("/api/v1/public/search/profiles");
+		when(jwtUtil.getTokenFromRequest(request)).thenReturn("malformed");
+		when(jwtTokenProvider.validateToken("malformed")).thenThrow(new io.jsonwebtoken.MalformedJwtException("invalid"));
+		filter.doFilterInternal(request, response, filterChain);
+		verify(securityErrorResponseWriter).write(request, response, ErrorType.UNAUTHORIZED);
+		verifyNoInteractions(filterChain, userDetailsService);
+	}
+
+	@Test void emptyBearerOnAudienceSourceCannotBecomeGuest() throws Exception {
+		audienceRequest("/api/v1/public/search/profiles");
+		when(request.getHeader("Authorization")).thenReturn("Bearer ");
+		filter.doFilterInternal(request, response, filterChain);
+		verify(securityErrorResponseWriter).write(request, response, ErrorType.UNAUTHORIZED);
+		verifyNoInteractions(filterChain, jwtTokenProvider, userDetailsService);
+	}
+
+	@Test void headerlessAudienceSourceRemainsAGuestRead() throws Exception {
+		when(request.getMethod()).thenReturn("GET");
+		when(request.getRequestURI()).thenReturn("/api/v1/public/search/profiles");
+		filter.doFilterInternal(request, response, filterChain);
+		verify(filterChain).doFilter(request, response);
+		verifyNoInteractions(securityErrorResponseWriter, userDetailsService, jwtTokenProvider);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"/api/v1/events/id", "/api/v1/cities", "/api/v1/public/unrelated"})
+	void unrelatedPublicReadsKeepTheirExistingInvalidTokenBehavior(String path) throws Exception {
+		when(request.getMethod()).thenReturn("GET");
+		when(request.getRequestURI()).thenReturn(path);
+		when(jwtUtil.getTokenFromRequest(request)).thenReturn("invalid");
+		when(jwtTokenProvider.validateToken("invalid")).thenReturn(false);
+		filter.doFilterInternal(request, response, filterChain);
+		verify(filterChain).doFilter(request, response);
+		verifyNoInteractions(securityErrorResponseWriter, userDetailsService);
+	}
+
+	@Test void rejectedAudienceBearerReturnsTheExisting401JsonContractWithoutAControllerRead() throws Exception {
+		var actualRequest = new org.springframework.mock.web.MockHttpServletRequest("GET", "/api/v1/public/search/profiles");
+		actualRequest.addHeader("Authorization", "Bearer expired");
+		var actualResponse = new org.springframework.mock.web.MockHttpServletResponse();
+		var objectMapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+		var actualFilter = new JwtAuthenticationFilter(jwtTokenProvider, userDetailsService, new JwtUtil(jwtTokenProvider),
+				listenerProfileChoiceGate, new SecurityErrorResponseWriter(objectMapper));
+		when(jwtTokenProvider.validateToken("expired")).thenReturn(false);
+		actualFilter.doFilterInternal(actualRequest, actualResponse, filterChain);
+		assertThat(actualResponse.getStatus()).isEqualTo(401);
+		assertThat(actualResponse.getHeader("Cache-Control")).isEqualTo("no-store");
+		var body = objectMapper.readTree(actualResponse.getContentAsString());
+		assertThat(body.path("code").asInt()).isEqualTo(ErrorType.UNAUTHORIZED.getCode());
+		assertThat(body.path("path").asText()).isEqualTo("/api/v1/public/search/profiles");
+		verifyNoInteractions(filterChain, userDetailsService);
+	}
+
+	@Test void validListenerAudienceRequestRetainsItsPrincipalForDownstreamFilters() throws Exception {
+		audienceRequest("/api/v1/public/search/profiles");
+		var principal = rolelessGooglePrincipal(UUID.randomUUID());
+		principal.getUser().setRoles(Set.of(Role.builder().name("ROLE_LISTENER").build()));
+		stubValidToken(principal.getId(), principal);
+		filter.doFilterInternal(request, response, filterChain);
+		verify(filterChain).doFilter(request, response);
+		verifyNoInteractions(securityErrorResponseWriter);
+		assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isSameAs(principal);
+	}
+
+	@Test void audienceDatabaseFailureStillPropagatesAsInfrastructureFailure() throws Exception {
+		audienceRequest("/api/v1/public/search/profiles");
+		UUID userId = UUID.randomUUID();
+		when(jwtUtil.getTokenFromRequest(request)).thenReturn("token");
+		when(jwtTokenProvider.validateToken("token")).thenReturn(true);
+		when(jwtTokenProvider.getUserIdFromToken("token")).thenReturn(userId);
+		when(userDetailsService.loadUserById(userId)).thenThrow(new DataAccessResourceFailureException("database down"));
+		assertThatThrownBy(() -> filter.doFilterInternal(request, response, filterChain))
+				.isInstanceOf(DataAccessResourceFailureException.class);
+		verifyNoInteractions(filterChain, securityErrorResponseWriter);
+	}
+
+	private void audienceRequest(String path) {
+		when(request.getMethod()).thenReturn("GET");
+		when(request.getRequestURI()).thenReturn(path);
+		when(request.getHeader("Authorization")).thenReturn("Bearer supplied-token");
 	}
 
 	private void stubValidToken(UUID userId, UserDetailsImpl principal) {

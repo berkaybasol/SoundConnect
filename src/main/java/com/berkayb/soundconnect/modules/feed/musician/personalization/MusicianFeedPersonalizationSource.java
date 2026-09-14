@@ -6,4 +6,13 @@ import java.util.UUID;
 @FunctionalInterface
 public interface MusicianFeedPersonalizationSource {
     MusicianFeedPersonalizationSnapshot load(UUID userId, UUID musicianProfileId);
+
+    /** Venue feeds do not use musician preferences or profile-completion tasks. */
+    default MusicianFeedPersonalizationSnapshot loadForVenue(UUID userId, UUID venueId) {
+        return MusicianFeedPersonalizationSnapshot.empty();
+    }
+
+    default MusicianFeedPersonalizationSnapshot loadForListener(UUID userId, UUID listenerProfileId) {
+        return MusicianFeedPersonalizationSnapshot.empty();
+    }
 }

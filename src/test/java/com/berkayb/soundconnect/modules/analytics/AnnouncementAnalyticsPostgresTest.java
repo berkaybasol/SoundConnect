@@ -192,6 +192,48 @@ class AnnouncementAnalyticsPostgresTest {
         assertThat(store.qualifiedImpressionCounts(UUID.randomUUID(),List.of(announcement),now)).isEmpty();
     }
 
+    @Test void planningHistoryCountsOnlyQualifiedAccountImpressionsInsideTheRollingRecordedWindow() {
+        for (Instant recorded : List.of(now.minusSeconds(86_400), now.minusSeconds(25_200), now.minusSeconds(21_600))) {
+            collector.observe(user, new AnalyticsRequest(client, List.of(
+                    impression(AnalyticsRequest.Source.DIRECTORY, null, recorded))), recorded);
+        }
+        observe(otherUser, impression(AnalyticsRequest.Source.DIRECTORY, null, now));
+        collector.observe(user, new AnalyticsRequest(client, List.of(new AnalyticsRequest.Observation(
+                UUID.randomUUID(), AnalyticsRequest.Type.ANNOUNCEMENT_DETAIL_VIEW, null, null, null,
+                now, announcement, AnalyticsRequest.Source.DIRECTORY, null, null))), now);
+        // A queued older observation recorded after the anchor must not rewrite that plan's frequency state.
+        collector.observe(user, new AnalyticsRequest(client, List.of(
+                impression(AnalyticsRequest.Source.DIRECTORY, null, now.minusSeconds(3600)))), now.plusNanos(1_000));
+
+        var history = store.qualifiedImpressionHistory(user, List.of(announcement), now).get(announcement);
+        assertThat(history.totalCount()).isEqualTo(3);
+        assertThat(history.last24HoursCount()).isEqualTo(2);
+        assertThat(history.lastRecordedAt()).isEqualTo(now.minusSeconds(21_600));
+        assertThat(history.eligibleAt(now)).isFalse();
+        assertThat(store.qualifiedImpressionCounts(user, List.of(announcement), now)).containsEntry(announcement, 3L);
+        assertThat(store.qualifiedImpressionHistory(user, List.of(UUID.randomUUID()), now)).isEmpty();
+        assertThat(store.qualifiedImpressionHistory(UUID.randomUUID(), List.of(announcement), now)).isEmpty();
+        assertThat(store.qualifiedImpressionHistory(user, List.of(announcement), now.plusNanos(1_000))
+                .get(announcement).last24HoursCount()).isEqualTo(3);
+    }
+
+    @Test void announcementRepeatCooldownAllowsExactlySixHoursAndRollingCapDropsAtExactlyTwentyFourHours() {
+        Instant first = now.minusSeconds(86_400), second = now.minusSeconds(21_600);
+        for (Instant recorded : List.of(first, second)) {
+            collector.observe(user, new AnalyticsRequest(client, List.of(
+                    impression(AnalyticsRequest.Source.DIRECTORY, null, recorded))), recorded);
+        }
+        var justBefore = store.qualifiedImpressionHistory(user, List.of(announcement), now.minusNanos(1_000)).get(announcement);
+        assertThat(justBefore.last24HoursCount()).isEqualTo(2);
+        assertThat(justBefore.eligibleAt(now.minusNanos(1_000))).isFalse();
+        var boundary = store.qualifiedImpressionHistory(user, List.of(announcement), now).get(announcement);
+        assertThat(boundary.totalCount()).isEqualTo(2);
+        assertThat(boundary.last24HoursCount()).isEqualTo(1);
+        assertThat(boundary.eligibleAt(now)).isTrue();
+        assertThat(store.qualifiedImpressionHistory(user, List.of(announcement), now.plusSeconds(86_400))
+                .get(announcement).last24HoursCount()).isZero();
+    }
+
     @Test void serverEngagementAttributionCountsSurvivingEntitiesAndDeduplicatesHideAccounts() {
         UUID like=UUID.randomUUID(),comment=UUID.randomUUID(),hide=UUID.randomUUID(),secondHide=UUID.randomUUID();
         jdbc.update("INSERT INTO tbl_like VALUES(:id,'ANNOUNCEMENT',:target)",Map.of("id",like,"target",announcement));

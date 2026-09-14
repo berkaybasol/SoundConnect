@@ -17,8 +17,14 @@ public final class MusicianFeedPayloads {
             String title,
             String playbackUrl,
             Integer durationSeconds,
-            Integer bpm
-    ) { }
+            Integer bpm,
+            String contentAudience
+    ) {
+        public Track(UUID trackId, UUID mediaAssetId, String title, String playbackUrl,
+                     Integer durationSeconds, Integer bpm) {
+            this(trackId, mediaAssetId, title, playbackUrl, durationSeconds, bpm, "MAINSTAGE");
+        }
+    }
 
     public record ProfileMedia(
             UUID mediaAssetId,
@@ -30,8 +36,16 @@ public final class MusicianFeedPayloads {
             String description,
             Integer durationSeconds,
             Integer width,
-            Integer height
-    ) { }
+            Integer height,
+            String contentAudience
+    ) {
+        public ProfileMedia(UUID mediaAssetId, String kind, String displayUrl, String playbackUrl,
+                            String thumbnailUrl, String title, String description,
+                            Integer durationSeconds, Integer width, Integer height) {
+            this(mediaAssetId, kind, displayUrl, playbackUrl, thumbnailUrl, title, description,
+                    durationSeconds, width, height, "MAINSTAGE");
+        }
+    }
 
     public record Collab(CollabListingResponse listing) { }
 

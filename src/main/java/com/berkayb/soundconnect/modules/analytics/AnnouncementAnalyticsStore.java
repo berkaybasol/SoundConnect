@@ -120,18 +120,32 @@ public class AnnouncementAnalyticsStore implements AnnouncementImpressionHistory
     @Override
     @Transactional(readOnly = true, timeout = 4)
     public Map<UUID, Long> qualifiedImpressionCounts(UUID viewer, List<UUID> ids, Instant recordedBefore) {
+        var result = new HashMap<UUID, Long>();
+        qualifiedImpressionHistory(viewer, ids, recordedBefore)
+                .forEach((id, history) -> result.put(id, history.totalCount()));
+        return Map.copyOf(result);
+    }
+
+    @Override
+    @Transactional(readOnly = true, timeout = 4)
+    public Map<UUID, QualifiedImpressions> qualifiedImpressionHistory(UUID viewer, List<UUID> ids, Instant recordedBefore) {
         identity.requireEnabled();
         if (viewer == null || ids == null || ids.size() > 200 || recordedBefore == null) throw invalid();
         if (ids.isEmpty()) return Map.of();
-        var result = new HashMap<UUID, Long>();
+        Instant anchor = recordedBefore.truncatedTo(ChronoUnit.MICROS);
+        var result = new HashMap<UUID, QualifiedImpressions>();
         jdbc.query("""
-                select promotion_id,count(*) as n from tbl_promotion_analytics_event
+                select promotion_id,count(*) as n,
+                       count(*) filter(where recorded_at>:since) as recent_n,
+                       max(recorded_at) as last_recorded_at
+                from tbl_promotion_analytics_event
                 where actor_key=:actor and promotion_id in (:ids)
                   and metric_type='ANNOUNCEMENT_IMPRESSION' and recorded_at<=:anchor
                 group by promotion_id
                 """, Map.of("actor", identity.receiptActor(identity.actor(viewer, null)), "ids", ids,
-                "anchor", Timestamp.from(recordedBefore.truncatedTo(ChronoUnit.MICROS))), row -> {
-            result.put((UUID) row.getObject("promotion_id"), row.getLong("n"));
+                "anchor", Timestamp.from(anchor), "since", Timestamp.from(anchor.minus(FREQUENCY_WINDOW))), row -> {
+            result.put((UUID) row.getObject("promotion_id"), new QualifiedImpressions(
+                    row.getLong("n"), row.getLong("recent_n"), row.getTimestamp("last_recorded_at").toInstant()));
         });
         return Map.copyOf(result);
     }

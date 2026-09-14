@@ -45,6 +45,7 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
             left join tbl_media_asset avatar on avatar.id=listener.profile_picture_media_id
                 and avatar.status='READY' and avatar.visibility='PUBLIC'
             where share.published_at<=:anchor and account.id<>:viewerId
+              and (not :listenerAudience or /* MAINSTAGE_SOURCE */)
               and account.status='ACTIVE' and account.email_verified and account.erased_at is null
               and exists(select 1 from user_roles membership join tbl_role role on role.id=membership.role_id
                   where membership.user_id=account.id and role.name='ROLE_LISTENER')
@@ -71,7 +72,8 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
                           and delivered.target_id=share.id)))
             order by share.published_at desc, share.id desc
             limit :limit
-            """.replace("/* FEED_MODERATION */", allowed(item("'OVERTHINKING_PROFILE_SHARE:' || share.id::text"),
+            """.replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"))
+            .replace("/* FEED_MODERATION */", allowed(item("'OVERTHINKING_PROFILE_SHARE:' || share.id::text"),
                     target("'OVERTHINKING_PROFILE_SHARE'", "share.id")));
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -95,6 +97,7 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
     public List<MusicianFeedCandidate> findCandidates(MusicianFeedCandidateRequest request) {
         if (!request.supportedTypes().contains(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)) return List.of();
         var parameters = new MapSqlParameterSource().addValue("viewerId", request.viewerUserId())
+                .addValue("listenerAudience", MusicianFeedArtistDiscovery.forListener(request))
                 .addValue("feedSessionId", request.feedSessionId())
                 .addValue("anchor", MusicianFeedJdbcSupport.timestamp(request.anchor()))
                 .addValue("limit", request.limit());

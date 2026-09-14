@@ -13,6 +13,21 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface TrackRepository extends JpaRepository<Track, UUID> {
+	String MAINSTAGE_OWNER_TRACKS = """
+			select track from Track track join MediaAsset asset on asset.id=track.mediaAssetId
+			where track.ownerId=:ownerId and track.ownerType=:ownerType
+			  and asset.visibility=com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PUBLIC
+			  and asset.status=com.berkayb.soundconnect.modules.media.enums.MediaStatus.READY
+			  and asset.contentAudience=com.berkayb.soundconnect.modules.media.enums.MediaContentAudience.MAINSTAGE
+			  and asset.ownerType<>com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.STUDIO_PROFILE
+			""";
+
+	@Query(MAINSTAGE_OWNER_TRACKS)
+	List<Track> findMainstageByOwner(@Param("ownerId") UUID ownerId, @Param("ownerType") TrackOwnerType ownerType);
+
+	@Query(MAINSTAGE_OWNER_TRACKS)
+	Page<Track> findMainstageByOwner(@Param("ownerId") UUID ownerId, @Param("ownerType") TrackOwnerType ownerType,
+			Pageable pageable);
 	@Query(value = """
 			select id, owner_id as "ownerId", owner_type as "ownerType", media_asset_id as "mediaAssetId"
 			from tbl_tracks where id=:id for share

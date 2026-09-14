@@ -34,6 +34,7 @@ public class OverthinkingProfileShareService {
     public OverthinkingProfileShareResponse.State get(UUID owner, UUID postId) {
         validateId(postId); var actor = actor(owner, false);
         if (!sources.existsById(postId)) throw sourceNotFound();
+        requireSourceAudience(postId);
         return state(postId, repository.findByOwnerUserIdAndSourcePostId(owner, postId).orElse(null), actor);
     }
 
@@ -43,6 +44,7 @@ public class OverthinkingProfileShareService {
         // Account -> listener profile -> source -> publication. The account lock
         // fences absent rows; source/profile locks exclude deletion and ghost transitions.
         if (repository.lockSource(postId).isEmpty()) throw sourceNotFound();
+        requireSourceAudience(postId);
         var existing = repository.findByOwnerUserIdAndSourcePostId(owner, postId);
         if (existing.isPresent()) {
             if (!Objects.equals(existing.get().getNote(), note))
@@ -75,9 +77,14 @@ public class OverthinkingProfileShareService {
         catch (SoundConnectException hidden) { throw profileNotFound(); }
         if (!target.profile().getProfileId().equals(profileId) || !target.profile().getChoiceCompleted()) throw profileNotFound();
         if (!target.canPublish()) return PageResponse.from(Page.empty(pageable));
-        var shares = repository.findByListenerProfileIdAndOwnerUserId(profileId, owner, pageable);
+        var shares = com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+                ? repository.findMainstageByProfile(profileId, owner, PageRequest.of(page, size))
+                : repository.findByListenerProfileIdAndOwnerUserId(profileId, owner, pageable);
         if (shares.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, shares.getTotalElements()));
         var originals = posts.getByIdsForViewer(viewer, shares.stream().map(OverthinkingProfileShare::getSourcePostId).toList());
+        shares = new PageImpl<>(shares.stream().filter(share -> originals.containsKey(share.getSourcePostId())).toList(),
+                pageable, shares.getTotalElements());
+        if (shares.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, shares.getTotalElements()));
         var shareIds = shares.stream().map(OverthinkingProfileShare::getId).toList();
         var likeCounts = likes.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
                 .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId,
@@ -103,6 +110,11 @@ public class OverthinkingProfileShareService {
         // an additional fence against a stale profile already attached by OSIV.
         boolean restricted = visibility.lockForReadAndIsPubliclyRestricted(owner);
         return new Actor(profile, !restricted && profile.getChoiceCompleted() && "STANDARD".equals(profile.getMode()));
+    }
+
+    private void requireSourceAudience(UUID postId) {
+        if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+                && !sources.findMainstageVisibleIds(List.of(postId)).contains(postId)) throw sourceNotFound();
     }
     private void active(UUID owner, boolean write) {
         if (owner == null || (write ? repository.lockActor(owner) : repository.lockActiveReader(owner)).isEmpty())
