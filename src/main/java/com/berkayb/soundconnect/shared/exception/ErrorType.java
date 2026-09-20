@@ -390,6 +390,17 @@ public enum ErrorType {
 	ANNOUNCEMENT_MEDIA_INVALID(9934, "Announcement media unavailable", HttpStatus.BAD_REQUEST, "Duyuruya ait hazır bir fotoğraf veya video seç."),
 	ANNOUNCEMENT_FORBIDDEN(9935, "Announcement access denied", HttpStatus.FORBIDDEN, "Bu duyuru işlemine erişimin yok."),
 	ANNOUNCEMENT_CURSOR_INVALID(9936, "Invalid announcement cursor", HttpStatus.BAD_REQUEST, "Duyuru listesini yenileyip tekrar dene."),
+	// MARKETPLACE (9940-9949)
+	MARKETPLACE_INVALID(9940, "Invalid marketplace request", HttpStatus.BAD_REQUEST, "İlan bilgilerini kontrol et."),
+	MARKETPLACE_FORBIDDEN(9941, "Marketplace access denied", HttpStatus.FORBIDDEN, "Ekipman Pazarı yalnız Backstage hesaplarına açık."),
+	MARKETPLACE_NOT_FOUND(9942, "Marketplace listing not found", HttpStatus.NOT_FOUND, "İlan bulunamadı veya artık yayında değil."),
+	MARKETPLACE_VERSION_CONFLICT(9943, "Marketplace listing changed", HttpStatus.CONFLICT, "İlan değişti. Güncel kaydı açıp tekrar dene."),
+	MARKETPLACE_STATE_CONFLICT(9944, "Marketplace transition unavailable", HttpStatus.CONFLICT, "İlanın mevcut durumu bu işleme uygun değil."),
+	MARKETPLACE_INCOMPLETE(9945, "Marketplace listing incomplete", HttpStatus.BAD_REQUEST, "Yayınlamak için gerekli ilan bilgilerini ve en az bir fotoğrafı tamamla."),
+	MARKETPLACE_LIMIT_REACHED(9946, "Marketplace listing limit reached", HttpStatus.CONFLICT, "İlan sınırına ulaştın. Kullanmadığın taslakları veya ilanları kaldır."),
+	MARKETPLACE_IDEMPOTENCY_CONFLICT(9947, "Marketplace request conflict", HttpStatus.CONFLICT, "Bu istek anahtarı farklı bilgilerle kullanılmış."),
+	MARKETPLACE_REPORT_DUPLICATE(9948, "Marketplace report already exists", HttpStatus.CONFLICT, "Bu ilanı zaten bildirdin."),
+	MARKETPLACE_REPORT_NOT_FOUND(9949, "Marketplace report not found", HttpStatus.NOT_FOUND, "İlan bildirimi bulunamadı."),
 	// GENEL (9999)
 
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),

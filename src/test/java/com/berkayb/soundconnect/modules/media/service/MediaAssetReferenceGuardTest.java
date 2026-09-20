@@ -63,6 +63,15 @@ class MediaAssetReferenceGuardTest {
 		verify(repository).countStudioRoomPhotoReferences(assetId);
 		verify(repository).countStudioEquipmentPhotoReferences(assetId);
 		verify(repository).countEventPosterReferences(assetId.toString());
+		verify(repository).countMarketplaceReferences(assetId);
 		verifyNoMoreInteractions(repository);
+	}
+
+	@Test
+	void rejectsAnAttachedMarketplacePhoto() {
+		when(repository.countMarketplaceReferences(assetId)).thenReturn(1L);
+		assertThatThrownBy(() -> guard.assertNotReferenced(assetId))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						org.assertj.core.api.Assertions.assertThat(exception.getErrorType()).isEqualTo(ErrorType.MEDIA_ASSET_IN_USE));
 	}
 }

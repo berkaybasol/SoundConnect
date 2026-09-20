@@ -129,6 +129,8 @@ CloudFront, ACL, bucket-policy, or bucket-administration permission.
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/hls/*",
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/attempts/*/thumbnail.jpg",
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/thumbnail.jpg",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/attempts/*/thumbnail.jpg",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/thumbnail.jpg",
         "arn:aws:s3:::PRIVATE_BUCKET/media/*/hls/video.mp4",
         "arn:aws:s3:::PRIVATE_BUCKET/media/*/hls/thumbnail.jpg"
       ]
@@ -139,22 +141,29 @@ CloudFront, ACL, bucket-policy, or bucket-administration permission.
       "Action": "s3:DeleteObject",
       "Resource": [
         "arn:aws:s3:::PUBLIC_BUCKET/media/*/attempts/*/thumbnail.jpg",
-        "arn:aws:s3:::PUBLIC_BUCKET/media/*/thumbnail.jpg"
+        "arn:aws:s3:::PUBLIC_BUCKET/media/*/thumbnail.jpg",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/attempts/*/thumbnail.jpg",
+        "arn:aws:s3:::PRIVATE_BUCKET/private-verified/media/*/thumbnail.jpg"
       ]
     }
   ]
 }
 ```
 
-The private source/output grants support promotion-backed announcement video.
+The private source/output grants support announcement video and protected IMAGE
+thumbnails, including marketplace photos.
 `protected/` is a logical routing prefix removed by `StorageObjectKeys.physicalKey`;
 these ARNs therefore name physical keys in the private bucket. The worker still
-does not need private-bucket listing or deletion: API cleanup owns abandoned
-derivatives. Keep both output filenames private even after publication; only the
-API issues short-lived signed GETs after current announcement authorization.
+does not need private-bucket listing or original deletion. Its private delete
+grant is limited to compensating unattached `thumbnail.jpg` derivatives; API
+cleanup owns original/attempt recovery. Keep these outputs private even after
+publication; only the API issues short-lived signed GETs after current module
+authorization. Before enabling protected image production, deploy the additive
+thumbnail migration and updated API deletion fences, and drain older deletion
+workers that do not understand private image producers.
 
 If SSE-KMS is enabled, add only the corresponding key's decrypt permission for
-source reads and encrypt/data-key permission for generated public objects.
+source reads and encrypt/data-key permission for generated public and private objects.
 Constrain the KMS grant with S3 encryption-context and ViaService conditions.
 
 ## Runtime and health
@@ -193,9 +202,10 @@ orchestrator/VPC policy must prove that the worker can reach only:
 Deny API ingress and all other egress. Verify the denial from the deployed
 worker namespace, not from a developer machine.
 
-Roll out the API first with dispatch enabled and native workers disabled. Apply
-schema migration, then DB/Rabbit grants and IAM/network policy, start one
-worker, confirm readiness and queue drain, and scale gradually. On rollback,
+Apply additive schema migrations and DB/Rabbit grants plus IAM/network policy
+first. Update every API/deletion writer with dispatch enabled and native workers
+disabled, then drain old workers before starting one updated worker. Confirm
+readiness and queue drain, and scale gradually. On rollback,
 stop/drain the worker before revoking its identities; queued rows remain the
 durable source of truth.
 

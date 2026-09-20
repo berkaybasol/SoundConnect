@@ -103,6 +103,10 @@ public class MediaAsset extends BaseEntity {
 	@Column(length = 1024)
 	private String thumbnailUrl;
 
+	/** Server-only derivative key; protected variants never have a stable delivery URL. */
+	@Column(length = 512)
+	private String thumbnailStorageKey;
+
 	/**
 	 * Stable timestamp for asynchronous deletion fencing. Unlike {@code updatedAt},
 	 * this value is not moved by storage retry backoff, so derivative producers

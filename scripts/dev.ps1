@@ -66,7 +66,10 @@ $LocalSchemaMigrations = @(
     @{ Name = "Feed announcements"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-feed-announcements.sql" },
     @{ Name = "Announcement feed plan"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-announcement-feed-plan.sql" },
     @{ Name = "Announcement analytics"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-13-announcement-analytics.sql" },
-    @{ Name = "Mainstage content audience"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-14-mainstage-content-audience.sql" }
+    @{ Name = "Mainstage content audience"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-14-mainstage-content-audience.sql" },
+    @{ Name = "Marketplace domain and catalog"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-20-marketplace-domain.sql" },
+    @{ Name = "Marketplace protected media"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-20-marketplace-media.sql" },
+    @{ Name = "Protected image thumbnails"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-20-protected-image-thumbnails.sql" }
 )
 
 function Assert-Command([string]$Name) {

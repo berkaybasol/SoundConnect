@@ -29,6 +29,38 @@ class ImageVariantBackfillServiceTest {
 	@Mock ImageVariantBackfillFinalizer finalizer;
 
 	@Test
+	void privateImage_isBackfilledOnlyFromImmutableSourceAndSkippedOnceAttached() throws Exception {
+		MediaAsset asset = eligibleAsset();
+		asset.setVisibility(MediaVisibility.PRIVATE);
+		asset.setStorageKey("protected/private-verified/media/" + asset.getId() + "/source.jpg");
+		asset.setPlaybackUrl(null);
+		when(repository.findById(asset.getId())).thenReturn(Optional.of(asset));
+		ImageThumbnailResult generated = new ImageThumbnailResult(
+				ImageThumbnailService.protectedThumbnailKeyFor(asset.getStorageKey()), null, 1600, 900, 960, 540);
+		when(thumbnailService.generateAndStoreDetached(asset.getId(), asset.getStorageKey())).thenReturn(generated);
+		when(finalizer.attachIfStillEligible(asset.getId(), asset.getStorageKey(), generated)).thenReturn(true);
+		var service = new ImageVariantBackfillService(repository, thumbnailService, finalizer);
+
+		assertThat(service.backfillOne(asset.getId())).isTrue();
+		asset.setThumbnailStorageKey(generated.thumbnailKey());
+		assertThat(service.backfillOne(asset.getId())).isFalse();
+		verify(thumbnailService).generateAndStoreDetached(asset.getId(), asset.getStorageKey());
+		assertThat(asset.getThumbnailUrl()).isNull();
+	}
+
+	@Test
+	void legacyMutablePrivateImage_isLeftReadableWithoutUnsafeDerivedUpload() throws Exception {
+		MediaAsset asset = eligibleAsset();
+		asset.setVisibility(MediaVisibility.PRIVATE);
+		asset.setStorageKey("protected/media/" + asset.getId() + "/source.jpg");
+		when(repository.findById(asset.getId())).thenReturn(Optional.of(asset));
+
+		assertThat(new ImageVariantBackfillService(repository, thumbnailService, finalizer)
+				.backfillOne(asset.getId())).isFalse();
+		verifyNoInteractions(thumbnailService, finalizer);
+	}
+
+	@Test
 	void backfillOne_updatesOnlyReadyPublicImageMissingThumbnail() throws Exception {
 		MediaAsset asset = eligibleAsset();
 		when(repository.findById(asset.getId())).thenReturn(Optional.of(asset));

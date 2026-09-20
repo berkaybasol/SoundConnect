@@ -347,8 +347,7 @@ public class MediaUploadVerificationCoordinator {
 					asset.setThumbnailUrl(null);
 				}
 				mediaAssetRepository.save(asset);
-				if (asset.getKind() == MediaKind.IMAGE
-						&& asset.getVisibility() == MediaVisibility.PUBLIC) {
+				if (asset.getKind() == MediaKind.IMAGE) {
 					eventPublisher.publishEvent(new ImageThumbnailRequestedEvent(asset.getId()));
 				}
 			}

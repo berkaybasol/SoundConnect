@@ -75,7 +75,6 @@ public class ImageVariantBackfillScheduler {
 	private java.util.List<UUID> findCandidates(int pageIndex, int batchSize) {
 		return mediaAssetRepository.findIdsMissingThumbnail(
 				MediaKind.IMAGE,
-				MediaVisibility.PUBLIC,
 				MediaStatus.READY,
 				PageRequest.of(pageIndex, batchSize)
 		);

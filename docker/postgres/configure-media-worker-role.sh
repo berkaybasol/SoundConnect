@@ -60,7 +60,7 @@ SELECT format('GRANT SELECT ON TABLE public.tbl_media_asset TO %I', :'worker_use
 \gexec
 SELECT format(
   'GRANT UPDATE (' ||
-  'status, updated_at, playback_url, thumbnail_url, duration_seconds, width, height, streaming_protocol, ' ||
+  'status, updated_at, playback_url, thumbnail_url, thumbnail_storage_key, duration_seconds, width, height, streaming_protocol, ' ||
   'transcode_attempt_token, transcode_lease_until, transcode_attempt_deadline, ' ||
   'transcode_cleanup_not_before, transcode_attempt_count, transcode_retry_pending, ' ||
   'transcode_retain_source_after_cleanup' ||

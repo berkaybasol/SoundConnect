@@ -38,6 +38,35 @@ class MediaAssetRepositoryTest {
 	MediaAssetRepository repo;
 
 	@Test
+	void protectedImageVariant_recoverySelectsOnlyImmutableMissingAndCasFencesDeletion() {
+		UUID owner = UUID.randomUUID();
+		MediaAsset ready = save(owner, MediaKind.IMAGE, MediaVisibility.PRIVATE, MediaStatus.READY);
+		String source = "protected/private-verified/media/" + ready.getId() + "/source.jpg";
+		String thumbnail = source.replace("source.jpg", "thumbnail.jpg");
+		ready.setStorageKey(source);
+		repo.saveAndFlush(ready);
+		MediaAsset mutable = save(owner, MediaKind.IMAGE, MediaVisibility.PRIVATE, MediaStatus.READY);
+		mutable.setStorageKey("protected/media/" + mutable.getId() + "/source.jpg");
+		repo.saveAndFlush(mutable);
+		MediaAsset deleting = save(owner, MediaKind.IMAGE, MediaVisibility.PRIVATE, MediaStatus.DELETION_PENDING);
+		String deletingKey = "protected/private-verified/media/" + deleting.getId() + "/source.jpg";
+		deleting.setStorageKey(deletingKey);
+		repo.saveAndFlush(deleting);
+
+		assertThat(repo.findIdsMissingThumbnail(MediaKind.IMAGE, MediaStatus.READY, PageRequest.of(0, 10)))
+				.containsExactly(ready.getId());
+		assertThat(repo.attachProtectedImageThumbnailIfEligible(ready.getId(), source, thumbnail, 1600, 900)).isOne();
+		assertThat(repo.attachProtectedImageThumbnailIfEligible(ready.getId(), source, thumbnail, 1600, 900)).isZero();
+		assertThat(repo.attachProtectedImageThumbnailIfEligible(deleting.getId(), deletingKey,
+				deletingKey.replace("source.jpg", "thumbnail.jpg"), 1600, 900)).isZero();
+		MediaAsset attached = repo.findById(ready.getId()).orElseThrow();
+		assertThat(attached.getThumbnailStorageKey()).isEqualTo(thumbnail);
+		assertThat(attached.getThumbnailUrl()).isNull();
+		assertThat(attached.getStorageKey()).isEqualTo(source);
+		assertThat(repo.findIdsMissingThumbnail(MediaKind.IMAGE, MediaStatus.READY, PageRequest.of(0, 10))).isEmpty();
+	}
+
+	@Test
 	void claimQueuedTranscode_isAtomicAndIdempotent() {
 		MediaAsset queued = save(
 				UUID.randomUUID(), MediaKind.VIDEO, MediaVisibility.PUBLIC, MediaStatus.TRANSCODE_QUEUED);

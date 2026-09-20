@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
+import com.berkayb.soundconnect.modules.media.storage.StorageObjectKeys;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,7 +27,15 @@ public class ImageVariantBackfillFinalizer {
 			String expectedSourceKey,
 			ImageThumbnailResult result
 	) {
-		int attached = mediaAssetRepository.attachImageThumbnailIfEligible(
+		boolean protectedImage = StorageObjectKeys.isPrivateVerified(expectedSourceKey);
+		if (protectedImage && (result.thumbnailUrl() != null
+				|| !ImageThumbnailService.protectedThumbnailKeyFor(expectedSourceKey).equals(result.thumbnailKey()))) {
+			throw new IllegalArgumentException("Protected thumbnail must belong to the immutable source");
+		}
+		int attached = protectedImage
+				? mediaAssetRepository.attachProtectedImageThumbnailIfEligible(
+						assetId, expectedSourceKey, result.thumbnailKey(), result.sourceWidth(), result.sourceHeight())
+				: mediaAssetRepository.attachImageThumbnailIfEligible(
 				assetId,
 				MediaKind.IMAGE,
 				MediaVisibility.PUBLIC,
@@ -57,18 +66,26 @@ public class ImageVariantBackfillFinalizer {
 	) {
 		return asset != null
 				&& asset.getKind() == MediaKind.IMAGE
-				&& asset.getVisibility() == MediaVisibility.PUBLIC
+				&& (asset.getVisibility() == MediaVisibility.PUBLIC
+						&& !StorageObjectKeys.isProtected(expectedSourceKey)
+						&& Objects.equals(result.thumbnailUrl(), asset.getThumbnailUrl())
+					|| asset.getVisibility() == MediaVisibility.PRIVATE
+						&& StorageObjectKeys.isPrivateVerified(expectedSourceKey)
+						&& Objects.equals(result.thumbnailKey(), asset.getThumbnailStorageKey()))
 				&& asset.getStatus() == MediaStatus.READY
-				&& expectedSourceKey.equals(asset.getStorageKey())
-				&& Objects.equals(result.thumbnailUrl(), asset.getThumbnailUrl());
+				&& expectedSourceKey.equals(asset.getStorageKey());
 	}
 
 	static boolean isEligible(MediaAsset asset) {
 		return asset != null
 				&& asset.getKind() == MediaKind.IMAGE
-				&& asset.getVisibility() == MediaVisibility.PUBLIC
 				&& asset.getStatus() == MediaStatus.READY
-				&& !StringUtils.hasText(asset.getThumbnailUrl())
-				&& StringUtils.hasText(asset.getStorageKey());
+				&& StringUtils.hasText(asset.getStorageKey())
+				&& (asset.getVisibility() == MediaVisibility.PUBLIC
+						&& !StorageObjectKeys.isProtected(asset.getStorageKey())
+						&& !StringUtils.hasText(asset.getThumbnailUrl())
+						|| asset.getVisibility() == MediaVisibility.PRIVATE
+						&& StorageObjectKeys.isPrivateVerified(asset.getStorageKey())
+						&& asset.getThumbnailStorageKey() == null);
 	}
 }

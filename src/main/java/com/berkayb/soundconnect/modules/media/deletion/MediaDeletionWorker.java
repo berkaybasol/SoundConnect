@@ -94,10 +94,13 @@ public class MediaDeletionWorker {
 			}
 		}
 		if (target.kind() == MediaKind.IMAGE
-				&& target.visibility() == MediaVisibility.PUBLIC
+				&& (target.visibility() == MediaVisibility.PUBLIC
+						|| StorageObjectKeys.isPrivateVerified(target.storageKey()))
 				&& StringUtils.hasText(target.storageKey())) {
 			try {
-				String thumbnailKey = ImageThumbnailService.thumbnailKeyFor(target.storageKey());
+				String thumbnailKey = target.visibility() == MediaVisibility.PRIVATE
+						? ImageThumbnailService.protectedThumbnailKeyFor(target.storageKey())
+						: ImageThumbnailService.thumbnailKeyFor(target.storageKey());
 				deletionFailure = deleteObject(thumbnailKey, deletionFailure);
 			} catch (RuntimeException invalidKey) {
 				deletionFailure = combine(deletionFailure, invalidKey);
@@ -152,8 +155,7 @@ public class MediaDeletionWorker {
 			// the migration without the exact deadline. Use the maximum accepted
 			// window, never a possibly shortened current configuration.
 			grace = Duration.ofDays(7);
-		} else if (target.kind() == MediaKind.IMAGE
-				&& target.visibility() == MediaVisibility.PUBLIC) {
+		} else if (target.kind() == MediaKind.IMAGE) {
 			grace = Duration.ofHours(1);
 		}
 		if (grace == null) return target.uploadVerificationCleanupNotBefore();

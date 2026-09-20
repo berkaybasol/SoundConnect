@@ -35,6 +35,11 @@ jobs:
       - name: Run backend tests
         run: ./gradlew clean test --no-daemon --stacktrace
 
+      - name: Require executed marketplace PostgreSQL and security coverage
+        run: |
+          python3 scripts/test_verify_marketplace_test_reports.py
+          python3 scripts/verify_marketplace_test_reports.py build/test-results/test
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

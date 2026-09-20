@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.engagement.service.MediaEngagementCleanu
 import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.image.ImageThumbnailService;
 import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.image.ImageThumbnailRequestedEvent;
@@ -21,6 +22,7 @@ import com.berkayb.soundconnect.modules.media.storage.StorageObjectKeys;
 import com.berkayb.soundconnect.modules.media.storage.PresignedUploadWriteWindow;
 import com.berkayb.soundconnect.modules.media.transcode.MediaTranscodeQueuedEvent;
 import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess;
+import com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaAccess;
 import com.berkayb.soundconnect.modules.media.verification.MediaUploadVerificationCoordinator;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
@@ -50,6 +52,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -80,6 +83,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		return mediaAssetRepository.findAllById(mediaAssetIds.stream().distinct().toList()).stream()
 				.filter(asset -> asset.getStatus() == MediaStatus.READY)
 				.filter(asset -> asset.getVisibility() == MediaVisibility.PUBLIC)
+				.filter(asset -> asset.getOwnerType() != MediaOwnerType.MARKETPLACE)
 				.filter(MediaContentAudiencePolicy::canRead)
 				.filter(asset -> readableIds.contains(asset.getId()))
 				.filter(asset -> displayUrlOrNull(asset) != null)
@@ -114,7 +118,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		requireCurrentAudience(mediaAssetId);
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
-		if (asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC
+		if (asset.getOwnerType() == MediaOwnerType.MARKETPLACE || asset.getStatus() != MediaStatus.READY || asset.getVisibility() != MediaVisibility.PUBLIC
 				|| !MediaContentAudiencePolicy.canRead(asset)) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
@@ -151,7 +155,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		MediaAsset asset = mediaAssetRepository.findById(mediaAssetId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND));
 		boolean announcement = asset.getOwnerType() == MediaOwnerType.PROMOTION;
-		if (announcement) {
+		if (asset.getOwnerType() == MediaOwnerType.MARKETPLACE) {
+			marketplaceMediaAccess.requireMediaAccess(actingUserId, asset.getOwnerId(), asset.getId());
+		} else if (announcement) {
 			announcementAccess.requireMediaAccess(actingUserId, asset.getOwnerId(), asset.getId());
 		} else if (!canActForOwner(actingUserId, asset.getOwnerType(), asset.getOwnerId())) {
 			// Keep protected object identifiers non-enumerable across principals.
@@ -159,6 +165,10 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		}
 		if (asset.getStatus() != MediaStatus.READY) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_READY);
+		}
+		if (asset.getOwnerType() == MediaOwnerType.MARKETPLACE
+				&& (asset.getVisibility() != MediaVisibility.PRIVATE || asset.getKind() != MediaKind.IMAGE)) {
+			throw new SoundConnectException(ErrorType.MEDIA_ASSET_STATE_INVALID);
 		}
 		if (asset.getVisibility() == MediaVisibility.PUBLIC
 				|| asset.getKind() == MediaKind.VIDEO && (!announcement || asset.getStreamingProtocol() != MediaStreamingProtocol.PROGRESSIVE)
@@ -170,6 +180,13 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 		StorageAccessUrl accessUrl = storageClient.createPresignedGetUrl(playbackKey);
 		StorageAccessUrl thumbnail = announcement && asset.getKind() == MediaKind.VIDEO
 				? storageClient.createPresignedGetUrl(StorageObjectKeys.protectedKey(mediaPolicy.buildHlsPrefix(asset.getId())) + "/thumbnail.jpg") : null;
+		if (asset.getKind() == MediaKind.IMAGE && StorageObjectKeys.isPrivateVerified(asset.getStorageKey())
+				&& Objects.equals(asset.getThumbnailStorageKey(),
+						ImageThumbnailService.protectedThumbnailKeyFor(asset.getStorageKey()))) {
+			// No HEAD or processing in the request path: only committed, asset-bound
+			// derivatives can be signed after the exact same ACL as the original.
+			thumbnail = storageClient.createPresignedGetUrl(asset.getThumbnailStorageKey());
+		}
 		return new MediaAccessUrlResponseDto(asset.getId(), accessUrl.url(), accessUrl.expiresAt(),
 				thumbnail == null ? null : thumbnail.url(), thumbnail == null ? null : thumbnail.expiresAt(), asset.getStreamingProtocol());
 	}
@@ -197,7 +214,8 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 
 	private boolean isPubliclyPlayable(MediaAsset asset) {
-		return asset.getStatus() == MediaStatus.READY
+		return asset.getOwnerType() != MediaOwnerType.MARKETPLACE
+				&& asset.getStatus() == MediaStatus.READY
 				&& asset.getVisibility() == MediaVisibility.PUBLIC
 				&& MediaContentAudiencePolicy.canRead(asset)
 				&& StringUtils.hasText(asset.getPlaybackUrl());
@@ -252,6 +270,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private final PresignedUploadWriteWindow presignedUploadWriteWindow;
 	private final MediaDeletionProperties mediaDeletionProperties;
 	private final AnnouncementAccess announcementAccess;
+	private final MarketplaceMediaAccess marketplaceMediaAccess;
 	
 	/**
 	 * Kullanici medya yukleme istegi gonderdiginde bu metod calsiir.
@@ -275,6 +294,12 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 			MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes,
 			String originalFileName, MediaContentAudience contentAudience) {
 		assertCanActForOwner(actingUserId, ownerType, ownerId);
+		if (ownerType == MediaOwnerType.MARKETPLACE) {
+			marketplaceMediaAccess.requireUploadOwner(actingUserId, ownerId);
+			if (visibility != MediaVisibility.PRIVATE || kind != MediaKind.IMAGE) {
+				throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_INVALID_REQUEST);
+			}
+		}
 		if (ownerType == MediaOwnerType.PROMOTION) {
 			announcementAccess.requireUploadOwner(actingUserId, ownerId);
 			if (visibility != MediaVisibility.PRIVATE || !java.util.Set.of(MediaKind.IMAGE, MediaKind.VIDEO).contains(kind)) {
@@ -393,6 +418,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional
 	@Override
 	public Page<MediaAsset> listPublicByOwner(MediaOwnerType ownerType, UUID ownerId, Pageable pageable) {
+		if (ownerType == MediaOwnerType.MARKETPLACE) return Page.empty(pageable);
 		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
 			return Page.empty(pageable);
 		}
@@ -408,6 +434,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	@Transactional
 	@Override
 	public Page<MediaAsset> listPublicByOwnerAndKind(MediaOwnerType ownerType, UUID ownerId, MediaKind kind, Pageable pageable) {
+		if (ownerType == MediaOwnerType.MARKETPLACE) return Page.empty(pageable);
 		if (lockAndIsHiddenGhostProfileMedia(ownerType, ownerId)) {
 			return Page.empty(pageable);
 		}
@@ -470,8 +497,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 			return deletionRequestedAt.plus(
 					mediaDeletionProperties.getPublicVideoProducerGrace());
 		}
-		if (asset.getKind() == MediaKind.IMAGE
-				&& asset.getVisibility() == MediaVisibility.PUBLIC) {
+		if (asset.getKind() == MediaKind.IMAGE) {
 			return deletionRequestedAt.plus(
 					mediaDeletionProperties.getPublicImageProducerGrace());
 		}
@@ -484,6 +510,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 
 	private void assertSupportedVisibility(MediaKind kind, MediaVisibility visibility, MediaOwnerType ownerType) {
+		if (ownerType == MediaOwnerType.MARKETPLACE && (kind != MediaKind.IMAGE || visibility != MediaVisibility.PRIVATE)) {
+			throw new SoundConnectException(ErrorType.MEDIA_UPLOAD_INVALID_REQUEST);
+		}
 		// Private HLS requires signed manifests and every referenced segment. Until
 		// that distribution contract exists, accepting it would create public leaks
 		// or broken playback, so it is deliberately fail-closed.
@@ -502,6 +531,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private boolean canActForOwner(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId) {
 		return switch (ownerType) {
 			case PROMOTION -> announcementAccess.canManage(actingUserId);
+			case MARKETPLACE -> marketplaceMediaAccess.canManage(actingUserId, ownerId);
 			case USER -> ownerId.equals(actingUserId);
 			case BAND -> bandMemberRepository.findByBandIdAndUserId(ownerId, actingUserId)
 					.map(member -> member.getStatus() == BandMemberShipStatus.ACTIVE

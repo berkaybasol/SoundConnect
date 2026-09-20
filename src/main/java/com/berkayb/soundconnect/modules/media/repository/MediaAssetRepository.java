@@ -21,6 +21,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
+	interface MarketplaceOrphan {
+		UUID getAssetId();
+		UUID getListingId();
+	}
+
+	/**
+	 * Bind the cutoff through the same Hibernate LocalDateTime/JDBC timezone path
+	 * that writes the audit field. Raw JDBC Timestamp binding can shift this
+	 * candidate window when the JVM timezone differs from hibernate.jdbc.time_zone.
+	 */
+	@Query(value = """
+			select m.id as "assetId", m.owner_id as "listingId" from tbl_media_asset m
+			where m.owner_type='MARKETPLACE' and m.status='READY' and m.created_at<:cutoff
+			  and not exists(select 1 from tbl_marketplace_listing_photo p where p.media_asset_id=m.id)
+			  and not exists(select 1 from tbl_marketplace_report_photo p where p.media_asset_id=m.id)
+			order by m.created_at,m.id
+			""", nativeQuery = true)
+	List<MarketplaceOrphan> findMarketplaceOrphansBefore(@Param("cutoff") LocalDateTime cutoff, Pageable pageable);
+
 	/** Scalar audience read avoids an OSIV-cached asset reviving changed content. */
 	@Query(value = """
 			select id from tbl_media_asset where id in (:ids)
@@ -68,15 +87,17 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 	@Query("""
 			select asset.id from MediaAsset asset
 			where asset.kind = :kind
-			  and asset.visibility = :visibility
 			  and asset.status = :status
-			  and (asset.thumbnailUrl is null or trim(asset.thumbnailUrl) = '')
+			  and ((asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PUBLIC
+			        and (asset.thumbnailUrl is null or trim(asset.thumbnailUrl) = ''))
+			    or (asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE
+			        and asset.storageKey like 'protected/private-verified/%'
+			        and asset.thumbnailStorageKey is null))
 			  and asset.storageKey is not null
 			order by asset.createdAt asc, asset.id asc
 			""")
 	List<UUID> findIdsMissingThumbnail(
 			@Param("kind") MediaKind kind,
-			@Param("visibility") MediaVisibility visibility,
 			@Param("status") MediaStatus status,
 			Pageable pageable
 	);
@@ -102,6 +123,28 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			@Param("status") MediaStatus status,
 			@Param("expectedSourceKey") String expectedSourceKey,
 			@Param("thumbnailUrl") String thumbnailUrl,
+			@Param("sourceWidth") Integer sourceWidth,
+			@Param("sourceHeight") Integer sourceHeight
+	);
+
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update MediaAsset asset
+			set asset.thumbnailStorageKey = :thumbnailKey,
+			    asset.width = :sourceWidth, asset.height = :sourceHeight,
+			    asset.updatedAt = CURRENT_TIMESTAMP
+			where asset.id = :assetId
+			  and asset.kind = com.berkayb.soundconnect.modules.media.enums.MediaKind.IMAGE
+			  and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE
+			  and asset.status = com.berkayb.soundconnect.modules.media.enums.MediaStatus.READY
+			  and asset.storageKey = :expectedSourceKey
+			  and asset.storageKey like 'protected/private-verified/%'
+			  and asset.thumbnailStorageKey is null
+			""")
+	int attachProtectedImageThumbnailIfEligible(
+			@Param("assetId") UUID assetId,
+			@Param("expectedSourceKey") String expectedSourceKey,
+			@Param("thumbnailKey") String thumbnailKey,
 			@Param("sourceWidth") Integer sourceWidth,
 			@Param("sourceHeight") Integer sourceHeight
 	);

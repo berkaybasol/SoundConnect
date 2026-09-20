@@ -7,7 +7,7 @@ public enum MediaContentAudience {
 
     public static MediaContentAudience forOwner(MediaOwnerType ownerType, MediaContentAudience requested) {
         // Collab is a typed business publication; it has no MediaOwnerType/attachment today.
-        if (ownerType == MediaOwnerType.STUDIO_PROFILE) return BACKSTAGE;
+        if (ownerType == MediaOwnerType.STUDIO_PROFILE || ownerType == MediaOwnerType.MARKETPLACE) return BACKSTAGE;
         return requested == null ? MAINSTAGE : requested;
     }
 }

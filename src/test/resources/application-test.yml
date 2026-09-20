@@ -197,6 +197,10 @@ rabbitmq:
       videoHlsRequestDlq: video.hls.request.dlq
     listenerConcurrency: 1
 
+marketplace:
+  media-cleanup:
+    enabled: false
+
 logging:
   level:
     root: INFO
