@@ -131,8 +131,9 @@ public class MarketplaceRepository {
             if(filter.minPriceMinor()!=null) {where.append(" and l.price_minor>=:min");args.addValue("min",filter.minPriceMinor());}
             if(filter.maxPriceMinor()!=null) {where.append(" and l.price_minor<=:max");args.addValue("max",filter.maxPriceMinor());}
             if(filter.q()!=null && !filter.q().isBlank()) {
-                where.append(" and (lower(l.title) like :q escape '\\' or lower(l.brand) like :q escape '\\' or lower(l.model) like :q escape '\\')");
-                args.addValue("q","%"+escapeLike(filter.q().strip().toLowerCase(Locale.ROOT))+"%");
+                // Fold both operands in PostgreSQL so locale-sensitive letters use the same rules.
+                where.append(" and (lower(l.title) like lower(:q) escape '\\' or lower(l.brand) like lower(:q) escape '\\' or lower(l.model) like lower(:q) escape '\\')");
+                args.addValue("q","%"+escapeLike(filter.q().strip())+"%");
             }
         }
         long total=Objects.requireNonNull(jdbc.queryForObject("select count(*) "+FROM+where,args,Long.class));

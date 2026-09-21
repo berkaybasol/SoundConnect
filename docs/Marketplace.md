@@ -44,6 +44,7 @@ Apply the additive migration first, then deploy the API deletion/access changes 
 
 - Product condition: `NEW` or `USED`; no cosmetic/working condition fields.
 - Publication requires title 5–120 characters, description 10–4000, an active leaf category with active parent, positive TRY price, district, delivery preference and 1–8 ready private images.
+- Text limits count Unicode code points consistently in client validation, API validation and PostgreSQL; supplementary characters such as emoji count once.
 - Price is integer kuruş, from 1 to 100,000,000,000. Brand/model are optional bounded strings.
 - District refers to existing location data; its city is derived. Combined city/district search filters must agree.
 - Drafts may be incomplete. Published and withdrawn edits must remain complete.
@@ -51,6 +52,7 @@ Apply the additive migration first, then deploy the API deletion/access changes 
 - Initial publication time is preserved through edits and republishing. Default discovery is descending publication time and ID. Price sorting also has a stable ID tie-breaker.
 - Limits: 30 drafts and 20 published listings per account, with account locks preventing concurrent requests from exceeding the limits.
 - Pages accept sizes 1–50 and page numbers 0–1000. Text search escapes SQL wildcard characters.
+- Text search applies PostgreSQL case conversion to both the query and title/brand/model. Matching follows the database locale, including Turkish `İ`; it does not promise accent-insensitive matching.
 - Draft deletion first detaches photo references, then requests durable media deletion and deletes the listing in the same transaction. Saved draft photos are not removed by an arbitrary draft-expiry policy.
 
 ## APIs

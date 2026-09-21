@@ -17,6 +17,9 @@ import com.berkayb.soundconnect.modules.profile.shared.ownership.ProfileOwnershi
 import com.berkayb.soundconnect.shared.exception.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -305,6 +308,89 @@ class MarketplacePostgresTest {
         assertThat(tx(()->service.discovery(buyer,null,0,20)).content()).isEmpty();
         assertThat(tx(()->service.saved(buyer,0,20)).content()).isEmpty();
         denied(()->tx(()->service.detail(buyer,cheap.id())),ErrorType.MARKETPLACE_NOT_FOUND);
+    }
+    @ParameterizedTest @ValueSource(strings={"title","brand","model"})
+    void turkishSearchUsesDatabaseCaseFoldingForBothOperands(String field) {
+        Map<UUID,String> values=new LinkedHashMap<>();
+        for(String text:List.of("İkinci","ikinci","Ikinci","ıkıncı")) {
+            Listing listing=published("Search control guitar",1000L);
+            jdbc.update("update tbl_marketplace_listing set "+field+"=:text where id=:id",Map.of("text",text,"id",listing.id()));
+            values.put(listing.id(),text);
+        }
+        for(String query:values.values()) {
+            // The database locale defines equivalence; Java's Locale.ROOT must not alter it.
+            List<UUID> expected=values.entrySet().stream().filter(entry->Boolean.TRUE.equals(jdbc.queryForObject(
+                    "select lower(:stored)=lower(:query)",Map.of("stored",entry.getValue(),"query",query),Boolean.class)))
+                    .map(Map.Entry::getKey).toList();
+            Filter filter=new Filter(query,null,null,null,null,null,null,null);
+            var page=tx(()->service.discovery(buyer,filter,0,20));
+            assertThat(page.content()).as("%s search for %s",field,query).extracting(Listing::id)
+                    .containsExactlyInAnyOrderElementsOf(expected);
+            assertThat(page.totalElements()).isEqualTo(expected.size());
+        }
+    }
+    @Test void turkishSearchStillTreatsPercentUnderscoreAndBackslashAsLiteralText() {
+        Listing literal=published("İkinci 50%_\\ Guitar",1000L);
+        published("İkinci 50abcX\\ Guitar",1000L);
+        published("İkinci 50%_ Guitar",1000L);
+        Filter filter=new Filter("  İkinci 50%_\\  ",null,null,null,null,null,null,null);
+        assertThat(tx(()->service.discovery(buyer,filter,0,20)).content()).extracting(Listing::id)
+                .containsExactly(literal.id());
+    }
+    @ParameterizedTest @CsvSource({"3,10","4,10","5,9"})
+    void publicationRejectsTooFewUnicodeCodePointsBeforeDatabaseWrite(int titleLength,int descriptionLength) {
+        String emoji="\uD83C\uDFB8";
+        Listing draft=readyDraft(emoji.repeat(titleLength));
+        Update content=new Update(draft.version(),draft.title(),emoji.repeat(descriptionLength),category,
+                null,null,Condition.USED,1000L,district,draft.photos().stream().map(Photo::assetId).toList(),false,Delivery.PICKUP);
+        Listing edited=tx(()->service.update(seller,draft.id(),content));
+        denied(()->tx(()->service.publish(seller,edited.id(),new Version(edited.version()))),ErrorType.MARKETPLACE_INCOMPLETE);
+        Listing unchanged=tx(()->service.detail(seller,edited.id()));
+        assertThat(unchanged.status()).isEqualTo(Status.DRAFT);
+        assertThat(unchanged.version()).isEqualTo(edited.version());
+    }
+    @Test void unicodeListingLimitsMatchDatabaseAtMinimumAndMaximumBoundaries() {
+        String emoji="\uD83C\uDFB8";
+        Listing draft=readyDraft(emoji.repeat(5));
+        List<UUID> photos=draft.photos().stream().map(Photo::assetId).toList();
+        Listing minimum=tx(()->service.update(seller,draft.id(),new Update(draft.version(),emoji.repeat(5),emoji.repeat(10),
+                category,null,null,Condition.USED,1000L,district,photos,false,Delivery.PICKUP)));
+        Listing published=tx(()->service.publish(seller,minimum.id(),new Version(minimum.version())));
+        Listing maximum=tx(()->service.update(seller,published.id(),new Update(published.version(),emoji.repeat(120),emoji.repeat(4000),
+                category,emoji.repeat(80),emoji.repeat(100),Condition.USED,1000L,district,photos,false,Delivery.PICKUP)));
+        assertThat(maximum.title()).isEqualTo(emoji.repeat(120));
+        assertThat(maximum.description()).isEqualTo(emoji.repeat(4000));
+        assertThat(maximum.brand()).isEqualTo(emoji.repeat(80));
+        assertThat(maximum.model()).isEqualTo(emoji.repeat(100));
+        for(Update oversized:List.of(
+                new Update(maximum.version(),emoji.repeat(121),maximum.description(),category,maximum.brand(),maximum.model(),Condition.USED,1000L,district,photos,false,Delivery.PICKUP),
+                new Update(maximum.version(),maximum.title(),emoji.repeat(4001),category,maximum.brand(),maximum.model(),Condition.USED,1000L,district,photos,false,Delivery.PICKUP),
+                new Update(maximum.version(),maximum.title(),maximum.description(),category,emoji.repeat(81),maximum.model(),Condition.USED,1000L,district,photos,false,Delivery.PICKUP),
+                new Update(maximum.version(),maximum.title(),maximum.description(),category,maximum.brand(),emoji.repeat(101),Condition.USED,1000L,district,photos,false,Delivery.PICKUP))) {
+            denied(()->tx(()->service.update(seller,maximum.id(),oversized)),ErrorType.MARKETPLACE_INVALID);
+        }
+        denied(()->tx(()->service.update(seller,maximum.id(),new Update(maximum.version(),emoji.repeat(4),maximum.description(),
+                category,null,null,Condition.USED,1000L,district,photos,false,Delivery.PICKUP))),ErrorType.MARKETPLACE_INCOMPLETE);
+        assertThat(tx(()->service.detail(seller,maximum.id())).version()).isEqualTo(maximum.version());
+        assertThat(tx(()->service.discovery(buyer,new Filter(emoji.repeat(100),null,null,null,null,null,null,null),0,20)).content())
+                .extracting(Listing::id).containsExactly(maximum.id());
+        denied(()->tx(()->service.discovery(buyer,new Filter(emoji.repeat(101),null,null,null,null,null,null,null),0,20)),ErrorType.MARKETPLACE_INVALID);
+    }
+    @Test void reportAndReviewUnicodeLimitsRejectShortNotesBeforeDatabaseWrite() {
+        String emoji="\uD83C\uDFB8";
+        Listing listing=published("Reportable Unicode guitar",1000L);
+        denied(()->tx(()->service.report(buyer,listing.id(),new Report(ReportReason.OTHER,emoji.repeat(3),UUID.randomUUID()))),ErrorType.MARKETPLACE_INVALID);
+        denied(()->tx(()->service.report(buyer,listing.id(),new Report(ReportReason.OTHER,emoji.repeat(1001),UUID.randomUUID()))),ErrorType.MARKETPLACE_INVALID);
+        ReportReceipt receipt=tx(()->service.report(buyer,listing.id(),new Report(ReportReason.OTHER,emoji.repeat(1000),UUID.randomUUID())));
+        for(String invalid:List.of("   "," "+emoji.repeat(4)+" ",emoji.repeat(1001))) {
+            denied(()->tx(()->service.review(admin,receipt.id(),new Review(0L,ReportDecision.DISMISS,invalid))),ErrorType.MARKETPLACE_INVALID);
+        }
+        assertThat(repository.report(receipt.id(),false).orElseThrow().version()).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from tbl_marketplace_report_audit",Map.of(),Long.class)).isZero();
+        AdminReport resolved=tx(()->service.review(admin,receipt.id(),new Review(0L,ReportDecision.DISMISS,emoji.repeat(1000))));
+        assertThat(resolved.description()).isEqualTo(emoji.repeat(1000));
+        assertThat(resolved.resolutionNote()).isEqualTo(emoji.repeat(1000));
+        assertThat(resolved.status()).isEqualTo(ReportStatus.DISMISSED);
     }
     @Test void reportRetrySnapshotsPhotosAndModerationIsAuditedWithFreshPermission() {
         Listing listing=published("Reportable guitar",12345L);

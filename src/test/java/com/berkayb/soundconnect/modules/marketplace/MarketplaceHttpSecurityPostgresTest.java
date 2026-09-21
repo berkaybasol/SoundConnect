@@ -212,6 +212,32 @@ class MarketplaceHttpSecurityPostgresTest {
         verifyNoInteractions(storage);
     }
 
+    @Test void unicodeHttpTitleUsesDatabaseCharacterLimitsAndReturnsDomainValidationOnPublish() throws Exception {
+        Actor owner=actor("MUSICIAN");
+        UUID listing=UUID.fromString(draft(owner,UUID.randomUUID()).path("id").asText());
+        UUID category=jdbc.queryForObject("select id from tbl_marketplace_category where code='ELECTRIC_GUITAR'",UUID.class);
+        String emoji="\uD83C\uDFB8";
+        var body=json.createObjectNode().put("expectedVersion",0).put("title",emoji.repeat(120))
+                .put("description",emoji.repeat(10)).put("categoryId",category.toString()).put("condition","USED")
+                .put("priceMinor",1000).put("districtId",district.getId().toString()).put("negotiable",false)
+                .put("deliveryMethod","PICKUP");
+        body.putArray("photoIds").add(photo(listing).getId().toString());
+        mvc.perform(auth(put(BASE+"/listings/"+listing).contentType("application/json").content(json.writeValueAsString(body)),owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.title").value(emoji.repeat(120)))
+                .andExpect(jsonPath("$.data.version").value(1));
+        body.put("expectedVersion",1).put("title",emoji.repeat(121));
+        mvc.perform(auth(put(BASE+"/listings/"+listing).contentType("application/json").content(json.writeValueAsString(body)),owner))
+                .andExpect(status().isBadRequest());
+        body.put("title",emoji.repeat(3));
+        mvc.perform(auth(put(BASE+"/listings/"+listing).contentType("application/json").content(json.writeValueAsString(body)),owner))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.version").value(2));
+        mvc.perform(auth(post(BASE+"/listings/"+listing+"/publish").contentType("application/json")
+                .content("{\"expectedVersion\":2}"),owner)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(9945));
+        mvc.perform(auth(get(BASE+"/listings/"+listing),owner)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT")).andExpect(jsonPath("$.data.version").value(2));
+    }
+
     @Test void privateOriginalAndThumbnailRequireCurrentListingVisibilityAndAttachment() throws Exception {
         Actor owner=actor("MUSICIAN"),buyer=actor("STUDIO"),listener=actor("LISTENER");
         UUID listing=UUID.fromString(draft(owner,UUID.randomUUID()).path("id").asText());

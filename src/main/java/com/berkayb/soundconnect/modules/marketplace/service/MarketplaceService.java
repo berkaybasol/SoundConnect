@@ -128,7 +128,7 @@ public class MarketplaceService {
         requireMutation(viewer);
         if(request==null || request.clientRequestId()==null || request.reason()==null) throw invalid();
         String description=clean(request.description(),1000);
-        if(request.reason()==ReportReason.OTHER && (description==null || description.length()<5)) throw invalid();
+        if(request.reason()==ReportReason.OTHER && (description==null || textLength(description)<5)) throw invalid();
         Report normalized=new Report(request.reason(),description,request.clientRequestId());
         Optional<AdminReport> replay=repository.reportReplay(viewer,request.clientRequestId());
         if(replay.isPresent()) {
@@ -153,7 +153,7 @@ public class MarketplaceService {
         access.requireModerator(viewer);
         if(request==null || request.decision()==null) throw invalid();
         String note=clean(request.resolutionNote(),1000);
-        if(note==null || note.length()<5) throw invalid();
+        if(note==null || textLength(note)<5) throw invalid();
         AdminReport found=repository.report(reportId,false).orElseThrow(()->failure(ErrorType.MARKETPLACE_REPORT_NOT_FOUND));
         // All review paths lock listing before report, matching reporter/editor asset lock order.
         if(found.listingId()!=null) repository.find(found.listingId(),viewer,true);
@@ -221,7 +221,7 @@ public class MarketplaceService {
             if(!category.active() || category.parentId()==null || repository.category(category.parentId()).filter(CategoryRow::active).isEmpty()) throw invalid();
         }
         if(value.districtId()!=null) locations.getDistrict(value.districtId());
-        if(complete && (value.title()==null || value.title().length()<5 || value.description()==null || value.description().length()<10
+        if(complete && (value.title()==null || textLength(value.title())<5 || value.description()==null || textLength(value.description())<10
                 || value.categoryId()==null || value.condition()==null || value.priceMinor()==null || value.districtId()==null
                 || value.deliveryMethod()==null || value.photoIds().isEmpty())) throw failure(ErrorType.MARKETPLACE_INCOMPLETE);
     }
@@ -238,9 +238,11 @@ public class MarketplaceService {
     static String clean(String value,int max) {
         if(value==null) return null;
         String cleaned=value.strip();
-        if(cleaned.length()>max || cleaned.indexOf('\0')>=0) throw invalid();
+        if(textLength(cleaned)>max || cleaned.indexOf('\0')>=0) throw invalid();
         return cleaned.isEmpty()?null:cleaned;
     }
+    // Match PostgreSQL char_length/varchar limits, including supplementary Unicode characters.
+    private static int textLength(String value) {return value.codePointCount(0,value.length());}
     private static void validatePage(int page,int size) {if(page<0 || page>1000 || size<1 || size>50) throw invalid();}
     private static SoundConnectException invalid(){return failure(ErrorType.MARKETPLACE_INVALID);}
     private static SoundConnectException failure(ErrorType type){return new SoundConnectException(type);}
