@@ -56,6 +56,7 @@ public class EventServiceImpl implements EventService{
 	private final BandRepository bandRepository;
 	private final VenueRepository venueRepository;
 	private final EventPerformerRequestService eventPerformerRequestService;
+	private final com.berkayb.soundconnect.modules.event.plan.EventPlanLifecycle eventPlanLifecycle;
 	
 	@Override
 	public List<EventResponseDto> getWeeklyEventsByVenue(UUID venueId, LocalDate startDate, LocalDate endDate) {
@@ -83,6 +84,7 @@ public class EventServiceImpl implements EventService{
 	@Override
 	@Transactional
 	public EventResponseDto createEvent(UUID createdByUserId, EventCreateRequestDto dto) {
+		validateSchedule(dto);
 		log.info("[EVENT] Yeni etkinlik oluşturma isteği alındı. title={}", dto.title());
 		
 		// eventi olusturan kullaniciyi dogrula
@@ -118,13 +120,6 @@ public class EventServiceImpl implements EventService{
 		
 		if (providedCount > 1) {
 			throw new SoundConnectException(ErrorType.INVALID_PERFORMER_SELECTION);
-		}
-		
-		// saat araligi dogrulamasi
-		if (dto.endTime() != null && !dto.endTime().isAfter(dto.startTime())) {
-			log.warn("[EVENT] Gecersiz saat araligi. startTime={}, endTime={}",
-			         dto.startTime(), dto.endTime());
-			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		}
 		
 		MusicianProfile musician = null;
@@ -192,6 +187,19 @@ public class EventServiceImpl implements EventService{
 		
 	}
 
+	private void validateSchedule(EventCreateRequestDto dto) {
+		// Keep the schedule representable by every calendar consumer. Hibernate's
+		// java.sql.Time conversion rounds fractional seconds, so accepting them
+		// would return a different schedule after the event is persisted.
+		if (dto == null || dto.eventDate() == null || dto.startTime() == null
+				|| dto.eventDate().getYear() < 1 || dto.eventDate().getYear() > 9999
+				|| dto.startTime().getNano() != 0
+				|| (dto.endTime() != null && (dto.endTime().getNano() != 0
+						|| !dto.endTime().isAfter(dto.startTime())))) {
+			throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+		}
+	}
+
 	private String displayMusicianName(MusicianProfile musician) {
 		if (musician.getUser() != null && StringUtils.hasText(musician.getUser().getUsername())) {
 			return validatedPerformerSnapshot(musician.getUser().getUsername());
@@ -255,6 +263,7 @@ public class EventServiceImpl implements EventService{
 	public void deleteEventById(UUID deletedByUserId, UUID eventId) {
 		// degistirildi: event'i silen kullaniciyi dogrula
 		User deletedByUser = userEntityFinder.getUser(deletedByUserId);
+		eventPlanLifecycle.lockForEventDeletion(eventId);
 		
 		Event event = eventRepository.findByIdForUpdate(eventId)
 		                             .orElseThrow(() -> new SoundConnectException(ErrorType.EVENT_NOT_FOUND));
@@ -267,6 +276,7 @@ public class EventServiceImpl implements EventService{
 			throw new SoundConnectException(ErrorType.EVENT_NOT_FOUND);
 		}
 		
+		eventPlanLifecycle.recordDeletion(eventId);
 		eventPerformerRequestService.deleteForEvent(eventId);
 		eventRepository.delete(event);
 		log.info("Event deleted succesfully: {}", eventId);

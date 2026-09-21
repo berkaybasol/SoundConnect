@@ -36,6 +36,8 @@ $LocalSchemaMigrations = @(
     @{ Name = "Event profile visibility consent"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-event-profile-visibility-consent.sql" },
     @{ Name = "Reciprocal musician events"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-05-reciprocal-musician-events.sql" },
     @{ Name = "Event profile publications"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-06-event-profile-publications.sql" },
+    @{ Name = "Event plans"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-21-event-plans.sql" },
+    @{ Name = "Event management history"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-21-event-management-history.sql" },
     @{ Name = "Band member titles"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-06-band-member-titles.sql" },
     @{ Name = "Band invitation identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-band-invitation-identity.sql" },
     @{ Name = "Notification replay receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-07-notification-replay-receipts.sql" },

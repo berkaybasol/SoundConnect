@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.calendar.repository;
 
 import com.berkayb.soundconnect.modules.event.entity.Event;
+import com.berkayb.soundconnect.modules.event.repository.EventPublicEligibility;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -26,8 +27,8 @@ public interface MusicianCalendarEventRepository extends Repository<Event, UUID>
 			left join event.musicianProfile musician
 			where event.eventDate between :startDate and :endDate
 			  and event.performerApprovalStatus = com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus.APPROVED
-			  and event.eventOrigin = com.berkayb.soundconnect.modules.event.enums.EventOrigin.VENUE
-			  and venue.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+			  and
+			""" + EventPublicEligibility.PREDICATE + """
 			  and ((event.musicianProfile.id = :profileId and event.profileCalendarApproved = true) or (event.band.id in :lockedBandIds and exists (
 			      select publication.id.eventId from EventMemberPublication publication
 			      where publication.id.eventId = event.id and publication.id.musicianProfileId = :profileId and publication.visible = true
@@ -57,8 +58,8 @@ public interface MusicianCalendarEventRepository extends Repository<Event, UUID>
 			left join event.musicianProfile musician
 			where event.id in :ids
 			  and event.performerApprovalStatus = com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus.APPROVED
-			  and event.eventOrigin = com.berkayb.soundconnect.modules.event.enums.EventOrigin.VENUE
-			  and venue.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+			  and
+			""" + EventPublicEligibility.PREDICATE + """
 			  and ((event.musicianProfile.id = :profileId and event.profileCalendarApproved = true) or (event.band.id in :lockedBandIds and exists (
 			      select publication.id.eventId from EventMemberPublication publication
 			      where publication.id.eventId = event.id and publication.id.musicianProfileId = :profileId and publication.visible = true

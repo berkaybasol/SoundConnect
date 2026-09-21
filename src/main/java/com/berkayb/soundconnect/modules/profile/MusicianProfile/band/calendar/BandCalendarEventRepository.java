@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.calendar;
 
 import com.berkayb.soundconnect.modules.event.entity.Event;
+import com.berkayb.soundconnect.modules.event.repository.EventPublicEligibility;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -19,8 +20,8 @@ public interface BandCalendarEventRepository extends Repository<Event, UUID> {
 			and event.eventDate between :startDate and :endDate
 			and event.performerApprovalStatus = com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus.APPROVED
 			and event.profileCalendarApproved = true
-			and event.eventOrigin = com.berkayb.soundconnect.modules.event.enums.EventOrigin.VENUE
-			and event.venue.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
+			and
+			""" + EventPublicEligibility.PREDICATE + """
 			order by event.eventDate, event.startTime, event.id
 			""")
 	Slice<UUID> findApprovedEventIds(@Param("bandId") UUID bandId, @Param("startDate") LocalDate startDate,
@@ -32,8 +33,7 @@ public interface BandCalendarEventRepository extends Repository<Event, UUID> {
 			select event from Event event where event.id in :ids and event.band.id = :bandId
 			and event.performerApprovalStatus = com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus.APPROVED
 			and event.profileCalendarApproved = true
-			and event.eventOrigin = com.berkayb.soundconnect.modules.event.enums.EventOrigin.VENUE
-			and event.venue.status = com.berkayb.soundconnect.modules.venue.enums.VenueStatus.APPROVED
-			""")
+			and
+			""" + EventPublicEligibility.PREDICATE)
 	List<Event> findCalendarDetails(@Param("ids") Collection<UUID> ids, @Param("bandId") UUID bandId);
 }

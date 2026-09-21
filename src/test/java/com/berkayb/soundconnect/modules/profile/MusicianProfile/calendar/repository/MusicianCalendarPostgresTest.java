@@ -30,6 +30,8 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -98,6 +100,50 @@ class MusicianCalendarPostgresTest {
 	@MockitoBean MediaAssetService media;
 	@MockitoBean EventShareUrlBuilder shareUrls;
 	private final LocalDate date = LocalDate.of(2026, 9, 5);
+
+	@ParameterizedTest
+	@ValueSource(strings = {"inactive-owner", "unverified-owner", "wrong-city", "wrong-district"})
+	void publicCalendarsRecheckVenueEligibilityInBothIdAndDetailQueries(String change) {
+		Fixture fixture = fixture();
+		UUID[] ids = tx().execute(status -> {
+			Venue venue = em.find(Venue.class, fixture.venueId());
+			MusicianProfile musician = em.find(MusicianProfile.class, fixture.profileId());
+			Band band = founderBand(em.find(User.class, fixture.userId()));
+			Event direct = event(venue, musician, null, EventPerformerApprovalStatus.APPROVED, "Direct");
+			Event group = event(venue, null, band, EventPerformerApprovalStatus.APPROVED, "Band");
+			memberChoice(group.getId(), fixture.profileId(), true);
+			return new UUID[]{direct.getId(), group.getId(), band.getId()};
+		});
+		var personalIds = tx().execute(status -> events.findApprovedEventIds(fixture.profileId(), date, date,
+				List.of(ids[2]), PageRequest.of(0, 20))).getContent();
+		var groupIds = tx().execute(status -> bandEvents.findApprovedEventIds(ids[2], date, date, PageRequest.of(0, 20))).getContent();
+		assertThat(personalIds).containsExactlyInAnyOrder(ids[0], ids[1]);
+		assertThat(groupIds).containsExactly(ids[1]);
+		tx().executeWithoutResult(status -> {
+			Venue venue = em.find(Venue.class, fixture.venueId());
+			switch (change) {
+				case "inactive-owner" -> venue.getOwner().setStatus(UserStatus.INACTIVE);
+				case "unverified-owner" -> venue.getOwner().setEmailVerified(false);
+				case "wrong-city" -> {
+					City other = City.builder().name("Other " + UUID.randomUUID()).build(); em.persist(other);
+					venue.setCity(other);
+				}
+				case "wrong-district" -> {
+					District other = District.builder().name("Other").city(venue.getCity()).build(); em.persist(other);
+					venue.setDistrict(other);
+				}
+				default -> throw new AssertionError(change);
+			}
+		});
+		// Recheck after the ID page was selected: neither detail route can disclose the now-hidden event.
+		List<Event> personalDetails = tx().execute(status -> events.findCalendarDetails(personalIds, fixture.profileId(), List.of(ids[2])));
+		List<Event> groupDetails = tx().execute(status -> bandEvents.findCalendarDetails(groupIds, ids[2]));
+		assertThat(personalDetails).isEmpty();
+		assertThat(groupDetails).isEmpty();
+		assertThat(tx().execute(status -> events.findApprovedEventIds(fixture.profileId(), date, date,
+				List.of(ids[2]), PageRequest.of(0, 20))).getContent()).isEmpty();
+		assertThat(tx().execute(status -> bandEvents.findApprovedEventIds(ids[2], date, date, PageRequest.of(0, 20))).getContent()).isEmpty();
+	}
 
 	@Test
 	void onlyApprovedDirectAndActiveBandEventsAppearWithTheVenueDtoContract() {

@@ -1,0 +1,12 @@
+// Invoked by scripts/test-event-plans.ps1. Outputs never replace the application's build.
+allprojects {
+    layout.buildDirectory.set(rootProject.layout.projectDirectory.dir('build/event-plan-verification/output'))
+    tasks.withType(Test).configureEach {
+        // Do not load application.yml or its optional .env.local import.
+        systemProperty 'spring.config.location', 'classpath:/application-test.yml'
+        systemProperty 'spring.config.import', ''
+        systemProperty 'spring.profiles.active', 'test'
+        maxParallelForks = 1
+        outputs.upToDateWhen { false }
+    }
+}

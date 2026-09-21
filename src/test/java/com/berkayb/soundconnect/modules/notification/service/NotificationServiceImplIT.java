@@ -17,8 +17,10 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -76,7 +78,19 @@ class NotificationServiceImplIT {
 			NotificationBadgeCacheHelper.class,     // redis helper
 			NotificationMapperImpl.class            // mapstruct impl
 	})
-	static class TestConfig { }
+	static class TestConfig {
+		// Keep this test's cache wiring independent of application-test.yml,
+		// which intentionally disables Redis auto-configuration for other slices.
+		@Bean
+		LettuceConnectionFactory redisConnectionFactory() {
+			return new LettuceConnectionFactory(REDIS.getHost(), REDIS.getMappedPort(6379));
+		}
+
+		@Bean
+		StringRedisTemplate stringRedisTemplate(LettuceConnectionFactory factory) {
+			return new StringRedisTemplate(factory);
+		}
+	}
 	
 	// ---------- Testcontainers: Postgres + Redis ----------
 	@Container
@@ -96,6 +110,9 @@ class NotificationServiceImplIT {
 		r.add("spring.datasource.url", POSTGRES::getJdbcUrl);
 		r.add("spring.datasource.username", POSTGRES::getUsername);
 		r.add("spring.datasource.password", POSTGRES::getPassword);
+		r.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+		r.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
+		r.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
 		// Redis
 		r.add("spring.data.redis.host", REDIS::getHost);
 		r.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));

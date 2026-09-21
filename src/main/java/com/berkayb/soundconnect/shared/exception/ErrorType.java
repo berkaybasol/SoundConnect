@@ -246,6 +246,9 @@ public enum ErrorType {
 	EVENT_PERFORMER_REQUEST_FINALIZED(9253, "Event performer request already finalized", HttpStatus.CONFLICT, "Etkinlik katılım isteği daha önce farklı bir kararla sonuçlandırılmış."),
 	EVENT_PERFORMER_REQUEST_INVALID(9254, "Event performer request is no longer valid", HttpStatus.CONFLICT, "Etkinlik katılım isteği artık geçerli değil."),
 	EVENT_PERFORMER_REQUEST_EXPIRED(9255, "Event invitation decision deadline has passed", HttpStatus.CONFLICT, "Etkinlik başladığı için davet kararını artık değiştiremezsin."),
+	EVENT_PLAN_RATE_LIMITED(9256, "Too many event plan requests", HttpStatus.TOO_MANY_REQUESTS, "Planlı etkinlik işlemlerini çok sık yapıyorsun. Biraz sonra tekrar dene."),
+	EVENT_PLAN_UNAVAILABLE(9257, "Event plan protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Planlı etkinlik işlemleri şu anda kullanılamıyor. Biraz sonra tekrar dene."),
+	EVENT_PLAN_LIMIT_REACHED(9258, "Active event plan limit reached", HttpStatus.CONFLICT, "En fazla 50 aktif etkinlik planı oluşturabilirsin. Yeni plan için kullanmadığın bir planı durdur."),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND(9300, "Collab listing not found", HttpStatus.NOT_FOUND, "İlan bulunamadı."),

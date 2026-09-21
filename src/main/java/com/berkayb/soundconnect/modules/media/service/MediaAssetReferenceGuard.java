@@ -32,6 +32,7 @@ public class MediaAssetReferenceGuard {
 				|| referenceRepository.countStudioRoomPhotoReferences(assetId) > 0
 				|| referenceRepository.countStudioEquipmentPhotoReferences(assetId) > 0
 				|| referenceRepository.countEventPosterReferences(assetId.toString()) > 0
+				|| referenceRepository.countEventPlanPosterReferences(assetId.toString()) > 0
 				|| referenceRepository.countMarketplaceReferences(assetId) > 0) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_IN_USE);
 		}

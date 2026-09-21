@@ -25,7 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataRedisTest
+@DataRedisTest(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		"spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce",
+		"app.musician-profile.calendar-rate-limit.enabled=true"
+})
 @Import({MusicianCalendarRateLimitConfiguration.class, MusicianCalendarRateLimitGuard.class})
 @Timeout(30)
 class MusicianCalendarRateLimitGuardRedisIT {

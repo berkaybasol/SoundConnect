@@ -63,6 +63,7 @@ class MediaAssetReferenceGuardTest {
 		verify(repository).countStudioRoomPhotoReferences(assetId);
 		verify(repository).countStudioEquipmentPhotoReferences(assetId);
 		verify(repository).countEventPosterReferences(assetId.toString());
+		verify(repository).countEventPlanPosterReferences(assetId.toString());
 		verify(repository).countMarketplaceReferences(assetId);
 		verifyNoMoreInteractions(repository);
 	}
@@ -73,5 +74,15 @@ class MediaAssetReferenceGuardTest {
 		assertThatThrownBy(() -> guard.assertNotReferenced(assetId))
 				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
 						org.assertj.core.api.Assertions.assertThat(exception.getErrorType()).isEqualTo(ErrorType.MEDIA_ASSET_IN_USE));
+	}
+
+	@Test
+	void protectsAPlannedPosterBeforeAnyDatedEventExists() {
+		when(repository.countEventPlanPosterReferences(assetId.toString())).thenReturn(1L);
+
+		assertThatThrownBy(() -> guard.assertNotReferenced(assetId))
+				.isInstanceOfSatisfying(SoundConnectException.class, exception ->
+						org.assertj.core.api.Assertions.assertThat(exception.getErrorType())
+								.isEqualTo(ErrorType.MEDIA_ASSET_IN_USE));
 	}
 }

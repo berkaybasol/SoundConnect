@@ -61,4 +61,8 @@ public interface MediaAssetReferenceRepository extends Repository<MediaAsset, UU
 			""")
 	long countEventPosterReferences(@Param("assetIdText") String assetIdText);
 
+	/** A future plan pins its poster even before its first event is materialized. */
+	@Query(value = "select count(*) from event_plans where lower(trim(poster_image)) = :assetIdText", nativeQuery = true)
+	long countEventPlanPosterReferences(@Param("assetIdText") String assetIdText);
+
 }
