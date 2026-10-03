@@ -10,6 +10,8 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.service.DMMessageService;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +44,8 @@ public class DMMessageUserController {
 	) {
 		UUID currentUserId = principal.getId();
 		ensureParticipant(conversationId, currentUserId);
-		notificationService.markDmConversationAsRead(currentUserId, conversationId);
+		// Listing/prefetching a page is not a read receipt. Only an explicit
+		// message ACK may clear its inbox notification and pending push.
 		
 		Page<DMMessageResponseDto> data = messageService.getMessagesByConversationId(conversationId, pageable);
 		return ResponseEntity.ok(BaseResponse.<Page<DMMessageResponseDto>>builder()
@@ -100,9 +103,9 @@ public class DMMessageUserController {
 	}
 	private void ensureParticipant(UUID conversationId, UUID userId) {
 		DMConversation conv = conversationRepository.findById(conversationId)
-		                                            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+		                                            .orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
 		if (!(userId.equals(conv.getUserAId()) || userId.equals(conv.getUserBId()))) {
-			throw new SecurityException("User is not a participant of this conversation.");
+			throw new SoundConnectException(ErrorType.NOT_PARTICIPANT_OF_CONVERSATION);
 		}
 	}
 }

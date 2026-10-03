@@ -51,6 +51,8 @@ class VenueApplicationDecisionConcurrencyTest {
 	@Mock VenueProfileService venueProfileService;
 	@Mock VenueApplicationAdminMailService venueApplicationAdminMailService;
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
+	@Mock VenueApplicationDecisionNotifications decisionNotifications;
+	@Mock jakarta.persistence.EntityManager entityManager;
 	@InjectMocks VenueApplicationServiceImpl service;
 
 	@Test
@@ -71,6 +73,7 @@ class VenueApplicationDecisionConcurrencyTest {
 		when(venueApplicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
 		when(venueApplicationMapper.toResponseDto(application)).thenReturn(response);
 
+        when(userRepository.findByIdForUpdate(application.getApplicant().getId())).thenReturn(Optional.of(application.getApplicant()));
 		VenueApplicationResponseDto result = service.rejectApplication(
 				applicationId,
 				UUID.randomUUID(),
@@ -166,10 +169,39 @@ class VenueApplicationDecisionConcurrencyTest {
 		verify(venueProfileService, never()).createProfile(any(), any());
 	}
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void unverifiedApplicantCannotBeDecidedOrLoseFutureNotification(boolean approve) {
+        UUID id=UUID.randomUUID();var app=pendingApplication(id);app.getApplicant().setEmailVerified(false);
+        when(venueApplicationRepository.findByIdForUpdate(id)).thenReturn(Optional.of(app));
+        if(approve) when(personalProfileTypePolicy.lockAndAssertCanAcquire(app.getApplicant().getId(),RoleEnum.ROLE_VENUE)).thenReturn(app.getApplicant());
+        else when(userRepository.findByIdForUpdate(app.getApplicant().getId())).thenReturn(Optional.of(app.getApplicant()));
+        assertThatThrownBy(()->{if(approve) service.approveApplication(id,UUID.randomUUID());else service.rejectApplication(id,UUID.randomUUID(),"private");})
+                .isInstanceOfSatisfying(SoundConnectException.class,e->assertThat(e.getErrorType()).isEqualTo(ErrorType.VENUE_APPLICANT_EMAIL_VERIFICATION_REQUIRED));
+        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.PENDING);assertThat(app.getDecisionDate()).isNull();
+        verify(venueApplicationRepository,never()).saveAndFlush(any());verify(userRepository,never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(decisionNotifications,venueProfileService,venueApplicationAdminMailService);
+    }
+
+    @Test void decisionDateIsUtcEvenWhenMachineDefaultZoneIsNotUtc() {
+        var original=java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Auckland"));
+            UUID id=UUID.randomUUID();var app=pendingApplication(id);
+            when(venueApplicationRepository.findByIdForUpdate(id)).thenReturn(Optional.of(app));
+            when(userRepository.findByIdForUpdate(app.getApplicant().getId())).thenReturn(Optional.of(app.getApplicant()));
+            var before=java.time.Instant.now();
+            service.rejectApplication(id,UUID.randomUUID(),"never exported private reason");
+            assertThat(app.getDecisionDate().toInstant(java.time.ZoneOffset.UTC)).isBetween(before,java.time.Instant.now());
+            verify(decisionNotifications).decided(app);
+            verify(venueApplicationAdminMailService,never()).sendNewApplicationMail(any());
+        } finally {java.util.TimeZone.setDefault(original);}
+    }
+
 	private VenueApplication pendingApplication(UUID applicationId) {
 		User applicant = User.builder()
 		                     .id(UUID.randomUUID())
-		                     .username("venue-applicant")
+		                     .username("venue-applicant").emailVerified(true).status(com.berkayb.soundconnect.modules.user.enums.UserStatus.PENDING_VENUE_REQUEST)
 		                     .roles(new HashSet<>())
 		                     .build();
 		return VenueApplication.builder()

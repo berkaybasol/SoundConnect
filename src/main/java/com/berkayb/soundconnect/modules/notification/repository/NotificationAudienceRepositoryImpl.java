@@ -58,6 +58,16 @@ public class NotificationAudienceRepositoryImpl implements NotificationAudienceR
                 .getSingleResult()).longValue();
     }
 
+    @Override public List<UUID> findVisibleUnreadIds(UUID recipient, Collection<UUID> notificationIds) {
+        if (notificationIds.isEmpty()) return List.of();
+        // One scalar query: do not fetch payloads, mutate read state, or reveal
+        // whether any non-visible ID belongs to somebody else or no longer exists.
+        return visible("select n.id from tbl_notification n" + WHERE
+                        + " and n.is_read=false and n.id in (:ids)", recipient, false)
+                .setParameter("ids", notificationIds).getResultList().stream()
+                .map(UUID.class::cast).toList();
+    }
+
     @Override @Transactional public int markAsRead(UUID id, UUID recipient) {
         entityManager.flush();
         return visible("update tbl_notification n set is_read=true" + WHERE + " and n.id=:id and n.is_read=false", recipient, false)

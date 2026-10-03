@@ -1,0 +1,35 @@
+// Isolated verification output; only explicitly selected notification/DM slices.
+// Native PostgreSQL tests require an explicit loopback disposable database property.
+allprojects {
+    layout.buildDirectory = file('../artifacts/push-foundation-2026-09-22/backend-build')
+    afterEvaluate {
+        def verificationMain = tasks.register('pushVerificationMainJar', Jar) {
+            dependsOn tasks.named('classes')
+            from sourceSets.main.output
+            archiveFileName = 'push-verification-main.jar'
+        }
+        tasks.named('compileTestJava', JavaCompile) {
+            dependsOn verificationMain
+            options.incremental = false
+            options.encoding = 'UTF-8'
+            classpath = project.files(verificationMain) + configurations.testCompileClasspath
+            source = project.fileTree('src/test/java') {
+                if (project.hasProperty('pushCompileAllTests')) include '**/*.java'
+                else {
+                include 'com/berkayb/soundconnect/modules/notification/push/**'
+                include 'com/berkayb/soundconnect/modules/notification/listener/NotificationEventListenerTest.java'
+                include 'com/berkayb/soundconnect/modules/notification/service/NotificationServiceImplTest.java'
+                include 'com/berkayb/soundconnect/modules/notification/controller/user/NotificationControllerTest.java'
+                include 'com/berkayb/soundconnect/support/DeliveryPolicyTestSupport.java'
+                }
+            }
+        }
+        tasks.named('test', Test) {
+            classpath = sourceSets.test.output + project.files(verificationMain) + configurations.testRuntimeClasspath
+            ['push.test.jdbc-url','push.test.jdbc-user','push.test.jdbc-password',
+             'push.test.redis-url','push.test.benchmark','push.test.benchmark-output'].each { key ->
+                if (System.getProperty(key) != null) systemProperty key, System.getProperty(key)
+            }
+        }
+    }
+}

@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component // Spring'e bean oldugunu tanitir bunun sonucunda container'a eklenir.
 public class JwtTokenProvider {
+	public static final String VENUE_APPLICATION_SCOPE = "VENUE_APPLICATION";
+	public record VenueApplicationClaims(UUID userId, UUID applicationId) {}
 	
 	// application.yml icinde tanimladigimiz JWT secret keyi cekiyoruz
 	@Value("${app.jwt.secret}")
@@ -127,11 +129,45 @@ public class JwtTokenProvider {
 		return extractAllClaims(token).getExpiration();
 	}
 	
+	public String generateVenueApplicationToken(UserDetailsImpl userDetails, UUID applicationId) {
+		Objects.requireNonNull(applicationId, "applicationId");
+		return Jwts.builder()
+				.setSubject(userDetails.getId().toString())
+				.claim("scope", VENUE_APPLICATION_SCOPE)
+				.claim("applicationId", applicationId.toString())
+				.setIssuer(jwtIssuer)
+				.setIssuedAt(new Date())
+				.setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
+				.signWith(getSigningKey(), SignatureAlgorithm.HS256)
+				.compact();
+	}
+
+	/** Verified claims for the restricted HTTP path; never a general bearer. */
+	public VenueApplicationClaims getVenueApplicationClaims(String token) {
+		Claims claims = extractAllClaims(token);
+		if (!claims.containsKey("scope") && !claims.containsKey("applicationId")) return null;
+		if (!VENUE_APPLICATION_SCOPE.equals(claims.get("scope"))
+				|| claims.getExpiration() == null || claims.containsKey("roles")
+				|| claims.containsKey("permissions")) {
+			throw new MalformedJwtException("Invalid application session claims");
+		}
+		return new VenueApplicationClaims(canonicalUuid(claims.getSubject()),
+				canonicalUuid(claims.get("applicationId")));
+	}
+
+	private static UUID canonicalUuid(Object value) {
+		if (!(value instanceof String text)) throw new MalformedJwtException("Invalid UUID claim");
+		UUID id = UUID.fromString(text);
+		if (!id.toString().equals(text)) throw new MalformedJwtException("Invalid UUID claim");
+		return id;
+	}
+
 	// token gecerli mi diye kontrol ettigimiz metod (filtrede kullanicaz)
 	public boolean validateToken(String token) {
 		try {
-			extractAllClaims(token); // token parse edilebiliyorsa gecerli kabul ediyoruz
-			return true;
+			Claims claims = extractAllClaims(token);
+			// Ordinary HTTP/WS consumers reject scoped credentials even after approval.
+			return !claims.containsKey("scope") && !claims.containsKey("applicationId");
 		}
 		catch (ExpiredJwtException e) {
 			log.warn("Expired JWT token");

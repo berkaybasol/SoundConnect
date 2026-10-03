@@ -14,6 +14,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface VenueApplicationRepository extends JpaRepository<VenueApplication, UUID> {
+    Optional<VenueApplication> findByIdAndApplicant_Id(UUID id, UUID applicantId);
+    Optional<VenueApplication> findFirstByApplicant_IdOrderByApplicationDateDescCreatedAtDescIdDesc(UUID applicantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select application from VenueApplication application where application.id = :id and application.applicant.id = :applicantId")
+    Optional<VenueApplication> findOwnedForUpdate(@Param("id") UUID id, @Param("applicantId") UUID applicantId);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select application from VenueApplication application where application.id = :id")
 	Optional<VenueApplication> findByIdForUpdate(@Param("id") UUID id);

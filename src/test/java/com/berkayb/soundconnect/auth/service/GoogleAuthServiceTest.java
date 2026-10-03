@@ -172,6 +172,24 @@ class GoogleAuthServiceTest {
 		verify(userRepository, never()).findByEmailForUpdate("new-address@example.com");
 	}
 
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+	void pendingVenueGoogleAccountCannotReceiveOrdinaryBearerThroughSubjectOrEmail(boolean subjectMatch) {
+		User pending = googleUser(Set.of());
+		pending.setStatus(UserStatus.PENDING_VENUE_REQUEST);
+		pending.setProviderSubject("pending-subject");
+		when(googleIdTokenValidator.verify("google-token"))
+				.thenReturn(new VerifiedGoogleIdentity("pending-subject", pending.getEmail(), "Applicant"));
+		when(userRepository.findByProviderAndProviderSubject(AuthProvider.GOOGLE, "pending-subject"))
+				.thenReturn(subjectMatch ? Optional.of(pending) : Optional.empty());
+		if (!subjectMatch) when(userRepository.findByEmailForUpdate(pending.getEmail())).thenReturn(Optional.of(pending));
+		SoundConnectException exception = catchThrowableOfType(
+				() -> googleAuthService.loginWithGoogle(new GoogleAuthRequestDto("google-token")), SoundConnectException.class);
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS);
+		verify(jwtTokenProvider, never()).generateToken(any());
+		verify(userRepository, never()).save(any());
+	}
+
 	private User googleUser(Set<Role> roles) {
 		return User.builder()
 				.id(UUID.randomUUID())

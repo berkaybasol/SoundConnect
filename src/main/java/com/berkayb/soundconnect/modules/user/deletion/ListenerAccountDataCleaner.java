@@ -51,9 +51,26 @@ public class ListenerAccountDataCleaner {
         jdbc.update("delete from tbl_collab_saved_listing where user_id = ?", userId);
         jdbc.update("delete from tbl_venue_applications where user_id = ?", userId);
         jdbc.update("delete from tbl_studio_applications where applicant_id = ?", userId);
+        jdbc.update("delete from tbl_follow_notification_outbox where follower_id = ? or recipient_id = ?", userId, userId);
         // Receipt tombstones remain: already delivered broker messages must never resurrect an erased snapshot.
-        for (String table : List.of("tbl_notification", "tbl_overthinking_notification_outbox",
-                "tbl_table_group_notification_outbox", "tbl_collab_notification_outbox", "tbl_event_performer_notification_outbox")) {
+        // MEDIA uses an exact, versioned actor reference. UUID text in an unrelated
+        // payload field is not ownership; actorless legacy history stays anonymous.
+        jdbc.update("""
+                delete from tbl_notification where recipient_id = ? or
+                  (type in ('SOCIAL_LIKE','SOCIAL_COMMENT') and payload->>'targetType'='MEDIA'
+                    and jsonb_typeof(payload->'mediaIdentityVersion')='number'
+                    and payload->>'mediaIdentityVersion'='1' and lower(payload->>'actorId') = ?) or
+                  (type in ('BAND_INVITE_RECEIVED','BAND_INVITE_ACCEPTED','BAND_INVITE_REJECTED','BAND_MEMBER_REMOVED','BAND_MEMBER_LEFT')
+                    and jsonb_typeof(payload->'bandIdentityVersion')='number' and payload->>'bandIdentityVersion'='1'
+                    and lower(payload->>(case type when 'BAND_INVITE_RECEIVED' then 'inviterId'
+                        when 'BAND_MEMBER_REMOVED' then 'requesterId' else 'memberId' end)) = ?) or
+                  (type not in ('BAND_INVITE_RECEIVED','BAND_INVITE_ACCEPTED','BAND_INVITE_REJECTED','BAND_MEMBER_REMOVED','BAND_MEMBER_LEFT')
+                    and not coalesce(type in ('SOCIAL_LIKE','SOCIAL_COMMENT') and payload->>'targetType'='MEDIA',false)
+                    and payload::text like ?)
+                """, userId, userId.toString(), userId.toString(), "%" + userId + "%");
+        for (String table : List.of("tbl_overthinking_notification_outbox",
+                "tbl_table_group_notification_outbox", "tbl_collab_notification_outbox", "tbl_event_performer_notification_outbox",
+                "tbl_studio_reservation_notification_outbox")) {
             jdbc.update("delete from " + table + " where recipient_id = ? or payload::text like ?", userId, "%" + userId + "%");
         }
         if (profileId != null) {

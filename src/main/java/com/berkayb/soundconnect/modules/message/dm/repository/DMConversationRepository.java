@@ -3,12 +3,18 @@ package com.berkayb.soundconnect.modules.message.dm.repository;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface DMConversationRepository extends JpaRepository<DMConversation, UUID> {
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select c from DMConversation c where c.id = :id")
+	Optional<DMConversation> findByIdForUpdate(@Param("id") UUID id);
 	
 	// Kullanicinin dahil oldugu tum konusmalari getir
 	List<DMConversation> findByUserAIdOrUserBId(UUID userAId, UUID userBId);

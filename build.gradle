@@ -51,6 +51,8 @@ dependencies {
     // GOOGLE API
     implementation 'com.google.api-client:google-api-client:2.8.0'
     implementation 'com.google.http-client:google-http-client-jackson2:1.43.3'
+    // FCM HTTP v1: official OAuth2 credentials; push retry ownership stays in our outbox.
+    implementation 'com.google.auth:google-auth-library-oauth2-http:1.43.0'
 
 
     // Spring Boot test altyapısı
@@ -113,6 +115,13 @@ dependencies {
 
 test {
     jvmArgs "-XX:+EnableDynamicAgentLoading"
+
+    // Use the same isolation as scripts/gradle/event-plan-verification.gradle:
+    // normal tests must not import application.yml or the developer's .env.local.
+    // Explicit per-test properties still select dedicated integration fixtures.
+    systemProperty 'spring.config.location', 'classpath:/application-test.yml'
+    systemProperty 'spring.config.import', ''
+    systemProperty 'spring.profiles.active', 'test'
 
     // The suite boots several distinct Spring contexts (JPA, RabbitMQ,
     // security and media-worker slices). Bound the worker lifetime so local

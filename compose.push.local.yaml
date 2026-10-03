@@ -1,0 +1,17 @@
+# Optional local-only overlay selected by dev.ps1 when push is enabled.
+# The external ADC file contains a user refresh credential: never copy it into an image/repository.
+services:
+  backend:
+    environment:
+      SOUNDCONNECT_PUSH_ENABLED: "true"
+      SOUNDCONNECT_FCM_PROJECT_ID: ${SOUNDCONNECT_FCM_PROJECT_ID:?Enabled push requires SOUNDCONNECT_FCM_PROJECT_ID}
+      SOUNDCONNECT_PUSH_TOKEN_ENCRYPTION_KEY: ${SOUNDCONNECT_PUSH_TOKEN_ENCRYPTION_KEY:?Enabled push requires SOUNDCONNECT_PUSH_TOKEN_ENCRYPTION_KEY}
+      SOUNDCONNECT_FCM_CREDENTIALS_PATH: ""
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/soundconnect-push-adc.json
+    volumes:
+      - type: bind
+        source: ${SOUNDCONNECT_FCM_ADC_HOST_PATH:?Enabled push requires an external SOUNDCONNECT_FCM_ADC_HOST_PATH}
+        target: /run/secrets/soundconnect-push-adc.json
+        read_only: true
+        bind:
+          create_host_path: false

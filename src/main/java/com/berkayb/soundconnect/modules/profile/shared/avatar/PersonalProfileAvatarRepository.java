@@ -15,6 +15,21 @@ import java.util.UUID;
  */
 public interface PersonalProfileAvatarRepository extends Repository<User, UUID> {
 
+	/** Account-before-visibility fence; scalar rows never reuse an OSIV User snapshot. */
+	@Query(value = """
+			select id as "userId", user_name as "username", erased_at is not null as "erased",
+			       status='ACTIVE' and email_verified as "available"
+			from tbl_user where id in (:userIds) order by id for share
+			""", nativeQuery = true)
+	List<CanonicalIdentity> lockCanonicalIdentities(@Param("userIds") Collection<UUID> userIds);
+
+	interface CanonicalIdentity {
+		UUID getUserId();
+		String getUsername();
+		boolean getErased();
+		boolean getAvailable();
+	}
+
 	@Query("""
 			select new com.berkayb.soundconnect.modules.profile.shared.avatar.PersonalProfileAvatarCandidate(
 				user.id,

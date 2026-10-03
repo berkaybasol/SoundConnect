@@ -68,6 +68,37 @@ class NotificationServiceImplTest {
 	
 	// ---------- getUserNotifications ----------
 	@Test
+	void mediaResolverFailureOrMissingResultNeverUsesTitleNameOrAvatarSnapshot() {
+		for (var type : List.of(NotificationType.SOCIAL_LIKE, NotificationType.SOCIAL_COMMENT)) {
+			UUID actor = UUID.randomUUID();
+			var stale = new NotificationResponseDto(UUID.randomUUID(), userId, type, "Old secret name", "old private body", true, null,
+					Map.of("targetType","MEDIA","actorId",actor.toString(),"mediaIdentityVersion",1,
+							"actorUsername","Old secret name","actorAvatarUrl","https://private.invalid/old"));
+			when(ghostListenerIdentityBatchResolver.resolveCurrentCanonicalNames(anyCollection())).thenThrow(new IllegalStateException("fixture"));
+			var failed = service.refreshActorIdentityForDelivery(stale);
+			assertThat(failed.title()).startsWith("Bir kullanıcı").doesNotContain("Old secret name");
+			assertThat(failed.message()).doesNotContain("old private body");
+			assertThat(failed.payload()).doesNotContainKeys("actorUsername","actorAvatarUrl");
+			assertThat(failed.read()).isTrue();assertThat(failed.id()).isEqualTo(stale.id());
+			reset(ghostListenerIdentityBatchResolver);
+			when(ghostListenerIdentityBatchResolver.resolveCurrentCanonicalNames(anyCollection())).thenReturn(Map.of(UUID.randomUUID(),"wrong user"));
+			assertThat(service.refreshActorIdentityForDelivery(stale).title()).startsWith("Bir kullanıcı").doesNotContain("wrong user");
+		}
+	}
+
+	@Test
+	void mediaScopeDoesNotChangeOtherSocialTargetsOrGuessActorFromAnUnversionedUuid() {
+		var other = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.SOCIAL_LIKE, "Unrelated", "body", false, null,
+				Map.of("targetType","EVENT","actorId",UUID.randomUUID().toString()));
+		assertThat(service.refreshActorIdentityForDelivery(other)).isSameAs(other);
+		assertThat(NotificationService.requiresActorIdentityRefresh(other.type(),other.payload())).isFalse();
+		var old = new NotificationResponseDto(UUID.randomUUID(), userId, NotificationType.SOCIAL_COMMENT,"old name","body",false,null,
+				Map.of("targetType","MEDIA","actorId",UUID.randomUUID().toString()));
+		var safe = service.refreshActorIdentityForDelivery(old);
+		assertThat(safe.title()).startsWith("Bir kullanıcı");assertThat(safe.payload()).doesNotContainKey("actorId");
+		verifyNoInteractions(ghostListenerIdentityBatchResolver);
+	}
+	@Test
 	void realtimeDeliveryReplacesDelayedActorSnapshotWithCurrentGhostIdentity() {
 		UUID follower = UUID.randomUUID();
 		NotificationResponseDto stale = new NotificationResponseDto(UUID.randomUUID(), userId,
@@ -690,6 +721,23 @@ class NotificationServiceImplTest {
 			verify(notificationRepository).countByRecipientIdAndReadIsFalse(userId);
 			verify(badgeCacheHelper).setUnread(userId, 4L);
 			verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 4L);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
+	}
+
+	@Test
+	void markDmMessageAsReadClearsOnlyAcknowledgedMessageAndReconcilesBadgeAfterCommit() {
+		UUID messageId = UUID.randomUUID();
+		when(notificationRepository.markUnreadDmNotificationsAsReadByMessage(userId, messageId.toString())).thenReturn(1);
+		when(notificationRepository.countByRecipientIdAndReadIsFalse(userId)).thenReturn(3L);
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			assertThat(service.markDmMessageAsRead(userId, messageId)).isEqualTo(1);
+			verify(notificationRepository, never()).markUnreadDmNotificationsAsReadByConversation(any(), any());
+			verifyNoInteractions(notificationWebSocketService);
+			TransactionSynchronizationManager.getSynchronizations().getFirst().afterCommit();
+			verify(notificationWebSocketService).sendUnreadBadgeToUser(userId, 3L);
 		} finally {
 			TransactionSynchronizationManager.clearSynchronization();
 		}

@@ -26,11 +26,13 @@ public class NotificationMailDelivery {
         if(id==null) return;
         var notification=notifications.findById(id).orElse(null);
         if(notification==null) return;
+        if(notification.isRead() && com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity
+                .applies(notification.getType(),notification.getPayload())) return;
         var event=new NotificationInboundEvent(notification.getSourceEventId(),notification.getRecipientId(),
                 notification.getType(),notification.getTitle(),notification.getMessage(),notification.getPayload(),true,
                 notification.getOccurredAt());
         if(!deliveryPolicy.eligible(event)) return;
-        if(NotificationService.requiresActorIdentityRefresh(notification.getType())) {
+        if(NotificationService.requiresActorIdentityRefresh(notification.getType(), notification.getPayload())) {
             var current=notificationService.refreshActorIdentityForDelivery(new NotificationResponseDto(
                     notification.getId(), notification.getRecipientId(), notification.getType(),
                     notification.getTitle(), notification.getMessage(), notification.isRead(),

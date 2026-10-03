@@ -41,6 +41,9 @@ class DMMessageServiceImplTest {
 	@Mock DMMessageMapper messageMapper;
 	@Mock DmMessageEventPublisher eventPublisher;
 	@Mock NotificationService notificationService;
+	@Mock DmNotificationService dmNotificationService;
+	@Mock DmSendReceiptStore sendReceipts;
+	@Mock com.berkayb.soundconnect.modules.message.dm.abuse.DmRateLimitGuard rateLimit;
 	@Mock com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accountDeliveryFence;
 
 	@Test
@@ -58,6 +61,37 @@ class DMMessageServiceImplTest {
 	UUID recipientId;
 	
 	DMConversation conversation;
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.NullAndEmptySource
+	@org.junit.jupiter.params.provider.ValueSource(strings = {" ", "\n\t"})
+	void invalidTextCannotCreateMessageOrNotification(String content) {
+		assertThrows(SoundConnectException.class, () -> service.sendMessage(
+				new DMMessageRequestDto(conversationId, recipientId, content, "text"), senderId));
+		verifyNoInteractions(accountDeliveryFence, messageRepository, conversationRepository, dmNotificationService, eventPublisher);
+	}
+
+	@Test
+	void oversizedUnknownTypeAndMissingParentAreRejectedBeforeAnyWrite() {
+		for (var request : List.of(
+				new DMMessageRequestDto(conversationId, recipientId, "x".repeat(10_001), "text"),
+				new DMMessageRequestDto(conversationId, recipientId, "ok", "arbitrary"),
+				new DMMessageRequestDto(null, recipientId, "ok", "text"))) {
+			assertThrows(SoundConnectException.class, () -> service.sendMessage(request, senderId));
+		}
+		verifyNoInteractions(accountDeliveryFence, messageRepository, conversationRepository, dmNotificationService, eventPublisher);
+	}
+
+	@Test
+	void deletedMessageCannotBeAcknowledged() {
+		UUID messageId = UUID.randomUUID();
+		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(DMMessage.builder()
+				.id(messageId).conversationId(conversationId).recipientId(recipientId).deletedAt(LocalDateTime.now()).build()));
+		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, recipientId));
+		verifyNoInteractions(notificationService, eventPublisher);
+	}
 	
 	@BeforeEach
 	void init() {
@@ -76,10 +110,10 @@ class DMMessageServiceImplTest {
 	void sendMessage_happyPath() {
 		// given
 		DMMessageRequestDto req = new DMMessageRequestDto(conversationId, recipientId, "hey", "text");
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		
 		// save edilen mesaja id ve createdAt setleyelim (auditing yok çünkü unit test)
-		Mockito.lenient().when(messageRepository.save(any(DMMessage.class)))
+		Mockito.lenient().when(messageRepository.saveAndFlush(any(DMMessage.class)))
 		       .thenAnswer(inv -> {
 			       DMMessage m = inv.getArgument(0);
 			       m.setId(UUID.randomUUID());
@@ -99,22 +133,26 @@ class DMMessageServiceImplTest {
 		
 		// then
 		assertThat(resp.content()).isEqualTo("hey");
-		verify(messageRepository, times(1)).save(any(DMMessage.class));
+		verify(messageRepository, times(1)).saveAndFlush(any(DMMessage.class));
 		verify(conversationRepository, times(1)).save(argThat(conv ->
 				                                                      conv.getId().equals(conversationId) && conv.getLastMessageAt() != null && conv.getLastReadMessageId() == null
 		));
 		verify(eventPublisher, times(1)).publishMessageSentEvent(any());
+		var order = inOrder(messageRepository, dmNotificationService, eventPublisher);
+		order.verify(messageRepository).saveAndFlush(any(DMMessage.class));
+		order.verify(dmNotificationService).persist(any());
+		order.verify(eventPublisher).publishMessageSentEvent(any());
 	}
 	
 	@Test
 	@DisplayName("sendMessage: conversation yoksa SoundConnectException fırlatır")
 	void sendMessage_conversationNotFound() {
 		DMMessageRequestDto req = new DMMessageRequestDto(conversationId, recipientId, "x", "text");
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.empty());
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.empty());
 		
 		assertThrows(SoundConnectException.class, () -> service.sendMessage(req, senderId));
 		
-		verify(messageRepository, never()).save(any());
+		verify(messageRepository, never()).saveAndFlush(any());
 		verify(eventPublisher, never()).publishMessageSentEvent(any());
 	}
 	
@@ -127,26 +165,26 @@ class DMMessageServiceImplTest {
 		                                         .userAId(UUID.randomUUID())
 		                                         .userBId(UUID.randomUUID())
 		                                         .build();
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(otherConv));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(otherConv));
 		
 		DMMessageRequestDto req = new DMMessageRequestDto(conversationId, recipientId, "x", "text");
 		
 		assertThrows(SoundConnectException.class, () -> service.sendMessage(req, senderId));
 		
-		verify(messageRepository, never()).save(any());
+		verify(messageRepository, never()).saveAndFlush(any());
 		verify(eventPublisher, never()).publishMessageSentEvent(any());
 	}
 	
 	@Test
 	@DisplayName("sendMessage: self-DM engellenmeli")
 	void sendMessage_selfDmNotAllowed() {
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		
 		DMMessageRequestDto req = new DMMessageRequestDto(conversationId, senderId, "x", "text"); // recipient = sender
 		
 		assertThrows(SoundConnectException.class, () -> service.sendMessage(req, senderId));
 		
-		verify(messageRepository, never()).save(any());
+		verify(messageRepository, never()).saveAndFlush(any());
 		verify(eventPublisher, never()).publishMessageSentEvent(any());
 	}
 	
@@ -211,17 +249,23 @@ class DMMessageServiceImplTest {
 		                         .messageType("text")
 		                         .build();
 		
-		when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		
 		// when
 		service.markMessageAsRead(messageId, recipientId);
 		
 		// then
-		verify(messageRepository).save(argThat(saved -> saved.getId().equals(messageId) && saved.getReadAt() != null));
+		verify(messageRepository).saveAndFlush(argThat(saved -> saved.getId().equals(messageId) && saved.getReadAt() != null));
 		verify(conversationRepository).save(argThat(conv -> conv.getLastReadMessageId() != null));
 		
-		verify(notificationService).markDmConversationAsRead(recipientId, conversationId);
+		verify(notificationService).markDmMessageAsRead(recipientId, messageId);
+		verify(notificationService, never()).markDmConversationAsRead(any(), any());
+		var order = inOrder(messageRepository, notificationService);
+		order.verify(messageRepository).findByIdForUpdate(messageId);
+		order.verify(messageRepository).saveAndFlush(any(DMMessage.class));
+		order.verify(notificationService).markDmMessageAsRead(recipientId, messageId);
 		verify(eventPublisher).publishMessageReadEvent(
 				new DmMessageReadEvent(conversationId, recipientId));
 		
@@ -240,13 +284,14 @@ class DMMessageServiceImplTest {
 		                         .messageType("text")
 		                         .readAt(LocalDateTime.now())
 		                         .build();
-		when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
-		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 
 		service.markMessageAsRead(messageId, recipientId);
 
-		verify(messageRepository, never()).save(any());
-		verify(notificationService).markDmConversationAsRead(recipientId, conversationId);
+		verify(messageRepository, never()).saveAndFlush(any());
+		verify(notificationService).markDmMessageAsRead(recipientId, messageId);
 		verify(eventPublisher).publishMessageReadEvent(
 				new DmMessageReadEvent(conversationId, recipientId));
 	}
@@ -265,11 +310,13 @@ class DMMessageServiceImplTest {
 		                         .messageType("text")
 		                         .build();
 		
-		when(messageRepository.findById(messageId)).thenReturn(Optional.of(msg));
+		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
 		
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, senderId));
 		
-		verify(messageRepository, never()).save(any());
+		verify(messageRepository, never()).saveAndFlush(any());
 		verifyNoInteractions(notificationService, eventPublisher);
 		
 	}
@@ -278,7 +325,7 @@ class DMMessageServiceImplTest {
 	@DisplayName("markMessageAsRead: mesaj yoksa hata")
 	void markMessageAsRead_messageNotFound() {
 		UUID messageId = UUID.randomUUID();
-		when(messageRepository.findById(messageId)).thenReturn(Optional.empty());
+		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.empty());
 		
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, recipientId));
 		
@@ -297,5 +344,19 @@ class DMMessageServiceImplTest {
 		assertThat(first).isEqualTo(3L);
 		assertThat(second).isEqualTo(1L);
 		verify(messageRepository, times(2)).countByRecipientIdAndReadAtIsNull(recipientId);
+	}
+
+	@Test
+	void messagePagesAreBoundedAndHaveADeterministicNewestFirstOrder() {
+		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findByConversationId(eq(conversationId), any(org.springframework.data.domain.Pageable.class)))
+				.thenReturn(org.springframework.data.domain.Page.empty());
+		service.getMessagesByConversationId(conversationId, org.springframework.data.domain.PageRequest.of(2, 5000));
+		var page = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+		verify(messageRepository).findByConversationId(eq(conversationId), page.capture());
+		assertThat(page.getValue().getPageNumber()).isEqualTo(2);
+		assertThat(page.getValue().getPageSize()).isEqualTo(100);
+		assertThat(page.getValue().getSort()).isEqualTo(org.springframework.data.domain.Sort.by(
+				org.springframework.data.domain.Sort.Direction.DESC,"createdAt","id"));
 	}
 }

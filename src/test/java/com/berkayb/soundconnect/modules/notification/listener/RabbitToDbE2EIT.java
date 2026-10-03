@@ -41,6 +41,13 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 @SpringBootTest(classes = RabbitToDbE2E.TestApp.class)
 @ImportAutoConfiguration(RabbitAutoConfiguration.class)
 @TestPropertySource(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		"spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce",
+		"spring.datasource.driver-class-name=org.postgresql.Driver",
+		"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
+		"spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
+		// NotificationRabbitConfig uses the Boot-configured simple listener factory.
+		"spring.rabbitmq.listener.simple.auto-startup=true",
 		// Rabbit yapılandırman
 		"app.messaging.notification.exchange=notification.exchange",
 		"app.messaging.notification.queue=notification.queue",

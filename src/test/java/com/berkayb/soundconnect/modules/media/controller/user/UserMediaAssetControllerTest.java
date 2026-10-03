@@ -1,6 +1,8 @@
 // src/test/java/com/berkayb/soundconnect/modules/media/controller/user/UserMediaAssetControllerTest.java
 package com.berkayb.soundconnect.modules.media.controller.user;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
@@ -38,6 +40,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.ByteArrayInputStream;
@@ -63,6 +66,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Tag("web")
+// Same reference-index fixture as MediaAssetServiceImplTest; retain the real deletion guard.
+@Sql(statements = {
+		"create table if not exists tbl_marketplace_listing_photo(listing_id uuid,media_asset_id uuid,position integer)",
+		"create table if not exists tbl_marketplace_report_photo(report_id uuid,media_asset_id uuid)"
+})
+@H2NotificationIdentityTestBoundary
 class UserMediaAssetControllerTest {
 	
 	@Autowired MockMvc mockMvc;

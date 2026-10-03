@@ -320,6 +320,8 @@ public class EndPoints {
 	}
 	
 	public static class Notification {
+		public static final String BY_ID = "/{id}";
+		public static final String DELIVERY_STATE = "/delivery-state";
 		public static final String USER_BASE = API + VERSION + "/user/notifications";
 		public static final String LIST = "";
 		public static final String RECENT = "/recent";

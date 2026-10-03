@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.follow.band.service;
 
 import com.berkayb.soundconnect.modules.follow.band.dto.response.BandFollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.band.entity.BandFollow;
-import com.berkayb.soundconnect.modules.follow.band.event.BandFollowNotificationRequestedEvent;
+import com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService;
 import com.berkayb.soundconnect.modules.follow.band.mapper.BandFollowMapper;
 import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -18,11 +18,11 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +41,7 @@ public class BandFollowServiceImpl implements BandFollowService {
 	private final BandFollowMapper bandFollowMapper;
 	private final MediaAssetService mediaAssetService;
 	private final GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
-	private final ApplicationEventPublisher applicationEventPublisher;
+	private final FollowNotificationOutboxService notificationOutbox;
 	
 	@Override
 	@Transactional
@@ -64,9 +64,9 @@ public class BandFollowServiceImpl implements BandFollowService {
 		
 		bandFollowRepository.save(bandFollow);
 		
-		log.info("Band followed successfully. userId={}, bandId={}", followerUserId, bandId);
-		
-		requestBandFollowerNotification(followerUserId, band);
+		// Snapshot every eligible recipient in the same transaction; storage failures propagate.
+		requestBandFollowerNotification(bandFollow.getId(), followerUserId, band);
+		log.info("Band follow and notification intents staged. userId={}, bandId={}", followerUserId, bandId);
 	}
 	
 	@Override
@@ -191,9 +191,8 @@ public class BandFollowServiceImpl implements BandFollowService {
 		}
 	}
 	
-	private void requestBandFollowerNotification(UUID followerId, Band band) {
-		try {
-			List<UUID> recipientIds = band.getMembers() == null
+	private void requestBandFollowerNotification(UUID occurrenceId, UUID followerId, Band band) {
+		List<UUID> recipientIds = band.getMembers() == null
 					? List.of()
 					: band.getMembers().stream()
 					      .filter(Objects::nonNull)
@@ -205,17 +204,10 @@ public class BandFollowServiceImpl implements BandFollowService {
 					      .filter(recipientId -> !recipientId.equals(followerId))
 					      .distinct()
 					      .toList();
-			if (recipientIds.isEmpty()) return;
-			applicationEventPublisher.publishEvent(new BandFollowNotificationRequestedEvent(
-					followerId,
-					band.getId(),
-					recipientIds
-			));
-		} catch (RuntimeException exception) {
-			// Notification registration remains best effort and cannot invalidate the
-			// committed band-follow relationship.
-			log.warn("Band follow notification request failed. followerId={}, bandId={}, exceptionType={}",
-					followerId, band.getId(), exception.getClass().getSimpleName());
-		}
-	}
+		if (recipientIds.isEmpty()) return;
+        Instant occurredAt = Instant.now();
+        for (UUID recipientId : recipientIds) {
+            notificationOutbox.enqueue(occurrenceId, followerId, recipientId, band.getId(), occurredAt);
+        }
+    }
 }

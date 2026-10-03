@@ -122,6 +122,9 @@ class CommentServicePostgresTest {
         }
         jdbc=new JdbcTemplate(dataSource);
         when(users.getUser(any())).thenAnswer(i -> em.getReference(User.class, i.getArgument(0)));
+        // This legacy mutation slice stubs delivery projection; the MEDIA identity
+        // integration suite runs the real resolver, delivery and erasure fences.
+        when(notificationReads.refreshActorIdentityForDelivery(any())).thenAnswer(i -> i.getArgument(0));
         tx(() -> {
             actor=user();
             var city=persist(City.builder().name("City "+UUID.randomUUID()).build());

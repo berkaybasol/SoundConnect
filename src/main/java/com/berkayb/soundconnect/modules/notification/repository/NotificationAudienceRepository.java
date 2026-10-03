@@ -17,6 +17,7 @@ public interface NotificationAudienceRepository {
     List<Notification> findTop10ByRecipientIdOrderByOccurredAtDescIdDesc(UUID recipientId);
     Optional<Notification> findByIdAndRecipientId(UUID id, UUID recipientId);
     long countByRecipientIdAndReadIsFalse(UUID recipientId);
+    List<UUID> findVisibleUnreadIds(UUID recipientId, Collection<UUID> notificationIds);
     @Transactional int markAsRead(UUID id, UUID recipientId);
     @Transactional int markAllAsRead(UUID recipientId);
     @Transactional int deleteByRecipientId(UUID recipientId);

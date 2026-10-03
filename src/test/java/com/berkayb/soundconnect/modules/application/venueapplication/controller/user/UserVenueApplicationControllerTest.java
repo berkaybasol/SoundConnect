@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.controller.user;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
@@ -55,6 +57,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", // -> eklendi
 		"spring.jpa.hibernate.ddl-auto=create-drop" // -> eklendi
 })
+@H2NotificationIdentityTestBoundary
 class UserVenueApplicationControllerTest {
 	
 	@Autowired MockMvc mockMvc;

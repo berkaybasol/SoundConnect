@@ -92,7 +92,7 @@ class NotificationEventDeduplicationIT {
                 webSocketService,
                 mailProducer,
                 notificationService,
-                receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy()
+                receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy(), event -> { }
         );
     }
 

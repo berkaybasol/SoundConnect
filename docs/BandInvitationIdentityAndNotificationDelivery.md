@@ -1,5 +1,51 @@
 # Grup daveti kimliği ve kalıcı bildirimler
 
+> Bu teknik belgenin sürüm ve davranış bilgileri bu belge temizliği sırasında kaynak kodla yeniden doğrulanmadı; güncel kurulum veya kabul sonucu değildir.
+
+
+## BAND bildirim kimliği
+
+Yalnız `BAND_INVITE_RECEIVED`, `BAND_INVITE_ACCEPTED`, `BAND_INVITE_REJECTED`,
+`BAND_MEMBER_REMOVED`, `BAND_MEMBER_LEFT` için yeni kayıtlar sabit anonim
+title/message ve `bandIdentityVersion: 1` taşır. Payload beyaz listesi:
+`module: BAND`, exact `bandId`, türe uygun `action`, varsa exact `invitationId`
+ve üreticinin özgün actor alanıdır. Davette `inviterId`, kabul/ret/ayrılmada
+`memberId`, çıkarmada `requesterId` kullanılır. Actor başka üyeden veya başlıktan
+tahmin edilmez. Kabul/ret bildirimi de karar verilen invitationId'yi taşır.
+Kalıcı veya queued payload'a ad, avatar/URL, grup adı veya serbest alan kopyalanmaz.
+
+Tekli, sayfalı, tip filtreli ve recent REST ile mevcut commit sonrası WebSocket
+projeksiyonu güncel scalar kullanıcı/grup adını çözer. Hesaplar UUID sırasıyla
+share-lock, ardından gruplar UUID sırasıyla share-lock alınır; teslimde bunlar
+mevcut delivery transaction'ı sonuna kadar yaşar. İlgili rename/grup delete
+write-lock'larıyla gerçek PostgreSQL bekleme regresyonu vardır. Daha önce yola
+çıkmış frame geri alınmaz; farklı transaction frame sıralaması, UI'deki önceden
+yüklenmiş immutable title/message ve fiziksel telefon kabulü bu garanti değildir.
+
+Güncel aktif, doğrulanmış, müzisyen profilli hesap sınırı uygulanır; listener
+rolü/profili karışıklığında, eksik/etkisiz actor'de veya eksik grupta anonim
+başlık kullanılır. Yeni hedef/davet/üyelik yetkisi verilmez. Mevcut listener
+audience filtresi korunur. Veri sorgusu başarısızsa eski snapshot'a dönülmez;
+PostgreSQL transaction'ı iptal edilmişse başarılı anonim yanıt yerine hata
+olabilir. Bu da eski kimliğin başarıyla yayımlandığı anlamına gelmez.
+
+İleri migration `scripts/db/2026-09-29-band-notification-identity.sql`, eski
+beş türü `bandIdentityVersion: 0` anonim legacy görünümüne indirger; geçerli
+bandId/invitationId/action, bildirim/source-event/recipient kimliği, read ve
+receipt korunur. Eksik aktör icat edilmez. Aynı trigger eski kuyruk yazılarını
+ve bozuk/null/array payload'ları temizler; constraint kalıcı sözleşmeyi korur.
+Tekrar çalıştırma içerik veya teknik kimlik üretmez. Yeni binary migration
+marker/constraint/trigger olmadan başlamayı reddeder. Eski migration değişmedi.
+
+BAND erasure sahipliği recipient ve sürümlü özgün actor referansına aittir;
+invitationId/bandId veya ilgisiz metindeki bir UUID hesap sahipliği değildir.
+Legacy actor bilinmiyorsa anonim kayıt korunabilir; recipient temizliği ve
+kalıcı receipt tombstone devam eder. **Müzisyen hesap silme ürünü eklenmedi:**
+normal istek mevcut `409/1007` sınırında reddedilir. Gerçek listener erasure
+altyapı fixture'ları, listener'ın gruba katılabildiğini kanıtlamaz.
+
+---
+
 Her yeni davet ve yeniden davet `BandMember.invitationId` için yeni bir UUID üretir.
 Kabul/ret, üyelik okumasından önce alınan grup kilidi altında tam bu kimliği
 karşılaştırır. Kimliksiz eski istemci veya önceki davetin kimliği mevcut bekleyen
@@ -38,7 +84,6 @@ Betik yalnız kimliği eksik PENDING kayıtları doldurur ve yeniden çalıştı
 eski bildirimleri, üyelik durumunu, başlığı veya yayın iznini değiştirmez.
 Backend yazarları ve istemci sözleşmesi birlikte güncellenmelidir; eski backend
 yazarları yeni davetlerde kimlik döndürmez. Yerel başlangıç kaydı betiği içerir.
-Bu geliştirme sırasında betik canlı veritabanına uygulanmadı.
 
 Grup oluşturma kotası yalnız kullanıcının `ACTIVE + FOUNDER` üyeliklerini sayar.
 MEMBER, MANAGER ve diğer roller oluşturma hakkını tüketmez; davet kabulüne yeni

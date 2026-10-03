@@ -31,6 +31,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 		classes = MediaWorkerApplication.class,
 		webEnvironment = SpringBootTest.WebEnvironment.NONE,
 		properties = {
+				"spring.config.location=classpath:/application-media-worker.yml",
+				"spring.config.import=",
+				"transcode.ladder[0].height=360",
+				"transcode.ladder[0].videoBitrate=800k",
+				"transcode.ladder[0].audioBitrate=96k",
 				"SOUNDCONNECT_MEDIA_WORKER_POSTGRES_URL=jdbc:h2:mem:media-worker-boundary;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
 				"SOUNDCONNECT_MEDIA_WORKER_POSTGRES_USERNAME=sa",
 				"SOUNDCONNECT_MEDIA_WORKER_POSTGRES_PASSWORD=",

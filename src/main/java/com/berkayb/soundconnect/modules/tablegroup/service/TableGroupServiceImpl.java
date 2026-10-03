@@ -200,7 +200,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationType.TABLE_REMOVED,
 				"Masadan çıkarıldın",
 				"Bir masa etkinliğinden çıkarıldın.",
-				tablePayload(tableGroupId, "PARTICIPANT_REMOVED", Map.of("ownerId", ownerId))
+				applicationPayload(tableGroupId, "PARTICIPANT_REMOVED", Map.of("ownerId", ownerId), participant)
 		);
 		runAfterCommit("participant_kicked", metrics::participantKicked);
 		log.info("Participant {} kicked from tableGroup {}", participantId, tableGroupId);
@@ -295,6 +295,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					.build();
 			tableGroup.getParticipants().add(joinRequest);
 		}
+		joinRequest.setApplicationId(UUID.randomUUID());
 		tableGroupRepository.save(tableGroup);
 
 		log.info("Join request: user={} tableGroup={} status={}", userId, tableGroupId, joinRequest.getStatus());
@@ -306,7 +307,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 					NotificationType.TABLE_JOIN_REQUEST_RECEIVED,
 					"Yeni masa başvurusu!",
 					"Masana yeni bir başvuru geldi. Katılımcı onayı bekliyor.",
-					tablePayload(tableGroup.getId(), "JOIN_REQUEST_RECEIVED", Map.of("applicantId", userId))
+					applicationPayload(tableGroup.getId(), "JOIN_REQUEST_RECEIVED", Map.of("applicantId", userId), joinRequest)
 			);
 		}
 		runAfterCommit("join_requested", metrics::joinRequested);
@@ -315,6 +316,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 	// owner basvurani kabul eder
 	@Override
 	public void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
+		approveJoinRequest(ownerId, tableGroupId, participantId, null);
+	}
+
+	@Override
+	public void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId, UUID expectedApplicationId) {
 		if (participantId == null) {
 			throw new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND);
 		}
@@ -334,6 +340,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			requireOwner(tableGroup, ownerId);
 			TableGroupParticipant participant = findParticipant(tableGroup, participantId)
 					.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+			requireApplication(participant, expectedApplicationId);
 			if (participant.getStatus() == ParticipantStatus.ACCEPTED) {
 				return;
 			}
@@ -360,6 +367,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		requireOwner(tableGroup, ownerId);
 		TableGroupParticipant participant = findParticipant(tableGroup, participantId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+		requireApplication(participant, expectedApplicationId);
 		if (participant.getStatus() == ParticipantStatus.ACCEPTED) {
 			return;
 		}
@@ -404,7 +412,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationType.TABLE_JOIN_REQUEST_APPROVED,
 				"Başvurun onaylandı",
 				"Masana Mesajlar bölümünden ulaşabilirsin.",
-				tablePayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId))
+				applicationPayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId), participant)
 		);
 		runAfterCommit("join_approved", metrics::joinApproved);
 
@@ -413,6 +421,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 	// owner basvuruyu reddeder
 	@Override
 	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId) {
+		rejectJoinRequest(ownerId, tableGroupId, participantId, null);
+	}
+
+	@Override
+	public void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId, UUID expectedApplicationId) {
 		requireOwnerPreflight(tableGroupId, ownerId);
 		ParticipantStatus preflightStatus = tableGroupRepository.findParticipantStatusForOwner(
 				tableGroupId, ownerId, participantId)
@@ -425,6 +438,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		requireOwner(tableGroup, ownerId);
 		TableGroupParticipant participant = findParticipant(tableGroup, participantId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND));
+		requireApplication(participant, expectedApplicationId);
 		if (participant.getStatus() == ParticipantStatus.REJECTED) {
 			return;
 		}
@@ -447,7 +461,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationType.TABLE_JOIN_REQUEST_REJECTED,
 				"Başvurun reddedildi",
 				"Katıldığın masa başvurun reddedildi.",
-				tablePayload(tableGroup.getId(), "JOIN_REQUEST_REJECTED", Map.of("ownerId", ownerId))
+				applicationPayload(tableGroup.getId(), "JOIN_REQUEST_REJECTED", Map.of("ownerId", ownerId), participant)
 		);
 		runAfterCommit("join_rejected", metrics::joinRejected);
 	}
@@ -498,7 +512,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				NotificationType.TABLE_PARTICIPANT_LEFT,
 				"Katılımcı ayrıldı",
 				"Masandaki bir katılımcı ayrıldı.",
-				tablePayload(tableGroupId, "PARTICIPANT_LEFT", Map.of("leaverId", userId))
+				applicationPayload(tableGroupId, "PARTICIPANT_LEFT", Map.of("leaverId", userId), participant)
 		);
 		runAfterCommit("participant_left", metrics::participantLeft);
 
@@ -905,6 +919,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 						.thenComparing(participant -> participant.userId().toString()))
 				.map(participant -> TableGroupParticipantDto.builder()
 						.userId(participant.userId())
+						.applicationId(participant.applicationId())
 						.joinedAt(participant.joinedAt())
 						.status(participant.status())
 						.joinNote(ownerDetail ? participant.joinNote() : null)
@@ -1033,6 +1048,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 				.stream()
 				.map(participant -> TableGroupParticipantDto.builder()
 						.userId(participant.userId())
+						.applicationId(participant.applicationId())
 						.joinedAt(participant.joinedAt())
 						.status(participant.status())
 						.joinNote(participant.joinNote())
@@ -1491,6 +1507,20 @@ public class TableGroupServiceImpl implements TableGroupService{
 			Map<UUID, String> profileImages,
 			Map<UUID, ListenerVisibilityMode> visibilityModes
 	) {}
+
+
+	private Map<String, Object> applicationPayload(UUID groupId, String action,
+			Map<String, Object> extra, TableGroupParticipant participant) {
+		Map<String, Object> payload = tablePayload(groupId, action, extra);
+		if (participant.getApplicationId() != null)
+			payload.put("applicationId", participant.getApplicationId().toString());
+		return payload;
+	}
+
+	private void requireApplication(TableGroupParticipant participant, UUID expectedApplicationId) {
+		if (expectedApplicationId != null && !expectedApplicationId.equals(participant.getApplicationId()))
+			throw new SoundConnectException(ErrorType.PARTICIPANT_NOT_FOUND);
+	}
 
 	private Map<String, Object> tablePayload(UUID tableGroupId, String action, Map<String, Object> extraPayload) {
 		Map<String, Object> payload = new HashMap<>();

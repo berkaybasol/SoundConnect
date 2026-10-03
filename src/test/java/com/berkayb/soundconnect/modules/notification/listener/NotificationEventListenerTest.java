@@ -49,7 +49,7 @@ class NotificationEventListenerTest {
 	void erasedOrDeletedSourceRetainsReplayReceiptWithoutRecreatingInboxOrDeliveringSnapshots() {
 		var policy = mock(com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy.class);
 		var guarded = new NotificationEventListener(notificationRepository, badgeCacheHelper, notificationMapper,
-				notificationWebSocketService, mailProducer, notificationService, receiptRepository, policy);
+				notificationWebSocketService, mailProducer, notificationService, receiptRepository, policy, event -> { });
 		var event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
 				.type(NotificationType.DM_NEW_MESSAGE).title("Old identity").message("Old text").build();
 		when(policy.eligible(event)).thenReturn(false);
@@ -61,6 +61,36 @@ class NotificationEventListenerTest {
 		verifyNoInteractions(notificationWebSocketService, mailProducer, badgeCacheHelper);
 	}
 	
+	@Test
+	void policyPayloadBoundsRejectWithoutReceiptOrPrivateExceptionCause() {
+		var policy = mock(com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy.class);
+		var guarded = new NotificationEventListener(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer, notificationService, receiptRepository, policy, event -> { });
+		var event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
+				.type(NotificationType.DM_NEW_MESSAGE).title("valid").message("valid").build();
+		when(policy.eligible(event)).thenThrow(new IllegalArgumentException("private payload"));
+		assertThatThrownBy(() -> guarded.handle(event))
+				.isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class)
+				.hasNoCause().hasMessageNotContaining("private payload");
+		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer, receiptRepository);
+	}
+	@Test
+	void realPolicyRejectsDeepPayloadBeforeUsingItsAccountOrDatabaseDependencies() {
+		Map<String,Object> payload = Map.of("leaf", "private@example.invalid");
+		for (int depth = 0; depth < 10; depth++) payload = Map.of("nested", payload);
+		// This real policy validates bounds before it reaches any account/DB work.
+		var policy = new com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy(null, null, null, null);
+		var guarded = new NotificationEventListener(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer, notificationService, receiptRepository, policy, event -> { });
+		var event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
+				.type(NotificationType.SOCIAL_NEW_FOLLOWER).payload(payload).emailForce(false).build();
+		assertThatThrownBy(() -> guarded.handle(event))
+				.isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class)
+				.hasNoCause().hasMessageNotContaining("private@example.invalid");
+		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
+				notificationWebSocketService, mailProducer, receiptRepository);
+	}
 	@BeforeEach
 	void setUp() {
 		listener = new NotificationEventListener(
@@ -70,7 +100,7 @@ class NotificationEventListenerTest {
 				notificationWebSocketService,
 				mailProducer,
 				notificationService,
-				receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy()
+				receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy(), event -> { }
 		);
 		lenient().when(notificationService.refreshActorIdentityForDelivery(any()))
 				.thenAnswer(call -> call.getArgument(0));
@@ -79,8 +109,8 @@ class NotificationEventListenerTest {
 	}
 	
 	@Test
-	@DisplayName("Invalid event: recipientId veya type yoksa erken return; hiçbir yan etki yok")
-	void handle_invalidEvent_skips() {
+	@DisplayName("Invalid event: recipientId veya type yoksa DLQ reject; hiçbir yan etki yok")
+	void handle_invalidEventRejectsWithoutSideEffects() {
 		// recipient yok
 		NotificationInboundEvent e1 = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 		                                                      .recipientId(null)
@@ -97,8 +127,8 @@ class NotificationEventListenerTest {
 		                                                      .message("y")
 		                                                      .build();
 		
-		listener.handle(e1);
-		listener.handle(e2);
+		assertThatThrownBy(() -> listener.handle(e1)).isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class);
+		assertThatThrownBy(() -> listener.handle(e2)).isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class);
 		assertThatThrownBy(() -> listener.handle(new NotificationInboundEvent(null, userId, NotificationType.BAND_INVITE_RECEIVED,
 				"Legacy event without replay identity", "message", Map.of(), false, Instant.now())))
 				.isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class);
@@ -251,21 +281,28 @@ class NotificationEventListenerTest {
 	}
 
 	@Test
-	void bandNotificationDeliveryDoesNotOpenAnActorIdentityTransaction() {
+	void bandNotificationDeliveryRefreshesIdentityBeforeRealtimePush() {
 		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID()).recipientId(userId)
 				.type(NotificationType.BAND_INVITE_RECEIVED).title("Grup daveti").message("message")
 				.emailForce(false).occurredAt(Instant.now()).build();
 		Notification stored = Notification.builder().recipientId(userId).type(event.type())
 				.title(event.title()).message(event.message()).occurredAt(event.occurredAt()).build();
-		NotificationResponseDto dto = new NotificationResponseDto(UUID.randomUUID(), userId, event.type(),
-				event.title(), event.message(), false, event.occurredAt(), Map.of());
+		NotificationResponseDto stale = new NotificationResponseDto(UUID.randomUUID(), userId, event.type(),
+				"Old private band identity", event.message(), false, event.occurredAt(), Map.of("inviterName", "Old private name"));
+		NotificationResponseDto safe = new NotificationResponseDto(stale.id(), userId, event.type(),
+				"Yeni grup daveti", "Grup bildiriminin ayrıntılarını uygulamada görebilirsin.", false,
+				event.occurredAt(), Map.of("module", "BAND", "bandIdentityVersion", 0));
 		when(notificationRepository.saveAndFlush(any())).thenReturn(stored);
-		when(notificationMapper.toDto(stored)).thenReturn(dto);
+		when(notificationMapper.toDto(stored)).thenReturn(stale);
+		when(notificationService.refreshActorIdentityForDelivery(stale)).thenReturn(safe);
 
 		listener.handle(event);
 
-		verify(notificationWebSocketService).sendNotificationToUser(userId, dto);
-		verifyNoInteractions(notificationService);
+		var order = inOrder(notificationService, notificationWebSocketService);
+		order.verify(notificationService).refreshActorIdentityForDelivery(stale);
+		order.verify(notificationWebSocketService).sendNotificationToUser(userId, safe);
+		verify(notificationWebSocketService, never()).sendNotificationToUser(userId, stale);
+		verifyNoMoreInteractions(notificationService);
 	}
 
 	@Test
@@ -316,8 +353,8 @@ class NotificationEventListenerTest {
 	}
 
 	@Test
-	@DisplayName("DB kolon sınırını aşan event poison retry yerine validation ile atlanır")
-	void handle_oversizedTextSkipsBeforePersistence() {
+	@DisplayName("DB kolon sınırını aşan event inceleme için DLQ yönüne reddedilir")
+	void handle_oversizedTextRejectsBeforePersistence() {
 		NotificationInboundEvent event = NotificationInboundEvent.builder().eventId(UUID.randomUUID())
 				.recipientId(userId)
 				.type(NotificationType.SOCIAL_NEW_FOLLOWER)
@@ -325,7 +362,7 @@ class NotificationEventListenerTest {
 				.message("message")
 				.build();
 
-		listener.handle(event);
+		assertThatThrownBy(() -> listener.handle(event)).isInstanceOf(org.springframework.amqp.AmqpRejectAndDontRequeueException.class);
 
 		verifyNoInteractions(notificationRepository, badgeCacheHelper, notificationMapper,
 				notificationWebSocketService, mailProducer);

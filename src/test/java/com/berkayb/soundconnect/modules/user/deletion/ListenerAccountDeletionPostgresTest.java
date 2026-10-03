@@ -112,7 +112,8 @@ class ListenerAccountDeletionPostgresTest {
             for (String migration : List.of("2026-09-09-overthinking-lifecycle.sql",
                     "2026-09-10-overthinking-inbox-seen.sql", "2026-09-10-overthinking-profile-shares.sql",
                     "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
-                    "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql")) {
+                    "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql",
+                    "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql")) {
                 statement.execute(Files.readString(Path.of("scripts/db", migration)));
             }
         }
@@ -211,6 +212,7 @@ class ListenerAccountDeletionPostgresTest {
     @Test void aLateCleanupFailureRollsBackIdentityAvatarMediaReservationsAndAllEarlierDeletes() {
         Graph graph = graph();
         String before = row(owner);
+        UUID studioEvent = studioOutbox(owner, owner, "PENDING");
         jdbc.execute("create function test_fail_listener_cleanup() returns trigger language plpgsql as $$ begin "
                 + "if old.listener_profile_id='" + graph.profile + "'::uuid then raise exception 'Injected late cleanup failure'; end if; return old; end $$");
         jdbc.execute("create trigger test_fail_listener_cleanup before delete on tbl_listener_spotify_playlist for each row execute function test_fail_listener_cleanup()");
@@ -218,6 +220,7 @@ class ListenerAccountDeletionPostgresTest {
         assertThatThrownBy(() -> deletion.deleteSelf(owner, PASSWORD, null)).hasStackTraceContaining("Injected late cleanup failure");
 
         assertThat(row(owner)).isEqualTo(before);
+        assertThat(count("tbl_studio_reservation_notification_outbox", "event_id", studioEvent)).isEqualTo(1);
         assertThat(count("tbl_overthinking_post", "id", graph.post)).isEqualTo(1);
         assertThat(count("tbl_comment", "id", graph.rootComment)).isEqualTo(1);
         assertThat(count("tbl_like", "target_id", graph.rootComment)).isEqualTo(1);
@@ -226,6 +229,84 @@ class ListenerAccountDeletionPostgresTest {
         assertThat(jdbc.queryForObject("select profile_picture_media_id from \"tbl_listener-profile\" where id=?", UUID.class, graph.profile)).isEqualTo(graph.userAsset);
         assertThat(jdbc.queryForObject("select status from tbl_media_asset where id=?", String.class, graph.userAsset)).isEqualTo("READY");
         assertThat(count("tbl_profile_media", "profile_id", graph.profile)).isEqualTo(1);
+    }
+
+    @Test void erasurePurgesEveryStudioOutboxStateByRecipientOrRequesterAndPreservesUnrelatedRows() {
+        UUID peer = tx(() -> listener().getId());
+        List<UUID> erasedEvents = new ArrayList<>();
+        for (String state : List.of("PENDING", "IN_FLIGHT", "PUBLISHED", "DEAD_LETTER")) {
+            erasedEvents.add(studioOutbox(owner, peer, state));
+            erasedEvents.add(studioOutbox(peer, owner, state));
+        }
+        UUID unrelatedEvent = studioOutbox(peer, peer, "PENDING");
+
+        deletion.deleteSelf(owner, PASSWORD, null);
+
+        for (UUID eventId : erasedEvents) {
+            assertThat(count("tbl_studio_reservation_notification_outbox", "event_id", eventId)).isZero();
+        }
+        assertThat(count("tbl_studio_reservation_notification_outbox", "event_id", unrelatedEvent)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select message from tbl_studio_reservation_notification_outbox where event_id=?",
+                String.class, unrelatedEvent)).isEqualTo("Personal reservation snapshot");
+    }
+
+    @Test void followIntentsAreErasedByActorOrRecipientAtomicallyAndUnrelatedSiblingSurvives() {
+        UUID peer=tx(() -> listener().getId()), other=tx(() -> listener().getId());
+        List<UUID> erasedEvents=new ArrayList<>();
+        for(String state:List.of("PENDING","IN_FLIGHT","PUBLISHED","DEAD_LETTER","SUPPRESSED")) {
+            erasedEvents.add(followOutbox(owner,peer,state));
+            erasedEvents.add(followOutbox(peer,owner,state));
+        }
+        UUID sibling=followOutbox(peer,other,"PENDING");
+        // Recipient erasure must preserve another recipient of the very same band occurrence.
+        UUID occurrence=UUID.randomUUID(), band=UUID.randomUUID();
+        jdbc.update("update tbl_follow_notification_outbox set occurrence_id=?,band_id=?,notification_type='SOCIAL_NEW_BAND_FOLLOWER' where event_id in (?,?)",
+                occurrence,band,erasedEvents.get(1),sibling);
+        String before=row(owner);
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            deletion.deleteSelf(owner,PASSWORD,null);
+            for(UUID event:erasedEvents) assertThat(count("tbl_follow_notification_outbox","event_id",event)).isZero();
+            status.setRollbackOnly();
+        });
+        assertThat(row(owner)).isEqualTo(before);
+        for(UUID event:erasedEvents) assertThat(count("tbl_follow_notification_outbox","event_id",event)).isEqualTo(1);
+        deletion.deleteSelf(owner,PASSWORD,null);
+        for(UUID event:erasedEvents) assertThat(count("tbl_follow_notification_outbox","event_id",event)).isZero();
+        assertThat(count("tbl_follow_notification_outbox","event_id",sibling)).isEqualTo(1);
+        assertThatThrownBy(() -> followOutbox(owner,peer,"PENDING")).hasStackTraceContaining("Follow notification account unavailable");
+    }
+
+    private UUID followOutbox(UUID actor,UUID recipient,String state) {
+        UUID event=UUID.randomUUID();
+        jdbc.update("""
+            insert into tbl_follow_notification_outbox(event_id,occurrence_id,follower_id,recipient_id,
+                notification_type,occurred_at,status,attempt_count,next_attempt_at,lease_owner,lease_until,
+                last_error_type,published_at,created_at,updated_at)
+            values (?,?,?,?,'SOCIAL_NEW_FOLLOWER',now(),?,1,now(),?,?,?,?,now(),now())
+            """,event,UUID.randomUUID(),actor,recipient,state,
+            state.equals("IN_FLIGHT")?"fixture":null,
+            state.equals("IN_FLIGHT")?java.sql.Timestamp.from(Instant.now().plusSeconds(30)):null,
+            List.of("DEAD_LETTER","SUPPRESSED").contains(state)?"FixtureFailure":null,
+            state.equals("PUBLISHED")?java.sql.Timestamp.from(Instant.now()):null);
+        return event;
+    }
+
+    private UUID studioOutbox(UUID recipient, UUID requester, String state) {
+        UUID eventId = UUID.randomUUID();
+        jdbc.update("""
+                insert into tbl_studio_reservation_notification_outbox(
+                    event_id, recipient_id, notification_type, title, message, payload, email_force,
+                    occurred_at, status, attempt_count, next_attempt_at, lease_owner, lease_until,
+                    published_at, created_at, updated_at)
+                values (?, ?, 'STUDIO_RESERVATION_CREATED', 'Personal title', 'Personal reservation snapshot',
+                    jsonb_build_object('module','STUDIO','action','CREATED','requesterId',cast(? as text)),
+                    false, now(), ?, 0, now(), ?, ?, ?, now(), now())
+                """, eventId, recipient, requester.toString(), state,
+                "IN_FLIGHT".equals(state) ? "erasure-test" : null,
+                "IN_FLIGHT".equals(state) ? java.sql.Timestamp.from(Instant.now().plusSeconds(30)) : null,
+                "PUBLISHED".equals(state) ? java.sql.Timestamp.from(Instant.now()) : null);
+        return eventId;
     }
 
     @Test void wrongPasswordAndUnverifiedGoogleSubjectDoNotMutateAnything() {

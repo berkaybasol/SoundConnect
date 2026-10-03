@@ -211,8 +211,20 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 			UUID tableGroupId,
 			Pageable pageable
 	) {
+		return getMessages(requesterId, tableGroupId, pageable, true, null);
+	}
+
+	@Override
+	@Transactional(isolation = Isolation.REPEATABLE_READ)
+	public Page<TableGroupMessageResponseDto> getMessages(UUID requesterId, UUID tableGroupId, Pageable pageable,
+	                                                     boolean markRead, UUID expectedApplicationId) {
 		TableGroup tableGroup = tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId);
 		assertChatOpen(tableGroup);
+		if (expectedApplicationId != null && tableGroup.getParticipants().stream().noneMatch(p ->
+				requesterId.equals(p.getUserId()) && expectedApplicationId.equals(p.getApplicationId())
+						&& p.getStatus() == ParticipantStatus.ACCEPTED)) {
+			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+		}
 		if (!isAcceptedParticipant(tableGroup, requesterId)) {
 			log.warn(
 					"UNAUTHORIZED CHAT HISTORY READ attempt: userId={} tableGroupId={}",
@@ -240,7 +252,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 				message.getGameId() == null
 						? messageMapper.toResponseDto(message)
 						: messageMapper.toResponseDto(message, games.get(message.getGameId())));
-		if (boundedPageable.getPageNumber() == 0) {
+		if (markRead && boundedPageable.getPageNumber() == 0) {
 			// Clear the derived badge only if the history transaction commits.
 			runAfterCommit(() -> unreadHelper.resetUnread(requesterId, tableGroupId));
 		}

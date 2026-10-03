@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.auth.service;
 
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.auth.otp.dto.request.VerifyCodeRequestDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
@@ -42,6 +43,7 @@ import static org.mockito.Mockito.when;
 class AuthServiceVerifyCodeTest {
 
 	@Mock JwtTokenProvider jwtTokenProvider;
+	@Mock VenueApplicationSessionAccess venueApplicationSessionAccess;
 	@Mock UserRepository userRepository;
 	@Mock PasswordEncoder passwordEncoder;
 	@Mock RoleRepository roleRepository;

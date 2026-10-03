@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -53,7 +54,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,6 +64,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static com.berkayb.soundconnect.modules.notification.enums.NotificationType.*;
 
 /** Real recipient roles, SQL pagination, receipt and final-delivery boundaries in a disposable database. */
 @Testcontainers
@@ -86,6 +88,33 @@ class NotificationListenerAudiencePostgresTest {
         properties.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
     }
     private static final Instant NOW = Instant.parse("2026-09-14T10:00:00Z");
+    // Independent product contract: do not derive these expectations from category or production policy.
+    private static final Set<NotificationType> EXPECTED_LISTENER_TYPES = Set.of(
+            AUTH_EMAIL_VERIFIED, AUTH_RESET_PASSWORD,
+            MEDIA_UPLOAD_RECEVIED, MEDIA_TRANSCODE_READY, MEDIA_TRANSCODE_FAILED,
+            SOCIAL_NEW_FOLLOWER, SOCIAL_NEW_BAND_FOLLOWER, SOCIAL_LIKE, SOCIAL_COMMENT, DM_NEW_MESSAGE,
+            TABLE_JOIN_REQUEST_RECEIVED, TABLE_JOIN_REQUEST_APPROVED, TABLE_JOIN_REQUEST_REJECTED,
+            TABLE_PARTICIPANT_LEFT, TABLE_REMOVED, TABLE_CANCELLED, TABLE_EXPIRED,
+            OVERTHINKING_REVEAL_REQUEST_RECEIVED, OVERTHINKING_REVEAL_REQUEST_APPROVED,
+            OVERTHINKING_REVEAL_REQUEST_REJECTED);
+    private static final Set<NotificationType> EXPECTED_BUSINESS_TYPES = Set.of(
+            STUDIO_RESERVATION_CREATED, STUDIO_RESERVATION_CONFLICTING_REQUESTS,
+            STUDIO_RESERVATION_APPROVED, STUDIO_RESERVATION_REJECTED,
+            STUDIO_RESERVATION_CANCELLED_BY_CUSTOMER, STUDIO_RESERVATION_CANCELLED_BY_STUDIO,
+            VENUE_APPLICATION_APPROVED, VENUE_APPLICATION_REJECTED,
+            ARTIST_VENUE_LINK_APPLICATION_REQUEST, ARTIST_VENUE_LINK_APPLICATION_ACCEPT,
+            ARTIST_VENUE_LINK_APPLICATION_REJECT,
+            EVENT_PERFORMER_ADDED, EVENT_PERFORMER_APPROVAL_REQUESTED, EVENT_PERFORMER_APPROVED,
+            EVENT_PERFORMER_REJECTED, EVENT_VENUE_APPROVAL_REQUESTED, EVENT_VENUE_APPROVED, EVENT_VENUE_REJECTED,
+            BAND_INVITE_RECEIVED, BAND_INVITE_ACCEPTED, BAND_INVITE_REJECTED, BAND_MEMBER_REMOVED, BAND_MEMBER_LEFT,
+            COLLAB_APPLICATION_RECEIVED, COLLAB_APPLICATION_ACCEPTED, COLLAB_APPLICATION_REJECTED,
+            COLLAB_APPLICATION_WITHDRAWN, COLLAB_APPLICATION_INVALIDATED, COLLAB_LISTING_EXPIRED,
+            COLLAB_JOB_COMPLETION_REQUESTED, COLLAB_JOB_COMPLETED, COLLAB_REVIEW_RECEIVED,
+            COLLAB_LISTING_REMOVED, COLLAB_REPORT_RESOLVED);
+    // This admission fixture does not build the reveal-request source lifecycle.
+    private static final Set<NotificationType> ADMISSION_SOURCE_EXCLUSIONS = Set.of(
+            OVERTHINKING_REVEAL_REQUEST_RECEIVED, OVERTHINKING_REVEAL_REQUEST_APPROVED,
+            OVERTHINKING_REVEAL_REQUEST_REJECTED);
     @Autowired NotificationRepository notifications;
     @Autowired NotificationReceiptRepository receipts;
     @Autowired NotificationService service;
@@ -105,18 +134,25 @@ class NotificationListenerAudiencePostgresTest {
     UUID recipient;
 
     @BeforeEach void setup() throws Exception {
+        assertTypeContract();
         drain();
         transaction = new TransactionTemplate(transactionManager);
         try (var connection = jdbc.getDataSource().getConnection()) {
             assertThat(connection.getCatalog()).isEqualTo("notification_listener_audience_test");
         }
         jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
-        jdbc.execute("truncate tbl_notification,tbl_notification_receipt,user_roles,tbl_role,tbl_user");
+        jdbc.execute("create table if not exists tbl_dm_conversation(id uuid primary key, user_a_id uuid, user_b_id uuid)");
+        jdbc.execute("create table if not exists tbl_dm_message(id uuid primary key, conversation_id uuid, sender_id uuid, recipient_id uuid, read_at timestamp, deleted_at timestamp)");
+        jdbc.execute("truncate tbl_notification,tbl_notification_receipt,tbl_dm_message,tbl_dm_conversation,user_roles,tbl_role,tbl_user");
         recipient = UUID.randomUUID();
         jdbc.update("insert into tbl_user values (?,'ACTIVE',true,null)", recipient);
         role("ROLE_LISTENER");
         reset(badges, websocket, identities, mail, mailSender);
         SecurityContextHolder.clearContext();
+    }
+
+    @Test void explicitAudienceContractPartitionsEveryEnumMember() {
+        assertTypeContract();
     }
 
     @Test void legacyBusinessRowsAreFilteredBeforeLimitsTotalsRecentAndExplicitTypeFilters() {
@@ -153,14 +189,10 @@ class NotificationListenerAudiencePostgresTest {
 
     @Test void allCurrentConsumerTypesSurviveWhileEveryBusinessTypeIsHiddenWithoutDeletingHistory() {
         for (NotificationType type : NotificationType.values()) seed(type, NOW.minusSeconds(type.ordinal()));
-        List<NotificationType> publicTypes = Arrays.stream(NotificationType.values()).filter(this::consumerType).toList();
         assertThat(service.getUserNotifications(recipient, 0, 100).getContent()).extracting(NotificationResponseDto::type)
-                .containsExactlyElementsOf(publicTypes);
-        assertThat(service.getUnreadCount(recipient)).isEqualTo(publicTypes.size());
+                .containsExactlyInAnyOrderElementsOf(EXPECTED_LISTENER_TYPES);
+        assertThat(service.getUnreadCount(recipient)).isEqualTo(EXPECTED_LISTENER_TYPES.size());
         assertThat(notifications.count()).isEqualTo(NotificationType.values().length);
-        assertThat(publicTypes).contains(NotificationType.SOCIAL_NEW_BAND_FOLLOWER, NotificationType.DM_NEW_MESSAGE,
-                NotificationType.TABLE_CANCELLED, NotificationType.AUTH_RESET_PASSWORD,
-                NotificationType.MEDIA_TRANSCODE_READY, NotificationType.OVERTHINKING_REVEAL_REQUEST_RECEIVED);
     }
 
     @Test void directLookupMediaResolutionMarkAndClearCannotExposeOrEraseHiddenLegacyRows() {
@@ -191,30 +223,102 @@ class NotificationListenerAudiencePostgresTest {
 
     @ParameterizedTest @ValueSource(booleans = {true, false})
     void brokerAndTransactionalAdmissionUseTheRecipientsDatabaseRoleAndKeepReplayReceipts(boolean throughBroker) throws Exception {
+        // Unrelated read/unread rows and their durable receipts must survive every phase.
+        var readSibling = seed(TABLE_JOIN_REQUEST_APPROVED, NOW.minusSeconds(2));
+        var unreadSibling = seed(TABLE_EXPIRED, NOW.minusSeconds(1));
+        assertThat(notifications.markAsRead(readSibling.getId(), recipient)).isEqualTo(1);
+        transaction.executeWithoutResult(status -> {
+            assertThat(receipts.retainForNotification(readSibling.getId(), recipient)).isEqualTo(1);
+            assertThat(receipts.retainForNotification(unreadSibling.getId(), recipient)).isEqualTo(1);
+        });
+        var originalInbox = inboxRows();
+        var originalReceipts = receiptRows();
+        assertThat(originalInbox).extracting(InboxRow::id, InboxRow::read).containsExactlyInAnyOrder(
+                tuple(readSibling.getId(), true), tuple(unreadSibling.getId(), false));
+        var submittedTypes = EnumSet.copyOf(EXPECTED_LISTENER_TYPES);
+        submittedTypes.addAll(EXPECTED_BUSINESS_TYPES);
+        submittedTypes.removeAll(ADMISSION_SOURCE_EXCLUSIONS);
+        var acceptedTypes = EnumSet.copyOf(EXPECTED_LISTENER_TYPES);
+        acceptedTypes.removeAll(ADMISSION_SOURCE_EXCLUSIONS);
+        var submitted = new ArrayList<NotificationInboundEvent>();
         // A musician sender/authentication must never make a listener recipient eligible.
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("sender", "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_MUSICIAN"))));
-        var rejected = new ArrayList<NotificationInboundEvent>();
         try {
-            for (NotificationType type : NotificationType.values()) {
-                if ("OVERTHINKING".equals(type.getCategory())) continue; // Real source lifecycle has separate PostgreSQL coverage.
+            for (NotificationType type : submittedTypes) {
                 var event = event(type);
+                submitted.add(event);
                 send(event, throughBroker);
-                if (!consumerType(type)) rejected.add(event);
             }
         } finally { SecurityContextHolder.clearContext(); }
         drain();
-        long publicCount = Arrays.stream(NotificationType.values()).filter(this::consumerType)
-                .filter(type -> !"OVERTHINKING".equals(type.getCategory())).count();
-        assertThat(notifications.count()).isEqualTo(publicCount);
-        assertThat(receipts.count()).isEqualTo(NotificationType.values().length - 3);
-        assertThat(rejected).hasSize(33);
-        verify(websocket, never()).sendNotificationToUser(any(), argThat(dto -> dto != null && !consumerType(dto.type())));
+        assertThat(submitted).extracting(NotificationInboundEvent::type).containsExactlyInAnyOrderElementsOf(submittedTypes);
+        assertThat(submitted).extracting(NotificationInboundEvent::eventId).doesNotHaveDuplicates().doesNotContainNull();
+        var firstInbox = inboxRows();
+        var firstReceipts = receiptRows();
+        assertThat(firstInbox).containsAll(originalInbox);
+        assertThat(firstReceipts).containsAll(originalReceipts);
+        var admitted = firstInbox.stream().filter(row -> !originalInbox.contains(row)).toList();
+        assertThat(admitted).extracting(InboxRow::type).containsExactlyInAnyOrderElementsOf(acceptedTypes);
+        assertThat(admitted).extracting(InboxRow::id).doesNotHaveDuplicates().doesNotContainNull();
+        assertThat(admitted).extracting(InboxRow::sourceEventId, InboxRow::recipientId, InboxRow::type, InboxRow::read)
+                .containsExactlyInAnyOrderElementsOf(submitted.stream().filter(e -> acceptedTypes.contains(e.type()))
+                        .map(e -> tuple(e.eventId(), e.recipientId(), e.type(), false)).toList());
+        // Observe rejection from unfiltered PG rows, not from the expected classification.
+        var admittedEvents = admitted.stream().map(InboxRow::sourceEventId).toList();
+        var rejected = submitted.stream().filter(e -> !admittedEvents.contains(e.eventId())).toList();
+        assertThat(rejected).extracting(NotificationInboundEvent::type)
+                .containsExactlyInAnyOrderElementsOf(EXPECTED_BUSINESS_TYPES);
+        var expectedReceiptKeys = new ArrayList<>(originalReceipts.stream()
+                .map(row -> tuple(row.sourceEventId(), row.recipientId())).toList());
+        submitted.forEach(e -> expectedReceiptKeys.add(tuple(e.eventId(), e.recipientId())));
+        assertThat(firstReceipts).extracting(ReceiptRow::sourceEventId, ReceiptRow::recipientId)
+                .containsExactlyInAnyOrderElementsOf(expectedReceiptKeys);
+        assertThat(firstReceipts).extracting(ReceiptRow::recordedAt).doesNotContainNull();
+
+        var deliveredTo = ArgumentCaptor.forClass(UUID.class);
+        var delivered = ArgumentCaptor.forClass(NotificationResponseDto.class);
+        verify(websocket, times(acceptedTypes.size())).sendNotificationToUser(deliveredTo.capture(), delivered.capture());
+        assertThat(deliveredTo.getAllValues()).containsOnly(recipient);
+        assertThat(delivered.getAllValues()).extracting(NotificationResponseDto::id, NotificationResponseDto::recipientId,
+                        NotificationResponseDto::type)
+                .containsExactlyInAnyOrderElementsOf(admitted.stream().map(row -> tuple(row.id(), row.recipientId(), row.type())).toList());
+        verify(websocket, never()).sendNotificationToUser(any(), argThat(dto -> dto != null && EXPECTED_BUSINESS_TYPES.contains(dto.type())));
+        clearInvocations(websocket, badges, mail, mailSender);
+
         role("ROLE_MUSICIAN");
+        assertThat(jdbc.queryForList("select r.name from user_roles ur join tbl_role r on r.id=ur.role_id where ur.user_id=?",
+                String.class, recipient)).containsExactly("ROLE_MUSICIAN");
+        assertThat(inboxRows()).containsExactlyInAnyOrderElementsOf(firstInbox);
+        assertThat(receiptRows()).containsExactlyInAnyOrderElementsOf(firstReceipts);
         for (var rejectedEvent : rejected) send(rejectedEvent, throughBroker);
         drain();
-        assertThat(notifications.count()).isEqualTo(publicCount);
-        assertThat(receipts.count()).isEqualTo(NotificationType.values().length - 3);
+        // Compare notification ID/source/recipient/type/read and receipt ID/recipient/timestamp in real PG.
+        assertThat(inboxRows()).containsExactlyInAnyOrderElementsOf(firstInbox);
+        assertThat(receiptRows()).containsExactlyInAnyOrderElementsOf(firstReceipts);
+        verify(websocket, never()).sendNotificationToUser(any(), argThat(dto -> dto != null && EXPECTED_BUSINESS_TYPES.contains(dto.type())));
+        verifyNoInteractions(websocket, badges, mail, mailSender);
+        System.out.printf("AUDIENCE_REPLAY_COMPLETE broker=%s submitted=%d admitted=%d rejected=%d inboxAndReceiptIdentityUnchanged=true noReplayDelivery=true%n",
+                throughBroker, submitted.size(), admitted.size(), rejected.size());
+
+        // Positive control: this same rejected business payload is eligible with a NEW event ID after the role change.
+        // VENUE_APPLICATION_* additionally need their separate source/approval lifecycle; this fixture does not claim that acceptance.
+        var previous = rejected.stream().filter(e -> e.type() == COLLAB_REPORT_RESOLVED).findFirst().orElseThrow();
+        var fresh = new NotificationInboundEvent(UUID.randomUUID(), previous.recipientId(), previous.type(), previous.title(),
+                previous.message(), previous.payload(), previous.emailForce(), previous.occurredAt());
+        send(fresh, throughBroker);
+        drain();
+        var freshInbox = inboxRows();
+        assertThat(freshInbox).containsAll(firstInbox).hasSize(firstInbox.size() + 1);
+        var newRow = freshInbox.stream().filter(row -> !firstInbox.contains(row)).toList();
+        assertThat(newRow).extracting(InboxRow::sourceEventId, InboxRow::recipientId, InboxRow::type, InboxRow::read)
+                .containsExactly(tuple(fresh.eventId(), recipient, COLLAB_REPORT_RESOLVED, false));
+        assertThat(receiptRows()).containsAll(firstReceipts).hasSize(firstReceipts.size() + 1);
+        assertThat(receiptRows()).filteredOn(row -> row.sourceEventId().equals(fresh.eventId()))
+                .extracting(ReceiptRow::recipientId).containsExactly(recipient);
+        verify(websocket).sendNotificationToUser(eq(recipient), argThat(dto -> dto.id().equals(newRow.getFirst().id())
+                && dto.recipientId().equals(recipient) && dto.type() == COLLAB_REPORT_RESOLVED));
+        System.out.printf("AUDIENCE_FRESH_EVENT_CONTROL_COMPLETE broker=%s%n", throughBroker);
     }
 
     @ParameterizedTest @ValueSource(booleans = {true, false})
@@ -260,8 +364,24 @@ class NotificationListenerAudiencePostgresTest {
         assertThat(notifications.findById(item.getId())).isPresent();
     }
 
-    private boolean consumerType(NotificationType type) {
-        return Set.of("AUTH", "MEDIA", "SOCIAL", "DM", "TABLE", "OVERTHINKING").contains(type.getCategory());
+    private static void assertTypeContract() {
+        assertThat(EXPECTED_LISTENER_TYPES).doesNotContainAnyElementsOf(EXPECTED_BUSINESS_TYPES);
+        var covered = EnumSet.copyOf(EXPECTED_LISTENER_TYPES);
+        covered.addAll(EXPECTED_BUSINESS_TYPES);
+        assertThat(covered).containsExactlyInAnyOrderElementsOf(EnumSet.allOf(NotificationType.class));
+        assertThat(EXPECTED_LISTENER_TYPES).containsAll(ADMISSION_SOURCE_EXCLUSIONS);
+    }
+    private record InboxRow(UUID id, UUID sourceEventId, UUID recipientId, NotificationType type, boolean read) { }
+    private record ReceiptRow(UUID sourceEventId, UUID recipientId, Instant recordedAt) { }
+    private List<InboxRow> inboxRows() {
+        return jdbc.query("select id,source_event_id,recipient_id,type,is_read from tbl_notification", (rs, index) ->
+                new InboxRow(rs.getObject("id", UUID.class), rs.getObject("source_event_id", UUID.class),
+                        rs.getObject("recipient_id", UUID.class), NotificationType.valueOf(rs.getString("type")), rs.getBoolean("is_read")));
+    }
+    private List<ReceiptRow> receiptRows() {
+        return jdbc.query("select source_event_id,recipient_id,recorded_at from tbl_notification_receipt", (rs, index) ->
+                new ReceiptRow(rs.getObject("source_event_id", UUID.class), rs.getObject("recipient_id", UUID.class),
+                        rs.getTimestamp("recorded_at").toInstant()));
     }
     private Notification seed(NotificationType type, Instant occurredAt) {
         return notifications.saveAndFlush(Notification.builder().sourceEventId(UUID.randomUUID()).recipientId(recipient)
@@ -269,6 +389,17 @@ class NotificationListenerAudiencePostgresTest {
                 .payload(Map.of()).read(false).build());
     }
     private NotificationInboundEvent event(NotificationType type) {
+        if (type == NotificationType.DM_NEW_MESSAGE) {
+            // Audience tests must supply a valid unread source: admission also
+            // verifies source ownership/lifecycle before creating a DM inbox row.
+            UUID sender = UUID.randomUUID(), message = UUID.randomUUID(), conversation = UUID.randomUUID();
+            jdbc.update("insert into tbl_user values (?,'ACTIVE',true,null)", sender);
+            jdbc.update("insert into tbl_dm_conversation values (?,?,?)", conversation, sender, recipient);
+            jdbc.update("insert into tbl_dm_message values (?,?,?,?,null,null)", message, conversation, sender, recipient);
+            return new NotificationInboundEvent(UUID.randomUUID(), recipient, type, type.getDefaultTitle(), "Current event",
+                    Map.of("messageId", message.toString(), "conversationId", conversation.toString(),
+                            "senderId", sender.toString(), "recipientId", recipient.toString()), false, NOW);
+        }
         return new NotificationInboundEvent(UUID.randomUUID(), recipient, type, type.getDefaultTitle(), "Current event",
                 Map.of(), false, NOW);
     }

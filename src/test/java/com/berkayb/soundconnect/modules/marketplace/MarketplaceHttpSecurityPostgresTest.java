@@ -19,6 +19,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
+import com.berkayb.soundconnect.shared.config.ExternalRabbitConsumersTestIsolation;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,12 +33,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -77,17 +80,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker=true)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@Import(ExternalRabbitConsumersTestIsolation.class)
 class MarketplaceHttpSecurityPostgresTest {
     @TestConfiguration(proxyBeanMethods=false)
     static class MessagingIsolation {
-        @Bean static BeanPostProcessor disableExternalConsumers() {
-            return new BeanPostProcessor() {
-                @Override public Object postProcessBeforeInitialization(Object bean,String name) {
-                    // The legacy mail factory does not consume Boot's global auto-startup property.
-                    if(bean instanceof org.springframework.amqp.rabbit.config.AbstractRabbitListenerContainerFactory<?> factory)
-                        factory.setAutoStartup(false);
-                    return bean;
+        @Bean @DependsOn("entityManagerFactory")
+        InitializingBean notificationIdentityMigrations(JdbcTemplate jdbc) {
+            return () -> {
+                // Hibernate creates this disposable schema before the real startup guards run.
+                try(var connection=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
+                    assertThat(connection.getMetaData().getURL()).isEqualTo(DB.getJdbcUrl());
                 }
+                for(String file:List.of("2026-09-28-media-notification-identity.sql",
+                        "2026-09-29-band-notification-identity.sql"))
+                    jdbc.execute(Files.readString(Path.of("scripts/db",file)));
             };
         }
     }

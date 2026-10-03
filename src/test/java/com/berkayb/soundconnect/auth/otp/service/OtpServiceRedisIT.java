@@ -27,7 +27,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataRedisTest
+@DataRedisTest(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		// This fixture exercises real Redis; general H2 defaults disable its auto-configuration.
+		"spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce"
+})
 @Import({OtpService.class, RedisConfig.class})
 @TestPropertySource(properties = {
 		"otp.ttl.minutes=1",

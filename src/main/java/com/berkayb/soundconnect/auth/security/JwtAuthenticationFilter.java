@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -40,6 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private final JwtUtil jwtUtil;
 	private final ListenerProfileChoiceGate listenerProfileChoiceGate;
 	private final SecurityErrorResponseWriter securityErrorResponseWriter;
+	private final VenueApplicationSessionAccess venueApplicationSessionAccess;
 	
 	// OncePerRequestFilter: Her HTTP isteginde yalnizca bir kez calisan filtre temel sinifidir.
 	// doFilterInfernal metodu, filtre mantigini uyguladigimiz ana methoddur.
@@ -62,19 +64,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		}
 		
 		final UUID userId;
+		final JwtTokenProvider.VenueApplicationClaims applicationClaims;
 		try {
-			if (!jwtTokenProvider.validateToken(token)) {
-				SecurityContextHolder.clearContext();
-				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
-				return;
+			if (jwtTokenProvider.validateToken(token)) {
+				applicationClaims = null;
+				userId = jwtTokenProvider.getUserIdFromToken(token);
+			} else {
+				applicationClaims = jwtTokenProvider.getVenueApplicationClaims(token);
+				if (applicationClaims == null) {
+					SecurityContextHolder.clearContext();
+					continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
+					return;
+				}
+				userId = applicationClaims.userId();
 			}
-			userId = jwtTokenProvider.getUserIdFromToken(token);
 		} catch (JwtException | IllegalArgumentException exception) {
 			// Token parsing/claim failures are authentication failures. Database and
 			// infrastructure exceptions are intentionally not caught here so the
 			// server can surface them as 5xx instead of a false 401.
 			rejectAuthentication(request, exception);
 			continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
+			return;
+		}
+
+		if (applicationClaims != null) {
+			authenticateVenueApplication(request, response, filterChain, applicationClaims);
 			return;
 		}
 
@@ -122,6 +136,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		// filtre -> controller -> service vs zincir devam etsin
 		filterChain.doFilter(request, response);
 		
+	}
+
+	private void authenticateVenueApplication(HttpServletRequest request, HttpServletResponse response,
+			FilterChain filterChain, JwtTokenProvider.VenueApplicationClaims claims)
+			throws IOException, ServletException {
+		// Do not fall through as anonymous on public paths: a restricted bearer
+		// can only ever reach its exact application namespace and HTTP methods.
+		SecurityContextHolder.clearContext();
+		if (!VenueApplicationRequestPolicy.allows(request, claims.applicationId())) {
+			securityErrorResponseWriter.write(request, response, ErrorType.FORBIDDEN_ACCESS);
+			return;
+		}
+		final UserDetails details;
+		try {
+			details = userDetailsService.loadUserById(claims.userId());
+		} catch (UsernameNotFoundException exception) {
+			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
+			return;
+		} catch (SoundConnectException exception) {
+			if (exception.getErrorType() != ErrorType.USER_NOT_FOUND) throw exception;
+			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
+			return;
+		}
+		if (!(details instanceof UserDetailsImpl principal)
+				|| !venueApplicationSessionAccess.isAccessible(principal.getUser(), claims.applicationId())) {
+			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
+			return;
+		}
+		setAuthentication(request, new VenueApplicationPrincipal(principal.getUser(), claims.applicationId()));
+		filterChain.doFilter(request, response);
 	}
 
 	private void continueWithoutAuthentication(HttpServletRequest request, HttpServletResponse response,

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.venue.controller;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.location.entity.City;
@@ -53,6 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestMethodOrder(OrderAnnotation.class)
 @Tag("web")
 @WithMockUser(authorities = "MANAGE_VENUES")
+@H2NotificationIdentityTestBoundary
 class VenueControllerIT {
 	
 	@Autowired MockMvc mockMvc;

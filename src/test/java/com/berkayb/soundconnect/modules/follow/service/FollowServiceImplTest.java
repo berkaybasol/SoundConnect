@@ -1,7 +1,7 @@
 package com.berkayb.soundconnect.modules.follow.service;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
-import com.berkayb.soundconnect.modules.follow.event.FollowNotificationRequestedEvent;
+import com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
@@ -35,7 +35,7 @@ class FollowServiceImplTest {
 	private FollowRepository followRepository;
 
 	@Mock
-	private ApplicationEventPublisher applicationEventPublisher;
+	private FollowNotificationOutboxService notificationOutbox;
 
 	@Mock
 	private ListenerVisibilityPolicy listenerVisibilityPolicy;
@@ -98,7 +98,7 @@ class FollowServiceImplTest {
 				.hasMessageContaining(ErrorType.GHOST_PROFILE_CANNOT_BE_FOLLOWED.getMessage());
 
 		verify(listenerVisibilityPolicy).lockAndIsPubliclyRestricted(following.getId());
-		verifyNoInteractions(followRepository, applicationEventPublisher);
+		verifyNoInteractions(followRepository, notificationOutbox);
 	}
 
 	@Test
@@ -110,7 +110,7 @@ class FollowServiceImplTest {
 						assertThat(exception.getErrorType()).isEqualTo(ErrorType.PROFILE_NOT_FOUND));
 
 		verify(listenerProfileChoiceStatusReader).requiresChoice(following);
-		verifyNoInteractions(listenerVisibilityPolicy, followRepository, applicationEventPublisher);
+		verifyNoInteractions(listenerVisibilityPolicy, followRepository, notificationOutbox);
 	}
 
 	@Test
@@ -128,38 +128,17 @@ class FollowServiceImplTest {
 		verifyNoMoreInteractions(listenerVisibilityPolicy);
 	}
 
-	@Test
-	void follow_queues_an_ids_only_notification_request() {
-		when(followRepository.existsByFollowerAndFollowing(follower, following)).thenReturn(false);
-		when(followRepository.save(any(Follow.class))).thenAnswer(inv -> inv.getArgument(0));
-		ArgumentCaptor<FollowNotificationRequestedEvent> eventCaptor =
-				ArgumentCaptor.forClass(FollowNotificationRequestedEvent.class);
+    @Test
+    void follow_writes_ids_only_durable_intent_and_propagates_failure() {
+        when(followRepository.save(any(Follow.class))).thenAnswer(inv -> {
+            Follow saved=inv.getArgument(0); saved.setId(UUID.randomUUID()); return saved;
+        });
+        doThrow(new IllegalStateException("durable storage unavailable"))
+            .when(notificationOutbox).enqueue(any(), eq(follower.getId()), eq(following.getId()), isNull(), any());
+        assertThatThrownBy(() -> sut.follow(follower, following)).isInstanceOf(IllegalStateException.class);
+        verify(followRepository).save(any(Follow.class));
+    }
 
-		sut.follow(follower, following);
-
-		InOrder order = inOrder(followRepository, applicationEventPublisher);
-		order.verify(followRepository).save(any(Follow.class));
-		order.verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
-		assertThat(eventCaptor.getValue().followerId()).isEqualTo(follower.getId());
-		assertThat(eventCaptor.getValue().followingId()).isEqualTo(following.getId());
-		assertThat(Arrays.stream(FollowNotificationRequestedEvent.class.getRecordComponents())
-				.map(component -> component.getType().getName())
-				.toList())
-				.containsExactly(UUID.class.getName(), UUID.class.getName());
-	}
-
-	@Test
-	void follow_notification_registration_failure_does_not_rollback_domain_work() {
-		when(followRepository.existsByFollowerAndFollowing(follower, following)).thenReturn(false);
-		when(followRepository.save(any(Follow.class))).thenAnswer(inv -> inv.getArgument(0));
-		doThrow(new IllegalStateException("event infrastructure unavailable"))
-				.when(applicationEventPublisher).publishEvent(any(FollowNotificationRequestedEvent.class));
-
-		assertThatCode(() -> sut.follow(follower, following)).doesNotThrowAnyException();
-
-		verify(followRepository).save(any(Follow.class));
-	}
-	
 	@Test
 	void follow_throws_when_self_follow() {
 		User me = follower; // aynı referans

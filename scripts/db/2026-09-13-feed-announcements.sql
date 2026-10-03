@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS tbl_promotion_audience (
 
 -- Hibernate-generated enum checks have installation-dependent names. Replace only
 -- checks on the exact single enum column; preserve all unrelated business checks.
+-- Keep media owners aligned with the later marketplace-media migration: dev up
+-- replays this file even when MARKETPLACE assets already exist.
 DO $announcement_enums$
 DECLARE item record; enum_check record;
 BEGIN
@@ -31,7 +33,7 @@ BEGIN
             $$status IN ('DRAFT','ACTIVE','INACTIVE','EXPIRED','ARCHIVED')$$),
         ('tbl_media_asset','owner_type','ck_media_asset_owner_type',
             $$owner_type IN ('USER','BAND','VENUE','MUSICIAN_PROFILE','PRODUCER_PROFILE','ORGANIZER_PROFILE',
-                'MUSIC_HOUSE_PROFILE','STUDIO_PROFILE','LISTENER_PROFILE','VENUE_PROFILE','MANAGER_PROFILE','PROMOTION')$$),
+                'MUSIC_HOUSE_PROFILE','STUDIO_PROFILE','LISTENER_PROFILE','VENUE_PROFILE','MANAGER_PROFILE','PROMOTION','MARKETPLACE')$$),
         ('tbl_like','target_type','ck_like_target_type',
             $$target_type IN ('OVERTHINKING','OVERTHINKING_PROFILE_SHARE','MEDIA','EVENT','EVENT_POST','TABLE_GROUP_POST','COMMENT','ANNOUNCEMENT')$$),
         ('tbl_comment','target_type','ck_comment_target_type',

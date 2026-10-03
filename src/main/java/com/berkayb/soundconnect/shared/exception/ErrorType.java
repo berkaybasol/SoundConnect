@@ -91,6 +91,7 @@ public enum ErrorType {
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.CONFLICT, "Zaten basvuru yapilmis."),
+	VENUE_APPLICANT_EMAIL_VERIFICATION_REQUIRED(1613, "Venue applicant email verification required", HttpStatus.CONFLICT, "Başvuru sahibinin e-posta doğrulaması tamamlanmadan karar verilemez."),
 	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi"),
 	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.CONFLICT, "Bu basvuruya zaten islem yapilmis"),
 	STUDIO_APPLICATION_ALREADY_EXISTS(1608, "Studio application already exists", HttpStatus.CONFLICT, "Zaten bekleyen bir studyo basvurusu var."),
@@ -104,6 +105,9 @@ public enum ErrorType {
 			"mesaji okumaya yetkisi yok"),
 	NOT_PARTICIPANT_OF_CONVERSATION(1607,"User is not a participant of the conversation",HttpStatus.FORBIDDEN,"Bu " +
 			"kullanici bu konusmanin katilimsici degil"),
+	DM_MESSAGE_IDEMPOTENCY_CONFLICT(1610,"DM message key conflict",HttpStatus.CONFLICT,"Mesaj anahtarı farklı bir gönderim için daha önce kullanılmış."),
+	DM_RATE_LIMITED(1611,"DM rate limited",HttpStatus.TOO_MANY_REQUESTS,"Çok hızlı mesaj gönderiyorsun. Kısa süre sonra tekrar dene."),
+	DM_RATE_LIMIT_UNAVAILABLE(1612,"DM protection unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Mesaj gönderimi geçici olarak kullanılamıyor. Tekrar dene."),
 	
 	// MEDIA & HLS ( 1800 - 1900)
 	MEDIA_ASSET_NOT_FOUND(1800, "Media asset not found", HttpStatus.NOT_FOUND, "Yüklenmek istenen medya varlığı bulunamadı."),
@@ -404,6 +408,9 @@ public enum ErrorType {
 	MARKETPLACE_IDEMPOTENCY_CONFLICT(9947, "Marketplace request conflict", HttpStatus.CONFLICT, "Bu istek anahtarı farklı bilgilerle kullanılmış."),
 	MARKETPLACE_REPORT_DUPLICATE(9948, "Marketplace report already exists", HttpStatus.CONFLICT, "Bu ilanı zaten bildirdin."),
 	MARKETPLACE_REPORT_NOT_FOUND(9949, "Marketplace report not found", HttpStatus.NOT_FOUND, "İlan bildirimi bulunamadı."),
+	// PUSH DEVICE MUTATIONS (9950-9951)
+	PUSH_DEVICE_RATE_LIMITED(9950, "Too many push device updates", HttpStatus.TOO_MANY_REQUESTS, "Bildirim ayarları çok sık güncelleniyor. Biraz sonra tekrar dene."),
+	PUSH_DEVICE_UNAVAILABLE(9951, "Push device protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Bildirim ayarları şu anda güncellenemiyor. Biraz sonra tekrar dene."),
 	// GENEL (9999)
 
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),

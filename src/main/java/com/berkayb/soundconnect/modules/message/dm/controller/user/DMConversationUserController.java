@@ -5,6 +5,8 @@ import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPreviewResponseDto;
 import com.berkayb.soundconnect.modules.message.dm.service.DMConversationService;
+import com.berkayb.soundconnect.modules.message.dm.service.DmConversationQueryService;
+import com.berkayb.soundconnect.modules.message.dm.dto.response.DMConversationPageResponseDto;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,25 @@ import java.util.UUID;
 public class DMConversationUserController {
 	
 	private final DMConversationService conversationService;
+	private final DmConversationQueryService conversationQueries;
+
+	@GetMapping("/conversations/my/page")
+	public ResponseEntity<BaseResponse<DMConversationPageResponseDto>> myConversationsPage(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@RequestParam(defaultValue = "30") int size,
+			@RequestParam(required = false) String cursor) {
+		return ResponseEntity.ok(BaseResponse.<DMConversationPageResponseDto>builder()
+				.success(true).message("Conversations listed").code(200)
+				.data(conversationQueries.page(principal.getId(), size, cursor)).build());
+	}
+
+	@GetMapping("/conversations/{conversationId}/preview")
+	public ResponseEntity<BaseResponse<DMConversationPreviewResponseDto>> conversationPreview(
+			@AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID conversationId) {
+		return ResponseEntity.ok(BaseResponse.<DMConversationPreviewResponseDto>builder()
+				.success(true).message("Conversation preview").code(200)
+				.data(conversationQueries.preview(principal.getId(), conversationId)).build());
+	}
 	
 	@GetMapping(EndPoints.DM.CONVERSATION_LIST) // /conversations/my
 	//@PreAuthorize("hasAuthority('READ_DM')")

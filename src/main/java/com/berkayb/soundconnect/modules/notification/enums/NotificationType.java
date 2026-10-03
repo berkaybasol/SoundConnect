@@ -38,6 +38,7 @@ public enum NotificationType {
 	STUDIO_RESERVATION_CANCELLED_BY_STUDIO("STUDIO", "Stüdyo rezervasyonu iptal edildi", false),
 	
 	// VENUE
+	VENUE_APPLICATION_APPROVED("VENUE", "Mekân başvurun onaylandı", false),
 	VENUE_APPLICATION_REJECTED("VENUE", "Mekan başvurun reddedildi", true),
 	
 	// ARTISTVENUELINKAPPLICATION

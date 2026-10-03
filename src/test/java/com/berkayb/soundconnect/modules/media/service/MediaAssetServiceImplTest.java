@@ -1,6 +1,8 @@
 // src/test/java/com/berkayb/soundconnect/modules/media/service/MediaAssetServiceImplTest.java
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
@@ -68,6 +70,7 @@ import static org.mockito.Mockito.*;
 		"create table if not exists tbl_marketplace_listing_photo(listing_id uuid,media_asset_id uuid,position integer)",
 		"create table if not exists tbl_marketplace_report_photo(report_id uuid,media_asset_id uuid)"
 })
+@H2NotificationIdentityTestBoundary
 class MediaAssetServiceImplTest {
 	
 	@Autowired MediaAssetService mediaService;

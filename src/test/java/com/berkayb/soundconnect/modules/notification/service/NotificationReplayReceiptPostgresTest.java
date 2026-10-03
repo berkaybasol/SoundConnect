@@ -157,16 +157,21 @@ class NotificationReplayReceiptPostgresTest {
     @Test void failureInLaterFanoutRecipientRollsBackEarlierInboxAndReceiptTogether() {
         NotificationInboundEvent first = event(UUID.randomUUID()), second = event(UUID.randomUUID());
         NotificationInboundEvent invalid = new NotificationInboundEvent(second.eventId(), second.recipientId(), second.type(),
-                "x".repeat(161), second.message(), second.payload(), false, second.occurredAt());
+                second.title(), second.message(), second.payload(), true, second.occurredAt());
 
         assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
             transactionalNotifications.persistInCurrentTransaction(first);
+            assertThat(notifications.findBySourceEventId(first.eventId())).isPresent();
+            assertThat(receipts.findById(first.eventId()).orElseThrow().getRecipientId()).isEqualTo(first.recipientId());
+            assertThat(notifications.count()).isEqualTo(1);
+            assertThat(receipts.count()).isEqualTo(1);
             transactionalNotifications.persistInCurrentTransaction(invalid);
-        })).isInstanceOf(IllegalArgumentException.class);
+        })).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Transactional in-app notifications require emailForce=false");
 
         assertThat(notifications.count()).isZero();
         assertThat(receipts.count()).isZero();
-        verifyNoInteractions(websocket, badges);
+        verifyNoInteractions(websocket, badges, mapper, mail, identityResolver);
     }
 
     @Test void simultaneousDeliveriesClaimOneReceiptAndPushOnlyAfterTheWinningCommit() throws Exception {
@@ -299,6 +304,8 @@ class NotificationReplayReceiptPostgresTest {
     @Test void duplicateSourceIdWithDifferentRecipientCannotCopyOrReplaceOriginalInbox() {
         NotificationInboundEvent original = event(UUID.randomUUID());
         listener.handle(original);
+        String originalRow = jdbc.queryForObject(
+                "select to_jsonb(n)::text from tbl_notification n where source_event_id=?", String.class, original.eventId());
         NotificationInboundEvent conflicting = new NotificationInboundEvent(original.eventId(), UUID.randomUUID(), original.type(),
                 "Conflicting title", "Conflicting body", Map.of(), false, original.occurredAt());
 
@@ -306,8 +313,11 @@ class NotificationReplayReceiptPostgresTest {
 
         Notification stored = notifications.findBySourceEventId(original.eventId()).orElseThrow();
         assertThat(stored.getRecipientId()).isEqualTo(original.recipientId());
-        assertThat(stored.getTitle()).isEqualTo(original.title());
+        assertThat(stored.getTitle()).isEqualTo("Yeni grup daveti");
+        assertThat(jdbc.queryForObject("select to_jsonb(n)::text from tbl_notification n where source_event_id=?",
+                String.class, original.eventId())).isEqualTo(originalRow);
         assertThat(receipts.findById(original.eventId()).orElseThrow().getRecipientId()).isEqualTo(original.recipientId());
+        assertThat(receipts.count()).isEqualTo(1);
         assertThat(notifications.count()).isEqualTo(1);
         verify(websocket, never()).sendNotificationToUser(eq(conflicting.recipientId()), any());
     }

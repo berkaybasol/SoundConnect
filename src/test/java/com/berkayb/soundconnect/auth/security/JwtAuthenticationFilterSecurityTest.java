@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.auth.security;
 
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -40,6 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 class JwtAuthenticationFilterSecurityTest {
 
 	@Mock JwtTokenProvider jwtTokenProvider;
+	@Mock VenueApplicationSessionAccess venueApplicationSessionAccess;
 	@Mock CustomUserDetailsService userDetailsService;
 	@Mock JwtUtil jwtUtil;
 	@Mock ListenerProfileChoiceGate listenerProfileChoiceGate;
@@ -263,7 +265,7 @@ class JwtAuthenticationFilterSecurityTest {
 		var actualResponse = new org.springframework.mock.web.MockHttpServletResponse();
 		var objectMapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
 		var actualFilter = new JwtAuthenticationFilter(jwtTokenProvider, userDetailsService, new JwtUtil(jwtTokenProvider),
-				listenerProfileChoiceGate, new SecurityErrorResponseWriter(objectMapper));
+				listenerProfileChoiceGate, new SecurityErrorResponseWriter(objectMapper), venueApplicationSessionAccess);
 		when(jwtTokenProvider.validateToken("expired")).thenReturn(false);
 		actualFilter.doFilterInternal(actualRequest, actualResponse, filterChain);
 		assertThat(actualResponse.getStatus()).isEqualTo(401);

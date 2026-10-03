@@ -658,6 +658,26 @@ class TableGroupChatServiceImplTest {
 	}
 	
 	@Test
+	void notificationChatPreparationDoesNotReadAndStaleCycleCannotAccessNewChat() {
+		UUID tableId = UUID.randomUUID(), userId = UUID.randomUUID(), cycle = UUID.randomUUID();
+		TableGroup group = TableGroup.builder().ownerId(UUID.randomUUID())
+				.status(TableGroupStatus.ACTIVE).expiresAt(Instant.now().plusSeconds(3600))
+				.participants(Set.of(TableGroupParticipant.builder().userId(userId).applicationId(cycle)
+						.status(ParticipantStatus.ACCEPTED).joinedAt(Instant.now()).build())).build();
+		when(tableGroupEntityFinder.GetTableGroupByTableGroupId(tableId)).thenReturn(group);
+		Pageable page = PageRequest.of(0, 20);
+		when(messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(tableId, page))
+				.thenReturn(Page.empty(page));
+		assertThat(chatService.getMessages(userId, tableId, page, false, cycle)).isEmpty();
+		verifyNoInteractions(unreadHelper);
+		assertThatThrownBy(() -> chatService.getMessages(userId, tableId, page, false, UUID.randomUUID()))
+				.isInstanceOf(SoundConnectException.class).hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN_ACCESS);
+		verifyNoInteractions(unreadHelper);
+		chatService.getMessages(userId, tableId, page, true, cycle);
+		verify(unreadHelper).resetUnread(userId, tableId);
+	}
+
+	@Test
 	void getMessages_whenRequesterAccepted_shouldResetUnreadAndReturnPage() {
 		// given
 		UUID tableGroupId = UUID.randomUUID();

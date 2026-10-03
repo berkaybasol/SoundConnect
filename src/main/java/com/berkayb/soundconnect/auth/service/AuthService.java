@@ -16,6 +16,7 @@ import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationService;
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.modules.application.studioapplication.dto.request.StudioApplicationCreateRequestDto;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.profile.shared.factory.ProfileFactory;
@@ -63,6 +64,7 @@ public class AuthService {
 	private final OtpService otpService;
 	private final OtpMailService otpMailService;
 	private final VenueApplicationService venueApplicationService;
+	private final VenueApplicationSessionAccess venueApplicationSessionAccess;
 	private final StudioApplicationService studioApplicationService;
 	private final AuthAccountRateLimitGuard accountRateLimitGuard;
 	
@@ -115,11 +117,16 @@ public class AuthService {
 			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		}
 
-		// Beklemedeki mekan basvurulari, admin onayi tamamlanmadan uygulamaya giremez.
-		// Bu kontrol parola dogrulamasindan sonra yapilir; boylece hesap durumu
-		// yanlis parola kullanan bir istemciye sizdirilmaz.
+		// Password verification precedes every account-state response. This
+		// credential only opens the applicant's own status/notification routes.
 		if (user.getStatus() == UserStatus.PENDING_VENUE_REQUEST) {
-			throw new SoundConnectException(ErrorType.PENDING_VENUE_APPROVAL);
+			if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+				throw new EmailVerificationRequiredException(user.getEmail());
+			}
+			LoginResponse session = venueApplicationSession(user);
+			if (session == null) throw new SoundConnectException(ErrorType.PENDING_VENUE_APPROVAL);
+			return BaseResponse.<LoginResponse>builder().success(true).code(200)
+					.message("Başvuru oturumu açıldı.").data(session).build();
 		}
 		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
 			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
@@ -384,9 +391,10 @@ public class AuthService {
 		// baslatmak icin yeterli bir kimlik kanitidir. Bu kolaylik yalnizca
 		// urunun Sosyal Deneyim (ROLE_LISTENER) kayit akisina aittir. Rol ve
 		// hesap durumu istemciden degil, kilit altinda okunan kullanicidan
-		// belirlenir; basvuru bekleyen/reddedilen veya baska roldeki hesaplara
-		// bu public endpoint uzerinden bearer token verilmez.
-		LoginResponse session = null;
+		// belirlenir. Mekan basvurusu icin verilen ayri kapsamli oturum genel
+		// uygulama veya WebSocket yetkisi tasimaz.
+		LoginResponse session = user.getStatus() == UserStatus.PENDING_VENUE_REQUEST
+				? venueApplicationSession(user) : null;
 		if (user.getStatus() == UserStatus.ACTIVE && hasRole(user, RoleEnum.ROLE_LISTENER)) {
 			String token = jwtTokenProvider.generateToken(UserDetailsImpl.fromUser(user));
 			session = LoginResponse.fromUser(
@@ -403,6 +411,14 @@ public class AuthService {
 		                   .message("Dogrulama istegi basariyla islendi.")
 		                   .data(session)
 		                   .build();
+	}
+
+	private LoginResponse venueApplicationSession(User user) {
+		return venueApplicationSessionAccess.findSessionApplication(user)
+				.map(applicationId -> LoginResponse.forVenueApplication(
+						jwtTokenProvider.generateVenueApplicationToken(UserDetailsImpl.fromUser(user), applicationId),
+						user, applicationId))
+				.orElse(null);
 	}
 
 	private boolean hasRole(User user, RoleEnum role) {

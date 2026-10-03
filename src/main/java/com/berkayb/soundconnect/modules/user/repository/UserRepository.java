@@ -16,6 +16,20 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Query("select u.id from User u where u.id in :ids and u.erasedAt is not null")
 	Set<UUID> findErasedIds(@Param("ids") java.util.Collection<UUID> ids);
 
+	/**
+	 * Scalar handle lookup for an already admitted public DM sender. The caller
+	 * must resolve the public profile first in the same transaction, retaining
+	 * its listener visibility SHARE lock. This query adds a fresh fail-closed
+	 * guard; it does not independently authorize public profile disclosure.
+	 */
+	@Query(value = """
+			select u.user_name from tbl_user u
+			where u.id=:userId and u.status='ACTIVE' and u.email_verified=true and u.erased_at is null
+			  and not exists (select 1 from "tbl_listener-profile" lp where lp.user_id=u.id
+			      and (lp.visibility_choice_completed is not true or lp.visibility_mode is distinct from 'STANDARD'))
+			""", nativeQuery = true)
+	Optional<String> findPublicUsernameForDmPush(@Param("userId") UUID userId);
+
 	Optional<User> findByUsername(String username);
 	boolean existsByUsername(String username);
 	boolean existsByUsernameAndIdNot(String username, UUID id);

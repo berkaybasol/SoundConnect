@@ -17,7 +17,32 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
 	boolean existsBySourceEventId(UUID sourceEventId);
 
+	@Modifying
+	@Transactional
+	@Query(value = """
+			update tbl_notification
+			set is_read = true
+			where recipient_id = :recipientId
+			  and type = 'DM_NEW_MESSAGE'
+			  and is_read = false
+			  and payload ->> 'messageId' = :messageId
+			""", nativeQuery = true)
+	int markUnreadDmNotificationsAsReadByMessage(
+			@Param("recipientId") UUID recipientId,
+			@Param("messageId") String messageId);
+
 	Optional<Notification> findBySourceEventId(UUID sourceEventId);
+
+	/** The caller holds the DM conversation lock before deleting its source. */
+	@Modifying(flushAutomatically = true)
+	@Transactional
+	@Query(value = "delete from tbl_notification where type = 'DM_NEW_MESSAGE' and payload ->> 'messageId' = :messageId", nativeQuery = true)
+	int deleteDmMessageNotifications(@Param("messageId") String messageId);
+
+	@Modifying(flushAutomatically = true)
+	@Transactional
+	@Query(value = "delete from tbl_notification where type = 'DM_NEW_MESSAGE' and payload ->> 'conversationId' = :conversationId", nativeQuery = true)
+	int deleteDmConversationNotifications(@Param("conversationId") String conversationId);
 	
 	@Modifying
 	@Transactional

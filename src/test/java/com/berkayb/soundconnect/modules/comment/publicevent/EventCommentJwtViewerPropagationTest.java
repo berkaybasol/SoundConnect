@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.comment.publicevent;
 import com.berkayb.soundconnect.auth.ratelimit.AuthRateLimitFilter;
 import com.berkayb.soundconnect.auth.security.*;
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.modules.comment.controller.CommentController;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentReplyResponseDto;
 import com.berkayb.soundconnect.modules.comment.dto.response.CommentResponseDto;
@@ -53,6 +54,7 @@ class EventCommentJwtViewerPropagationTest {
     @Autowired JwtTokenProvider tokens;
     @MockitoBean CustomUserDetailsService users;
     @MockitoBean ListenerProfileChoiceStatusReader listenerChoice;
+    @MockitoBean VenueApplicationSessionAccess venueApplicationSessionAccess;
     @MockitoBean EventCommentReadService publicComments;
     @MockitoBean CommentService genericComments;
     @MockitoBean AuthRateLimitFilter authRateLimit;

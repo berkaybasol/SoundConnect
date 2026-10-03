@@ -48,6 +48,11 @@ public class VenueApplication extends BaseEntity {
 	
 	@Column
 	private LocalDateTime decisionDate; // karar tarihi.
+
+    // Exact decision source; never infer an approved application from a later owned venue.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "approved_venue_id")
+    private com.berkayb.soundconnect.modules.venue.entity.Venue approvedVenue;
 	
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "city_id", nullable = false)

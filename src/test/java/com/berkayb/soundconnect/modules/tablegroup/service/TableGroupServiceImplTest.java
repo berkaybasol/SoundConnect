@@ -632,6 +632,50 @@ class TableGroupServiceImplTest {
 	}
 
 	@Test
+	void reapplicationNotificationsMustBindDifferentPersistentApplicationCycles() {
+		TableGroup tableGroup = createActiveTableGroup(3, Instant.now().plusSeconds(3600));
+		tableGroup.setId(tableGroupId);
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(tableGroup);
+		tableGroupService.joinTableGroup(participantId, tableGroupId, null);
+		TableGroupParticipant participant = tableGroup.getParticipants().stream()
+				.filter(p -> p.getUserId().equals(participantId)).findFirst().orElseThrow();
+		// Rejection ends this request, while the next join reuses the same row.
+		participant.setStatus(ParticipantStatus.REJECTED);
+		tableGroupService.joinTableGroup(participantId, tableGroupId, null);
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<Map<String, Object>> payloads = ArgumentCaptor.forClass(Map.class);
+		verify(notificationOutboxService, times(2)).enqueue(eq(ownerId),
+				eq(NotificationType.TABLE_JOIN_REQUEST_RECEIVED), anyString(), anyString(), payloads.capture());
+		Object first = payloads.getAllValues().get(0).get("applicationId");
+		Object second = payloads.getAllValues().get(1).get("applicationId");
+		assertThat(first).as("first request must have a persistent cycle identity").isNotNull();
+		assertThat(second).isNotNull().isNotEqualTo(first);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"approve", "reject", "approve-idempotent"})
+	void staleNotificationDecisionCannotMutateOrConfirmAnotherApplication(String action) {
+		TableGroup group = createActiveTableGroup(3, Instant.now().plusSeconds(3600));
+		group.setId(tableGroupId);
+		UUID currentCycle = UUID.randomUUID();
+		ParticipantStatus status = action.endsWith("idempotent") ? ParticipantStatus.ACCEPTED : ParticipantStatus.PENDING;
+		TableGroupParticipant applicant = TableGroupParticipant.builder().userId(participantId)
+				.status(status).joinedAt(Instant.now()).applicationId(currentCycle).build();
+		group.getParticipants().add(applicant);
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
+		when(tableGroupRepository.findParticipantStatusForOwner(tableGroupId, ownerId, participantId))
+				.thenReturn(Optional.of(status));
+		assertThatThrownBy(() -> {
+			if (action.startsWith("approve")) tableGroupService.approveJoinRequest(ownerId, tableGroupId, participantId, UUID.randomUUID());
+			else tableGroupService.rejectJoinRequest(ownerId, tableGroupId, participantId, UUID.randomUUID());
+		}).isInstanceOf(SoundConnectException.class).hasFieldOrPropertyWithValue("errorType", ErrorType.PARTICIPANT_NOT_FOUND);
+		assertThat(applicant.getStatus()).isEqualTo(status);
+		assertThat(applicant.getApplicationId()).isEqualTo(currentCycle);
+		verifyNoInteractions(notificationOutboxService, gameLifecycleService);
+		verify(tableGroupRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
 	void joinTableGroup_whenTerminalParticipantReapplies_shouldReuseAndReviveExistingRow() {
 		TableGroup tableGroup = createActiveTableGroup(3, Instant.now().plusSeconds(3600));
 		tableGroup.setId(tableGroupId);

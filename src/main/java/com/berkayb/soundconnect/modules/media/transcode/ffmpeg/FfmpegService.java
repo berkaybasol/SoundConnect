@@ -277,7 +277,9 @@ public class FfmpegService {
 			int width = (int) (Math.round(height * 16.0 / 9.0) / 2) * 2;
 			content.append("#EXT-X-STREAM-INF:BANDWIDTH=").append(bandwidth)
 					.append(",RESOLUTION=").append(width).append('x').append(height)
-					.append(",CODECS=\"avc1.42E01E,mp4a.40.2\"\n")
+					// CODECS is optional: let the player inspect the encoded tracks.
+					// A fixed value invents AAC on video-only inputs and guesses AVC profile/level.
+					.append('\n')
 					.append(height).append("p/index.m3u8\n");
 		}
 

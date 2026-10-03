@@ -1,6 +1,8 @@
 // src/test/java/com/berkayb/soundconnect/modules/media/controller/user/PublicMediaControllerTest.java
 package com.berkayb.soundconnect.modules.media.controller.user;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
@@ -43,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Tag("web")
+@H2NotificationIdentityTestBoundary
 class PublicMediaControllerTest {
 	
 	@Autowired MockMvc mockMvc;

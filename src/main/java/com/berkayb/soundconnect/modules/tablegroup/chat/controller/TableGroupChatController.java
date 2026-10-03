@@ -50,15 +50,17 @@ public class TableGroupChatController {
 	public ResponseEntity<BaseResponse<Page<TableGroupMessageResponseDto>>> getMessages(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable("tableGroupId") UUID tableGroupId,
-			Pageable pageable
+			Pageable pageable,
+			@RequestParam(defaultValue = "true") boolean markRead,
+			@RequestParam(required = false) UUID applicationId
 	) {
 		UUID requesterId = currentUserId(principal);
 		
-		Page<TableGroupMessageResponseDto> page = chatService.getMessages(
+		Page<TableGroupMessageResponseDto> page = markRead && applicationId == null ? chatService.getMessages(
 				requesterId,
 				tableGroupId,
 				pageable
-		);
+		) : chatService.getMessages(requesterId, tableGroupId, pageable, markRead, applicationId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Page<TableGroupMessageResponseDto>>builder()

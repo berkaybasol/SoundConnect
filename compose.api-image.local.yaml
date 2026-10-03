@@ -1,0 +1,8 @@
+# Selected only when dev.ps1 finds .local-api-image. Requires Compose 2.24+.
+# Remove the API build definition so even normal up --build cannot replace the
+# reviewed binary. Other services retain their existing build configuration.
+services:
+  backend:
+    image: ${SOUNDCONNECT_LOCAL_API_IMAGE:?Local API image selection is required}
+    pull_policy: never
+    build: !reset null

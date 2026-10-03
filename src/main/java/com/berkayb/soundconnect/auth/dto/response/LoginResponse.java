@@ -18,8 +18,20 @@ public record LoginResponse(
 		Set<String> roles,
 		Set<String> permissions,
 		boolean admin,
-		boolean requiresListenerProfileChoice
+		boolean requiresListenerProfileChoice,
+		String sessionScope,
+		UUID applicationId
 ) {
+	public LoginResponse(String token, UserStatus status, UUID userId, String username,
+			Set<String> roles, Set<String> permissions, boolean admin, boolean requiresListenerProfileChoice) {
+		this(token, status, userId, username, roles, permissions, admin, requiresListenerProfileChoice, null, null);
+	}
+
+	public static LoginResponse forVenueApplication(String token, User user, UUID applicationId) {
+		return new LoginResponse(token, user.getStatus(), user.getId(), user.getUsername(),
+				Set.of(), Set.of(), false, false, "VENUE_APPLICATION", applicationId);
+	}
+
 	public static LoginResponse fromUser(
 			String token,
 			User user,

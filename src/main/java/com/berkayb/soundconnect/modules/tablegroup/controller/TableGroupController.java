@@ -172,11 +172,13 @@ public class TableGroupController {
 	public ResponseEntity<BaseResponse<Void>> approveJoinRequest(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
-			@PathVariable UUID participantId
+			@PathVariable UUID participantId,
+			@RequestParam(required = false) UUID applicationId
 	) {
 		UUID ownerId = getCurrentUserId(principal);
 		
-		tableGroupService.approveJoinRequest(ownerId, tableGroupId, participantId);
+		if (applicationId == null) tableGroupService.approveJoinRequest(ownerId, tableGroupId, participantId);
+		else tableGroupService.approveJoinRequest(ownerId, tableGroupId, participantId, applicationId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Void>builder()
@@ -193,11 +195,13 @@ public class TableGroupController {
 	public ResponseEntity<BaseResponse<Void>> rejectJoinRequest(
 			@AuthenticationPrincipal UserDetailsImpl principal,
 			@PathVariable UUID tableGroupId,
-			@PathVariable UUID participantId
+			@PathVariable UUID participantId,
+			@RequestParam(required = false) UUID applicationId
 	) {
 		UUID ownerId = getCurrentUserId(principal);
 		
-		tableGroupService.rejectJoinRequest(ownerId, tableGroupId, participantId);
+		if (applicationId == null) tableGroupService.rejectJoinRequest(ownerId, tableGroupId, participantId);
+		else tableGroupService.rejectJoinRequest(ownerId, tableGroupId, participantId, applicationId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Void>builder()

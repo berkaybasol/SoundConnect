@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.auth.service;
 
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.dto.request.UsernameAvailabilityRequestDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
@@ -49,6 +50,7 @@ import static org.mockito.Mockito.when;
 class AuthServiceSecurityTest {
 
 	@Mock JwtTokenProvider jwtTokenProvider;
+	@Mock VenueApplicationSessionAccess venueApplicationSessionAccess;
 	@Mock UserRepository userRepository;
 	@Mock PasswordEncoder passwordEncoder;
 	@Mock RoleRepository roleRepository;

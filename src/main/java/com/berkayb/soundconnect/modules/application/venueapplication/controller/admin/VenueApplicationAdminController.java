@@ -59,8 +59,8 @@ public class VenueApplicationAdminController {
 		UserDetailsImpl adminDetails = authToDetails(authentication);
 		UUID adminId = adminDetails != null ? adminDetails.getUser().getId() : null;
 		
-		log.info("Admin {} rejects venue application {} (reason: {})",
-		         adminDetails != null ? adminDetails.getUsername() : "unknown", applicationId, reason);
+		log.info("Admin {} rejects venue application {}",
+		         adminDetails != null ? adminDetails.getUsername() : "unknown", applicationId);
 		
 		var response = venueApplicationService.rejectApplication(applicationId, adminId, reason);
 		

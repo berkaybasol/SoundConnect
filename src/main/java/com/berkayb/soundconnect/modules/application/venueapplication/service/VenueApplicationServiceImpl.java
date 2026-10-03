@@ -54,6 +54,8 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 	private final VenueProfileService venueProfileService;
 	private final VenueApplicationAdminMailService venueApplicationAdminMailService;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final VenueApplicationDecisionNotifications decisionNotifications;
+	private final jakarta.persistence.EntityManager entityManager;
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemler geri alinir.
 	@Override
@@ -73,6 +75,9 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		}
 		User applicant = personalProfileTypePolicy.lockAndAssertCanAcquire(
 				applicantReference.getId(), RoleEnum.ROLE_VENUE);
+        entityManager.refresh(applicant, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        personalProfileTypePolicy.assertCanAcquire(applicant, RoleEnum.ROLE_VENUE);
+        requireDecisionApplicant(applicant);
 		if (venueRepository.existsByOwner_Id(applicant.getId())) {
 			throw new SoundConnectException(ErrorType.VENUE_APPLICATION_ALREADY_EXISTS);
 		}
@@ -110,9 +115,11 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		
 		venueProfileService.createProfile(venue.getId(), new VenueProfileSaveRequestDto(null, null, null, null, null));
 		
+		application.setApprovedVenue(venue);
 		application.setStatus(ApplicationStatus.APPROVED);
-		application.setDecisionDate(LocalDateTime.now());
-		venueApplicationRepository.save(application);
+		application.setDecisionDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
+		venueApplicationRepository.saveAndFlush(application);
+		decisionNotifications.decided(application);
 		
 		return venueApplicationMapper.toResponseDto(application);
 	}
@@ -126,12 +133,18 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		if (application.getStatus() != ApplicationStatus.PENDING) {
 			throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
 		}
+        if(application.getApplicant()==null || application.getApplicant().getId()==null)
+            throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+        var applicant=userRepository.findByIdForUpdate(application.getApplicant().getId())
+                .orElseThrow(()->new SoundConnectException(ErrorType.USER_NOT_FOUND));
+        entityManager.refresh(applicant, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireDecisionApplicant(applicant);
 		application.setStatus(ApplicationStatus.REJECTED);
-		application.setDecisionDate(LocalDateTime.now());
-		venueApplicationRepository.save(application);
+		application.setDecisionDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
+		venueApplicationRepository.saveAndFlush(application);
+		decisionNotifications.decided(application);
 		
-		log.info("Venue application {} rejected by admin {}. Reason {}", applicationId, adminId, reason);
-		//TODO notification ve mail module..
+		log.info("Venue application {} rejected by admin {}", applicationId, adminId);
 		return venueApplicationMapper.toResponseDto(application);
 	}
 	
@@ -178,7 +191,7 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		application.setDistrict(district);
 		application.setNeighborhood(neighborhood);
 		application.setStatus(ApplicationStatus.PENDING);
-		application.setApplicationDate(LocalDateTime.now());
+		application.setApplicationDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
 		application.setDecisionDate(null); // henuz karar yok biz onaylicaz
 		
 		VenueApplication saved = venueApplicationRepository.save(application);
@@ -221,6 +234,16 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
 		return venueApplicationMapper.toResponseDto(application);
 	}
+
+    private static void requireDecisionApplicant(User applicant) {
+        if(applicant.getErasedAt()!=null) throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
+        if(!Boolean.TRUE.equals(applicant.getEmailVerified()))
+            throw new SoundConnectException(ErrorType.VENUE_APPLICANT_EMAIL_VERIFICATION_REQUIRED);
+        if(applicant.getStatus()!=UserStatus.PENDING_VENUE_REQUEST
+                || (applicant.getRoles()!=null && !applicant.getRoles().isEmpty())
+                || (applicant.getPermissions()!=null && !applicant.getPermissions().isEmpty()))
+            throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
+    }
 
 	private UUID parseRequiredLocationId(String rawId, String fieldName) {
 		if (rawId == null || rawId.isBlank()) {

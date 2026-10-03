@@ -30,7 +30,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataRedisTest
+@DataRedisTest(properties = {
+        "spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+        "spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce"
+})
 @Import({MusicianFeedRateLimitConfiguration.class, MusicianFeedRateLimitGuard.class})
 @Timeout(30)
 class MusicianFeedRateLimitGuardRedisIT {
