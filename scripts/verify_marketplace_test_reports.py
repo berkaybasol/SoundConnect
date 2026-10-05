@@ -13,7 +13,8 @@ REQUIRED_SUITES = (
 )
 
 
-def verify_reports(directory: Path, required=REQUIRED_SUITES) -> list[str]:
+def verify_reports(directory: Path, required=REQUIRED_SUITES, expected_cases=None) -> list[str]:
+    directory = directory.resolve()
     failures = []
     for suite in required:
         path = directory / f"TEST-{suite}.xml"
@@ -24,6 +25,13 @@ def verify_reports(directory: Path, required=REQUIRED_SUITES) -> list[str]:
             report = ET.parse(path).getroot()
             counts = {key: int(report.attrib[key]) for key in ("tests", "failures", "errors", "skipped")}
             cases = report.findall("testcase")
+            identities = [(case.get("classname"), case.get("name")) for case in cases]
+            if len(set(identities)) != len(identities) or any(not c or not n for c, n in identities):
+                failures.append(f"Duplicate or empty test identity: {suite}")
+            if expected_cases is not None:
+                expected = {(suite, name) for name in expected_cases[suite]}
+                if set(identities) != expected:
+                    failures.append(f"Required source test inventory mismatch: {suite}")
             if report.tag != "testsuite" or report.get("name") != suite:
                 failures.append(f"Unexpected test report identity: {suite}")
             if counts["tests"] <= 0 or len(cases) != counts["tests"]:

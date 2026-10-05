@@ -20,7 +20,7 @@ class VenueFcmPayloadTest {
     private FcmHttpV1Transport transport;
     @BeforeEach void setup() {
         var properties=new FcmPushProperties(); properties.setProjectId("soundconnect-test");
-        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(now.plusSeconds(3600)))),
+        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(Instant.now().plusSeconds(3600)))),
                 new DeadlineHttpTransport(http,properties.getReadTimeout()),json,executor,properties,Clock.fixed(now,ZoneOffset.UTC));
     }
     @AfterEach void cleanup() { executor.shutdownNow(); }
@@ -32,12 +32,12 @@ class VenueFcmPayloadTest {
     private PushEnvelope envelope(Map<String,String> data) {
         return new PushEnvelope("fixture-token","Private name should not appear","Private request should not appear",data,"fixture",now.plusSeconds(300));
     }
-    @Test void allThirteenAllowedCombinationsAreDataOnlyAndPreserveExactContract() {
+    @Test void allThirteenAllowedCombinationsAreDataOnlyAndPreserveExactContract() throws Exception {
         int count=0;
         for(var type:VenuePushPresentation.TYPES) for(var variant:VenuePushPresentation.Variant.values()) {
             if(!VenuePushPresentation.valid(type.name(),variant.name())) continue;
             var data=data(type.name(),variant.name());
-            var result=json.valueToTree(transport.payload(envelope(data)));
+            var result=FcmWireAssertions.sendNative(transport,http,envelope(data),"300s");
             assertThat(result.at("/message/data")).isEqualTo(json.valueToTree(data));
             assertThat(result.at("/message/notification").isMissingNode()).isTrue();
             assertThat(result.at("/message/android/notification").isMissingNode()).isTrue();

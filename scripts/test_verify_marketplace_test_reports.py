@@ -14,7 +14,20 @@ class RequiredMarketplaceReportsTest(unittest.TestCase):
 
     def test_success_requires_executed_cases(self):
         self.assertEqual([], self.check_report(
-            '<testsuite name="critical" tests="1" failures="0" errors="0" skipped="0"><testcase name="real-db"/></testsuite>'))
+            '<testsuite name="critical" tests="1" failures="0" errors="0" skipped="0"><testcase classname="critical" name="real-db"/></testsuite>'))
+
+    def test_duplicate_test_identity_is_rejected(self):
+        self.assertTrue(self.check_report(
+            '<testsuite name="critical" tests="2" failures="0" errors="0" skipped="0">'
+            '<testcase classname="critical" name="same"/><testcase classname="critical" name="same"/></testsuite>'))
+
+    def test_exact_source_inventory_cannot_silently_shrink(self):
+        with TemporaryDirectory() as directory:
+            (Path(directory) / "TEST-critical.xml").write_text(
+                '<testsuite name="critical" tests="1" failures="0" errors="0" skipped="0">'
+                '<testcase classname="critical" name="guard()"/></testsuite>', encoding="utf-8")
+            self.assertEqual([], verify_reports(Path(directory), ("critical",), {"critical": ["guard()"]}))
+            self.assertTrue(verify_reports(Path(directory), ("critical",), {"critical": ["guard()", "startup()"]}))
 
     def test_missing_and_empty_suites_fail(self):
         self.assertTrue(self.check_report(None))

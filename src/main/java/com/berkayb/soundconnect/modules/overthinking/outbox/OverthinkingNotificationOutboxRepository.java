@@ -15,6 +15,22 @@ import java.util.UUID;
 public interface OverthinkingNotificationOutboxRepository
 		extends JpaRepository<OverthinkingNotificationOutbox, UUID> {
 
+	/** Crashes and expired leases also consume the durable attempt budget. */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update OverthinkingNotificationOutbox event
+			   set event.status = :deadLetter, event.leaseOwner = null, event.leaseUntil = null,
+			       event.lastErrorType = 'AttemptBudgetExhausted', event.updatedAt = :now
+			 where event.eventId = :eventId and event.attemptCount >= :maxAttempts
+			   and ((event.status = :pending and event.nextAttemptAt <= :now)
+			     or (event.status = :inFlight and (event.leaseUntil is null or event.leaseUntil <= :now)))
+			""")
+	int deadLetterExhausted(@Param("eventId") UUID eventId, @Param("maxAttempts") int maxAttempts,
+			@Param("pending") OverthinkingNotificationOutboxStatus pending,
+			@Param("inFlight") OverthinkingNotificationOutboxStatus inFlight,
+			@Param("deadLetter") OverthinkingNotificationOutboxStatus deadLetter,
+			@Param("now") Instant now);
+
 	@Query("""
 			select event.eventId
 			from OverthinkingNotificationOutbox event
@@ -38,11 +54,13 @@ public interface OverthinkingNotificationOutboxRepository
 			       event.attemptCount = event.attemptCount + 1,
 			       event.updatedAt = :now
 			 where event.eventId = :eventId
+			   and event.attemptCount < :maxAttempts
 			   and ((event.status = :pending and event.nextAttemptAt <= :now)
 			     or (event.status = :inFlight and (event.leaseUntil is null or event.leaseUntil <= :now)))
 			""")
 	int claim(
 			@Param("eventId") UUID eventId,
+			@Param("maxAttempts") int maxAttempts,
 			@Param("pending") OverthinkingNotificationOutboxStatus pending,
 			@Param("inFlight") OverthinkingNotificationOutboxStatus inFlight,
 			@Param("leaseOwner") String leaseOwner,

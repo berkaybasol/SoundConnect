@@ -21,7 +21,7 @@ class StudioFcmPayloadTest {
     private FcmHttpV1Transport transport;
     @BeforeEach void setup(){
         var properties=new FcmPushProperties();properties.setProjectId("soundconnect-test");
-        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(now.plusSeconds(3600)))),
+        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(Instant.now().plusSeconds(3600)))),
                 new DeadlineHttpTransport(http,properties.getReadTimeout()),json,executor,properties,Clock.fixed(now,ZoneOffset.UTC));
     }
     @AfterEach void cleanup(){executor.shutdownNow();}
@@ -29,19 +29,19 @@ class StudioFcmPayloadTest {
             "notificationId",UUID.randomUUID().toString(),"recipientId",UUID.randomUUID().toString(),"type",type,
             "displayVariant",variant,"sentAt",Long.toString(now.toEpochMilli()),"expiresAt",Long.toString(now.plusSeconds(300).toEpochMilli())));}
     private PushEnvelope envelope(Map<String,String> data){return new PushEnvelope("fixture","Private title","Private phone reservation",data,"fixture",now.plusSeconds(300));}
-    @Test void exactlyNineValidTypeVariantPairsAreDataOnlyWithoutPrivateFallback(){
+    @Test void exactlyNineValidTypeVariantPairsAreDataOnlyWithoutPrivateFallback() throws Exception {
         int supported=0;
         for(var type:StudioPushPresentation.TYPES) for(var variant:StudioPushPresentation.Variant.values()){
             var d=data(type.name(),variant.name());
             if(!StudioPushPresentation.valid(type.name(),variant.name())){
                 assertThatThrownBy(()->transport.payload(envelope(d))).isInstanceOf(IllegalArgumentException.class);continue;
             }
-            supported++;var result=json.valueToTree(transport.payload(envelope(d)));
+            supported++;var result=FcmWireAssertions.sendNative(transport,http,envelope(d),"300s");
             assertThat(result.at("/message/data")).isEqualTo(json.valueToTree(d));
             for(String key:List.of("/message/notification","/message/android/notification","/message/apns"))assertThat(result.at(key).isMissingNode()).isTrue();
             assertThat(result.toString()).doesNotContain("Private");
         }
-        assertThat(supported).isEqualTo(9);verifyNoInteractions(http);
+        assertThat(supported).isEqualTo(9);
     }
     @Test void missingExtraIdentityTimestampVersionAndTypeMutationsFailBeforeHttp(){
         var original=data("STUDIO_RESERVATION_CREATED","STUDIO_CREATED_PENDING");

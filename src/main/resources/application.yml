@@ -339,6 +339,15 @@ app:
       publisher-confirm-timeout: ${SOUNDCONNECT_NOTIFICATION_PUBLISHER_CONFIRM_TIMEOUT:5s}
       dlxExchange: notification.dlx
       dlq: notification.queue.dlq
+      dlq-ops:
+        replay-enabled: ${SOUNDCONNECT_NOTIFICATION_DLQ_REPLAY_ENABLED:false}
+        window: 10
+        max-body-bytes: 65536
+        max-window-bytes: 262144
+        rpc-timeout-ms: 2000
+        deadline-ms: 10000
+        interval-ms: 30000
+        stale-ms: 90000
 
 otp:
   ttl:

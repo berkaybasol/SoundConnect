@@ -51,10 +51,17 @@ The transport details and official references are in
   authenticated recipient and resolve current conversation identity from the API.
   Legacy registrations without the native capability still use the generic
   notification payload `Soundconnect / Yeni bir mesajın var.`.
-- Inbox remains authoritative. The configured FCM collapse key can coalesce
-  messages while a device is offline. Native deduplication/group counts describe
-  cards actually accepted by Android, not every unread server message. The app
-  reconciles on resume/reconnect; push does not replace history or unread counts.
+- Inbox remains authoritative. Supported native data-only messages omit FCM
+  `collapse_key`, preserving separate pending events. FCM's Android queue holds
+  up to 100 non-collapsible messages; overflow can discard pending messages.
+  Remaining TTL (configured default 24 hours), OS/network/permission conditions
+  and unordered delivery still apply. Generic notification fallback keeps its
+  existing collapse behavior. Native summaries count actual current children,
+  not every unread server message. Resume/reconnect refreshes inbox state and
+  dismisses existing ineligible cards; it never backfills missed/expired/swiped
+  cards or replays ACCEPTED jobs. Inbox visibility/read/delete rules stay separate.
+  See the [FCM queue limits](https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types)
+  and [message lifespan](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan).
 - Device registrations are encrypted with AES-256-GCM. Only a SHA-256 lookup hash
   is indexed. Job rows contain neither plaintext tokens nor message content.
 - Ownership/permission/revocation changes increment the device binding generation.
