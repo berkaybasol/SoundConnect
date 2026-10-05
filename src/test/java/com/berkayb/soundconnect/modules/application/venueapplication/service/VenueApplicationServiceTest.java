@@ -149,6 +149,8 @@ class VenueApplicationServiceTest {
 	// Bazı config'ler ConnectionFactory isterse güvence:
 	@MockitoBean(name = "rabbitConnectionFactory")
 	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	@MockitoBean(enforceOverride=true)
+	com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker dlqBroker;
 	
 	
 	// İstersen tüketiciyi de körle (gerekmeden geçmesi lazım ama garanti):

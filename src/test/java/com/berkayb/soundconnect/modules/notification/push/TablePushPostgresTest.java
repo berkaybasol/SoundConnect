@@ -171,7 +171,8 @@ class TablePushPostgresTest {
             assertThat(data.path("applicationId").isNull()).isTrue();
             assertThat(data.path("read").asBoolean()).isFalse();
             assertThat(f.jdbc.queryForObject("select is_read from tbl_notification",Boolean.class)).isFalse();
-            var path=Path.of("../artifacts/table-native-push-31-20261001/isolated-expiry-http.json");
+            var path=Path.of("build/test-evidence/table-push/isolated-expiry-http.json");
+            Files.createDirectories(path.getParent());
             Files.writeString(path,json.writerWithDefaultPrettyPrinter().writeValueAsString(Map.of("environment","disposable PostgreSQL + embedded Tomcat; test principal; no shared worker/FCM/device", "wire",wire,"httpStatus",response.statusCode(),"response",data)));
         }
     }

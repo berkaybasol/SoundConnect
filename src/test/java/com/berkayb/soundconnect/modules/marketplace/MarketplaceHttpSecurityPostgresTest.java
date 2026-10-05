@@ -117,6 +117,7 @@ class MarketplaceHttpSecurityPostgresTest {
     @MockitoBean MediaDeletionDispatcher deletionDispatcher;
     @MockitoBean org.springframework.amqp.rabbit.core.RabbitTemplate rabbit;
     @MockitoBean(name="rabbitConnectionFactory") org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnection;
+    @MockitoBean(enforceOverride=true) com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker dlqBroker;
     @MockitoBean org.springframework.amqp.support.converter.Jackson2JsonMessageConverter rabbitJson;
     @MockitoBean org.springframework.data.redis.connection.RedisConnectionFactory redisConnection;
     @MockitoBean org.springframework.data.redis.core.RedisTemplate<String,String> redis;

@@ -16,7 +16,9 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The first cold hosted run reached the 30-minute limit before the full
+    # suite finished. Keep all tests and allow their bounded fixtures to finish.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -43,6 +45,19 @@ jobs:
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
+
+      - name: Prepare real media and Rabbit integration prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+          docker build --tag soundconnect-rabbitmq:3.13.7 docker/rabbitmq
+          {
+            ffmpeg -version
+            ffprobe -version
+            docker image inspect soundconnect-rabbitmq:3.13.7 --format '{{.Id}}'
+          } > test-prerequisites.log
 
       - name: Run backend tests
         shell: bash
@@ -71,6 +86,8 @@ jobs:
           path: |
             build/reports/tests/
             build/test-results/
+            build/test-evidence/
             band-tests.log
+            test-prerequisites.log
           if-no-files-found: error
           retention-days: 7
