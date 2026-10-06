@@ -1,0 +1,11 @@
+// Keep real lifecycle evidence for the required BAND suites on the normal test path.
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects {
+        tasks.withType(Test).configureEach {
+            outputs.upToDateWhen { false }
+            beforeTest { d -> if (d.className?.contains('.BandNotification')) println "SC_BAND_START ${d.className}#${d.name}" }
+            afterTest { d, r -> if (d.className?.contains('.BandNotification')) println "SC_BAND_${r.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.SUCCESS ? 'PASS' : 'FAIL'} ${d.className}#${d.name}" }
+            afterSuite { d, r -> if (!d.parent) println "SC_BAND_FINAL ${r.testCount} ${r.successfulTestCount} ${r.failedTestCount} ${r.skippedTestCount}" }
+        }
+    }
+}

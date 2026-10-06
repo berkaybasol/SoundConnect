@@ -33,12 +33,23 @@ jobs:
         uses: gradle/actions/wrapper-validation@v4
 
       - name: Run backend tests
-        run: ./gradlew clean test --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean test -I scripts/band-test-events.gradle --no-daemon --stacktrace --console=plain 2>&1 | tee band-tests.log
 
       - name: Require executed marketplace PostgreSQL and security coverage
         run: |
           python3 scripts/test_verify_marketplace_test_reports.py
           python3 scripts/verify_marketplace_test_reports.py build/test-results/test
+
+      - name: Require actual BAND schema, registry, startup and HTTP tests
+        run: |
+          python3 scripts/test_verify_band_test_reports.py
+          python3 scripts/verify_band_test_reports.py build/test-results/test band-tests.log
+
+      - name: Verify existing push migration selection and execution
+        run: pwsh -NoProfile -File scripts/verify-push-migrations.ps1
 
       - name: Upload test reports
         if: always()
@@ -48,5 +59,6 @@ jobs:
           path: |
             build/reports/tests/
             build/test-results/
-          if-no-files-found: ignore
+            band-tests.log
+          if-no-files-found: error
           retention-days: 7

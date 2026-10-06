@@ -20,7 +20,7 @@ class OverthinkingFcmPayloadTest {
     FcmHttpV1Transport transport;
     @BeforeEach void setup(){
         var p=new FcmPushProperties();p.setProjectId("soundconnect-test");
-        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("isolated",Date.from(now.plusSeconds(3600)))),
+        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("isolated",Date.from(Instant.now().plusSeconds(3600)))),
             new DeadlineHttpTransport(http,p.getReadTimeout()),json,executor,p,Clock.fixed(now,ZoneOffset.UTC));
     }
     @AfterEach void cleanup(){executor.shutdownNow();}
@@ -28,14 +28,13 @@ class OverthinkingFcmPayloadTest {
         "notificationId",UUID.randomUUID().toString(),"recipientId",UUID.randomUUID().toString(),"type",type,
         "sentAt",Long.toString(now.toEpochMilli()),"expiresAt",Long.toString(now.plusSeconds(300).toEpochMilli())));}
     PushEnvelope envelope(Map<String,String> data){return new PushEnvelope("fixture","Private name","Private anonymous content",data,"fixture",now.plusSeconds(300));}
-    @Test void everyTypeHasOnlySixDataFieldsAndNoIdentityOrPrivateNotification(){
+    @Test void everyTypeHasOnlySixDataFieldsAndNoIdentityOrPrivateNotification() throws Exception {
         for(var type:OverthinkingPushPresentation.TYPES) {
-            var d=data(type.name());var wire=json.valueToTree(transport.payload(envelope(d)));
+            var d=data(type.name());var wire=FcmWireAssertions.sendNative(transport,http,envelope(d),"300s");
             assertThat(wire.at("/message/data")).isEqualTo(json.valueToTree(d));
             for(String key:List.of("/message/notification","/message/android/notification","/message/apns"))assertThat(wire.at(key).isMissingNode()).isTrue();
             assertThat(wire.toString()).doesNotContain("Private");
         }
-        verifyNoInteractions(http);
     }
     @Test void invalidContractsFailBeforeTransport(){
         var original=data("OVERTHINKING_REVEAL_REQUEST_RECEIVED");var bad=new ArrayList<Map<String,String>>();

@@ -25,14 +25,24 @@ can indicate an invalid payload and must not delete a working device. Retry-Afte
 seconds and HTTP dates; quota errors get a minimum 60-second delay. Arbitrary response content,
 tokens, credentials and message bodies are never logged or included in safe error codes.
 
-The Android client must create channel `soundconnect_notifications`. The envelope's stable collapse
-key (<=64 UTF-8 bytes) is used for the Android notification tag and APNs collapse ID so repeated
-attempts can replace the same visible notification. Android's transport `collapse_key` is fixed to
-`soundconnect_updates`; per-notification IDs must not create unbounded offline collapse groups
-(FCM retains at most four distinct keys per device). FCM notification messages are always collapsible
-and may ignore this explicit key. A reconnect can therefore show only the latest generic alert;
-the durable inbox and unread reconciliation retain all underlying notifications. A visible notification
-uses Android HIGH and APNs alert/10 with bounded expiry. The API currently accepts registration tokens;
+Supported Android native presentations use data-only HTTP v1 messages with no `android.collapse_key`,
+`notification`, `android.notification` or APNs payload. Each event is submitted separately with HIGH
+priority and its remaining TTL; retries do not extend expiry. FCM can hold up to 100 pending
+non-collapsible messages per Android device; overflow can discard the pending messages. Delivery
+order, TTL and OS/network/permission conditions still limit delivery. The configured default lifetime
+is 24 hours (not FCM's general default). Provider ACCEPTED is not device receipt or read.
+
+Native exact notificationId child tags, recipient/epoch groups and dedup remain independent of FCM
+queue behavior. Summaries count actual current children, not server unread rows. Resume reconciliation
+only dismisses existing cards; missed, expired or swiped cards are not backfilled, and ACCEPTED jobs
+are not replayed. The inbox keeps its own visibility/read/delete rules.
+
+The Android client must create channel `soundconnect_notifications`. For the generic fallback only,
+the envelope's stable collapse key (<=64 UTF-8 bytes) supplies the Android notification tag and APNs
+collapse ID. Its Android transport `collapse_key` remains `soundconnect_updates`; generic notification
+messages are always collapsible and FCM may ignore that explicit key. A reconnect may therefore show
+only the latest generic alert. Generic delivery retains Android HIGH and APNs alert/10 with bounded
+expiry. The API currently accepts registration tokens;
 FCM's newer FID addressing can be added as an explicit registration kind when the Flutter client uses it.
 
 Official references:
@@ -40,4 +50,5 @@ Official references:
 - https://firebase.google.com/support/release-notes/admin/java
 - https://firebase.google.com/docs/cloud-messaging/error-codes
 - https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types
+- https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-lifespan
 - https://github.com/googleapis/google-auth-library-java/blob/main/CHANGELOG.md

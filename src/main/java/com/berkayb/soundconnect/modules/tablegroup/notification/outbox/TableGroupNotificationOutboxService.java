@@ -53,8 +53,19 @@ public class TableGroupNotificationOutboxService {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Optional<TableGroupNotificationOutboxClaim> claim(UUID eventId, String leaseOwner) {
 		Instant now = timeProvider.now();
+		if (repository.deadLetterExhausted(
+				eventId,
+				properties.getMaxAttempts(),
+				TableGroupNotificationOutboxStatus.PENDING,
+				TableGroupNotificationOutboxStatus.IN_FLIGHT,
+				TableGroupNotificationOutboxStatus.DEAD_LETTER,
+				now
+		) == 1) {
+			return Optional.empty();
+		}
 		int claimed = repository.claim(
 				eventId,
+				properties.getMaxAttempts(),
 				TableGroupNotificationOutboxStatus.PENDING,
 				TableGroupNotificationOutboxStatus.IN_FLIGHT,
 				leaseOwner,

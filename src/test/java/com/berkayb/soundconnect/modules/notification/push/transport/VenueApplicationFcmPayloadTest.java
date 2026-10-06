@@ -20,7 +20,7 @@ class VenueApplicationFcmPayloadTest {
     private FcmHttpV1Transport transport;
     @BeforeEach void setup() {
         var properties=new FcmPushProperties();properties.setProjectId("soundconnect-test");
-        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(now.plusSeconds(3600)))),
+        transport=new FcmHttpV1Transport(GoogleCredentials.create(new AccessToken("fixture",Date.from(Instant.now().plusSeconds(3600)))),
                 new DeadlineHttpTransport(http,properties.getReadTimeout()),json,executor,properties,Clock.fixed(now,ZoneOffset.UTC));
     }
     @AfterEach void cleanup(){executor.shutdownNow();}
@@ -28,15 +28,14 @@ class VenueApplicationFcmPayloadTest {
             "notificationId",UUID.randomUUID().toString(),"recipientId",UUID.randomUUID().toString(),"type",type,
             "displayVariant","DEFAULT","sentAt",Long.toString(now.toEpochMilli()),"expiresAt",Long.toString(now.plusSeconds(300).toEpochMilli())));}
     private PushEnvelope envelope(Map<String,String> data){return new PushEnvelope("fixture","Private name","Private rejection reason",data,"fixture",now.plusSeconds(300));}
-    @Test void bothDecisionTypesAreStrictDataOnlyWithoutPrivateFallback() {
+    @Test void bothDecisionTypesAreStrictDataOnlyWithoutPrivateFallback() throws Exception {
         for(var type:VenueApplicationPushPresentation.TYPES) {
-            var data=data(type.name());var result=json.valueToTree(transport.payload(envelope(data)));
+            var data=data(type.name());var result=FcmWireAssertions.sendNative(transport,http,envelope(data),"300s");
             assertThat(result.at("/message/data")).isEqualTo(json.valueToTree(data));
             assertThat(result.at("/message/notification").isMissingNode()).isTrue();
             assertThat(result.at("/message/android/notification").isMissingNode()).isTrue();
             assertThat(result.at("/message/apns").isMissingNode()).isTrue();assertThat(result.toString()).doesNotContain("Private");
         }
-        verifyNoInteractions(http);
     }
     @Test void wrongVersionTypeVariantOrExtraSourceFieldFailsBeforeAnyHttp() {
         for(String mutation:List.of("missing","legacy","venueV1","wrongtype","variant","privateextra")) {

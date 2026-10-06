@@ -172,8 +172,9 @@ public final class FcmHttpV1Transport implements PushTransport {
             // data-only FCM. The native service builds MessagingStyle, including
             // recipient fencing, avatar fallback and an authenticated tap.
             message.put("data", envelope.data());
-            message.put("android", Map.of("priority", "HIGH", "ttl", ttl + "s",
-                    "collapse_key", ANDROID_COLLAPSE_KEY));
+            // Preserve each pending event while offline. OS child tags/groups are
+            // independent of FCM collapse; expiry and native dedup still apply.
+            message.put("android", Map.of("priority", "HIGH", "ttl", ttl + "s"));
             return Map.of("message", message);
         }
         message.put("notification", Map.of("title", envelope.title(), "body", envelope.body()));

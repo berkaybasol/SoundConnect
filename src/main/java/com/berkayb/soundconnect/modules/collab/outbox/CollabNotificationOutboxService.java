@@ -41,8 +41,19 @@ public class CollabNotificationOutboxService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<CollabNotificationOutboxClaim> claim(UUID eventId, String leaseOwner) {
         Instant now = timeProvider.now();
+        if (repository.deadLetterExhausted(
+                eventId,
+                properties.getMaxAttempts(),
+                CollabNotificationOutboxStatus.PENDING,
+                CollabNotificationOutboxStatus.IN_FLIGHT,
+                CollabNotificationOutboxStatus.DEAD_LETTER,
+                now
+        ) == 1) {
+            return Optional.empty();
+        }
         int claimed = repository.claim(
                 eventId,
+                properties.getMaxAttempts(),
                 CollabNotificationOutboxStatus.PENDING,
                 CollabNotificationOutboxStatus.IN_FLIGHT,
                 leaseOwner,

@@ -84,8 +84,8 @@ class FcmHttpV1TransportTest {
     }
 
     @Test
-    void payloadHasVisibleNotificationsMatchingCollapseAndExpiry() {
-        var json = mapper.valueToTree(transport.payload(envelope()));
+    void payloadHasVisibleNotificationsMatchingCollapseAndExpiry() throws Exception {
+        var json = FcmWireAssertions.send(transport, client, envelope());
         assertThat(json.at("/message/android/priority").asText()).isEqualTo("HIGH");
         assertThat(json.at("/message/android/notification/channel_id").asText()).isEqualTo("soundconnect_notifications");
         assertThat(json.at("/message/android/notification/tag").asText()).isEqualTo("notice-123");
@@ -97,8 +97,8 @@ class FcmHttpV1TransportTest {
         assertThat(json.at("/message/apns/headers/apns-expiration").asText()).isEqualTo(Long.toString(NOW.plusSeconds(600).getEpochSecond()));
         assertThat(json.at("/message/notification/body").asText()).isEqualTo(envelope().body());
         var other = envelope();
-        var otherJson = mapper.valueToTree(transport.payload(new PushEnvelope(other.token(), other.title(), other.body(),
-                Map.of("notificationId", "notice-456"), "notice-456", other.expiresAt())));
+        var otherJson = FcmWireAssertions.send(transport, client, new PushEnvelope(other.token(), other.title(), other.body(),
+                Map.of("notificationId", "notice-456"), "notice-456", other.expiresAt()));
         assertThat(otherJson.at("/message/android/collapse_key").asText()).isEqualTo("soundconnect_updates");
         assertThat(otherJson.at("/message/android/notification/tag").asText()).isEqualTo("notice-456");
         assertThat(otherJson.at("/message/apns/headers/apns-collapse-id").asText()).isEqualTo("notice-456");
@@ -106,17 +106,52 @@ class FcmHttpV1TransportTest {
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"ANDROID_DM_V1"})
-    void capableAndroidUsesDataOnlyWithoutOsAutoDisplay(String presentation) {
+    void capableAndroidUsesDataOnlyWithoutOsAutoDisplay(String presentation) throws Exception {
         var data=Map.of("notificationId","notice-123","type","DM_NEW_MESSAGE",
                 "presentationVersion",presentation,"senderName","Deniz","senderAvatarUrl","https://example.cloudfront.net/a.png");
-        var json=mapper.valueToTree(transport.payload(new PushEnvelope(envelope().token(),"SoundConnect",
-                "Unused generic body",data,"notice-123",NOW.plusSeconds(600))));
+        var json=FcmWireAssertions.sendNative(transport,client,new PushEnvelope(envelope().token(),"SoundConnect",
+                "Unused generic body",data,"notice-123",NOW.plusSeconds(600)),"600s");
         assertThat(json.at("/message/notification").isMissingNode()).isTrue();
         assertThat(json.at("/message/android/notification").isMissingNode()).isTrue();
         assertThat(json.at("/message/apns").isMissingNode()).isTrue();
         assertThat(json.at("/message/data/senderName").asText()).isEqualTo("Deniz");
         assertThat(json.at("/message/android/priority").asText()).isEqualTo("HIGH");
         assertThat(json.toString()).doesNotContain("Unused generic body");
+    }
+
+    @Test
+    void sameRecipientEventsSubmitDistinctSameAndCrossFamilyRequestsWithFixedExpiry() throws Exception {
+        String recipient = "00000000-0000-0000-0000-000000000100";
+        var ids = List.of("00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003");
+        var wires = new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+        for (int i = 0; i < ids.size(); i++) {
+            var data = new java.util.HashMap<>(Map.of("notificationId", ids.get(i), "recipientId", recipient,
+                    "type", i < 2 ? "DM_NEW_MESSAGE" : "EVENT_PERFORMER_APPROVED",
+                    "presentationVersion", i < 2 ? "ANDROID_DM_V1" : "ANDROID_VENUE_V1",
+                    "sentAt", Long.toString(NOW.toEpochMilli()),
+                    "expiresAt", Long.toString(NOW.plusSeconds(600).toEpochMilli())));
+            if (i < 2) {
+                data.put("conversationId", "00000000-0000-0000-0000-000000000200");
+                data.put("senderName", "Fixture sender");
+            } else {
+                data.put("displayVariant", "DEFAULT");
+            }
+            var event = new PushEnvelope(envelope().token(), "Private title", "Private body", data, ids.get(i), NOW.plusSeconds(600));
+            wires.add(FcmWireAssertions.sendNative(transport, client, event, "600s"));
+            if (i == 2) {
+                var later = new FcmHttpV1Transport(credentials, new DeadlineHttpTransport(client, properties.getReadTimeout()),
+                        mapper, executor, properties, Clock.fixed(NOW.plusSeconds(120), ZoneOffset.UTC));
+                var retry = FcmWireAssertions.sendNative(later, client, event, "480s");
+                assertThat(retry.at("/message/data")).isEqualTo(wires.get(i).at("/message/data"));
+                var expired = new FcmHttpV1Transport(credentials, new DeadlineHttpTransport(client, properties.getReadTimeout()),
+                        mapper, executor, properties, Clock.fixed(event.expiresAt(), ZoneOffset.UTC));
+                assertThat(expired.send(event).errorCode()).isEqualTo("EXPIRED");
+            }
+        }
+        assertThat(wires).extracting(wire -> wire.at("/message/data/notificationId").asText()).containsExactlyElementsOf(ids);
+        assertThat(wires).allSatisfy(wire -> assertThat(wire.toString()).doesNotContain("Private"));
+        verify(client, times(4)).send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any());
     }
 
     @ParameterizedTest
