@@ -12,6 +12,8 @@ import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -158,8 +160,9 @@ class MailDeliveryConcurrencyRabbitRedisTest {
         System.out.println("ACCEPTANCE sequential+busy: provider=2 distinctJobs=2 ack=3 requeue=1 recovered=0");
     }
 
-    @Test void failedProviderUsesDelayedRetryThenSentMarkerSuppressesCopy() throws Exception {
-        MailSendRequest job=request(); nextStatus.set(503); producer.send(job);
+    @ParameterizedTest @ValueSource(ints = {307, 429, 503})
+    void failedProviderUsesDelayedRetryThenSentMarkerSuppressesCopy(int initialStatus) throws Exception {
+        MailSendRequest job=request(); nextStatus.set(initialStatus); producer.send(job);
         deliver(receive(first),first);
         assertThat(calls).hasValue(1); assertThat(acks).hasValue(1);
         assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isFalse();
@@ -170,7 +173,7 @@ class MailDeliveryConcurrencyRabbitRedisTest {
         assertThat(calls).hasValue(2); assertThat(acks).hasValue(3);
         assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isTrue();
         assertNoUnackedRedelivery();
-        System.out.println("ACCEPTANCE retry: provider503=1 provider202=1 retryAttempt=1 ack=3 duplicateSuppressed=true");
+        System.out.println("ACCEPTANCE retry: provider"+initialStatus+"=1 provider202=1 retryAttempt=1 ack=3 duplicateSuppressed=true");
     }
 
     @Test void staleResetIsDiscardedAndCurrentResetRemainsUsable() throws Exception {
