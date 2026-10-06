@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentMatchers;
 
 import java.net.URI;
@@ -175,12 +176,12 @@ class FcmHttpV1TransportTest {
         verify(client, times(1)).send(any(), ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any());
     }
 
-    @Test
-    void respectsRetryAfterAndMinimumQuotaDelay() throws Exception {
-        respond(429, "{}", Map.of("Retry-After", List.of("120")));
-        assertThat(transport.send(envelope()).retryAfter()).isEqualTo(Duration.ofSeconds(120));
-        respond(429, "{}", Map.of("Retry-After", List.of("2")));
-        assertThat(transport.send(envelope()).retryAfter()).isEqualTo(Duration.ofMinutes(1));
+    @ParameterizedTest
+    @CsvSource({"120,120", "2,60"})
+    void respectsRetryAfterAndMinimumQuotaDelay(String retryAfter, long expectedSeconds) throws Exception {
+        respond(429, "{}", Map.of("Retry-After", List.of(retryAfter)));
+        assertThat(transport.send(envelope()).retryAfter()).isEqualTo(Duration.ofSeconds(expectedSeconds));
+        verify(client, times(1)).send(any(), ArgumentMatchers.<HttpResponse.BodyHandler<byte[]>>any());
     }
 
     @Test
@@ -197,15 +198,21 @@ class FcmHttpV1TransportTest {
         assertThat(result.errorCode()).isEqualTo("HTTP_302");
     }
 
-    @Test
-    void expiredOversizedAndInvalidDataNeverLeaveProcess() {
+    @ParameterizedTest(name = "{0} never leaves the process")
+    @ValueSource(strings = {"EXPIRED", "PAYLOAD_TOO_LARGE", "INVALID_ENVELOPE"})
+    void expiredOversizedAndInvalidDataNeverLeaveProcess(String expectedCode) {
         var sample = envelope();
-        assertThat(transport.send(new PushEnvelope(sample.token(), sample.title(), sample.body(), sample.data(),
-                sample.collapseKey(), NOW)).errorCode()).isEqualTo("EXPIRED");
-        assertThat(transport.send(new PushEnvelope(sample.token(), sample.title(), "x".repeat(5000), sample.data(),
-                sample.collapseKey(), sample.expiresAt())).errorCode()).isEqualTo("PAYLOAD_TOO_LARGE");
-        assertThat(transport.send(new PushEnvelope(sample.token(), sample.title(), sample.body(),
-                Map.of("google.private", "value"), sample.collapseKey(), sample.expiresAt())).errorCode()).isEqualTo("INVALID_ENVELOPE");
+        // Each invocation gets a fresh executor: Future completion does not guarantee its worker is idle.
+        var invalid = switch (expectedCode) {
+            case "EXPIRED" -> new PushEnvelope(sample.token(), sample.title(), sample.body(), sample.data(),
+                    sample.collapseKey(), NOW);
+            case "PAYLOAD_TOO_LARGE" -> new PushEnvelope(sample.token(), sample.title(), "x".repeat(5000), sample.data(),
+                    sample.collapseKey(), sample.expiresAt());
+            case "INVALID_ENVELOPE" -> new PushEnvelope(sample.token(), sample.title(), sample.body(),
+                    Map.of("google.private", "value"), sample.collapseKey(), sample.expiresAt());
+            default -> throw new IllegalArgumentException("Unknown validation case: " + expectedCode);
+        };
+        assertThat(transport.send(invalid).errorCode()).isEqualTo(expectedCode);
         verifyNoInteractions(client);
     }
 
