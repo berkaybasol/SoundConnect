@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -86,6 +87,7 @@ class FcmHttpV1TransportTest {
 
     @Test
     void payloadHasVisibleNotificationsMatchingCollapseAndExpiry() throws Exception {
+        useSerialWireFixture();
         var json = FcmWireAssertions.send(transport, client, envelope());
         assertThat(json.at("/message/android/priority").asText()).isEqualTo("HIGH");
         assertThat(json.at("/message/android/notification/channel_id").asText()).isEqualTo("soundconnect_notifications");
@@ -122,6 +124,7 @@ class FcmHttpV1TransportTest {
 
     @Test
     void sameRecipientEventsSubmitDistinctSameAndCrossFamilyRequestsWithFixedExpiry() throws Exception {
+        useSerialWireFixture();
         String recipient = "00000000-0000-0000-0000-000000000100";
         var ids = List.of("00000000-0000-0000-0000-000000000001",
                 "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003");
@@ -260,6 +263,15 @@ class FcmHttpV1TransportTest {
         executor.shutdown();
         assertThat(executor.awaitTermination(1, TimeUnit.SECONDS)).isTrue();
         verifyNoInteractions(client);
+    }
+
+    private void useSerialWireFixture() {
+        // Payload checks send sequentially, but Future completion does not mean
+        // a SynchronousQueue worker is ready again. Use the other wire suites'
+        // serial fixture; capacity and deadline tests keep the bounded executor.
+        executor.shutdown();
+        executor = Executors.newSingleThreadExecutor();
+        transport = createTransport(credentials);
     }
 
     @SuppressWarnings("unchecked")

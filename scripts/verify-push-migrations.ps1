@@ -3,7 +3,7 @@ param()
 
 # Real PostgreSQL regression of the launcher's migration helpers, not a local startup.
 # Never reads .env.local/ADC, executes dev.ps1's startup block, or uses Compose.
-# Only the 14 push/source SQL steps through V10 run against minimal, disposable base tables.
+# Only the 15 push/source/application-mail SQL steps run against minimal, disposable base tables.
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $DockerExe = (Get-Command docker -CommandType Application | Select-Object -First 1).Source
@@ -91,6 +91,8 @@ CREATE TABLE tbl_table_group_participants(id uuid PRIMARY KEY);
 CREATE TABLE tbl_table_group_notification_outbox(
     event_id uuid PRIMARY KEY, recipient_id uuid NOT NULL, notification_type varchar(64) NOT NULL,
     payload jsonb NOT NULL, occurred_at timestamptz NOT NULL);
+CREATE TABLE fixture_legacy_data(id integer PRIMARY KEY, payload jsonb NOT NULL);
+INSERT INTO fixture_legacy_data VALUES(1,'{"preserve":"existing application data","revision":7}');
 INSERT INTO tbl_user VALUES ('10000000-0000-4000-8000-000000000001',NULL);
 INSERT INTO tbl_table_group_notification_outbox VALUES (
     '40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',
@@ -138,6 +140,11 @@ function Assert-ReadyShape {
     Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM pg_indexes WHERE tablename='tbl_studio_reservation_notification_outbox' AND indexname LIKE 'idx_%';") -eq "4") "outbox has four indexes"
     Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='tbl_follow_notification_outbox';") -eq "16") "follow outbox has 16 columns"
     Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM pg_constraint WHERE conrelid='tbl_follow_notification_outbox'::regclass AND contype='c' AND convalidated;") -eq "7") "follow outbox has seven validated checks"
+    Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='tbl_application_mail_intent';") -eq "15") "application mail has all 15 storage columns"
+    Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM pg_constraint WHERE conrelid='tbl_application_mail_intent'::regclass AND contype='c' AND convalidated;") -eq "9") "application mail has nine validated checks"
+    Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM pg_indexes WHERE tablename='tbl_application_mail_intent' AND indexname IN ('application_mail_due_idx','application_mail_lease_idx','application_mail_health_idx');") -eq "3") "application mail has all three worker indexes"
+    Assert-Check ((Invoke-FixtureSql "SELECT count(*) FROM pg_constraint WHERE conrelid='tbl_application_mail_intent'::regclass AND conname='application_mail_logical_identity' AND contype='u';") -eq "1") "application mail logical identity is unique"
+    Assert-Check ((Invoke-FixtureSql "SELECT payload::text FROM fixture_legacy_data WHERE id=1;") -ceq '{"preserve": "existing application data", "revision": 7}') "legacy business data remains unchanged"
 }
 
 $Source = Get-Content -LiteralPath (Join-Path $ProjectRoot "scripts/dev.ps1") -Raw
@@ -168,13 +175,16 @@ $ExpectedFiles = @(
     "2026-09-30-table-notification-target.sql",
     "2026-10-01-push-native-table-capability.sql",
     "2026-10-01-push-native-collab-capability.sql",
-    "2026-10-01-push-native-overthinking-capability.sql"
+    "2026-10-01-push-native-overthinking-capability.sql",
+    "2026-10-06-application-mail-intents.sql"
 )
 $LocalSchemaMigrations = @($LocalSchemaMigrations | Where-Object { [IO.Path]::GetFileName($_.Path) -in $ExpectedFiles })
 Assert-Check ((@($LocalSchemaMigrations | ForEach-Object { [IO.Path]::GetFileName($_.Path) }) -join ',') -ceq ($ExpectedFiles -join ',')) "each push migration occurs once in monotonic order"
 Assert-Check (@($LocalSchemaMigrations | Where-Object { $_.Marker }).Count -eq 12) "12 capability/source steps carry markers"
 Assert-Check (-not $LocalSchemaMigrations[4].Marker) "outbox remains repeatable"
 Assert-Check (-not $LocalSchemaMigrations[5].Marker) "follow outbox is independent of the 12 push/source markers"
+Assert-Check (-not $LocalSchemaMigrations[14].Marker) "application mail stays additive and repeatable without a push marker"
+$RepeatableFiles = @($ExpectedFiles[4], $ExpectedFiles[5], $ExpectedFiles[14])
 $SqlHashesBefore = @($LocalSchemaMigrations | ForEach-Object { (Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash }) -join ','
 
 try {
@@ -204,6 +214,26 @@ try {
     Assert-Check (($AppliedSteps -join ',') -ceq ($ExpectedFiles -join ',')) "fresh database executes each forward step in order"
     Assert-ReadyShape
     [void](Invoke-FixtureSql @"
+INSERT INTO tbl_application_mail_intent(id,application_id,purpose,decision,recipient,payload,status,
+    attempt_count,max_attempts,lease_token,lease_until,published_at,last_error)
+SELECT ('60000000-0000-4000-8000-00000000000' || ordinal)::uuid,
+    ('70000000-0000-4000-8000-00000000000' || ordinal)::uuid,
+    'STUDIO_APPLICATION_ADMIN','CREATED','fixture@example.test',jsonb_build_object('snapshot',ordinal),state,
+    1,5,CASE WHEN state='PUBLISHING' THEN '80000000-0000-4000-8000-000000000001'::uuid END,
+    CASE WHEN state='PUBLISHING' THEN CURRENT_TIMESTAMP+INTERVAL '1 hour' END,
+    CASE WHEN state='PUBLISHED' THEN CURRENT_TIMESTAMP END,
+    CASE WHEN state='NEEDS_REVIEW' THEN 'publish_failed_or_unknown' END
+FROM (VALUES(1,'PENDING'),(2,'PUBLISHING'),(3,'PUBLISHED'),(4,'NEEDS_REVIEW')) AS fixture(ordinal,state);
+"@)
+    $MailBefore = Invoke-FixtureSql "SELECT jsonb_agg(to_jsonb(i) ORDER BY id)::text FROM tbl_application_mail_intent i;"
+    $MailConstraintsBefore = Invoke-FixtureSql "SELECT string_agg(pg_get_constraintdef(oid),';' ORDER BY conname) FROM pg_constraint WHERE conrelid='tbl_application_mail_intent'::regclass;"
+    Assert-Rejected { Invoke-FixtureSql "INSERT INTO tbl_application_mail_intent(id,application_id,purpose,decision,recipient,payload,max_attempts) SELECT '60000000-0000-4000-8000-000000000009',application_id,purpose,decision,recipient,payload,max_attempts FROM tbl_application_mail_intent WHERE status='PENDING';" } "23505" "application mail rejects duplicate logical identity"
+    Assert-Rejected { Invoke-FixtureSql "UPDATE tbl_application_mail_intent SET lease_token=NULL WHERE status='PUBLISHING';" } "23514" "application mail rejects publishing without an owner"
+    Assert-Rejected { Invoke-FixtureSql "UPDATE tbl_application_mail_intent SET attempt_count=max_attempts+1 WHERE status='PENDING';" } "23514" "application mail rejects exceeded durable attempt budget"
+    Assert-Rejected { Invoke-FixtureSql "UPDATE tbl_application_mail_intent SET decision='APPROVED' WHERE status='PENDING';" } "23514" "application mail rejects invalid purpose and decision pairing"
+    Assert-Check ((Invoke-FixtureSql "SELECT jsonb_agg(to_jsonb(i) ORDER BY id)::text FROM tbl_application_mail_intent i;") -ceq $MailBefore) "rejected application mail mutations preserve all states and snapshots"
+    $Cases.Add("Fresh application-mail schema -> identity, lease, budget and purpose constraints reject invalid writes")
+    [void](Invoke-FixtureSql @"
 INSERT INTO tbl_table_group_notification_outbox VALUES (
     '40000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001',
     'TABLE_EXPIRED','{"tableId":"50000000-0000-4000-8000-000000000001"}','2026-10-03T00:01:00Z');
@@ -231,13 +261,16 @@ INSERT INTO tbl_table_group_notification_outbox VALUES (
     for ($Replay = 1; $Replay -le 2; $Replay++) {
         $AppliedSteps.Clear()
         Assert-Check (Sync-LocalSchemas) "V10 replay $Replay succeeds"
-        Assert-Check (($AppliedSteps -join ',') -ceq ($ExpectedFiles[4..5] -join ',')) "V10 replay $Replay skips all marked capability/source steps"
+        Assert-Check (($AppliedSteps -join ',') -ceq ($RepeatableFiles -join ',')) "V10 replay $Replay runs only repeatable outbox and application-mail steps"
         Assert-Check ((Get-DeviceSnapshot) -ceq $Before) "V10 replay $Replay preserves all 24 device rows exactly"
         Assert-Check ((Invoke-FixtureSql "SELECT jsonb_agg(to_jsonb(m) ORDER BY migration_id)::text FROM soundconnect_schema_migrations m;") -ceq $MarkersBefore) "V10 replay $Replay preserves marker timestamps"
         Assert-Check ((Invoke-FixtureSql "SELECT string_agg(pg_get_constraintdef(oid),';' ORDER BY conname) FROM pg_constraint WHERE conrelid='tbl_push_device'::regclass;") -ceq $ConstraintsBefore) "V10 replay $Replay preserves constraints"
+        Assert-Check ((Invoke-FixtureSql "SELECT jsonb_agg(to_jsonb(i) ORDER BY id)::text FROM tbl_application_mail_intent i;") -ceq $MailBefore) "V10 replay $Replay preserves every application-mail state, payload and lease"
+        Assert-Check ((Invoke-FixtureSql "SELECT string_agg(pg_get_constraintdef(oid),';' ORDER BY conname) FROM pg_constraint WHERE conrelid='tbl_application_mail_intent'::regclass;") -ceq $MailConstraintsBefore) "V10 replay $Replay preserves application-mail constraints"
     }
     Assert-ReadyShape
     $Cases.Add("Existing ordinary/scoped/revoked V10 and legacy devices -> two exact-preserving replays")
+    $Cases.Add("Existing application-mail PENDING/PUBLISHING/PUBLISHED/NEEDS_REVIEW -> two exact-preserving replays")
 
     # Demonstrate the reported regression itself, on disposable rows only.
     Assert-Rejected { Invoke-FixtureSql (Get-Content -LiteralPath $LocalSchemaMigrations[1].Path -Raw) } "23514" "historical V1 replay rejects current device rows"
@@ -296,7 +329,7 @@ INSERT INTO tbl_table_group_notification_outbox VALUES (
 
     Assert-Rejected { Test-LocalMigrationApplied @{ Marker = "not-a-marker'" } } "Invalid local migration marker" "marker interpolation accepts only registry format"
     $SqlHashesAfter = @($LocalSchemaMigrations | ForEach-Object { (Get-FileHash -LiteralPath $_.Path -Algorithm SHA256).Hash }) -join ','
-    Assert-Check ($SqlHashesAfter -ceq $SqlHashesBefore) "all 14 dated SQL files remain byte-identical"
+    Assert-Check ($SqlHashesAfter -ceq $SqlHashesBefore) "all 15 dated SQL files remain byte-identical"
     Write-Host "PASS: $($Cases.Count) PostgreSQL scenarios, $Checks assertions."
     $Cases | ForEach-Object { Write-Host "  PASS $_" }
     Write-Host "Fixture image: $ImageId"
