@@ -111,35 +111,35 @@ public class MailJobConsumer {
 				return;
 			}
 			
-			log.info("processing mail job: kind={}, to={}", request.kind(), maskedTo);
-			if (request.kind() == MailKind.PASSWORD_RESET && !authorizeResetMail(request)) {
-				// Stale and legacy/invalid messages are terminal, but never marked sent.
+			try {
+				// A competing consumer can finish between the optimistic read and
+				// our lock acquisition. Its committed sent marker wins over that snapshot.
+				if (helper.isAlreadySent(sentKey)) {
+					log.info("Mail Job SKIPPED (sent before lock acquired): kind={}, to={}", request.kind(), maskedTo);
+				} else if (request.kind() == MailKind.PASSWORD_RESET && !authorizeResetMail(request)) {
+					// Stale and legacy/invalid messages are terminal, but never marked sent.
+					log.info("Mail job DISCARDED (reset claim not current or invalid): to={}", maskedTo);
+				} else {
+					log.info("processing mail job: kind={}, to={}", request.kind(), maskedTo);
+					if (request.kind() == MailKind.NOTIFICATION) {
+						notificationMailDelivery.sendIfCurrent(request);
+					} else {
+						mailSenderClient.send(request.to(), request.subject(), request.textBody(), request.htmlBody());
+					}
+					helper.markSent(sentKey, Duration.ofSeconds(idempotencyTtlSec));
+					log.debug("Mail sent OK -> to={}, kind={}", maskedTo, request.kind());
+				}
+			} finally {
+				// Release only an acquired lock, exactly once, before broker ACK/retry.
+				// An ACK failure must not release a subsequent consumer's lock.
 				helper.releaseLock(lockKey);
-				log.info("Mail job DISCARDED (reset claim not current or invalid): to={}", maskedTo);
-				channel.basicAck(tag, false);
-				return;
 			}
-			
-			// Send
-			if (request.kind() == com.berkayb.soundconnect.shared.mail.enums.MailKind.NOTIFICATION) {
-				notificationMailDelivery.sendIfCurrent(request);
-			} else {
-				mailSenderClient.send(request.to(), request.subject(), request.textBody(), request.htmlBody());
-			}
-			
-			// Success -> mark sent + release lock + ACK
-			helper.markSent(sentKey, Duration.ofSeconds(idempotencyTtlSec));
-			helper.releaseLock(lockKey);
-			log.debug("Mail sent OK -> to={}, kind={}", maskedTo, request.kind());
 			channel.basicAck(tag, false);
 			
 		} catch (Exception e) {
 			int retryAttempt = helper.retryAttempt(headers);
 			boolean transientErr = helper.isTransient(e);
 			boolean limitOk = retryAttempt < maxRedeliveries;
-			
-			// Lock'u mutlaka sal
-			try { helper.releaseLock(lockKey); } catch (Exception ignore) {}
 			
 			if (transientErr && limitOk) {
 				int nextRetryAttempt = retryAttempt + 1;

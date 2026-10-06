@@ -27,8 +27,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.stream.Stream;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -84,6 +87,66 @@ class MailJobConsumerTest {
 		entry.put("count", deaths);
 		// basit bir x-death yapısı (helper.redeliveryCount mock'luyoruz zaten)
 		return new HashMap<>(Map.of("x-death", List.of(entry)));
+	}
+
+	@Test
+	void concurrentDuplicateRechecksSentAfterAcquiringLock() throws Exception {
+		MailSendRequest request = req();
+		AtomicBoolean sent = new AtomicBoolean(), locked = new AtomicBoolean();
+		CountDownLatch duplicateRead = new CountDownLatch(1), resumeDuplicate = new CountDownLatch(1);
+		when(helper.buildIdemKey(request)).thenReturn("concurrent");
+		when(helper.isAlreadySent("mail:sent:concurrent")).thenAnswer(invocation -> {
+			boolean snapshot = sent.get();
+			if (Thread.currentThread().getName().equals("duplicate-mail") && !snapshot) {
+				duplicateRead.countDown();
+				if (!resumeDuplicate.await(5, TimeUnit.SECONDS)) throw new AssertionError("Duplicate barrier timed out");
+			}
+			return snapshot;
+		});
+		when(helper.acquireLock(eq("mail:lock:concurrent"), any())).thenAnswer(invocation -> locked.compareAndSet(false, true));
+		doAnswer(invocation -> { sent.set(true); return null; }).when(helper).markSent(eq("mail:sent:concurrent"), any());
+		doAnswer(invocation -> { locked.set(false); return null; }).when(helper).releaseLock("mail:lock:concurrent");
+		ExecutorService worker = Executors.newSingleThreadExecutor(task -> new Thread(task, "duplicate-mail"));
+		try {
+			Future<?> duplicate = worker.submit(() -> consumer.listenMailJobs(request, 102L, Map.of(), channel));
+			assertThat(duplicateRead.await(5, TimeUnit.SECONDS)).isTrue();
+			consumer.listenMailJobs(request, 101L, Map.of(), channel);
+			assertThat(sent).isTrue();
+			assertThat(locked).isFalse();
+			resumeDuplicate.countDown();
+			duplicate.get(5, TimeUnit.SECONDS);
+			verify(mailSenderClient, times(1)).send(request.to(), request.subject(), request.textBody(), request.htmlBody());
+			verify(channel).basicAck(101L, false);
+			verify(channel).basicAck(102L, false);
+			verifyNoInteractions(retryPublisher);
+			assertThat(locked).isFalse();
+		} finally {
+			resumeDuplicate.countDown();
+			worker.shutdownNow();
+		}
+	}
+
+	@Test
+	void ackFailureAfterSuccessfulSendDoesNotReleaseLockTwice() throws Exception {
+		MailSendRequest request = req();
+		when(helper.buildIdemKey(request)).thenReturn("ack-failure");
+		when(helper.acquireLock(eq("mail:lock:ack-failure"), any())).thenReturn(true);
+		doThrow(new java.io.IOException("connection lost")).when(channel).basicAck(103L, false);
+		consumer.listenMailJobs(request, 103L, Map.of(), channel);
+		verify(helper, times(1)).releaseLock("mail:lock:ack-failure");
+		verify(mailSenderClient, times(1)).send(request.to(), request.subject(), request.textBody(), request.htmlBody());
+	}
+
+	@Test
+	void alreadySentAckFailureDoesNotReleaseAnUnacquiredLock() throws Exception {
+		MailSendRequest request = req();
+		when(helper.buildIdemKey(request)).thenReturn("already-sent-ack");
+		when(helper.isAlreadySent("mail:sent:already-sent-ack")).thenReturn(true);
+		doThrow(new java.io.IOException("connection lost")).when(channel).basicAck(104L, false);
+		consumer.listenMailJobs(request, 104L, Map.of(), channel);
+		verify(helper, never()).acquireLock(anyString(), any());
+		verify(helper, never()).releaseLock(anyString());
+		verifyNoInteractions(mailSenderClient);
 	}
 
 	@Test
