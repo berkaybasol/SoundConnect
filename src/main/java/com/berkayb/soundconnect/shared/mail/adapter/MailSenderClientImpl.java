@@ -7,12 +7,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Duration;
@@ -68,6 +70,9 @@ public class MailSenderClientImpl implements MailSenderClient {
 			                   .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
 			                   .bodyValue(body)
 			                   .retrieve()
+			                   // MailerSend queues accepted mail with 202. In particular,
+			                   // a redirect must not let the consumer mark sent and ACK.
+			                   .onStatus(status -> status.value() != HttpStatus.ACCEPTED.value(), ClientResponse::createException)
 			                   .toBodilessEntity()
 			                   .block(Duration.ofSeconds(readTimeoutSec + 2L));
 			

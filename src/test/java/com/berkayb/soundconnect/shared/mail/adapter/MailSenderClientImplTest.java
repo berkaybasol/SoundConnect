@@ -1,9 +1,13 @@
 package com.berkayb.soundconnect.shared.mail.adapter;
 
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -14,6 +18,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -63,8 +68,8 @@ class MailSenderClientImplTest {
 	// ---------- TESTS ----------
 	
 	@Test
-	@DisplayName("200/202 → başarılı gönderim")
-	void send_success_2xx() {
+	@DisplayName("202 Accepted → provider kabulü; mailbox teslimi değil")
+	void send_success_202() {
 		server.enqueue(new MockResponse()
 				               .setResponseCode(202)
 				               .setBody("{}")
@@ -72,6 +77,48 @@ class MailSenderClientImplTest {
 		
 		client.send("alice@example.com", "Hello", "hi", "<b>hi</b>");
 		
+		assertThat(server.getRequestCount()).isEqualTo(1);
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {200, 204, 301, 302, 303, 307, 308})
+	void nonAcceptanceResponseFailsWithoutFollowingRedirectOrExposingProviderData(int status) throws Exception {
+		String privateResponse = "PRIVATE_PROVIDER_RESPONSE audit-private@example.invalid";
+		String privateLocation = server.url("/private-destination?token=PRIVATE_REDIRECT_TOKEN").toString();
+		server.enqueue(new MockResponse().setResponseCode(status)
+				.addHeader("Location", privateLocation).setBody(status == 204 ? "" : privateResponse));
+
+		assertThatThrownBy(() -> client.send("audit@example.invalid", "Application decision", "private body", null))
+				.isInstanceOf(SoundConnectException.class)
+				.satisfies(failure -> {
+					var exception = (SoundConnectException) failure;
+					assertThat(exception.getDetails()).contains("status=" + status);
+					assertThat(exception.getMessage() + exception.getDetails())
+							.doesNotContain(privateResponse, privateLocation, "PRIVATE_REDIRECT_TOKEN", "private body");
+				});
+		assertThat(server.getRequestCount()).isEqualTo(1);
+		assertThat(server.takeRequest(1, TimeUnit.SECONDS).getPath()).isEqualTo("/v1/email");
+		assertThat(server.takeRequest(100, TimeUnit.MILLISECONDS)).isNull();
+	}
+
+	@Test
+	void nonRateLimitedClientErrorRemainsTerminalForTheExistingConsumerPolicy() {
+		server.enqueue(new MockResponse().setResponseCode(422).setBody("PRIVATE_PROVIDER_RESPONSE"));
+		assertThatThrownBy(() -> client.send("audit@example.invalid", "Application decision", "text", null))
+				.isInstanceOf(HttpClientErrorException.class)
+				.satisfies(failure -> {
+					assertThat(((HttpClientErrorException) failure).getStatusCode().value()).isEqualTo(422);
+					assertThat(new MailJobHelper(null).isTransient((Exception) failure)).isFalse();
+				});
+	}
+
+	@Test
+	void noResponseTimeoutFailsInsteadOfReportingAcceptance() {
+		server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
+		setField(client, "readTimeoutSec", 1);
+		assertThatThrownBy(() -> client.send("audit@example.invalid", "Application decision", "text", null))
+				.isInstanceOf(SoundConnectException.class)
+				.satisfies(failure -> assertThat(new MailJobHelper(null).isTransient((Exception) failure)).isTrue());
 		assertThat(server.getRequestCount()).isEqualTo(1);
 	}
 	
