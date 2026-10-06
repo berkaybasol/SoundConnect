@@ -30,7 +30,9 @@ final class FcmWireAssertions {
         when(response.body()).thenReturn("{\"name\":\"projects/soundconnect-test/messages/fixture\"}".getBytes(StandardCharsets.UTF_8));
         when(response.headers()).thenReturn(HttpHeaders.of(Map.of(), (name, value) -> true));
         when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
-        assertThat(transport.send(envelope).outcome()).isEqualTo(PushSendResult.Outcome.ACCEPTED);
+        PushSendResult result = transport.send(envelope);
+        assertThat(result.outcome()).as("wire send errorCode=%s", result.errorCode())
+                .isEqualTo(PushSendResult.Outcome.ACCEPTED);
         var requests = ArgumentCaptor.forClass(HttpRequest.class);
         verify(client, times(previous + 1)).send(requests.capture(), any(HttpResponse.BodyHandler.class));
         verifyNoMoreInteractions(client);
