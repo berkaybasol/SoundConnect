@@ -10,6 +10,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -21,6 +25,10 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -76,6 +84,92 @@ class MailJobConsumerTest {
 		entry.put("count", deaths);
 		// basit bir x-death yapısı (helper.redeliveryCount mock'luyoruz zaten)
 		return new HashMap<>(Map.of("x-death", List.of(entry)));
+	}
+
+	@Test
+	void incompleteResetEnvelopeIsDiscardedBeforeClaimLookupOrProvider() throws Exception {
+		var claims = mock(com.berkayb.soundconnect.auth.otp.service.OtpService.class);
+		consumer.setOtpService(claims);
+		when(helper.acquireLock(anyString(), any())).thenReturn(true);
+		Map<String, Object> params = Map.of("requestId", "3ed81190-7d78-43d0-84cb-0eb139e243ed",
+				"claimRecipient", "owned@example.invalid", "expiresAtEpochMillis", 1_800_000_000_000L);
+		List<MailSendRequest> invalid = List.of(
+				new MailSendRequest("owned@example.invalid", null, "html", "text", MailKind.PASSWORD_RESET, params),
+				new MailSendRequest("owned@example.invalid", "reset", "", "text", MailKind.PASSWORD_RESET, params),
+				new MailSendRequest("owned@example.invalid", "reset", "html", null, MailKind.PASSWORD_RESET, params));
+		for (MailSendRequest request : invalid) consumer.listenMailJobs(request, 7L, Map.of(), channel);
+		verify(channel, times(3)).basicAck(7L, false);
+		verifyNoInteractions(claims, mailSenderClient, retryPublisher);
+		verify(helper, never()).markSent(anyString(), any());
+	}
+
+	private static Map<String, Object> resetParams(String recipient) {
+		var params = new HashMap<String, Object>();
+		params.put("requestId", "3ed81190-7d78-43d0-84cb-0eb139e243ed");
+		params.put("expiresAtEpochMillis", 1_800_000_000_000L);
+		params.put("claimRecipient", recipient);
+		return params;
+	}
+
+	static Stream<Arguments> malformedResetEnvelopes() {
+		var cases = new ArrayList<Arguments>();
+		for (String recipient : new String[] {null, "", " ", "owned", "owned@", "@example.test",
+				"owned@\t", " \t@example.test"}) {
+			cases.add(Arguments.of(recipient, resetParams(recipient)));
+		}
+		cases.add(Arguments.of("owned@example.test", null));
+		cases.add(Arguments.of("owned@example.test", Map.of()));
+		var missing = resetParams("owned@example.test");
+		missing.remove("claimRecipient");
+		cases.add(Arguments.of("owned@example.test", missing));
+		for (String claim : new String[] {null, "", "owned@", "owned@@example.test", "owned @example.test"}) {
+			cases.add(Arguments.of("owned@example.test", resetParams(claim)));
+		}
+		return cases.stream();
+	}
+
+	private MailJobConsumer realHelperConsumer(com.berkayb.soundconnect.auth.otp.service.OtpService claims) {
+		var redis = mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+		@SuppressWarnings("unchecked")
+		var values = (org.springframework.data.redis.core.ValueOperations<String, String>)
+				mock(org.springframework.data.redis.core.ValueOperations.class);
+		lenient().when(redis.opsForValue()).thenReturn(values);
+		lenient().when(values.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+		var actual = new MailJobConsumer(mailSenderClient, new MailJobHelper(redis), retryPublisher,
+				mock(com.berkayb.soundconnect.modules.notification.service.NotificationMailDelivery.class));
+		actual.setOtpService(claims);
+		setField(actual, "idempotencyTtlSec", 900L);
+		setField(actual, "lockTtlSec", 300L);
+		setField(actual, "maxRedeliveries", 5);
+		setField(actual, "delaysMs", List.of(3000L));
+		return actual;
+	}
+
+	@ParameterizedTest(name = "malformed reset envelope {index}")
+	@MethodSource("malformedResetEnvelopes")
+	void malformedResetWithRealHelperIsAckedBeforeAuthoritativeClaimLookup(
+			String recipient, Map<String, Object> params) throws Exception {
+		var claims = mock(com.berkayb.soundconnect.auth.otp.service.OtpService.class);
+		var actual = realHelperConsumer(claims);
+		var request = new MailSendRequest(recipient, "reset", "html", "text", MailKind.PASSWORD_RESET, params);
+		assertThatCode(() -> actual.listenMailJobs(request, 71L, Map.of(), channel))
+				.doesNotThrowAnyException();
+		verifyNoInteractions(claims, mailSenderClient, retryPublisher);
+		verify(channel).basicAck(71L, false);
+		verifyNoMoreInteractions(channel);
+	}
+
+	@ParameterizedTest(name = "supported recipient form {index}")
+	@ValueSource(strings = {"\"first last\"@example.test", "\"first@last\"@example.test", "\u00f6mer@example.test"})
+	void recipientShapeGuardDoesNotInventNewEmailPolicy(String recipient) throws Exception {
+		var claims = mock(com.berkayb.soundconnect.auth.otp.service.OtpService.class);
+		var actual = realHelperConsumer(claims);
+		when(claims.authorizePasswordResetMail(eq(recipient), anyString(), anyLong())).thenReturn(true);
+		var request = new MailSendRequest(recipient, "reset", "html", "text", MailKind.PASSWORD_RESET, resetParams(recipient));
+		actual.listenMailJobs(request, 72L, Map.of(), channel);
+		verify(mailSenderClient).send(recipient, "reset", "text", "html");
+		verify(channel).basicAck(72L, false);
+		verifyNoInteractions(retryPublisher);
 	}
 	
 	@Test

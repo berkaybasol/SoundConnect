@@ -163,12 +163,12 @@ class OtpServiceTest {
 
 	@Test
 	@SuppressWarnings({"rawtypes", "unchecked"})
-	void passwordResetCancellationAtomicallyTargetsTheClaimCodeAndCooldown() {
+	void passwordResetCancellationAtomicallyTargetsTheGenerationAndCooldown() {
 		doReturn(1L).when(redisTemplate)
 				.execute(any(RedisScript.class), anyList(), any(Object[].class));
 
 		assertThat(otpService.cancelPasswordResetOtpIssue(
-				"User@Example.com", "123456")).isTrue();
+				"User@Example.com", "3ed81190-7d78-43d0-84cb-0eb139e243ed")).isTrue();
 
 		ArgumentCaptor<List<String>> keys = ArgumentCaptor.forClass(List.class);
 		ArgumentCaptor<Object[]> arguments = ArgumentCaptor.forClass(Object[].class);
@@ -181,7 +181,7 @@ class OtpServiceTest {
 				"soundconnect:otp:{" + IDENTITY_DIGEST + "}:password-reset:code",
 				"soundconnect:otp:{" + IDENTITY_DIGEST + "}:password-reset:resend-guard"
 		);
-		assertThat(arguments.getValue()).containsExactly("123456");
+		assertThat(arguments.getValue()).containsExactly("3ed81190-7d78-43d0-84cb-0eb139e243ed");
 		assertThat(keys.getValue()).allSatisfy(key ->
 				assertThat(key).doesNotContain("user@example.com"));
 	}

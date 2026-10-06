@@ -1,6 +1,6 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.controller.user;
 
-import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+import com.berkayb.soundconnect.shared.config.ExternalRabbitConsumersTestIsolation;
 
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
@@ -54,11 +54,39 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @TestPropertySource(properties = { // -> eklendi
-		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", // -> eklendi
 		"spring.jpa.hibernate.ddl-auto=create-drop" // -> eklendi
 })
-@H2NotificationIdentityTestBoundary
+@org.testcontainers.junit.jupiter.Testcontainers
+@org.springframework.test.annotation.DirtiesContext(classMode=org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.context.annotation.Import({ExternalRabbitConsumersTestIsolation.class,UserVenueApplicationControllerTest.MailSchema.class})
 class UserVenueApplicationControllerTest {
+	@org.testcontainers.junit.jupiter.Container
+	static final org.testcontainers.containers.PostgreSQLContainer<?> PG = new org.testcontainers.containers.PostgreSQLContainer<>("postgres:16.4-alpine")
+			.withDatabaseName("bil011_venue_controller").withUsername("bil011").withPassword("bil011");
+	@org.springframework.test.context.DynamicPropertySource
+	static void postgres(org.springframework.test.context.DynamicPropertyRegistry properties) {
+		properties.add("spring.datasource.url",PG::getJdbcUrl);
+		properties.add("spring.datasource.username",PG::getUsername);
+		properties.add("spring.datasource.password",PG::getPassword);
+		properties.add("spring.datasource.driver-class-name",()->"org.postgresql.Driver");
+	}
+	@org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
+	static class MailSchema {
+		@org.springframework.context.annotation.Bean @org.springframework.context.annotation.DependsOn("entityManagerFactory")
+		org.springframework.beans.factory.InitializingBean migrations(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+			return () -> {
+				try(var connection=jdbc.getDataSource().getConnection()) {
+					org.assertj.core.api.Assertions.assertThat(connection.getMetaData().getURL()).isEqualTo(PG.getJdbcUrl());
+				}
+				for(String name:java.util.List.of("2026-09-28-media-notification-identity.sql","2026-09-29-band-notification-identity.sql","2026-10-06-application-mail-intents.sql"))
+					jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db",name)));
+			};
+		}
+	}
+	@Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+	// Preserve the preexisting external-broker double from H2NotificationIdentityTestBoundary.
+	// PostgreSQL schema guards and application/mail persistence are now real in this fixture.
+	@MockitoBean com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker notificationDlqBroker;
 	
 	@Autowired MockMvc mockMvc;
 	@Autowired CityRepository cityRepository;
@@ -107,6 +135,7 @@ class UserVenueApplicationControllerTest {
 	
 	@BeforeEach
 	void setUp() {
+		jdbc.execute("DELETE FROM tbl_application_mail_intent"); // Only this test's disposable PG.
 		// 1) Child tablolar önce
 		venueApplicationRepository.deleteAllInBatch();
 		

@@ -15,6 +15,8 @@ import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.ChannelCallback;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.lang.reflect.Field;
@@ -26,6 +28,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class MailRetryPublisherTest {
@@ -37,10 +43,13 @@ class MailRetryPublisherTest {
 
 	@BeforeEach
 	void setUp() {
-		publisher = new MailRetryPublisher(rabbitTemplate);
+		publisher = new MailRetryPublisher(new RabbitTemplate(mock(ConnectionFactory.class)));
 		setField("delayedExchange", "mail.delayed");
 		setField("routingKey", "mail.send");
+		setField("mailQueueName", "mail.queue");
 		setField("confirmTimeoutSec", 1L);
+		publisher.validateConfiguration();
+		setField("delayedRabbitTemplate", rabbitTemplate);
 	}
 
 	@Test
@@ -104,6 +113,38 @@ class MailRetryPublisherTest {
 
 		assertThatThrownBy(() -> publisher.publishWithDelay(request(), 1_000L, 1, "attempt=1"))
 				.isInstanceOf(AmqpException.class);
+	}
+
+	@Test
+	void missingStorageConfirmationTimesOutInsteadOfAcknowledgingOriginal() {
+		assertThatThrownBy(() -> publisher.publishWithDelay(request(), 1_000L, 1, "attempt=1"))
+				.isInstanceOf(AmqpException.class)
+				.hasMessage("Retry publish confirmation failed")
+				.hasCauseInstanceOf(java.util.concurrent.TimeoutException.class);
+	}
+
+	@Test
+	void passiveQueueFailurePreventsPublish() {
+		when(rabbitTemplate.execute(any(ChannelCallback.class)))
+				.thenThrow(new AmqpException("destination unavailable"));
+		assertThatThrownBy(() -> publisher.publishWithDelay(request(), 1_000L, 1, "attempt=1"))
+				.isInstanceOf(AmqpException.class);
+		verify(rabbitTemplate, never()).convertAndSend(
+				any(String.class), any(String.class), any(),
+				any(MessagePostProcessor.class), any(CorrelationData.class));
+	}
+
+	@Test
+	void retryLogRecipientMaskIsTotalWithoutChangingNormalPrivacy() throws Exception {
+		var mask = MailRetryPublisher.class.getDeclaredMethod("maskForLog", String.class);
+		mask.setAccessible(true);
+		for (String malformed : new String[] {"", " ", "@", "owned", "owned@", "@@", "owned@@"}) {
+			assertThat(mask.invoke(publisher, malformed)).isNotNull();
+		}
+		assertThat(mask.invoke(publisher, "owned@")).isEqualTo("***");
+		assertThat(mask.invoke(publisher, new Object[] {null})).isEqualTo("null");
+		assertThat(mask.invoke(publisher, "owned@example.test")).isEqualTo("o***@e***.test");
+		assertThat(mask.invoke(publisher, "owned@domain")).isEqualTo("o***@d***");
 	}
 
 	private MailSendRequest request() {

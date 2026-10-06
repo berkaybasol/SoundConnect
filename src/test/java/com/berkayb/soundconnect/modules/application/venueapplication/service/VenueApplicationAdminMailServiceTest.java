@@ -8,7 +8,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
-import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
+import com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailIntentStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class VenueApplicationAdminMailServiceTest {
 
-	@Mock MailProducer mailProducer;
+	@Mock ApplicationMailIntentStore mailIntents;
 	@InjectMocks VenueApplicationAdminMailService service;
 
 	@Test
@@ -37,7 +37,7 @@ class VenueApplicationAdminMailServiceTest {
 		service.sendNewApplicationMail(application);
 
 		ArgumentCaptor<MailSendRequest> captor = ArgumentCaptor.forClass(MailSendRequest.class);
-		verify(mailProducer).send(captor.capture());
+		verify(mailIntents).enqueue(org.mockito.ArgumentMatchers.eq(application.getId()), org.mockito.ArgumentMatchers.eq("CREATED"), captor.capture());
 		MailSendRequest request = captor.getValue();
 		assertThat(request.kind()).isEqualTo(MailKind.VENUE_APPLICATION_ADMIN);
 		assertThat(request.subject()).isEqualTo("Yeni Mekan Başvurusu: Sahne İstanbul");

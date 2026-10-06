@@ -24,6 +24,10 @@ import java.util.concurrent.TimeUnit;
 public class MailRetryPublisher {
 	
 	private final RabbitTemplate rabbitTemplate;
+	private RabbitTemplate delayedRabbitTemplate;
+
+	@Value("${mail.queueName:mail.queue}")
+	private String mailQueueName;
 	
 	@Value("${mail.delayed.exchange:mail.delayed}")
 	private String delayedExchange;
@@ -39,6 +43,15 @@ public class MailRetryPublisher {
 		if (confirmTimeoutSec < 1 || confirmTimeoutSec > 30) {
 			throw new IllegalStateException("mail.producer.confirmTimeoutSec must be between 1 and 30");
 		}
+		if (mailQueueName == null || mailQueueName.isBlank()) {
+			throw new IllegalStateException("mail.queueName must not be blank");
+		}
+		// x-delayed-message reports NO_ROUTE for mandatory delayed publishes even
+		// when it stored the message. Keep normal publishers' mandatory routing
+		// checks intact: only this private template uses storage confirmation.
+		delayedRabbitTemplate = new RabbitTemplate(rabbitTemplate.getConnectionFactory());
+		delayedRabbitTemplate.setMessageConverter(rabbitTemplate.getMessageConverter());
+		delayedRabbitTemplate.setMandatory(false);
 	}
 	
 	/**
@@ -69,7 +82,11 @@ public class MailRetryPublisher {
 		};
 		
 		try {
-			rabbitTemplate.convertAndSend(delayedExchange, routingKey, request, mpp, correlationData);
+			// Fail before storing delayed work when the configured destination is
+			// absent. MailQueueConfig owns its durable binding. Passive existence
+			// cannot guarantee that binding survives until the future routing time.
+			delayedRabbitTemplate.execute(channel -> channel.queueDeclarePassive(mailQueueName));
+			delayedRabbitTemplate.convertAndSend(delayedExchange, routingKey, request, mpp, correlationData);
 			CorrelationData.Confirm confirm = correlationData.getFuture()
 					.get(confirmTimeoutSec, TimeUnit.SECONDS);
 			ReturnedMessage returned = correlationData.getReturned();
@@ -95,7 +112,7 @@ public class MailRetryPublisher {
 	private String maskForLog(String email) {
 		if (email == null) return "null";
 		int at = email.indexOf('@');
-		if (at <= 1) return "***";
+		if (at <= 1 || at == email.length() - 1) return "***";
 		String local = email.substring(0, at);
 		String domain = email.substring(at + 1);
 		String maskedLocal = local.charAt(0) + "***";

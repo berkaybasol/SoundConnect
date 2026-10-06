@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.passwordreset.service;
 
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
+import com.berkayb.soundconnect.auth.otp.service.OtpService.OtpIssueClaim;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.mail.helper.MailContentBuilder;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
@@ -20,6 +21,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetMailServiceTest {
+	private static final String GENERATION = "3ed81190-7d78-43d0-84cb-0eb139e243ed";
+	private static final OtpIssueClaim CLAIM = new OtpIssueClaim(true, "123456", 0L, GENERATION, 1_800_000_000_000L);
 
 	@Mock MailProducer mailProducer;
 	@Mock MailContentBuilder mailContentBuilder;
@@ -39,7 +42,7 @@ class PasswordResetMailServiceTest {
 		when(mailContentBuilder.buildPasswordResetMail("123456", 3))
 				.thenReturn("<html>reset-code</html>");
 
-		service.queueResetCode("user@example.com", "123456");
+		service.queueResetCode("user@example.com", CLAIM);
 
 		ArgumentCaptor<MailSendRequest> captor = ArgumentCaptor.forClass(MailSendRequest.class);
 		verify(mailProducer).send(captor.capture());
@@ -52,7 +55,9 @@ class PasswordResetMailServiceTest {
 		assertThat(request.textBody()).contains("123456", "3 dakika", "yalnızca bir kez");
 		assertThat(request.params())
 				.containsEntry("validityMinutes", 3)
-				.containsKey("requestId");
+				.containsEntry("requestId", GENERATION)
+				.containsEntry("claimRecipient", "user@example.com")
+				.containsEntry("expiresAtEpochMillis", CLAIM.expiresAtEpochMillis());
 		assertThat(request.params().values()).doesNotContain("123456");
 		verify(mailContentBuilder).buildPasswordResetMail("123456", 3);
 	}
@@ -65,8 +70,15 @@ class PasswordResetMailServiceTest {
 				.when(mailProducer).send(org.mockito.ArgumentMatchers.any());
 
 		assertThatThrownBy(() ->
-				service.queueResetCode("user@example.com", "123456"))
+				service.queueResetCode("user@example.com", CLAIM))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessage("broker unavailable");
+	}
+
+	@Test
+	void missingClaimIdentityIsRejectedBeforePublishing() {
+		assertThatThrownBy(() -> service.queueResetCode("user@example.com",
+				new OtpIssueClaim(true, "123456", 0L))).isInstanceOf(IllegalArgumentException.class);
+		org.mockito.Mockito.verifyNoInteractions(mailProducer, mailContentBuilder);
 	}
 }

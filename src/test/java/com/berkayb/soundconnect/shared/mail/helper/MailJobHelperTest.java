@@ -23,6 +23,25 @@ import static org.assertj.core.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
 class MailJobHelperTest {
+	@Test
+	@ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+	void redisFailureLogsDoNotExposePayloadDerivedIdempotencyKeys(org.springframework.boot.test.system.CapturedOutput output) {
+		StringRedisTemplate failing = org.mockito.Mockito.mock(StringRedisTemplate.class);
+		@SuppressWarnings("unchecked")
+		org.springframework.data.redis.core.ValueOperations<String, String> values = org.mockito.Mockito.mock(org.springframework.data.redis.core.ValueOperations.class);
+		org.mockito.Mockito.when(failing.opsForValue()).thenReturn(values);
+		var failure = new org.springframework.data.redis.RedisConnectionFailureException("private provider detail");
+		org.mockito.Mockito.when(values.get(org.mockito.ArgumentMatchers.anyString())).thenThrow(failure);
+		org.mockito.Mockito.when(values.setIfAbsent(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(java.time.Duration.class))).thenThrow(failure);
+		org.mockito.Mockito.when(failing.delete(org.mockito.ArgumentMatchers.anyString())).thenThrow(failure);
+		var guarded = new MailJobHelper(failing);
+		String digestKey = guarded.buildIdemKey(new MailSendRequest("owned@example.invalid", "reset", "private", "private", MailKind.OTP, Map.of("code", "123456")));
+		guarded.isAlreadySent("mail:sent:" + digestKey);
+		guarded.acquireLock("mail:lock:" + digestKey, java.time.Duration.ofSeconds(3));
+		guarded.markSent("mail:sent:" + digestKey, java.time.Duration.ofSeconds(3));
+		guarded.releaseLock("mail:lock:" + digestKey);
+		assertThat(output.getAll()).contains("RedisConnectionFailureException").doesNotContain(digestKey, "mail:id:", "123456", "private provider detail");
+	}
 	
 	// Redis'e ihtiyaç duymayan metodları test ediyoruz; ctor için dummy veriyoruz.
 	private final StringRedisTemplate redis = null; // kullanılmıyor
@@ -36,6 +55,17 @@ class MailJobHelperTest {
 				.endsWith(".com");
 		assertThat(helper.maskEmail(null)).isEqualTo("null");
 		assertThat(helper.maskEmail("a@b")).isEqualTo("***");
+	}
+
+	@Test
+	void recipientMaskIsTotalWithoutChangingNormalPrivacy() {
+		for (String malformed : new String[] {"", " ", "@", "owned", "owned@", "@@", "owned@@"}) {
+			assertThatCode(() -> helper.maskEmail(malformed)).doesNotThrowAnyException();
+		}
+		assertThat(helper.maskEmail("owned@")).isEqualTo("***");
+		assertThat(helper.maskEmail(null)).isEqualTo("null");
+		assertThat(helper.maskEmail("owned@example.test")).isEqualTo("o***@e***.test");
+		assertThat(helper.maskEmail("owned@domain")).isEqualTo("o***@d***");
 	}
 	
 	@Test

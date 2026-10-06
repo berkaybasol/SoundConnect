@@ -104,7 +104,7 @@ class VenueApplicationServiceTest {
 					assertThat(connection.getMetaData().getURL()).isEqualTo(POSTGRES.getJdbcUrl());
 				}
 				for (String file : List.of("2026-09-28-media-notification-identity.sql",
-						"2026-09-29-band-notification-identity.sql")) {
+						"2026-09-29-band-notification-identity.sql", "2026-10-06-application-mail-intents.sql")) {
 					jdbc.execute(Files.readString(Path.of("scripts/db", file)));
 				}
 			};

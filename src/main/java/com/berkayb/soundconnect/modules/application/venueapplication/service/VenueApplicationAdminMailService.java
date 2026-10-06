@@ -4,7 +4,7 @@ import com.berkayb.soundconnect.modules.application.venueapplication.entity.Venu
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
-import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
+import com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailIntentStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,7 +25,7 @@ public class VenueApplicationAdminMailService {
 	private static final DateTimeFormatter DATE_TIME_FORMATTER =
 			DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm", Locale.forLanguageTag("tr-TR"));
 	
-	private final MailProducer mailProducer;
+	private final ApplicationMailIntentStore mailIntents;
 	
 	@Value("${soundconnect.admin-notifications.venue-application-emails:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}")
 	private String venueApplicationEmails;
@@ -39,12 +39,7 @@ public class VenueApplicationAdminMailService {
 		}
 		
 		for (String recipient : recipients) {
-			try {
-				mailProducer.send(buildRequest(recipient, application));
-			} catch (Exception e) {
-				log.warn("Venue application admin mail queue failed. to={}, applicationId={}, err={}",
-				         recipient, application.getId(), e.toString());
-			}
+			mailIntents.enqueue(application.getId(), "CREATED", buildRequest(recipient, application));
 		}
 	}
 	

@@ -1,5 +1,8 @@
 package com.berkayb.soundconnect.shared.mail.consumer;
 
+import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.shared.mail.enums.MailKind;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
@@ -23,6 +26,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class MailJobConsumer {
+	private OtpService otpService;
+
+	// Required in Spring; manual generic-only fixtures retain their existing constructor.
+	@org.springframework.beans.factory.annotation.Autowired
+	public void setOtpService(OtpService otpService) {
+		this.otpService = otpService;
+	}
+
 	// Optional injection preserves the isolated generic mail consumer's existing wiring/tests.
 	private com.berkayb.soundconnect.modules.venue.suggestion.VenueSuggestionMailDelivery venueSuggestionDelivery;
 
@@ -101,6 +112,13 @@ public class MailJobConsumer {
 			}
 			
 			log.info("processing mail job: kind={}, to={}", request.kind(), maskedTo);
+			if (request.kind() == MailKind.PASSWORD_RESET && !authorizeResetMail(request)) {
+				// Stale and legacy/invalid messages are terminal, but never marked sent.
+				helper.releaseLock(lockKey);
+				log.info("Mail job DISCARDED (reset claim not current or invalid): to={}", maskedTo);
+				channel.basicAck(tag, false);
+				return;
+			}
 			
 			// Send
 			if (request.kind() == com.berkayb.soundconnect.shared.mail.enums.MailKind.NOTIFICATION) {
@@ -167,5 +185,27 @@ public class MailJobConsumer {
 				          ackEx.getClass().getSimpleName());
 			}
 		}
+	}
+
+	private boolean authorizeResetMail(MailSendRequest request) {
+		if (request.subject() == null || request.subject().isBlank()
+				|| request.htmlBody() == null || request.htmlBody().isBlank()
+				|| request.textBody() == null || request.textBody().isBlank()) return false;
+		Map<String, Object> params = request.params();
+		if (params == null || !(params.get("requestId") instanceof String generation)
+				|| !(params.get("claimRecipient") instanceof String recipient)
+				|| recipient.isBlank() || !recipient.equals(EmailUtils.normalize(recipient))
+				|| !recipient.equals(request.to())) return false;
+		// Reject structurally empty addresses, not a new email policy. The last
+		// separator preserves quoted local parts containing '@' and Unicode.
+		int separator = recipient.lastIndexOf('@');
+		if (separator <= 0 || separator == recipient.length() - 1
+				|| recipient.substring(0, separator).isBlank()
+				|| recipient.substring(separator + 1).isBlank()) return false;
+		Object expiry = params.get("expiresAtEpochMillis");
+		if (!(expiry instanceof Long) && !(expiry instanceof Integer)) return false;
+		// Store unavailability is transient uncertainty, never stale or fail-open.
+		if (otpService == null) throw new IllegalStateException("Password reset claim service unavailable");
+		return otpService.authorizePasswordResetMail(recipient, generation, ((Number) expiry).longValue());
 	}
 }

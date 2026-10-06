@@ -39,6 +39,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
 
+	private static final String GENERATION = "3ed81190-7d78-43d0-84cb-0eb139e243ed";
 	private static final UUID USER_ID =
 			UUID.fromString("73edbdbc-95f8-4f25-9625-c637b5ec824f");
 	private static final String RATE_LIMIT_KEY = "user-id:" + USER_ID;
@@ -107,7 +108,7 @@ class PasswordResetServiceTest {
 		assertSuccess(response);
 		verify(accountRateLimitGuard).checkPasswordResetRequest(RATE_LIMIT_KEY);
 		verify(otpService).acquirePasswordResetOtp("user@example.com");
-		verify(mailService).queueResetCode("user@example.com", "123456");
+		verify(mailService).queueResetCode("user@example.com", acquired("123456"));
 	}
 
 	@Test
@@ -123,7 +124,7 @@ class PasswordResetServiceTest {
 		assertSuccess(response);
 		verify(userRepository).findByUsername("berkay");
 		verify(accountRateLimitGuard).checkPasswordResetRequest(RATE_LIMIT_KEY);
-		verify(mailService).queueResetCode("user@example.com", "654321");
+		verify(mailService).queueResetCode("user@example.com", acquired("654321"));
 	}
 
 	@Test
@@ -138,7 +139,7 @@ class PasswordResetServiceTest {
 		assertSuccess(service.requestPasswordReset(
 				new ForgotPasswordRequestDto("USER@EXAMPLE.COM")));
 
-		verify(mailService).queueResetCode("user@example.com", "111222");
+		verify(mailService).queueResetCode("user@example.com", acquired("111222"));
 	}
 
 	@Test
@@ -199,8 +200,8 @@ class PasswordResetServiceTest {
 		when(otpService.acquirePasswordResetOtp("user@example.com"))
 				.thenReturn(acquired("123456"));
 		doThrow(new IllegalStateException("broker unavailable"))
-				.when(mailService).queueResetCode("user@example.com", "123456");
-		when(otpService.cancelPasswordResetOtpIssue("user@example.com", "123456"))
+				.when(mailService).queueResetCode("user@example.com", acquired("123456"));
+		when(otpService.cancelPasswordResetOtpIssue("user@example.com", GENERATION))
 				.thenReturn(true);
 
 		SoundConnectException exception = catchThrowableOfType(
@@ -211,7 +212,7 @@ class PasswordResetServiceTest {
 		assertThat(exception.getErrorType())
 				.isEqualTo(ErrorType.PASSWORD_RESET_DELIVERY_FAILED);
 		verify(otpService).cancelPasswordResetOtpIssue(
-				"user@example.com", "123456");
+				"user@example.com", GENERATION);
 	}
 
 	@Test
@@ -222,8 +223,8 @@ class PasswordResetServiceTest {
 		when(otpService.acquirePasswordResetOtp("user@example.com"))
 				.thenReturn(acquired("123456"));
 		doThrow(new IllegalStateException("executor saturated"))
-				.when(mailService).queueResetCode("user@example.com", "123456");
-		when(otpService.cancelPasswordResetOtpIssue("user@example.com", "123456"))
+				.when(mailService).queueResetCode("user@example.com", acquired("123456"));
+		when(otpService.cancelPasswordResetOtpIssue("user@example.com", GENERATION))
 				.thenThrow(new IllegalStateException("redis unavailable"));
 
 		SoundConnectException exception = catchThrowableOfType(
@@ -406,7 +407,7 @@ class PasswordResetServiceTest {
 	}
 
 	private static OtpService.OtpIssueClaim acquired(String code) {
-		return new OtpService.OtpIssueClaim(true, code, 0L);
+		return new OtpService.OtpIssueClaim(true, code, 0L, GENERATION, 1_800_000_000_000L);
 	}
 
 	private static OtpService.OtpIssueClaim rejected(long cooldownSeconds) {
