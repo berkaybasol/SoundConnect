@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
@@ -13,6 +14,14 @@ import java.util.Set;
 import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
+	/** Caller holds the account row lock; never derive the increment from a cached entity. */
+	@Modifying
+	@Query(value = """
+			update tbl_user set password = :password, session_version = session_version + 1,
+			updated_at = CURRENT_TIMESTAMP where id = :id
+			""", nativeQuery = true)
+	int resetPasswordAndRevokeSessions(@Param("id") UUID id, @Param("password") String password);
+
 	@Query("select u.id from User u where u.id in :ids and u.erasedAt is not null")
 	Set<UUID> findErasedIds(@Param("ids") java.util.Collection<UUID> ids);
 

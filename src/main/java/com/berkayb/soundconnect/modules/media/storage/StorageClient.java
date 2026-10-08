@@ -7,6 +7,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface StorageClient {
+
+    enum ReadAccess { AVAILABLE, UNAVAILABLE, UNVERIFIED }
+
+    /** Read-only dependency probe; does not assert upload, CDN or transcode success. */
+    default ReadAccess probeReadAccess(Duration timeout) { return ReadAccess.UNVERIFIED; }
 	
 	// client buraya yukler
 	String createPresignedPutUrl(String objectKey, String mimeType, long sizeBytes);

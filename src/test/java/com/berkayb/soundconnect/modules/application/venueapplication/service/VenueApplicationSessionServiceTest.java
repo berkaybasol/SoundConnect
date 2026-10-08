@@ -128,7 +128,7 @@ class VenueApplicationSessionServiceTest {
         allowSource();
         when(access.permits(user, application)).thenReturn(false);
         failure(() -> service.read(userId, applicationId, UUID.randomUUID()), ErrorType.VENUE_APPLICATION_NOT_FOUND);
-        failure(() -> service.promote(userId, applicationId), ErrorType.VENUE_APPLICATION_NOT_FOUND);
+        failure(() -> service.promote(userId, applicationId, 0L), ErrorType.VENUE_APPLICATION_NOT_FOUND);
         verifyNoInteractions(notifications, notificationService, tokens);
     }
 
@@ -214,7 +214,7 @@ class VenueApplicationSessionServiceTest {
     void nonApprovedApplicationCannotIssueOrdinarySession(String status) {
         application.setStatus(ApplicationStatus.valueOf(status));
         allowSource();
-        failure(() -> service.promote(userId, applicationId), ErrorType.INVALID_APPLICATION_STATUS);
+        failure(() -> service.promote(userId, applicationId, 0L), ErrorType.INVALID_APPLICATION_STATUS);
         verifyNoInteractions(tokens, notificationService);
     }
 
@@ -227,7 +227,7 @@ class VenueApplicationSessionServiceTest {
         application.setApprovedVenue(venue);
         allowSource();
         when(tokens.generateToken(any(UserDetailsImpl.class))).thenReturn("ordinary-signed-token");
-        var result = service.promote(userId, applicationId);
+        var result = service.promote(userId, applicationId, 0L);
         assertThat(result.token()).isEqualTo("ordinary-signed-token");
         assertThat(result.userId()).isEqualTo(userId);
         assertThat(result.status()).isEqualTo(UserStatus.ACTIVE);
@@ -241,5 +241,13 @@ class VenueApplicationSessionServiceTest {
         verify(tokens, never()).generateVenueApplicationToken(any(), any());
         verify(entityManager).refresh(venue, LockModeType.PESSIMISTIC_READ);
         verifyNoInteractions(notifications, notificationService);
+    }
+
+    @Test void resetBetweenHttpAuthenticationAndPromotionCannotUpgradeOldCredential() {
+        allowSource();
+        application.setStatus(ApplicationStatus.APPROVED);
+        user.setSessionVersion(1L);
+        failure(() -> service.promote(userId, applicationId, 0L), ErrorType.UNAUTHORIZED);
+        verifyNoInteractions(tokens, notificationService);
     }
 }

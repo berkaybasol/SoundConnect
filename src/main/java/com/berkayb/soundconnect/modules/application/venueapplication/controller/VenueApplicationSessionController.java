@@ -32,7 +32,9 @@ public class VenueApplicationSessionController {
             @PathVariable UUID applicationId) { return response(sessions.detail(user.getId(),applicationId)); }
     @PostMapping("/promote")
     public BaseResponse<LoginResponse> promote(@AuthenticationPrincipal UserDetailsImpl user,
-            @PathVariable UUID applicationId) { return response(sessions.promote(user.getId(),applicationId)); }
+            @PathVariable UUID applicationId) {
+        return response(sessions.promote(user.getId(),applicationId,user.getUser().getSessionVersion()));
+    }
     @GetMapping("/notifications/{notificationId}")
     public BaseResponse<NotificationResponseDto> notification(@AuthenticationPrincipal UserDetailsImpl user,
             @PathVariable UUID applicationId,@PathVariable UUID notificationId) {

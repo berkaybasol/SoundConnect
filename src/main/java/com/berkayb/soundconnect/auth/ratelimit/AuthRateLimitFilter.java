@@ -75,7 +75,9 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
 		if (!decision.allowed()) {
 			response.setHeader("Retry-After", Long.toString(decision.retryAfterSeconds()));
-			responseWriter.write(request, response, ErrorType.AUTH_RATE_LIMITED);
+			responseWriter.write(request, response,
+					decision.status() == AuthRateLimiter.Status.UNAVAILABLE
+							? ErrorType.AUTH_RATE_LIMIT_UNAVAILABLE : ErrorType.AUTH_RATE_LIMITED);
 			return;
 		}
 

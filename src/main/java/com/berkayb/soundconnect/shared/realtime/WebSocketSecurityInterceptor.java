@@ -95,10 +95,12 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 		final UserDetails userDetails;
 		final UUID userId;
 		final long expiresAt;
+		final long sessionVersion;
 		try {
 			userId = jwtTokenProvider.getUserIdFromToken(token);
 			userDetails = userDetailsService.loadUserById(userId);
 			expiresAt = jwtTokenProvider.getExpirationFromToken(token).getTime();
+			sessionVersion = jwtTokenProvider.getSessionVersionFromToken(token);
 		} catch (RuntimeException exception) {
 			throw new BadCredentialsException("Missing or invalid WebSocket token", exception);
 		}
@@ -114,7 +116,10 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 		if (listenerProfileChoiceStatusReader.requiresChoice(principal.getUser())) {
 			throw new DisabledException("Listener profile visibility choice is required");
 		}
-		sessionRegistry.register(accessor.getSessionId(), userId, expiresAt);
+		if (principal.getUser().getSessionVersion() != sessionVersion) {
+			throw new BadCredentialsException("WebSocket session has been revoked");
+		}
+		sessionRegistry.register(accessor.getSessionId(), userId, expiresAt, sessionVersion);
 
 		UsernamePasswordAuthenticationToken authentication =
 				new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
@@ -155,6 +160,10 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 				|| freshPrincipal.getUser().getRoles() == null
 				|| freshPrincipal.getUser().getRoles().isEmpty()) {
 			throw new DisabledException("User account is not active");
+		}
+		if (freshPrincipal.getUser().getSessionVersion() != session.sessionVersion()) {
+			sessionRegistry.remove(sessionId);
+			throw new BadCredentialsException("WebSocket session has been revoked");
 		}
 		return freshPrincipal;
 	}

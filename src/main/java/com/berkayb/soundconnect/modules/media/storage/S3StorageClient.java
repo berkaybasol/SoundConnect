@@ -53,6 +53,29 @@ import java.util.regex.Pattern;
 @Slf4j
 public class S3StorageClient implements StorageClient{
 
+    @Override
+    public ReadAccess probeReadAccess(Duration timeout) {
+        if (s3 == null || timeout == null || timeout.toMillis() < 100 || timeout.toMillis() > 5000) {
+            return ReadAccess.UNVERIFIED;
+        }
+        Duration perBucket = Duration.ofMillis(Math.max(50, timeout.toMillis() / 2));
+        var limits = AwsRequestOverrideConfiguration.builder()
+                .apiCallTimeout(perBucket).apiCallAttemptTimeout(perBucket).build();
+        try {
+            for (String target : List.of(bucket, privateBucket)) {
+                s3.headBucket(HeadBucketRequest.builder().bucket(target).overrideConfiguration(limits).build());
+            }
+            return ReadAccess.AVAILABLE;
+        } catch (S3Exception exception) {
+            // A least-privilege identity may access objects without ListBucket.
+            // Do not mislabel a forbidden health operation as a storage outage.
+            return exception.statusCode() == 401 || exception.statusCode() == 403
+                    ? ReadAccess.UNVERIFIED : ReadAccess.UNAVAILABLE;
+        } catch (RuntimeException unavailable) {
+            return ReadAccess.UNAVAILABLE;
+        }
+    }
+
 	private static final Pattern CLOUDFRONT_DISTRIBUTION_ID = Pattern.compile("E[A-Z0-9]{5,31}");
 	private static final Pattern SAFE_MEDIA_ROOT = Pattern.compile(
 			"[A-Za-z0-9][A-Za-z0-9_-]*(/[A-Za-z0-9][A-Za-z0-9_-]*)*");

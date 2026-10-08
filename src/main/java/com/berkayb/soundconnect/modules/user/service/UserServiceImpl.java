@@ -21,6 +21,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -50,6 +51,7 @@ public class UserServiceImpl implements UserService {
 	private final ListenerProfileProvisioner listenerProfileProvisioner;
 	private final com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
 	private final com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle marketplaceMediaLifecycle;
+	private final EntityManager entityManager;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -57,12 +59,17 @@ public class UserServiceImpl implements UserService {
 	public Boolean updateUser(UUID actingUserId, UUID id, UserUpdateRequestDto dto) {
 		LockedUsers lockedUsers = lockActorAndTarget(actingUserId, id);
 		User actor = lockedUsers.actor();
+		// The HTTP authentication lookup may already have attached the actor.
+		// Refresh under the acquired locks before authorizing a credential change.
+		entityManager.refresh(actor);
+		if (lockedUsers.target() != actor) entityManager.refresh(lockedUsers.target());
 		assertCanManageUsers(actor);
 		User user = lockedUsers.target();
 		assertCanMutateTarget(actor, user);
 		if (user.getErasedAt() != null) throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		
 		boolean isUpdated = false;
+		String newPasswordHash = null;
 		
 		// kullanici adi guncellenirse flag true yapilir
 		if (dto.username() != null) {
@@ -86,7 +93,7 @@ public class UserServiceImpl implements UserService {
 		
 		// sifre guncellenirse hashlenerek set edilir
 		if (dto.password() != null) {
-			user.setPassword(passwordEncoder.encode(dto.password()));
+			newPasswordHash = passwordEncoder.encode(dto.password());
 			isUpdated = true;
 		}
 		
@@ -105,6 +112,14 @@ public class UserServiceImpl implements UserService {
 		if (isUpdated) {
 			user.setUpdatedAt(LocalDateTime.now());
 			User saved = saveIdentityAndFlush(user);
+			if (newPasswordHash != null) {
+				// Flush the DTO's other fields first; refreshing earlier would discard them.
+				// Reuse the same atomic hash/revision update as public password reset.
+				if (userRepository.resetPasswordAndRevokeSessions(saved.getId(), newPasswordHash) != 1) {
+					throw new IllegalStateException("Locked account credential update failed");
+				}
+				entityManager.refresh(saved);
+			}
 			ensureListenerProfileInvariant(saved);
 			log.info("User updated by administrator. actorId={} targetId={} roleChanged={}",
 					actingUserId, id, dto.roleId() != null);

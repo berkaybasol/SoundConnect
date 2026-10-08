@@ -52,6 +52,7 @@ class PasswordResetServiceTest {
 	@Mock PasswordEncoder passwordEncoder;
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
 	@Mock PublicProfileResolverService publicProfileResolverService;
+	@Mock jakarta.persistence.EntityManager entityManager;
 
 	@InjectMocks PasswordResetService service;
 
@@ -263,15 +264,16 @@ class PasswordResetServiceTest {
 				.thenReturn(true);
 		when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 		when(passwordEncoder.encode("new-password")).thenReturn("$2a$encoded");
+		when(userRepository.resetPasswordAndRevokeSessions(USER_ID, "$2a$encoded")).thenReturn(1);
 
 		BaseResponse<Void> response = service.resetPassword(request);
 
 		assertThat(response.getSuccess()).isTrue();
 		assertThat(response.getCode()).isEqualTo(200);
-		assertThat(user.getPassword()).isEqualTo("$2a$encoded");
 		verify(accountRateLimitGuard).checkPasswordResetConfirm(RATE_LIMIT_KEY);
 		verify(userRepository).findByIdForUpdate(USER_ID);
-		verify(userRepository).save(user);
+		verify(userRepository).resetPasswordAndRevokeSessions(USER_ID, "$2a$encoded");
+		verify(userRepository, never()).save(user);
 	}
 
 	@Test
@@ -283,6 +285,7 @@ class PasswordResetServiceTest {
 				.thenReturn(true);
 		when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
 		when(passwordEncoder.encode("new-password")).thenReturn("$2a$encoded");
+		when(userRepository.resetPasswordAndRevokeSessions(USER_ID, "$2a$encoded")).thenReturn(1);
 
 		service.resetPassword(request);
 

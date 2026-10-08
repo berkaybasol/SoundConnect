@@ -64,6 +64,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		}
 		
 		final UUID userId;
+		final long sessionVersion;
 		final JwtTokenProvider.VenueApplicationClaims applicationClaims;
 		try {
 			if (jwtTokenProvider.validateToken(token)) {
@@ -78,6 +79,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				}
 				userId = applicationClaims.userId();
 			}
+			sessionVersion = jwtTokenProvider.getSessionVersionFromToken(token);
 		} catch (JwtException | IllegalArgumentException exception) {
 			// Token parsing/claim failures are authentication failures. Database and
 			// infrastructure exceptions are intentionally not caught here so the
@@ -88,7 +90,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		}
 
 		if (applicationClaims != null) {
-			authenticateVenueApplication(request, response, filterChain, applicationClaims);
+			authenticateVenueApplication(request, response, filterChain, applicationClaims, sessionVersion);
 			return;
 		}
 
@@ -106,6 +108,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				}
 				rejectAuthentication(request, exception);
 				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
+				return;
+			}
+			if (!(userDetails instanceof UserDetailsImpl principal)
+					|| principal.getUser().getSessionVersion() != sessionVersion) {
+				SecurityContextHolder.clearContext();
+				securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 				return;
 			}
 			if (canAuthenticate(userDetails, request)) {
@@ -139,7 +147,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	}
 
 	private void authenticateVenueApplication(HttpServletRequest request, HttpServletResponse response,
-			FilterChain filterChain, JwtTokenProvider.VenueApplicationClaims claims)
+			FilterChain filterChain, JwtTokenProvider.VenueApplicationClaims claims, long sessionVersion)
 			throws IOException, ServletException {
 		// Do not fall through as anonymous on public paths: a restricted bearer
 		// can only ever reach its exact application namespace and HTTP methods.
@@ -160,6 +168,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			return;
 		}
 		if (!(details instanceof UserDetailsImpl principal)
+				|| principal.getUser().getSessionVersion() != sessionVersion
 				|| !venueApplicationSessionAccess.isAccessible(principal.getUser(), claims.applicationId())) {
 			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 			return;

@@ -141,9 +141,11 @@ class AuthServiceSecurityTest {
 		when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
 		when(otpService.verifyPasswordResetOtp("berna@example.com", "654321")).thenReturn(true);
 		when(passwordEncoder.encode("new-password")).thenReturn("new-hash");
+		when(userRepository.resetPasswordAndRevokeSessions(user.getId(), "new-hash"))
+				.thenAnswer(invocation -> { user.setPassword("new-hash"); user.setSessionVersion(1L); return 1; });
 		PasswordResetService passwordResetService = new PasswordResetService(
 				userRepository, otpService, mock(PasswordResetMailService.class), passwordEncoder,
-				accountRateLimitGuard, mock(PublicProfileResolverService.class));
+				accountRateLimitGuard, mock(PublicProfileResolverService.class), mock(jakarta.persistence.EntityManager.class));
 
 		var resetResponse = passwordResetService.resetPassword(new ResetPasswordRequestDto(
 				"berna", "654321", "new-password", "new-password"));

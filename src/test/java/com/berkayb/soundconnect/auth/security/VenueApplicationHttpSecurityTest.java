@@ -119,7 +119,7 @@ class VenueApplicationHttpSecurityTest {
         user.setRoles(Set.of(Role.builder().name("ROLE_VENUE").build()));
         mvc.perform(post(base + "/promote").header("Authorization", bearer)).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"));
-        verify(sessions).promote(user.getId(), application);
+        verify(sessions).promote(user.getId(), application, user.getSessionVersion());
         verifyNoInteractions(devices);
     }
 

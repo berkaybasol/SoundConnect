@@ -70,6 +70,7 @@ class PasswordResetMailFreshnessRedisTest {
     @SpyBean(name = "redisTemplate") RedisTemplate<String, String> redis;
     @SpyBean MailJobHelper helper;
     @MockBean UserRepository users;
+    @MockBean jakarta.persistence.EntityManager entityManager;
     @MockBean PasswordEncoder encoder;
     @MockBean AuthAccountRateLimitGuard accountGuard;
     @MockBean PublicProfileResolverService profiles;

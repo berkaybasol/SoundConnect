@@ -47,6 +47,9 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
+      - name: Run independent health monitor tests
+        run: python3 -m unittest discover -s scripts/monitoring -p 'test_*.py' -v
+
       - name: Prepare real media and Rabbit integration prerequisites
         shell: bash
         run: |

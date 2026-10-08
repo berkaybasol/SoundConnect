@@ -37,6 +37,61 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class WebSocketSecurityInterceptorTest {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.EnumSource(value = StompCommand.class, names = {"SUBSCRIBE", "SEND"})
+	void passwordResetRejectsAlreadyConnectedInboundSession(StompCommand command) {
+		UUID id = UUID.randomUUID();
+		UserDetailsImpl principal = principal(id);
+		principal.getUser().setSessionVersion(1L);
+		sessionRegistry.register("revoked-inbound", id, System.currentTimeMillis() + 60000, 0L);
+		when(userDetailsService.loadUserById(id)).thenReturn(principal);
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
+		accessor.setSessionId("revoked-inbound");
+		accessor.setDestination(WebSocketChannels.dm(id));
+		assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+				.isInstanceOf(BadCredentialsException.class);
+		assertThat(sessionRegistry.find("revoked-inbound")).isEmpty();
+		org.mockito.Mockito.verifyNoInteractions(subscriptionAuthorizer);
+	}
+
+	@Test void passwordResetDropsDeliveriesToEveryOldDeviceWhileCurrentSessionStillWorks() {
+		UUID id = UUID.randomUUID();
+		UserDetailsImpl principal = principal(id);
+		principal.getUser().setSessionVersion(2L);
+		when(userDetailsService.loadUserById(id)).thenReturn(principal);
+		for (String session : new String[]{"old-device-a", "old-device-b", "new-device"}) {
+			long version = session.equals("new-device") ? 2L : 1L;
+			sessionRegistry.register(session, id, System.currentTimeMillis() + 60000, version);
+			StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+			accessor.setSessionId(session);
+			accessor.setDestination(WebSocketChannels.dm(id));
+			Message<?> delivered = interceptor.preSend(message(accessor), channel);
+			if (version == 2L) assertThat(delivered).isNotNull();
+			else {
+				assertThat(delivered).isNull();
+				assertThat(sessionRegistry.find(session)).isEmpty();
+			}
+		}
+		verify(subscriptionAuthorizer).authorize(principal, WebSocketChannels.dm(id));
+	}
+
+	@Test void revokedTokenCannotReconnectAfterReset() {
+		UUID id = UUID.randomUUID();
+		UserDetailsImpl principal = principal(id);
+		principal.getUser().setSessionVersion(3L);
+		when(jwtTokenProvider.validateToken("old-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserIdFromToken("old-token")).thenReturn(id);
+		when(jwtTokenProvider.getSessionVersionFromToken("old-token")).thenReturn(2L);
+		when(jwtTokenProvider.getExpirationFromToken("old-token"))
+				.thenReturn(new Date(System.currentTimeMillis() + 60000));
+		when(userDetailsService.loadUserById(id)).thenReturn(principal);
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+		accessor.setSessionId("reconnect");
+		accessor.setNativeHeader("Authorization", "Bearer old-token");
+		assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
+				.isInstanceOf(BadCredentialsException.class);
+		assertThat(sessionRegistry.find("reconnect")).isEmpty();
+	}
 
 	@Mock JwtTokenProvider jwtTokenProvider;
 	@Mock CustomUserDetailsService userDetailsService;
