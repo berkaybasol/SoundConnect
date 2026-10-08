@@ -1,5 +1,32 @@
 # Aşama 01 çalışma ve kabul kaydı
 
+<!-- stage01-publication -->
+## 8 Ekim 2026 12:28 — Git yayını ve güncel kapanış
+
+**Sonuç: KAPANDI — TANIMLI 01 V1 KAPSAMI.** FE PR5 normal merge `d94487ea47a16e5f2dd3882181182010bc7a48cf`, BE PR5 normal merge
+`05d0e11e15d6d7523d4274e4c9caca4e4b0102f9`. İki PR'ın CI'ı başarılı. FE ana dal CI [37748383148](https://github.com/berkaybasol/soundconnect_mobile_231225/actions/runs/37748383148) SUCCESS;
+BE ana dal CI [37751998581](https://github.com/berkaybasol/SoundConnect/actions/runs/37751998581): SUCCESS; 6056 PASS / 0 hata, aynı mevcut skip kümesi ve zorunlu rapor kapıları doğrulandı.
+
+- Backend PR CI: 753 suite / 6056 PASS / 0 hata; ham119 skip = 101 mevcut
+  kayıt + 18 parametre şablonu. Aşama kapsamı56 suite/454 testte skip0.
+  Gerçek yeni HTTP/PG/Redis/Rabbit senaryoları çalıştı. Monitor15 PASS;
+  mevcut migration launcher19 senaryo/307 kontrol PASS.
+- Frontend PR ve ana dal:7126 Flutter PASS/2 mevcut görsel skip, analyze temiz,
+  coverage%78,50;457 JVM ve Android ürün/emülatör kapıları PASS.
+  PR instrumentation138/138 PASS; normal yerel final03 APK kabulü ayrıdır.
+- Kanonik Git kaynak sürekliliği PASS; PR ile ürün merge tree'leri eş, ürün diff'i yok. Checkout öncesi 2234 BE / 1623 FE ham hash eşliği kaydedildi. Checkout sonrası BE'de 2187 ham hash aynı, 37 dosyada yalnız LF/CRLF farkı kabul SHA'sı yeniden kurularak doğrulandı. Diğer 10 dosyanın eski ham satır sonu düzeni yeniden oluşturulamadı; bu 10 dosyanın kaynak bağı checkout öncesi temiz 7309c370/hash kaydı ve değişmeyen Git blob/tree zinciriyle doğrulandı. FE'de 1622 ham hash aynı, yalnız app_route_guard.dart CRLF→LF farkı kabul SHA'sıyla doğrulandı. Bütün ham baytlar eş veya 10 eski düzen yeniden kuruldu denmez. Kanıt: W/artifacts/ready-for-prod-01-20261008/publication/source-verification.json ve backend-source-provenance-proof.json.
+- Ürün merge sonrası iki ana dal/uzak ref eş ve temiz olarak gözlendi. Bu
+  kapanış belgeleri sonraki dar yayın ekidir; ürün kaynağını değiştirmez.
+  01 branch geçmişi korunur;02 branch ve ürün uygulaması açılmadı.
+- Sıradaki adım, kullanıcının istediği gibi02 öncesinde kapsamlı observability
+  ve PC kapalıyken alarm için bağımsız izleme/barındırma/maliyet görüşmesidir.
+  Yeni host, sürekli izleyici, hizmet satın alma veya canlı dağıtım yok.
+
+Alttaki tarihli kayıtlar kendi kesimlerini anlatır; eski bekleniyor/henüz yok
+ifadeleri güncel durum diye kullanılmaz. Ham kanıtlar W/artifacts altında
+korunur; özel credential/dump ve büyük APK/JAR Git'e eklenmemiştir.
+<!-- /stage01-publication -->
+
 ## 8 Ekim 2026 — observability kapsam sorusu ve güncel sıra
 
 Kullanıcı önceCPU/RAM/exception/geçmiş gibi tam observability kapsamını sordu.
