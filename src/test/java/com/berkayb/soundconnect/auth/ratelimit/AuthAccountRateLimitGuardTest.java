@@ -2,9 +2,12 @@ package com.berkayb.soundconnect.auth.ratelimit;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
+import com.berkayb.soundconnect.shared.exception.ServiceUnavailableRetryException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -12,6 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class AuthAccountRateLimitGuardTest {
@@ -47,6 +52,35 @@ class AuthAccountRateLimitGuardTest {
 
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.AUTH_RATE_LIMITED);
 		assertThat(exception.getRetryAfterSeconds()).isEqualTo(27L);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"login", "google-login", "register", "otp-verify", "otp-resend",
+			"username-availability", "password-reset-lookup", "password-reset-request",
+			"password-reset-confirm", "account-deletion"})
+	void everyAccountDimensionRejectsUnavailableProtectionWith503(String bucket) {
+		when(rateLimiter.checkAccount(eq(bucket), any(), any()))
+				.thenReturn(AuthRateLimiter.Decision.unavailable());
+
+		ServiceUnavailableRetryException exception = catchThrowableOfType(() -> {
+			switch (bucket) {
+				case "login" -> guard.checkLogin("secret-user");
+				case "google-login" -> guard.checkGoogleLogin("secret-subject");
+				case "register" -> guard.checkRegister("secret@example.test");
+				case "otp-verify" -> guard.checkOtpVerify("secret@example.test");
+				case "otp-resend" -> guard.checkOtpResend("secret@example.test");
+				case "username-availability" -> guard.checkUsernameAvailability("secret-user");
+				case "password-reset-lookup" -> guard.checkPasswordResetLookup("user-id:secret");
+				case "password-reset-request" -> guard.checkPasswordResetRequest("secret@example.test");
+				case "password-reset-confirm" -> guard.checkPasswordResetConfirm("secret@example.test");
+				case "account-deletion" -> guard.checkAccountDeletion("secret-user-id");
+				default -> throw new AssertionError("Unknown test bucket");
+			}
+		}, ServiceUnavailableRetryException.class);
+
+		assertThat(exception.getErrorType()).isEqualTo(ErrorType.AUTH_RATE_LIMIT_UNAVAILABLE);
+		assertThat(exception.getRetryAfterSeconds()).isEqualTo(5L);
+		assertThat(exception.getMessage()).doesNotContain("secret");
 	}
 
 	@Test

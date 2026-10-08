@@ -13,10 +13,14 @@ public class WebSocketSessionRegistry {
 	private final ConcurrentMap<String, SessionContext> sessions = new ConcurrentHashMap<>();
 
 	public void register(String sessionId, UUID userId, long expiresAtEpochMillis) {
+		register(sessionId, userId, expiresAtEpochMillis, 0L);
+	}
+
+	public void register(String sessionId, UUID userId, long expiresAtEpochMillis, long sessionVersion) {
 		if (sessionId == null || sessionId.isBlank() || userId == null) {
 			throw new IllegalArgumentException("WebSocket session identity is required");
 		}
-		sessions.put(sessionId, new SessionContext(userId, expiresAtEpochMillis));
+		sessions.put(sessionId, new SessionContext(userId, expiresAtEpochMillis, sessionVersion));
 	}
 
 	public Optional<SessionContext> find(String sessionId) {
@@ -32,6 +36,6 @@ public class WebSocketSessionRegistry {
 		}
 	}
 
-	public record SessionContext(UUID userId, long expiresAtEpochMillis) {
+	public record SessionContext(UUID userId, long expiresAtEpochMillis, long sessionVersion) {
 	}
 }

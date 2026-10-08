@@ -21,6 +21,7 @@ class AuthRateLimitProductionWiringTest {
 			context.register(
 					AuthRateLimitConfiguration.class,
 					AuthRateLimiter.class,
+					AuthAccountRateLimitGuard.class,
 					SecurityErrorResponseWriter.class
 			);
 			context.refresh();
@@ -32,6 +33,8 @@ class AuthRateLimitProductionWiringTest {
 					FilterRegistrationBean.class
 			);
 			assertThat(ReflectionTestUtils.getField(filter, "rateLimiter")).isSameAs(limiter);
+			assertThat(ReflectionTestUtils.getField(context.getBean(AuthAccountRateLimitGuard.class), "rateLimiter"))
+					.isSameAs(limiter);
 			assertThat(servletRegistration.isEnabled()).isFalse();
 		}
 	}

@@ -46,8 +46,12 @@ public class VenueApplicationSessionService {
                 app.getApprovedVenue()==null?null:app.getApprovedVenue().getId());
     }
 
-    public LoginResponse promote(UUID userId, UUID applicationId) {
+    public LoginResponse promote(UUID userId, UUID applicationId, long authenticatedSessionVersion) {
         var source=lock(userId, applicationId);
+        // The request may have passed its HTTP filter just before a reset.
+        // Never upgrade that old credential into the newly committed revision.
+        if (source.user().getSessionVersion() != authenticatedSessionVersion)
+            throw new SoundConnectException(ErrorType.UNAUTHORIZED);
         if(source.application().getStatus()!=ApplicationStatus.APPROVED)
             throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
         var principal=new UserDetailsImpl(source.user());

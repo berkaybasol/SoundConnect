@@ -84,6 +84,7 @@ public class JwtTokenProvider {
 		Map<String, Object> claims = new HashMap<>();
 		claims.put("roles", roles);
 		claims.put("permissions", permissions);
+		claims.put("sessionVersion", user.getSessionVersion());
 		
 		return Jwts.builder()
 				// JWT'nin payload kismina ozel alanlar ekliyoruz. (roller ve izinler gibi)
@@ -128,6 +129,18 @@ public class JwtTokenProvider {
 	public Date getExpirationFromToken(String token) {
 		return extractAllClaims(token).getExpiration();
 	}
+
+	/** Legacy tokens are revision zero and stop working on the first reset. */
+	public long getSessionVersionFromToken(String token) {
+		Claims claims = extractAllClaims(token);
+		if (!claims.containsKey("sessionVersion")) return 0L;
+		Object value = claims.get("sessionVersion");
+		if (!(value instanceof Integer || value instanceof Long)
+				|| ((Number) value).longValue() < 0) {
+			throw new MalformedJwtException("Invalid session revision");
+		}
+		return ((Number) value).longValue();
+	}
 	
 	public String generateVenueApplicationToken(UserDetailsImpl userDetails, UUID applicationId) {
 		Objects.requireNonNull(applicationId, "applicationId");
@@ -135,6 +148,7 @@ public class JwtTokenProvider {
 				.setSubject(userDetails.getId().toString())
 				.claim("scope", VENUE_APPLICATION_SCOPE)
 				.claim("applicationId", applicationId.toString())
+				.claim("sessionVersion", userDetails.getUser().getSessionVersion())
 				.setIssuer(jwtIssuer)
 				.setIssuedAt(new Date())
 				.setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))

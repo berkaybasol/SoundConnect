@@ -35,6 +35,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@org.hibernate.annotations.DynamicUpdate
 @Table(
 		name = "tbl_user",
 		uniqueConstraints = @UniqueConstraint(
@@ -67,6 +68,12 @@ public class User extends BaseEntity {
 	@Column(nullable = false)
 	@JsonIgnore
 	private String password;
+
+	/** Captured with the verified password; changed only by the atomic credential update. */
+	@Column(name = "session_version", nullable = false, updatable = false,
+			columnDefinition = "bigint default 0")
+	@JsonIgnore
+	private long sessionVersion;
 	
 	@NotBlank
 	@Email

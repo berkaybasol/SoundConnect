@@ -18,6 +18,7 @@ import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,7 @@ public class PasswordResetService {
 	private final PasswordEncoder passwordEncoder;
 	private final AuthAccountRateLimitGuard accountRateLimitGuard;
 	private final PublicProfileResolverService publicProfileResolverService;
+	private final EntityManager entityManager;
 
 	public BaseResponse<PasswordResetAccountResponseDto> resolveAccount(
 			ForgotPasswordRequestDto request
@@ -109,7 +111,7 @@ public class PasswordResetService {
 
 	/**
 	 * Redis consumes a valid code atomically before the database row is locked. At
-	 * most one concurrent request can therefore reach the password update. Any
+	 * most one request per code can therefore reach the password update. Any
 	 * identity change between lookup and lock fails closed after consumption.
 	 */
 	@Transactional
@@ -126,10 +128,17 @@ public class PasswordResetService {
 
 		User user = userRepository.findByIdForUpdate(account.getId())
 				.orElseThrow(() -> notFound(resolved.type()));
+		// A lookup earlier in this transaction may already have attached the
+		// entity. A pessimistic query locks it but does not replace that snapshot.
+		entityManager.refresh(user);
 		assertLockedIdentityStillMatches(resolved, user, email);
 
-		user.setPassword(passwordEncoder.encode(request.password()));
-		userRepository.save(user);
+		String passwordHash = passwordEncoder.encode(request.password());
+		if (userRepository.resetPasswordAndRevokeSessions(user.getId(), passwordHash) != 1) {
+			throw new IllegalStateException("Locked account credential update failed");
+		}
+		// Keep the persistence context consistent without another ORM write.
+		entityManager.refresh(user);
 
 		return BaseResponse.<Void>builder()
 				.success(true)

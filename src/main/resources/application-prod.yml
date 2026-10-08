@@ -41,6 +41,9 @@ management:
           include: readinessState,db,redis,rabbit,webSocketBrokerRelayHealth,tableGroupNotificationOutboxHealth,eventPerformerNotificationOutboxHealth
 
 app:
+  diagnostics:
+    mobile:
+      environment: ${SOUNDCONNECT_ENVIRONMENT:production}
   websocket:
     broker-relay:
       enabled: true

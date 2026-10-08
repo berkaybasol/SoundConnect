@@ -11,7 +11,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component
@@ -19,13 +18,17 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class AuthRateLimiter {
 
-	private static final DefaultRedisScript<Long> INCREMENT_WITH_EXPIRY = new DefaultRedisScript<>(
+	// Count and expiry are read atomically. There is no second Redis round trip
+	// that could observe a different window; the template owns the connection.
+	private static final DefaultRedisScript<List> INCREMENT_WITH_EXPIRY = new DefaultRedisScript<>(
 			"local current = redis.call('INCR', KEYS[1]); "
-					+ "if current == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; "
-					+ "return current;",
-			Long.class
+					+ "local ttl = redis.call('TTL', KEYS[1]); "
+					+ "if ttl < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]); ttl = tonumber(ARGV[1]); end; "
+					+ "return {current, ttl};",
+			List.class
 	);
 	private static final long REDIS_WARNING_INTERVAL_MILLIS = 60_000L;
+	private static final long UNAVAILABLE_RETRY_AFTER_SECONDS = 5L;
 
 	private final StringRedisTemplate redisTemplate;
 	private final AuthRateLimitProperties properties;
@@ -61,21 +64,26 @@ public class AuthRateLimiter {
 				+ ":" + identityDigest;
 
 		try {
-			Long count = redisTemplate.execute(
+			List<?> result = redisTemplate.execute(
 					INCREMENT_WITH_EXPIRY,
 					List.of(key),
 					Long.toString(windowSeconds)
 			);
-			if (count == null || count <= policy.getLimit()) {
+			if (result == null || result.size() != 2
+					|| !(result.get(0) instanceof Long count) || count <= 0
+					|| !(result.get(1) instanceof Long ttl) || ttl < 0) {
+				throw new IllegalStateException("Redis authentication limiter returned an invalid result");
+			}
+			if (count <= policy.getLimit()) {
 				return Decision.permit();
 			}
 
-			Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
-			long retryAfterSeconds = ttl == null || ttl <= 0 ? windowSeconds : ttl;
-			return Decision.block(Math.max(1L, retryAfterSeconds));
+			return Decision.block(Math.max(1L, Math.min(windowSeconds, ttl)));
 		} catch (RuntimeException exception) {
+			// Readiness removes unhealthy nodes asynchronously. The request guard
+			// must remain closed during that interval and for direct/internal calls.
 			warnRedisFailureOncePerInterval(exception);
-			return Decision.permit();
+			return Decision.unavailable();
 		}
 	}
 
@@ -84,7 +92,7 @@ public class AuthRateLimiter {
 		long previous = lastRedisWarningAt.get();
 		if (now - previous >= REDIS_WARNING_INTERVAL_MILLIS
 				&& lastRedisWarningAt.compareAndSet(previous, now)) {
-			log.warn("Authentication rate limiter unavailable; requests are allowed. exceptionType={}",
+			log.warn("Authentication rate limiter unavailable; requests are rejected. exceptionType={}",
 					exception.getClass().getSimpleName());
 		}
 	}
@@ -102,13 +110,25 @@ public class AuthRateLimiter {
 		}
 	}
 
-	public record Decision(boolean allowed, long retryAfterSeconds) {
+	public record Decision(Status status, long retryAfterSeconds) {
+		public boolean allowed() {
+			return status == Status.PERMITTED;
+		}
+
 		public static Decision permit() {
-			return new Decision(true, 0L);
+			return new Decision(Status.PERMITTED, 0L);
 		}
 
 		public static Decision block(long retryAfterSeconds) {
-			return new Decision(false, retryAfterSeconds);
+			return new Decision(Status.LIMITED, retryAfterSeconds);
 		}
+
+		public static Decision unavailable() {
+			return new Decision(Status.UNAVAILABLE, UNAVAILABLE_RETRY_AFTER_SECONDS);
+		}
+	}
+
+	public enum Status {
+		PERMITTED, LIMITED, UNAVAILABLE
 	}
 }

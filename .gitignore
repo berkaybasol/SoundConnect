@@ -46,6 +46,7 @@ out/
 ### Local test output and temporary credentials ###
 /.local-api-image
 /tmp/
+/artifacts/ready-for-prod-01/
 __pycache__/
 *.pyc
 .secrets/

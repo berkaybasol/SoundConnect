@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.auth.ratelimit;
 
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
+import com.berkayb.soundconnect.shared.exception.ServiceUnavailableRetryException;
 import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import lombok.RequiredArgsConstructor;
@@ -76,6 +77,10 @@ public class AuthAccountRateLimitGuard {
 			AuthRateLimitProperties.Policy policy
 	) {
 		AuthRateLimiter.Decision decision = rateLimiter.checkAccount(bucket, accountIdentifier, policy);
+		if (decision.status() == AuthRateLimiter.Status.UNAVAILABLE) {
+			throw new ServiceUnavailableRetryException(
+					ErrorType.AUTH_RATE_LIMIT_UNAVAILABLE, decision.retryAfterSeconds());
+		}
 		if (!decision.allowed()) {
 			throw new RateLimitedException(ErrorType.AUTH_RATE_LIMITED, decision.retryAfterSeconds());
 		}

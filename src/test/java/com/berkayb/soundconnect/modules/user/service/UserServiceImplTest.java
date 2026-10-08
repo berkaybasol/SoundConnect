@@ -68,6 +68,7 @@ class UserServiceImplTest {
 	@Mock private ListenerProfileProvisioner listenerProfileProvisioner;
 	@Mock private com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
 	@Mock private com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle marketplaceMediaLifecycle;
+	@Mock private jakarta.persistence.EntityManager entityManager;
 	
 	// ==== Test edeceğimiz servis ====
 	@InjectMocks
@@ -445,6 +446,7 @@ class UserServiceImplTest {
 		
 		// Encoder'ın nasıl davranacağını belirliyoruz
 		when(passwordEncoder.encode("plain-pass")).thenReturn("encoded-pass");
+		when(userRepository.resetPasswordAndRevokeSessions(userId, "encoded-pass")).thenReturn(1);
 		
 		Boolean updated = userService.updateUser(userId, userId, dto);
 		
@@ -453,7 +455,9 @@ class UserServiceImplTest {
 		verify(userRepository).saveAndFlush(userCaptor.capture());
 		
 		User saved = userCaptor.getValue();
-		assertThat(saved.getPassword()).isEqualTo("encoded-pass"); // düz şifre değil, hash kullanılmalı
+		verify(userRepository).resetPasswordAndRevokeSessions(userId, "encoded-pass");
+		verify(entityManager, times(2)).refresh(existingUser);
+		assertThat(saved.getPassword()).isEqualTo("old-hash"); // The ORM save never carries a separately-written credential.
 		assertThat(saved.getUpdatedAt()).isNotNull();
 	}
 	

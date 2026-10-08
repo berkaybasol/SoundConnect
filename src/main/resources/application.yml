@@ -121,6 +121,11 @@ management:
           degraded: 200
 
 app:
+  system-health:
+    media-worker-health-file: ${APP_SYSTEM_HEALTH_MEDIA_WORKER_HEALTH_FILE:}
+  diagnostics:
+    mobile:
+      environment: ${SOUNDCONNECT_ENVIRONMENT:local}
   venue-analytics:
     enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_ENABLED:false}
     reporting-enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_REPORTING_ENABLED:false}

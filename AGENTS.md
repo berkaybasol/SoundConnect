@@ -1,5 +1,14 @@
 # SoundConnect Backend — proje hafızası
 
+## Oturum başlangıcı ve devir
+
+8 Ekim 2026: yeni SoundConnect oturumunda [BASLA](docs/ready-for-prod/BASLA.md)
+ve gösterdiği güncel DURUM/PLAN/aktif görevi oku. Kullanıcıya geçmişi yeniden
+anlattırma. Bu repo ortak üretime hazırlık paketinin sürümlenen kaynağıdır.
+Yetkili çalışmada asıl çalışma/kabul kaydı, DURUM ve BASLA ilerledikçe ve oturum
+sonunda güncellenir. `ready-for-prod-NN` branch ve aşama kapanış kuralları PLAN'dadır.
+Bu giriş tek başına yeni ürün işi veya sonraki aşamayı başlatma talimatı değildir.
+
 ## Kod kalitesi ve mevcut altyapı
 
 3 Ekim 2026 açık kullanıcı kararı: üretime hazır (prod-ready) seviyede kod
