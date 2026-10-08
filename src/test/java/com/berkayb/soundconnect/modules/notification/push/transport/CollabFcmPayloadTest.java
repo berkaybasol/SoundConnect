@@ -62,7 +62,7 @@ class CollabFcmPayloadTest {
         assertThat(VenueApplicationPushPresentation.supportsApplication(v9)).isTrue();assertThat(StudioPushPresentation.supportsStudio(v9)).isTrue();
         assertThat(FollowPushPresentation.supportsFollow(v9)).isTrue();assertThat(MediaPushPresentation.supportsMedia(v9)).isTrue();
         assertThat(BandPushPresentation.supportsBand(v9)).isTrue();assertThat(TablePushPresentation.supportsTable(v9)).isTrue();
-        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V11",""))assertThat(CollabPushPresentation.supportsCollab(v)).isFalse();
+        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V12",""))assertThat(CollabPushPresentation.supportsCollab(v)).isFalse();
         assertThat(CollabPushPresentation.supportsCollab(null)).isFalse();
     }
 }

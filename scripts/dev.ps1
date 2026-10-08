@@ -92,6 +92,7 @@ $LocalSchemaMigrations = @(
     @{ Name = "Push native table capability"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-01-push-native-table-capability.sql"; Marker = "2026-10-01-push-native-table-capability" },
     @{ Name = "Push native collab capability"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-01-push-native-collab-capability.sql"; Marker = "2026-10-01-push-native-collab-capability" }
     @{ Name = "Push native overthinking capability"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-01-push-native-overthinking-capability.sql"; Marker = "2026-10-01-push-native-overthinking-capability" }
+    @{ Name = "Notification campaigns"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-07-notification-campaigns.sql"; Marker = "2026-10-07-notification-campaigns" }
     @{ Name = "Media notification identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-28-media-notification-identity.sql"; Marker = "2026-09-28-media-notification-identity" }
     @{ Name = "Band notification identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-29-band-notification-identity.sql"; Marker = "2026-09-29-band-notification-identity" }
     @{ Name = "Application mail intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-06-application-mail-intents.sql" }

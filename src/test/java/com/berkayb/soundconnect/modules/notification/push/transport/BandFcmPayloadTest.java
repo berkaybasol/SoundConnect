@@ -58,6 +58,6 @@ class BandFcmPayloadTest {
         assertThat(MediaPushPresentation.supportsMedia(BandPushPresentation.CAPABILITY)).isTrue();
         assertThat(BandPushPresentation.supportsBand(null)).isFalse();
         for(String v:List.of("ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V9","ANDROID_NATIVE_V10")) assertThat(BandPushPresentation.supportsBand(v)).isTrue();
-        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V11","")) assertThat(BandPushPresentation.supportsBand(v)).isFalse();
+        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V12","")) assertThat(BandPushPresentation.supportsBand(v)).isFalse();
     }
 }

@@ -25,7 +25,7 @@ public class PushDeviceService {
     public record Registration(@NotBlank @Size(max=4096) String token, @NotNull Platform platform,
                                @NotNull Permission permission, @Size(max=80) String appVersion,
                                @NotNull @Min(1) @Max(MAX_CLIENT_REVISION) Long clientRevision,
-            @Pattern(regexp="ANDROID_DM_V1|ANDROID_NATIVE_V2|ANDROID_NATIVE_V3|ANDROID_NATIVE_V4|ANDROID_NATIVE_V5|ANDROID_NATIVE_V6|ANDROID_NATIVE_V7|ANDROID_NATIVE_V8|ANDROID_NATIVE_V9|ANDROID_NATIVE_V10") String presentationVersion) {
+            @Pattern(regexp="ANDROID_DM_V1|ANDROID_NATIVE_V2|ANDROID_NATIVE_V3|ANDROID_NATIVE_V4|ANDROID_NATIVE_V5|ANDROID_NATIVE_V6|ANDROID_NATIVE_V7|ANDROID_NATIVE_V8|ANDROID_NATIVE_V9|ANDROID_NATIVE_V10|ANDROID_NATIVE_V11") String presentationVersion) {
         @Override public String toString() { return "Registration[redacted]"; }
     }
     public record Preferences(@NotNull Boolean enabled, @NotNull @Size(max=30) Set<@NotBlank @Size(max=40) String> disabledCategories) { }

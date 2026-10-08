@@ -139,6 +139,7 @@ public final class FcmHttpV1Transport implements PushTransport {
     private boolean valid(PushEnvelope envelope) {
         return envelope != null && envelope.token() != null && !envelope.token().isBlank()
                 && validVenue(envelope)
+                && com.berkayb.soundconnect.modules.notification.push.CustomPushPresentation.valid(envelope)
                 && envelope.token().length() <= 4096
                 && envelope.title() != null && !envelope.title().isBlank()
                 && envelope.body() != null && !envelope.body().isBlank()
@@ -152,6 +153,7 @@ public final class FcmHttpV1Transport implements PushTransport {
 
     Map<String, Object> payload(PushEnvelope envelope) {
         if (!validVenue(envelope)) throw new IllegalArgumentException("Invalid venue push contract");
+        if (!com.berkayb.soundconnect.modules.notification.push.CustomPushPresentation.valid(envelope)) throw new IllegalArgumentException("Invalid custom push contract");
         Instant now = clock.instant();
         long ttl = Math.min(Duration.ofDays(28).toSeconds(),
                 Math.max(0, Duration.between(now, envelope.expiresAt()).toSeconds()));
@@ -167,7 +169,8 @@ public final class FcmHttpV1Transport implements PushTransport {
                 || BandPushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))
                 || TablePushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))
                 || CollabPushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))
-                || OverthinkingPushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))) {
+                || OverthinkingPushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))
+                || com.berkayb.soundconnect.modules.notification.push.CustomPushPresentation.VERSION.equals(envelope.data().get("presentationVersion"))) {
             // Only Android installations advertising the native renderer get
             // data-only FCM. The native service builds MessagingStyle, including
             // recipient fencing, avatar fallback and an authenticated tap.

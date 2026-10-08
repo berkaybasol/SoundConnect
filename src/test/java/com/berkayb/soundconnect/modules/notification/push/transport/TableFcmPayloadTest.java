@@ -68,6 +68,6 @@ class TableFcmPayloadTest {
         assertThat(BandPushPresentation.supportsBand(TablePushPresentation.CAPABILITY)).isTrue();
         assertThat(TablePushPresentation.supportsTable(null)).isFalse();
         for(String v:List.of("ANDROID_NATIVE_V8","ANDROID_NATIVE_V9","ANDROID_NATIVE_V10")) assertThat(TablePushPresentation.supportsTable(v)).isTrue();
-        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V11","")) assertThat(TablePushPresentation.supportsTable(v)).isFalse();
+        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V12","")) assertThat(TablePushPresentation.supportsTable(v)).isFalse();
     }
 }

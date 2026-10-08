@@ -23,6 +23,8 @@ public class NotificationDeliveryPolicy {
     private final NamedParameterJdbcTemplate jdbc;
     private final PlatformTransactionManager transactions;
     private final AfterCommitDeliveryExecutor deliveryExecutor;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.berkayb.soundconnect.modules.notification.campaign.CampaignEligibility campaigns;
 
     /** Lock order: accounts, source aggregate then child, receipt/inbox at the caller. */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -32,10 +34,11 @@ public class NotificationDeliveryPolicy {
         Set<UUID> referenced=new LinkedHashSet<>();
         if(media) MediaNotificationIdentity.actorId(event.payload()).ifPresent(referenced::add);
         else if(BandNotificationIdentity.applies(event.type())) BandNotificationIdentity.actorId(event.type(),event.payload()).ifPresent(referenced::add);
-        else collectIds(event.payload(),referenced,0);
+        else if(event.type()!=NotificationType.ADMIN_BROADCAST) collectIds(event.payload(),referenced,0);
         if (OverthinkingNotificationIdentity.TYPES.contains(event.type()))
             referenced.addAll(OverthinkingNotificationIdentity.participants(jdbc,event.payload()));
         if(!accounts.canDeliver(event.recipientId(),referenced)) return false;
+        if(event.type()==NotificationType.ADMIN_BROADCAST) return campaigns!=null && campaigns.eligible(event);
         if(media && !referenced.isEmpty() && !Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from tbl_user where id=:actor and erased_at is null
                   and status='ACTIVE' and email_verified)

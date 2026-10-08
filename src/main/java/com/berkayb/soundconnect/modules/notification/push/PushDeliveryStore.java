@@ -188,6 +188,15 @@ public class PushDeliveryStore {
         data.put("notificationId",claim.notificationId().toString());
         data.put("recipientId",claim.recipientId().toString());
         data.put("type",notification.getType().name());
+        if(notification.getType()==NotificationType.ADMIN_BROADCAST) {
+            if(!"ANDROID".equals(encrypted.getFirst().platform()) || !CustomPushPresentation.CAPABILITY.equals(encrypted.getFirst().version()))
+                return suppress(claim,"PRESENTATION_UNAVAILABLE");
+            data.put("presentationVersion",CustomPushPresentation.VERSION);
+            data.put("title",notification.getTitle());data.put("body",notification.getMessage());
+            data.put("sentAt",Long.toString(clock.instant().toEpochMilli()));data.put("expiresAt",Long.toString(claim.expiresAt().toEpochMilli()));
+            var envelope=new PushEnvelope(cipher.decrypt(encrypted.getFirst().ciphertext()),notification.getTitle(),notification.getMessage(),Map.copyOf(data),claim.notificationId().toString(),claim.expiresAt());
+            return CustomPushPresentation.valid(envelope)?Optional.of(envelope):suppress(claim,"INVALID_CUSTOM_PRESENTATION");
+        }
         if (notification.getType()==NotificationType.DM_NEW_MESSAGE) {
             var conversation=NotificationDeliveryPolicy.uuid(notification.getPayload(),"conversationId");
             if (conversation==null) return suppress(claim,"INVALID_TARGET");

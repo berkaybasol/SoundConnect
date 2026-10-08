@@ -139,6 +139,8 @@ public enum ErrorType {
 	
 	// NOTIFICATION (1900 - 2000)
 	NOTIFICATION_NOT_FOUND(1900,"Notification not found", HttpStatus.NOT_FOUND, "Bildirim bulunamadi." ),
+	NOTIFICATION_CAMPAIGN_CONFLICT(1910,"Notification campaign version or state conflict",HttpStatus.CONFLICT,"Özel bildirimin durumu değişti. Güncel kaydı yenileyip tekrar dene."),
+	NOTIFICATION_CAMPAIGN_UNAVAILABLE(1911,"Notification campaigns unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Özel bildirim gönderimi şu anda kullanıma açık değil."),
 	NOTIFICATION_ALREADY_READ(1901,"Notification already read", HttpStatus.CONFLICT, "Bildirim zaten okunmus" ),
 	NOTIFICATION_UPDATE_FAILED(1902,"Notification updated failed", HttpStatus.INTERNAL_SERVER_ERROR,"Bildirim guncellenemedi."),
 	NOTIFICATION_ALREADY_DELETED(1903,"Notification already deleted.", HttpStatus.CONFLICT, "Bildirim zaten silinmis." ),

@@ -67,20 +67,23 @@ public class PushDeliveryPlanner {
         args.put("collabCapability",CollabPushPresentation.CAPABILITY);
         args.put("overthinkingType",OverthinkingPushPresentation.TYPES.contains(notification.getType()));
         args.put("overthinkingCapability",OverthinkingPushPresentation.CAPABILITY);
+        args.put("customType",notification.getType()==com.berkayb.soundconnect.modules.notification.enums.NotificationType.ADMIN_BROADCAST);
+        args.put("customCapability",CustomPushPresentation.CAPABILITY);
         var devices = jdbc.query("""
                 select d.installation_id, d.generation from tbl_push_device d
                 left join tbl_push_preference p on p.user_id=d.user_id
                 where d.user_id=:recipient and d.revoked_at is null and d.token_ciphertext is not null
                   and d.permission in ('AUTHORIZED','PROVISIONAL') and d.last_seen_at>:stale
-                  and (not :venue or (d.platform='ANDROID' and d.presentation_version in (:capability,:applicationCapability,:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :applicationType or (d.platform='ANDROID' and d.presentation_version in (:applicationCapability,:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :studioType or (d.platform='ANDROID' and d.presentation_version in (:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :followType or (d.platform='ANDROID' and d.presentation_version in (:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :mediaType or (d.platform='ANDROID' and d.presentation_version in (:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :bandType or (d.platform='ANDROID' and d.presentation_version in (:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :tableType or (d.platform='ANDROID' and d.presentation_version in (:tableCapability,:collabCapability,:overthinkingCapability)))
-                  and (not :collabType or (d.platform='ANDROID' and d.presentation_version in (:collabCapability,:overthinkingCapability)))
-                  and (not :overthinkingType or (d.platform='ANDROID' and d.presentation_version=:overthinkingCapability))
+                  and (not :venue or (d.platform='ANDROID' and d.presentation_version in (:capability,:applicationCapability,:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :applicationType or (d.platform='ANDROID' and d.presentation_version in (:applicationCapability,:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :studioType or (d.platform='ANDROID' and d.presentation_version in (:studioCapability,:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :followType or (d.platform='ANDROID' and d.presentation_version in (:followCapability,:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :mediaType or (d.platform='ANDROID' and d.presentation_version in (:mediaCapability,:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :bandType or (d.platform='ANDROID' and d.presentation_version in (:bandCapability,:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :tableType or (d.platform='ANDROID' and d.presentation_version in (:tableCapability,:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :collabType or (d.platform='ANDROID' and d.presentation_version in (:collabCapability,:overthinkingCapability,:customCapability)))
+                  and (not :overthinkingType or (d.platform='ANDROID' and d.presentation_version in (:overthinkingCapability,:customCapability)))
+                  and (not :customType or (d.platform='ANDROID' and d.presentation_version=:customCapability))
                   and (d.application_scope_id is null or (:applicationType and d.application_scope_id=:applicationId))
                   and coalesce(p.enabled,true) and not (:category=any(coalesce(p.disabled_categories,'{}'::text[])))
                 order by d.installation_id for key share of d

@@ -60,7 +60,7 @@ class OverthinkingFcmPayloadTest {
         assertThat(VenueApplicationPushPresentation.supportsApplication(v10)).isTrue();assertThat(StudioPushPresentation.supportsStudio(v10)).isTrue();
         assertThat(FollowPushPresentation.supportsFollow(v10)).isTrue();assertThat(MediaPushPresentation.supportsMedia(v10)).isTrue();
         assertThat(BandPushPresentation.supportsBand(v10)).isTrue();assertThat(TablePushPresentation.supportsTable(v10)).isTrue();assertThat(CollabPushPresentation.supportsCollab(v10)).isTrue();
-        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V9","ANDROID_NATIVE_V11",""))assertThat(OverthinkingPushPresentation.supportsOverthinking(v)).isFalse();
+        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V9","ANDROID_NATIVE_V12",""))assertThat(OverthinkingPushPresentation.supportsOverthinking(v)).isFalse();
         assertThat(OverthinkingPushPresentation.supportsOverthinking(null)).isFalse();
     }
 }

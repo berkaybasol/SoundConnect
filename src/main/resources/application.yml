@@ -221,6 +221,11 @@ app:
         limit: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_LIMIT:10}
         window: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_WINDOW:5m}
   notification:
+    campaigns:
+      # Enable only after the independent notification-campaigns migration.
+      enabled: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_ENABLED:false}
+      poll-delay-ms: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_POLL_DELAY_MS:1000}
+      initial-delay-ms: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_INITIAL_DELAY_MS:30000}
     push:
       # Explicit opt-in. Apply the SQL migration and supply external credentials first.
       enabled: ${SOUNDCONNECT_PUSH_ENABLED:false}

@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum NotificationType {
+	ADMIN_BROADCAST("CUSTOM", "SoundConnect", false),
 	
 	// AUTH
 	AUTH_EMAIL_VERIFIED("AUTH", "E-Posta doğrulandı", true),

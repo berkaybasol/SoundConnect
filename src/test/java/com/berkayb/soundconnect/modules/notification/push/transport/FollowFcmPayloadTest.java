@@ -56,6 +56,6 @@ class FollowFcmPayloadTest {
         assertThat(StudioPushPresentation.supportsStudio(FollowPushPresentation.CAPABILITY)).isTrue();
         assertThat(FollowPushPresentation.supportsFollow(null)).isFalse();
         for(String v:List.of("ANDROID_NATIVE_V5","ANDROID_NATIVE_V6","ANDROID_NATIVE_V7","ANDROID_NATIVE_V8","ANDROID_NATIVE_V9","ANDROID_NATIVE_V10")) assertThat(FollowPushPresentation.supportsFollow(v)).isTrue();
-        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V11","")) assertThat(FollowPushPresentation.supportsFollow(v)).isFalse();
+        for(String v:List.of("ANDROID_DM_V1","ANDROID_NATIVE_V2","ANDROID_NATIVE_V3","ANDROID_NATIVE_V4","ANDROID_NATIVE_V12","")) assertThat(FollowPushPresentation.supportsFollow(v)).isFalse();
     }
 }
