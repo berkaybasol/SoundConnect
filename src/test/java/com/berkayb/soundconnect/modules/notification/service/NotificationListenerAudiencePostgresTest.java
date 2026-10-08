@@ -90,6 +90,7 @@ class NotificationListenerAudiencePostgresTest {
     private static final Instant NOW = Instant.parse("2026-09-14T10:00:00Z");
     // Independent product contract: do not derive these expectations from category or production policy.
     private static final Set<NotificationType> EXPECTED_LISTENER_TYPES = Set.of(
+            ADMIN_BROADCAST,
             AUTH_EMAIL_VERIFIED, AUTH_RESET_PASSWORD,
             MEDIA_UPLOAD_RECEVIED, MEDIA_TRANSCODE_READY, MEDIA_TRANSCODE_FAILED,
             SOCIAL_NEW_FOLLOWER, SOCIAL_NEW_BAND_FOLLOWER, SOCIAL_LIKE, SOCIAL_COMMENT, DM_NEW_MESSAGE,
@@ -111,8 +112,10 @@ class NotificationListenerAudiencePostgresTest {
             COLLAB_APPLICATION_WITHDRAWN, COLLAB_APPLICATION_INVALIDATED, COLLAB_LISTING_EXPIRED,
             COLLAB_JOB_COMPLETION_REQUESTED, COLLAB_JOB_COMPLETED, COLLAB_REVIEW_RECEIVED,
             COLLAB_LISTING_REMOVED, COLLAB_REPORT_RESOLVED);
-    // This admission fixture does not build the reveal-request source lifecycle.
+    // This generic admission fixture does not build campaign provenance or the reveal-request lifecycle.
+    // CampaignPostgresTest exercises real campaign admission for every supported recipient profile.
     private static final Set<NotificationType> ADMISSION_SOURCE_EXCLUSIONS = Set.of(
+            ADMIN_BROADCAST,
             OVERTHINKING_REVEAL_REQUEST_RECEIVED, OVERTHINKING_REVEAL_REQUEST_APPROVED,
             OVERTHINKING_REVEAL_REQUEST_REJECTED);
     @Autowired NotificationRepository notifications;
@@ -193,6 +196,33 @@ class NotificationListenerAudiencePostgresTest {
                 .containsExactlyInAnyOrderElementsOf(EXPECTED_LISTENER_TYPES);
         assertThat(service.getUnreadCount(recipient)).isEqualTo(EXPECTED_LISTENER_TYPES.size());
         assertThat(notifications.count()).isEqualTo(NotificationType.values().length);
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void sourceLessAdminBroadcastCannotEnterListenerInboxOrReplayAfterRoleChange(boolean throughBroker) throws Exception {
+        var sibling = seed(TABLE_JOIN_REQUEST_APPROVED, NOW.minusSeconds(1));
+        transaction.executeWithoutResult(status ->
+                assertThat(receipts.retainForNotification(sibling.getId(), recipient)).isEqualTo(1));
+        var originalInbox = inboxRows();
+        var originalReceipts = receiptRows();
+        var forged = event(ADMIN_BROADCAST);
+
+        send(forged, throughBroker);
+        drain();
+        assertThat(inboxRows()).containsExactlyInAnyOrderElementsOf(originalInbox);
+        var rejectedReceipts = receiptRows();
+        assertThat(rejectedReceipts).containsAll(originalReceipts).hasSize(originalReceipts.size() + 1);
+        assertThat(rejectedReceipts).filteredOn(row -> row.sourceEventId().equals(forged.eventId()))
+                .extracting(ReceiptRow::recipientId).containsExactly(recipient);
+        assertThat(rejectedReceipts).extracting(ReceiptRow::recordedAt).doesNotContainNull();
+        verifyNoInteractions(websocket, badges, mail, mailSender);
+
+        role("ROLE_MUSICIAN");
+        send(forged, throughBroker);
+        drain();
+        assertThat(inboxRows()).containsExactlyInAnyOrderElementsOf(originalInbox);
+        assertThat(receiptRows()).containsExactlyInAnyOrderElementsOf(rejectedReceipts);
+        verifyNoInteractions(websocket, badges, mail, mailSender);
     }
 
     @Test void directLookupMediaResolutionMarkAndClearCannotExposeOrEraseHiddenLegacyRows() {
