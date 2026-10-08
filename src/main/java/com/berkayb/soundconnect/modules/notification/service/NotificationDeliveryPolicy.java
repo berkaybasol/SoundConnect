@@ -1,6 +1,10 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
+import com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.notification.support.NotificationAudiencePolicy;
+import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
+import com.berkayb.soundconnect.modules.notification.support.OverthinkingNotificationIdentity;
 import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import lombok.RequiredArgsConstructor;
@@ -19,39 +23,68 @@ public class NotificationDeliveryPolicy {
     private final NamedParameterJdbcTemplate jdbc;
     private final PlatformTransactionManager transactions;
     private final AfterCommitDeliveryExecutor deliveryExecutor;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.berkayb.soundconnect.modules.notification.campaign.CampaignEligibility campaigns;
 
-    /** Lock order: accounts, source post/request, then receipt/inbox at the caller. */
+    /** Lock order: accounts, source aggregate then child, receipt/inbox at the caller. */
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean eligible(NotificationInboundEvent event) {
         if(event==null || event.recipientId()==null || event.type()==null) return false;
-        Set<UUID> referenced=new LinkedHashSet<>(); collectIds(event.payload(),referenced,0);
+        boolean media=MediaNotificationIdentity.applies(event.type(),event.payload());
+        Set<UUID> referenced=new LinkedHashSet<>();
+        if(media) MediaNotificationIdentity.actorId(event.payload()).ifPresent(referenced::add);
+        else if(BandNotificationIdentity.applies(event.type())) BandNotificationIdentity.actorId(event.type(),event.payload()).ifPresent(referenced::add);
+        else if(event.type()!=NotificationType.ADMIN_BROADCAST) collectIds(event.payload(),referenced,0);
+        if (OverthinkingNotificationIdentity.TYPES.contains(event.type()))
+            referenced.addAll(OverthinkingNotificationIdentity.participants(jdbc,event.payload()));
         if(!accounts.canDeliver(event.recipientId(),referenced)) return false;
+        if(event.type()==NotificationType.ADMIN_BROADCAST) return campaigns!=null && campaigns.eligible(event);
+        if(media && !referenced.isEmpty() && !Boolean.TRUE.equals(jdbc.queryForObject("""
+                select exists(select 1 from tbl_user where id=:actor and erased_at is null
+                  and status='ACTIVE' and email_verified)
+                """, Map.of("actor",referenced.iterator().next()),Boolean.class))) return false;
+        // canDeliver holds the existing account fence through receipt insertion
+        // and through final dispatch. Re-read roles here, never a sender/JWT snapshot.
+        if(NotificationAudiencePolicy.businessOnly(event.type()) && Boolean.TRUE.equals(jdbc.queryForObject(
+                NotificationAudiencePolicy.LISTENER_SQL, Map.of("recipient", event.recipientId()), Boolean.class))) return false;
+        if(event.type()==NotificationType.DM_NEW_MESSAGE) return eligibleUnreadDm(event);
+        if(com.berkayb.soundconnect.modules.notification.push.VenueApplicationPushPresentation.TYPES.contains(event.type()))
+            return new com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationDecisionEligibility(jdbc).eligible(event);
         if(!"OVERTHINKING".equals(event.type().getCategory())) return true;
-        UUID postId=uuid(event.payload(),"postId"), requestId=uuid(event.payload(),"revealRequestId");
-        if(postId==null || requestId==null) return false;
-        // Shared source locks prevent post deletion/request withdrawal from
-        // overtaking a validated receipt insertion or final delivery.
-        var rows=jdbc.query("""
-                select r.status, r.requester_id, r.author_id
-                from tbl_overthinking_post p join tbl_overthinking_reveal_request r on r.post_id=p.id
-                where p.id=:postId and r.id=:requestId for share of p,r
-                """,Map.of("postId",postId,"requestId",requestId),(rs,row) -> new Source(rs.getString("status"),
-                        rs.getObject("requester_id",UUID.class),rs.getObject("author_id",UUID.class)));
-        if(rows.isEmpty()) return false;
-        var source=rows.getFirst();
-        return switch(event.type()) {
-            case OVERTHINKING_REVEAL_REQUEST_RECEIVED -> "PENDING".equals(source.status()) && event.recipientId().equals(source.author());
-            case OVERTHINKING_REVEAL_REQUEST_APPROVED -> "APPROVED".equals(source.status()) && event.recipientId().equals(source.requester());
-            case OVERTHINKING_REVEAL_REQUEST_REJECTED -> "REJECTED".equals(source.status()) && event.recipientId().equals(source.requester());
-            default -> false;
-        };
+        return OverthinkingNotificationIdentity.eligible(jdbc,event);
+    }
+
+    private boolean eligibleUnreadDm(NotificationInboundEvent event) {
+        UUID messageId=uuid(event.payload(),"messageId"), conversationId=uuid(event.payload(),"conversationId"),
+                senderId=uuid(event.payload(),"senderId"), recipientId=uuid(event.payload(),"recipientId");
+        if(messageId==null || conversationId==null || senderId==null || !event.recipientId().equals(recipientId)) return false;
+        // Serialize admission with whole-conversation moderation, and reject
+        // orphaned/forged messages even when a legacy row survived deletion.
+        if(jdbc.query("""
+                select id from tbl_dm_conversation where id=:conversationId
+                  and ((user_a_id=:senderId and user_b_id=:recipientId)
+                    or (user_a_id=:recipientId and user_b_id=:senderId)) for share
+                """, Map.of("conversationId",conversationId,"senderId",senderId,"recipientId",recipientId),
+                (rs,row) -> rs.getObject("id",UUID.class)).isEmpty()) return false;
+        // Never trust a queued creation snapshot after a read/delete. Holding
+        // the source lock until inbox insertion (or final dispatch) makes a
+        // concurrent explicit read wait and then mark the admitted row read.
+        return !jdbc.query("""
+                select id from tbl_dm_message
+                where id=:messageId and conversation_id=:conversationId
+                  and sender_id=:senderId and recipient_id=:recipientId
+                  and read_at is null and deleted_at is null
+                for share
+                """, Map.of("messageId",messageId,"conversationId",conversationId,
+                "senderId",senderId,"recipientId",recipientId), (rs,row) -> rs.getObject("id",UUID.class)).isEmpty();
     }
 
     public void schedule(NotificationInboundEvent event, UUID notificationId, Runnable work) {
         deliveryExecutor.submit(() -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
             if(!eligible(event)) return;
             if(!Boolean.TRUE.equals(jdbc.queryForObject(
-                    "select exists(select 1 from tbl_notification where id=:id and recipient_id=:recipient)",
+                    "select exists(select 1 from tbl_notification where id=:id and recipient_id=:recipient"
+                            + (MediaNotificationIdentity.applies(event.type(),event.payload()) ? " and not is_read" : "") + ")",
                     Map.of("id",notificationId,"recipient",event.recipientId()),Boolean.class))) return;
             work.run();
         }));
@@ -71,5 +104,4 @@ public class NotificationDeliveryPolicy {
         try { ids.add(value instanceof UUID id?id:UUID.fromString(value.toString())); }
         catch(IllegalArgumentException ignored) { }
     }
-    private record Source(String status,UUID requester,UUID author) { }
 }

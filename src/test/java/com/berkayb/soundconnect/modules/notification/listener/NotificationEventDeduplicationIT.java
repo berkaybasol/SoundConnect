@@ -92,7 +92,7 @@ class NotificationEventDeduplicationIT {
                 webSocketService,
                 mailProducer,
                 notificationService,
-                receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy()
+                receiptRepository, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.immediateAllowedPolicy(), event -> { }
         );
     }
 
@@ -133,6 +133,7 @@ class NotificationEventDeduplicationIT {
     @Configuration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = Notification.class)
     @EnableJpaRepositories(basePackageClasses = NotificationRepository.class)
+    @org.springframework.context.annotation.Import(com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class)
     static class JpaTestConfiguration {
     }
 }

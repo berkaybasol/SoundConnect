@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.notification.config;
 import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.event.performer.outbox.EventPerformerNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.overthinking.outbox.OverthinkingNotificationOutboxProperties;
+import com.berkayb.soundconnect.modules.studio.reservation.outbox.StudioReservationNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.tablegroup.notification.outbox.TableGroupNotificationOutboxProperties;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import jakarta.annotation.PostConstruct;
@@ -22,6 +23,9 @@ public class NotificationOutboxLeaseConfigurationValidator {
     private final TableGroupNotificationOutboxProperties tableGroupOutboxProperties;
     private final EventPerformerNotificationOutboxProperties eventPerformerOutboxProperties;
     private final OverthinkingNotificationOutboxProperties overthinkingOutboxProperties;
+    private final StudioReservationNotificationOutboxProperties studioReservationOutboxProperties;
+
+    private final com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxProperties followOutboxProperties;
 
     @PostConstruct
     void validateConfiguration() {
@@ -32,6 +36,7 @@ public class NotificationOutboxLeaseConfigurationValidator {
         }
 
         Duration minimumLease = publisherProperties.getPublisherConfirmTimeout().plus(LEASE_SAFETY_MARGIN);
+        validateLease("app.notification.follow-outbox.lease-duration", followOutboxProperties.getLeaseDuration(), minimumLease);
         validateLease(
                 "app.notification.collab-outbox.lease-duration",
                 collabOutboxProperties.getLeaseDuration(),
@@ -50,6 +55,11 @@ public class NotificationOutboxLeaseConfigurationValidator {
         validateLease(
                 "app.notification.overthinking-outbox.lease-duration",
                 overthinkingOutboxProperties.getLeaseDuration(),
+                minimumLease
+        );
+        validateLease(
+                "app.notification.studio-reservation-outbox.lease-duration",
+                studioReservationOutboxProperties.getLeaseDuration(),
                 minimumLease
         );
     }

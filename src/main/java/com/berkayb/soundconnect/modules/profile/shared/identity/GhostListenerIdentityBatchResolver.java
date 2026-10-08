@@ -43,6 +43,25 @@ public class GhostListenerIdentityBatchResolver {
 	private final MediaAssetService mediaAssetService;
 	private final ListenerProfileRepository listenerProfileRepository;
 
+	/** Current canonical/ghost names for MEDIA notifications, with no avatar or snapshot fallback. */
+	@Transactional
+	public Map<UUID, String> resolveCurrentCanonicalNames(Collection<UUID> userIds) {
+		List<UUID> ids = normalize(userIds).stream().sorted().toList();
+		if (ids.isEmpty()) return Map.of();
+		// Lock all accounts before any profile, matching account erasure's order.
+		var accounts = identityRepository.lockCanonicalIdentities(ids);
+		var restricted = resolve(ids);
+		Map<UUID, String> names = new LinkedHashMap<>();
+		for (var account : accounts) {
+			if (account.getErased() || !account.getAvailable()) continue;
+			var identity = restricted.get(account.getUserId());
+			String name = identity == null ? account.getUsername() : identity.username();
+			if (identity != null && identity.visibilityMode() != ListenerVisibilityMode.GHOST) continue;
+			if (name != null && !name.isBlank()) names.put(account.getUserId(), name.strip());
+		}
+		return Map.copyOf(names);
+	}
+
 	@Transactional
 	public Map<UUID, GhostListenerIdentity> resolve(Collection<UUID> userIds) {
 		List<UUID> normalizedIds = normalize(userIds);

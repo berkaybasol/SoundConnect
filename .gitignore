@@ -42,3 +42,12 @@ out/
 !.env.example
 !.env.worker-db.example
 !.env.worker-rabbit.example
+
+### Local test output and temporary credentials ###
+/.local-api-image
+/tmp/
+__pycache__/
+*.pyc
+.secrets/
+*firebase-adminsdk*.json
+*.p8

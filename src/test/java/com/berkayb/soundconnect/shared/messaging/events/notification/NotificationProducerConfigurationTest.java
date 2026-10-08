@@ -56,6 +56,9 @@ class NotificationProducerConfigurationTest {
 
     private AnnotationConfigApplicationContext contextWith(String... properties) throws IOException {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        // Exercise the production-profile bean even when the surrounding test
+        // runner activates "test" globally. Only the mocked RabbitTemplate is wired.
+        context.getEnvironment().setActiveProfiles("notification-publisher-configuration-test");
         context.getBeanFactory().setConversionService(ApplicationConversionService.getSharedInstance());
         TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context, properties);
 

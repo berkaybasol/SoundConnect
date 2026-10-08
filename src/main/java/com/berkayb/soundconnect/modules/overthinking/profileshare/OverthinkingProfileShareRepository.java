@@ -11,6 +11,21 @@ public interface OverthinkingProfileShareRepository extends JpaRepository<Overth
     Optional<OverthinkingProfileShare> findByIdAndOwnerUserId(UUID id, UUID ownerUserId);
     Page<OverthinkingProfileShare> findByListenerProfileIdAndOwnerUserId(UUID listenerProfileId, UUID ownerUserId, Pageable pageable);
 
+    @Query(value = """
+            select share.* from tbl_overthinking_profile_share share
+            join tbl_overthinking_post post on post.id=share.source_post_id
+            where share.listener_profile_id=:profileId and share.owner_user_id=:ownerId and
+            """ + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL
+            + " order by share.published_at desc,share.id desc",
+            countQuery = """
+            select count(*) from tbl_overthinking_profile_share share
+            join tbl_overthinking_post post on post.id=share.source_post_id
+            where share.listener_profile_id=:profileId and share.owner_user_id=:ownerId and
+            """ + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL,
+            nativeQuery = true)
+    Page<OverthinkingProfileShare> findMainstageByProfile(@Param("profileId") UUID profileId,
+            @Param("ownerId") UUID ownerId, Pageable pageable);
+
     @Query("select share.sourcePostId from OverthinkingProfileShare share where share.id=:shareId and share.ownerUserId=:ownerId")
     Optional<UUID> ownedSourceId(@Param("shareId") UUID shareId, @Param("ownerId") UUID ownerId);
     @Query(value = "select id from tbl_user where id=:userId and status='ACTIVE' and email_verified for update", nativeQuery = true)

@@ -1,0 +1,595 @@
+package com.berkayb.soundconnect.modules.feed.musician.delivery;
+
+import com.berkayb.soundconnect.modules.feed.musician.api.*;
+import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedProperties;
+import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedViewerGuard;
+import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.*;
+import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
+import java.util.*;
+import java.util.concurrent.*;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+
+@Testcontainers(disabledWithoutDocker = true)
+class MusicianFeedDeliveryServicePostgresTest {
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
+            .withDatabaseName("musician_feed_delivery_service")
+            .withUsername("soundconnect").withPassword("soundconnect");
+
+    private final UUID viewer = UUID.randomUUID();
+    private final UUID session = UUID.randomUUID();
+    private final Instant now = Instant.parse("2026-09-11T12:00:00Z");
+    private MusicianFeedDeliveryService service;
+    private NamedParameterJdbcTemplate jdbc;
+    private TransactionTemplate transactions;
+    private MusicianFeedProperties properties;
+    private MusicianFeedReplayVisibilityGuard replayVisibility;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE TABLE tbl_user(id uuid primary key)");
+        execute("INSERT INTO tbl_user(id) VALUES ('" + viewer + "')");
+        execute(Files.readString(Path.of("scripts/db/2026-09-11-musician-feed-delivery.sql")));
+        execute(Files.readString(Path.of("scripts/db/2026-09-11-musician-feed-replay.sql")));
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        properties = new MusicianFeedProperties();
+        properties.setDeliverySecret("delivery-service-test-secret-at-least-32-bytes");
+        jdbc = new NamedParameterJdbcTemplate(dataSource);
+        replayVisibility = mock(MusicianFeedReplayVisibilityGuard.class);
+        service = new MusicianFeedDeliveryService(jdbc,
+                new MusicianFeedDeliveryTokenCodec(new ObjectMapper().findAndRegisterModules(), properties),
+                properties, new ObjectMapper().findAndRegisterModules(), replayVisibility);
+        transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    }
+
+    @Test
+    void batchPersistsStablePositionsAndReturnsVerifiableTokens() {
+        List<MusicianFeedItemResponse> result = transactions.execute(status -> service.recordPage(
+                viewer, session, now, 1, "musician-v1", 0,
+                List.of(item("TRACK:one"), item("TRACK:two")), now));
+
+        assertThat(result).extracting(MusicianFeedItemResponse::position).containsExactly(0L, 1L);
+        assertThat(result).allMatch(value -> value.impressionToken() != null && !value.impressionToken().isBlank());
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(2);
+        assertThat(service.require(result.getFirst().impressionToken(), viewer, "TRACK:one", now).absolutePosition())
+                .isZero();
+        assertThat(service.snapshot(viewer, session, now).lastItemLane())
+                .isEqualTo(MusicianFeedLane.FOLLOWING);
+    }
+
+    @Test
+    void announcementCadenceComesFromTheWholeLedgerAndCountsOnlyNormalItems() {
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), campaign = UUID.randomUUID();
+        List<MusicianFeedItemResponse> firstPage = List.of(item("TRACK:first"),
+                item("ANNOUNCEMENT:" + first, MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", first, null),
+                item("TRACK:second"), item("SPONSORED:one", MusicianFeedItemType.SPONSORED, "STANDALONE", UUID.randomUUID(),
+                new MusicianFeedItemResponse.Promotion(campaign, "Sponsored", "Open", "/open")));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1, "announcement-test", 0, firstPage, now));
+        List<MusicianFeedItemResponse> continuation = List.of(item("TRACK:third"), item("TRACK:fourth"), item("TRACK:fifth"),
+                item("ANNOUNCEMENT:" + second, MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", second, null));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1, "announcement-test", 4, continuation, now));
+        var snapshot = service.snapshot(viewer, session, now);
+        assertThat(snapshot.deliveredAnnouncementIds()).containsExactlyInAnyOrder(first, second);
+        assertThat(snapshot.deliveredNormalCount()).isEqualTo(5);
+        assertThat(snapshot.normalCountAtLastAnnouncement()).isEqualTo(5);
+        assertThat(snapshot.organicCountAtLastPromotion()).isEqualTo(2);
+        assertThat(snapshot.deliveredPromotionCount()).isEqualTo(1);
+        assertThat(snapshot.nextAbsolutePosition()).isEqualTo(8);
+        assertThat(snapshot.lastItemType()).isEqualTo(MusicianFeedItemType.ANNOUNCEMENT);
+    }
+
+    @Test
+    void earlierSessionsDoNotCreateADailySponsorQuota() {
+        UUID campaign = UUID.randomUUID();
+        UUID creative = UUID.randomUUID();
+        var promotion = new MusicianFeedItemResponse.Promotion(
+                campaign, "Sponsored", "İncele", "/collab");
+        for (int index = 0; index < 4; index++) {
+            UUID previousSession = UUID.randomUUID();
+            transactions.executeWithoutResult(status -> service.recordPage(
+                    viewer, previousSession, now, 1, "musician-v1", 0,
+                    List.of(item("SPONSORED:" + creative, MusicianFeedItemType.SPONSORED,
+                            "STANDALONE", creative, promotion)), now));
+            assertThat(service.snapshot(viewer, previousSession, now).targetKeys())
+                    .contains(MusicianFeedDeliverySnapshot.targetKey("STANDALONE", creative));
+        }
+
+        MusicianFeedDeliverySnapshot freshSession = service.snapshot(viewer, session, now);
+        assertThat(freshSession.campaignIds()).isEmpty();
+        assertThat(freshSession.targetKeys()).isEmpty();
+        assertThat(freshSession.deliveredPromotionCount()).isZero();
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(4);
+    }
+
+    @Test
+    void recentViewsUseOnlyThisViewersQualifiedImpressionsBeforeTheSessionAnchor() throws Exception {
+        UUID priorSession = UUID.randomUUID(), otherViewer = UUID.randomUUID();
+        execute("INSERT INTO tbl_user(id) VALUES ('" + otherViewer + "')");
+        UUID seen = UUID.randomUUID(), prefetched = UUID.randomUUID(), opened = UUID.randomUUID();
+        UUID tooOld = UUID.randomUUID(), atAnchor = UUID.randomUUID(), late = UUID.randomUUID();
+        UUID otherAccount = UUID.randomUUID(), currentSessionTarget = UUID.randomUUID();
+        UUID announcement = UUID.randomUUID(), sponsored = UUID.randomUUID(), completion = UUID.randomUUID();
+        List<MusicianFeedItemResponse> previous = List.of(
+                item("TRACK:seen", MusicianFeedItemType.TRACK, "MEDIA", seen, null),
+                item("TRACK:prefetched", MusicianFeedItemType.TRACK, "MEDIA", prefetched, null),
+                item("TRACK:opened", MusicianFeedItemType.TRACK, "MEDIA", opened, null),
+                item("TRACK:old", MusicianFeedItemType.TRACK, "MEDIA", tooOld, null),
+                item("TRACK:anchor", MusicianFeedItemType.TRACK, "MEDIA", atAnchor, null),
+                item("TRACK:late", MusicianFeedItemType.TRACK, "MEDIA", late, null),
+                item("ANNOUNCEMENT:seen", MusicianFeedItemType.ANNOUNCEMENT, "ANNOUNCEMENT", announcement, null),
+                item("SPONSORED:seen", MusicianFeedItemType.SPONSORED, "MEDIA", sponsored,
+                        new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Open", "/open")),
+                item("PROFILE_COMPLETION:seen", MusicianFeedItemType.PROFILE_COMPLETION, "PROFILE", completion, null));
+        service.recordPage(viewer, priorSession, now.minusSeconds(3600), 1, "history-test", 0, previous, now.minusSeconds(3600));
+        recordHistoryEvent(viewer, "TRACK:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "TRACK:opened", "OPEN", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "TRACK:old", "IMPRESSION", now.minusSeconds(86_400));
+        recordHistoryEvent(viewer, "TRACK:anchor", "IMPRESSION", now);
+        recordHistoryEvent(viewer, "TRACK:late", "IMPRESSION", now.plusNanos(1_000));
+        recordHistoryEvent(viewer, "ANNOUNCEMENT:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "SPONSORED:seen", "IMPRESSION", now.minusSeconds(1));
+        recordHistoryEvent(viewer, "PROFILE_COMPLETION:seen", "IMPRESSION", now.minusSeconds(1));
+        service.recordPage(otherViewer, UUID.randomUUID(), now, 1, "history-test", 0,
+                List.of(item("TRACK:other", MusicianFeedItemType.TRACK, "MEDIA", otherAccount, null)), now);
+        recordHistoryEvent(otherViewer, "TRACK:other", "IMPRESSION", now);
+        service.recordPage(viewer, session, now, 1, "history-test", 0,
+                List.of(item("TRACK:current", MusicianFeedItemType.TRACK, "MEDIA", currentSessionTarget, null)), now);
+        recordHistoryEvent(viewer, "TRACK:current", "IMPRESSION", now);
+
+        Set<String> keys = new HashSet<>();
+        previous.forEach(value -> keys.add(MusicianFeedDeliverySnapshot.targetKey(value.target().type(), value.target().id())));
+        keys.add(MusicianFeedDeliverySnapshot.targetKey("MEDIA", otherAccount));
+        keys.add(MusicianFeedDeliverySnapshot.targetKey("MEDIA", currentSessionTarget));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, keys)).containsExactlyInAnyOrder(
+                MusicianFeedDeliverySnapshot.targetKey("MEDIA", seen), MusicianFeedDeliverySnapshot.targetKey("MEDIA", atAnchor));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now,
+                Set.of(MusicianFeedDeliverySnapshot.targetKey("MEDIA", prefetched)))).isEmpty();
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now.plusSeconds(1), keys))
+                .contains(MusicianFeedDeliverySnapshot.targetKey("MEDIA", late))
+                .doesNotContain(MusicianFeedDeliverySnapshot.targetKey("MEDIA", currentSessionTarget));
+    }
+
+    @Test
+    void expiredDeliveryStillContributesRecentViewsUntilCleanupWithoutExtendingSessionState() {
+        UUID previous = UUID.randomUUID(), target = UUID.randomUUID();
+        Instant deliveredAt = now.minusSeconds(90_000);
+        service.recordPage(viewer, previous, deliveredAt, 1, "history-test", 0,
+                List.of(item("TRACK:expired-history", MusicianFeedItemType.TRACK, "MEDIA", target, null)), deliveredAt);
+        recordHistoryEvent(viewer, "TRACK:expired-history", "IMPRESSION", now.minusSeconds(7200));
+        String key = MusicianFeedDeliverySnapshot.targetKey("MEDIA", target);
+
+        assertThat(service.snapshot(viewer, previous, now).recentOrganicHistory()).isEmpty();
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, Set.of(key))).containsExactly(key);
+        jdbc.update("delete from tbl_musician_feed_delivery where viewer_user_id=:viewer and feed_session_id=:session",
+                Map.of("viewer", viewer, "session", previous));
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, now, Set.of(key))).isEmpty();
+        assertThat(number("select count(*) from tbl_musician_feed_telemetry_event")).isZero();
+    }
+
+    @Test
+    void recentViewIndexBuildsIdempotentlyOutsideATransaction() throws Exception {
+        String migration = Files.readString(Path.of("scripts/db/2026-09-14-musician-feed-recent-views.sql"));
+        String withoutComments = migration.lines().filter(line -> !line.stripLeading().startsWith("--"))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        for (int repeat = 0; repeat < 2; repeat++) {
+            for (String statement : withoutComments.split(";")) if (!statement.isBlank()) execute(statement);
+        }
+        assertThat(number("select count(*) from pg_index i join pg_class c on c.oid=i.indexrelid "
+                + "where c.relname='idx_musician_feed_impression_viewer_time' and i.indisvalid and i.indisready"))
+                .isEqualTo(1);
+        assertThat(number("select count(*) from soundconnect_schema_migrations "
+                + "where migration_id='2026-09-14-musician-feed-recent-views'")) .isEqualTo(1);
+    }
+
+    private void recordHistoryEvent(UUID eventViewer, String itemId, String eventType, Instant recordedAt) {
+        jdbc.update("""
+                insert into tbl_musician_feed_telemetry_event(
+                    id,viewer_user_id,client_event_id,delivery_id,event_type,recorded_at)
+                select :eventId,:viewer,:clientId,id,:eventType,:recordedAt
+                from tbl_musician_feed_delivery where viewer_user_id=:viewer and item_id=:itemId
+                """, Map.of("eventId", UUID.randomUUID(), "viewer", eventViewer,
+                "clientId", UUID.randomUUID(), "eventType", eventType,
+                "recordedAt", Timestamp.from(recordedAt), "itemId", itemId));
+    }
+
+    @Test
+    void snapshotUsesMinimalProjectionAndPreservesAllMixerState() {
+        String projection = MusicianFeedDeliveryService.SNAPSHOT_SQL.substring(0,
+                MusicianFeedDeliveryService.SNAPSHOT_SQL.toLowerCase(Locale.ROOT).indexOf("from"))
+                .toLowerCase(Locale.ROOT);
+        assertThat(projection)
+                .contains("item_id", "item_type", "feed_lane", "target_type", "target_id",
+                        "absolute_position", "campaign_id", "author_profile_type", "author_profile_id")
+                .doesNotContain("*", "evidence_json", "feedback_capabilities",
+                        "reason_code", "schema_version", "algorithm_version", "delivered_at",
+                        "expires_at", "purge_after");
+
+        UUID firstMedia = UUID.randomUUID();
+        UUID commentMedia = UUID.randomUUID();
+        UUID collab = UUID.randomUUID();
+        UUID profile = UUID.randomUUID();
+        UUID campaign = UUID.randomUUID();
+        var promotion = new MusicianFeedItemResponse.Promotion(
+                campaign, "Sponsored", "Başvur", "/collab");
+        List<MusicianFeedItemResponse> items = List.of(
+                item("TRACK:one", MusicianFeedItemType.TRACK, "MEDIA", firstMedia, null),
+                item("ACTIVITY_COMMENT:one", MusicianFeedItemType.ACTIVITY_COMMENT,
+                        "MEDIA", commentMedia, null),
+                item("COLLAB:one", MusicianFeedItemType.COLLAB, "COLLAB", collab, promotion),
+                item("PROFILE:one", MusicianFeedItemType.PROFILE, "PROFILE", profile, null));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, items, List.of(MusicianFeedLane.FOLLOWING,
+                        MusicianFeedLane.FOLLOWING, MusicianFeedLane.RELEVANT_OPPORTUNITY,
+                        MusicianFeedLane.GENERAL_DISCOVERY), now));
+
+        MusicianFeedDeliverySnapshot snapshot = service.snapshot(viewer, session, now);
+
+        assertThat(snapshot.itemIds()).containsExactlyInAnyOrder(
+                "TRACK:one", "ACTIVITY_COMMENT:one", "COLLAB:one", "PROFILE:one");
+        assertThat(snapshot.targetKeys()).containsExactlyInAnyOrder(
+                MusicianFeedDeliverySnapshot.targetKey("MEDIA", firstMedia),
+                MusicianFeedDeliverySnapshot.targetKey("MEDIA", commentMedia),
+                MusicianFeedDeliverySnapshot.targetKey("COLLAB", collab),
+                MusicianFeedDeliverySnapshot.targetKey("PROFILE", profile));
+        assertThat(snapshot.organicTargetKeys())
+                .contains(MusicianFeedDeliverySnapshot.targetKey("MEDIA", firstMedia),
+                        MusicianFeedDeliverySnapshot.targetKey("COLLAB", collab),
+                        MusicianFeedDeliverySnapshot.targetKey("PROFILE", profile))
+                .doesNotContain(MusicianFeedDeliverySnapshot.targetKey("MEDIA", commentMedia));
+        assertThat(snapshot.promotedTargetKeys())
+                .containsExactly(MusicianFeedDeliverySnapshot.targetKey("COLLAB", collab));
+        assertThat(snapshot.campaignIds()).contains(campaign);
+        assertThat(snapshot.nextAbsolutePosition()).isEqualTo(4);
+        assertThat(snapshot.deliveredPromotionCount()).isEqualTo(1);
+        assertThat(snapshot.organicCountAtLastPromotion()).isEqualTo(2);
+        assertThat(snapshot.lastItemPromoted()).isFalse();
+        assertThat(snapshot.lastItemType()).isEqualTo(MusicianFeedItemType.PROFILE);
+        assertThat(snapshot.lastItemLane()).isEqualTo(MusicianFeedLane.GENERAL_DISCOVERY);
+    }
+
+    @Test
+    void snapshotCountsNativeModuleShareSubtypesForSessionFairness() {
+        List<MusicianFeedItemResponse> items = List.of(
+                item("OVERTHINKING_PROFILE_SHARE:one",
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        "OVERTHINKING_PROFILE_SHARE", UUID.randomUUID(), null),
+                item("TABLEGROUP_PROFILE_SHARE:one",
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                        "TABLE_GROUP_POST", UUID.randomUUID(), null),
+                item("TABLEGROUP_PROFILE_SHARE:two",
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                        "TABLE_GROUP_POST", UUID.randomUUID(), null));
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, items, List.of(MusicianFeedLane.MODULE_SHARE,
+                        MusicianFeedLane.MODULE_SHARE, MusicianFeedLane.MODULE_SHARE), now));
+
+        MusicianFeedDeliverySnapshot snapshot = service.snapshot(viewer, session, now);
+
+        assertThat(snapshot.deliveredOverthinkingShareCount()).isEqualTo(1);
+        assertThat(snapshot.deliveredTableGroupShareCount()).isEqualTo(2);
+    }
+
+    @Test
+    void concurrentReplayOfTheSameSessionPositionHasOneWinnerAndOneControlledRejection() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<Object> load = () -> {
+            ready.countDown();
+            start.await(5, TimeUnit.SECONDS);
+            try {
+                return transactions.execute(status -> service.recordPage(viewer, session, now, 1,
+                        "musician-v1", 0, List.of(item("TRACK:" + UUID.randomUUID())), now));
+            } catch (RuntimeException failure) {
+                return failure;
+            }
+        };
+        try {
+            Future<Object> first = executor.submit(load);
+            Future<Object> second = executor.submit(load);
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<Object> results = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(List.class::isInstance)).hasSize(1);
+            assertThat(results.stream().filter(SoundConnectException.class::isInstance)).hasSize(1);
+            assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void sessionCapacityFailsClosedBeforeWritingBeyondTheBound() {
+        properties.setDefaultPageSize(1);
+        properties.setMaxPageSize(1);
+        properties.setMaxSessionDeliveries(1);
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, List.of(item("TRACK:one")), now));
+
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> service.recordPage(
+                viewer, session, now, 1, "musician-v1", 1, List.of(item("TRACK:two")), now)))
+                .isInstanceOf(SoundConnectException.class);
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+    }
+
+    @Test
+    void telemetryReplayMustMatchBothEventAndDeliveryIdentity() {
+        List<MusicianFeedItemResponse> delivered = transactions.execute(status -> service.recordPage(
+                viewer, session, now, 1, "musician-v1", 0,
+                List.of(item("TRACK:one"), item("TRACK:two")), now));
+        MusicianFeedTelemetryService telemetry = new MusicianFeedTelemetryService(jdbc, service,
+                mock(MusicianFeedViewerGuard.class), properties, Clock.fixed(now, ZoneOffset.UTC));
+        UUID eventId = UUID.randomUUID();
+        var first = new MusicianFeedTelemetryRequest(eventId, delivered.get(0).impressionToken(),
+                MusicianFeedTelemetryEventType.IMPRESSION, now);
+
+        assertThat(telemetry.record(viewer, first).duplicate()).isFalse();
+        assertThat(telemetry.record(viewer, first).duplicate()).isTrue();
+        var sameDeliveryAndType = new MusicianFeedTelemetryRequest(UUID.randomUUID(),
+                delivered.get(0).impressionToken(), MusicianFeedTelemetryEventType.IMPRESSION, now);
+        MusicianFeedTelemetryResponse coalesced = telemetry.record(viewer, sameDeliveryAndType);
+        assertThat(coalesced.duplicate()).isTrue();
+        assertThat(coalesced.clientEventId()).isEqualTo(sameDeliveryAndType.clientEventId());
+        assertThat(number("select count(*) from tbl_musician_feed_telemetry_event "
+                + "where event_type='IMPRESSION'")).isEqualTo(1);
+
+        var differentType = new MusicianFeedTelemetryRequest(UUID.randomUUID(),
+                delivered.get(0).impressionToken(), MusicianFeedTelemetryEventType.OPEN, now);
+        assertThat(telemetry.record(viewer, differentType).duplicate()).isFalse();
+        var spoofedReplay = new MusicianFeedTelemetryRequest(eventId, delivered.get(1).impressionToken(),
+                MusicianFeedTelemetryEventType.IMPRESSION, now);
+        assertThatThrownBy(() -> telemetry.record(viewer, spoofedReplay))
+                .isInstanceOf(SoundConnectException.class);
+    }
+
+    @Test
+    void concurrentRotatingTelemetryIdsConvergeOnOneDeliveryEvent() throws Exception {
+        MusicianFeedItemResponse delivered = transactions.execute(status -> service.recordPage(
+                viewer, session, now, 1, "musician-v1", 0, List.of(item("TRACK:one")), now)).getFirst();
+        MusicianFeedTelemetryService telemetry = new MusicianFeedTelemetryService(jdbc, service,
+                mock(MusicianFeedViewerGuard.class), properties, Clock.fixed(now, ZoneOffset.UTC));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<MusicianFeedTelemetryResponse> record = () -> {
+            ready.countDown();
+            start.await(5, TimeUnit.SECONDS);
+            return telemetry.record(viewer, new MusicianFeedTelemetryRequest(UUID.randomUUID(),
+                    delivered.impressionToken(), MusicianFeedTelemetryEventType.IMPRESSION, now));
+        };
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<MusicianFeedTelemetryResponse> first = executor.submit(record);
+            Future<MusicianFeedTelemetryResponse> second = executor.submit(record);
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            List<MusicianFeedTelemetryResponse> responses = List.of(
+                    first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(responses).extracting(MusicianFeedTelemetryResponse::duplicate)
+                    .containsExactlyInAnyOrder(false, true);
+            assertThat(responses).extracting(MusicianFeedTelemetryResponse::eventId)
+                    .containsOnly(responses.getFirst().eventId());
+            assertThat(number("select count(*) from tbl_musician_feed_telemetry_event "
+                    + "where event_type='IMPRESSION'")).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void continuationPageReplayPreservesTheExactResponseAndValidDeliveryTokens() {
+        String fingerprint = "a".repeat(43);
+        List<MusicianFeedItemResponse> items = List.of(item("TRACK:one"), item("TRACK:two"));
+        MusicianFeedPageResponse committed = transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, fingerprint, 2,
+                Set.of(MusicianFeedItemType.TRACK), items,
+                List.of(MusicianFeedLane.FOLLOWING, MusicianFeedLane.FOLLOWING),
+                "signed.next.cursor", true, now));
+
+        MusicianFeedPageResponse replayed = service.requireReplay(viewer, session, 0,
+                fingerprint, 2, Set.of(MusicianFeedItemType.TRACK), now.plusSeconds(1));
+
+        ObjectMapper wireMapper = new ObjectMapper().findAndRegisterModules();
+        assertThat(wireMapper.<com.fasterxml.jackson.databind.JsonNode>valueToTree(replayed))
+                .isEqualTo(wireMapper.valueToTree(committed));
+        assertThat(replayed.generatedAt()).isEqualTo(now);
+        assertThat(replayed.nextCursor()).isEqualTo("signed.next.cursor");
+        verify(replayVisibility).requireVisible(eq(viewer), any(MusicianFeedPageResponse.class),
+                eq(now.plusSeconds(1)));
+        assertThat(replayed.items()).extracting(MusicianFeedItemResponse::position)
+                .containsExactly(0L, 1L);
+        replayed.items().forEach(value -> assertThat(service.require(value.impressionToken(), viewer,
+                value.id(), now.plusSeconds(1)).itemId()).isEqualTo(value.id()));
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0,
+                fingerprint, 1, Set.of(MusicianFeedItemType.TRACK), now.plusSeconds(1)))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.BAD_REQUEST));
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0,
+                fingerprint, 2, Set.of(MusicianFeedItemType.PROFILE_MEDIA), now.plusSeconds(1)))
+                .isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0,
+                "z".repeat(43), 2, Set.of(MusicianFeedItemType.TRACK), now.plusSeconds(1)))
+                .isInstanceOf(SoundConnectException.class);
+    }
+
+    @Test
+    void revokedReplayRequestsRefreshOnBothReadAndCompetingCommitPaths() {
+        String fingerprint = "r".repeat(43);
+        transactions.executeWithoutResult(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:revoked")),
+                List.of(MusicianFeedLane.FOLLOWING), null, false, now));
+        Instant later = now.plusSeconds(1);
+        doThrow(new SoundConnectException(ErrorType.MUSICIAN_FEED_CURSOR_INVALID))
+                .when(replayVisibility).requireVisible(eq(viewer), any(MusicianFeedPageResponse.class), eq(later));
+
+        assertThatThrownBy(() -> service.replay(viewer, session, 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), later))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), later))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThatThrownBy(() -> transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:new-draft")),
+                List.of(MusicianFeedLane.FOLLOWING), null, false, later)))
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.MUSICIAN_FEED_CURSOR_INVALID));
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+        assertThat(number("select count(*) from tbl_musician_feed_page_replay")).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentExactContinuationCallsConvergeOnOneCommittedPage() throws Exception {
+        String fingerprint = "b".repeat(43);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<MusicianFeedPageResponse> firstCall = () -> {
+            ready.countDown();
+            start.await(5, TimeUnit.SECONDS);
+            return transactions.execute(status -> service.recordPageAndReplay(
+                    viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                    Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:first-draft")),
+                    List.of(MusicianFeedLane.FOLLOWING), null, false, now));
+        };
+        Callable<MusicianFeedPageResponse> secondCall = () -> {
+            ready.countDown();
+            start.await(5, TimeUnit.SECONDS);
+            return transactions.execute(status -> service.recordPageAndReplay(
+                    viewer, session, now, 1, "musician-v1", 0, fingerprint, 1,
+                    Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:second-draft")),
+                    List.of(MusicianFeedLane.FOLLOWING), null, false, now.plusMillis(1)));
+        };
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<MusicianFeedPageResponse> first = executor.submit(firstCall);
+            Future<MusicianFeedPageResponse> second = executor.submit(secondCall);
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            MusicianFeedPageResponse left = first.get(10, TimeUnit.SECONDS);
+            MusicianFeedPageResponse right = second.get(10, TimeUnit.SECONDS);
+
+            ObjectMapper wireMapper = new ObjectMapper().findAndRegisterModules();
+            assertThat(wireMapper.<com.fasterxml.jackson.databind.JsonNode>valueToTree(right))
+                    .isEqualTo(wireMapper.valueToTree(left));
+            assertThat(left.items()).extracting(MusicianFeedItemResponse::id)
+                    .allMatch(id -> id.equals("TRACK:first-draft") || id.equals("TRACK:second-draft"));
+            assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+            assertThat(number("select count(*) from tbl_musician_feed_page_replay")).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void replayAndDeliveryCommitRollBackTogetherAndEmptyTerminalReplayIsBounded() {
+        properties.setCursorTtl(java.time.Duration.ZERO);
+        assertThatThrownBy(() -> transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, "c".repeat(43), 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(item("TRACK:rollback")),
+                List.of(MusicianFeedLane.FOLLOWING), null, false, now)))
+                .isInstanceOf(SoundConnectException.class);
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isZero();
+        assertThat(number("select count(*) from tbl_musician_feed_page_replay")).isZero();
+
+        properties.setCursorTtl(java.time.Duration.ofHours(24));
+        MusicianFeedPageResponse terminal = transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, "d".repeat(43), 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(), List.of(), null, false, now));
+        MusicianFeedPageResponse replayed = service.requireReplay(viewer, session, 0,
+                "d".repeat(43), 1, Set.of(MusicianFeedItemType.TRACK), now.plusSeconds(1));
+        ObjectMapper wireMapper = new ObjectMapper().findAndRegisterModules();
+        assertThat(wireMapper.<com.fasterxml.jackson.databind.JsonNode>valueToTree(replayed))
+                .isEqualTo(wireMapper.valueToTree(terminal));
+        assertThatThrownBy(() -> service.requireReplay(viewer, session, 0, "d".repeat(43), 1,
+                Set.of(MusicianFeedItemType.TRACK), now.plus(java.time.Duration.ofHours(24))))
+                .isInstanceOf(SoundConnectException.class);
+    }
+
+    @Test
+    void staleEmptyTerminalRequestCannotJournalAfterTheLedgerAdvanced() {
+        transactions.executeWithoutResult(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, List.of(item("TRACK:already-delivered")), now));
+
+        assertThatThrownBy(() -> transactions.execute(status -> service.recordPageAndReplay(
+                viewer, session, now, 1, "musician-v1", 0, "f".repeat(43), 1,
+                Set.of(MusicianFeedItemType.TRACK), List.of(), List.of(), null, false,
+                now.plusMillis(1))))
+                .isInstanceOf(SoundConnectException.class);
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isEqualTo(1);
+        assertThat(number("select count(*) from tbl_musician_feed_page_replay")).isZero();
+    }
+
+    private MusicianFeedItemResponse item(String id) {
+        UUID profileId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        var author = new MusicianFeedItemResponse.Author(UUID.randomUUID(), profileId,
+                "MUSICIAN", "artist", "Artist", null, true);
+        return new MusicianFeedItemResponse(id, MusicianFeedItemType.TRACK, 1, now,
+                new MusicianFeedItemResponse.Reason(MusicianFeedReasonCode.FOLLOWING_PUBLICATION,
+                        List.of(author), 0), author, new MusicianFeedItemResponse.Target("MEDIA", targetId),
+                null, null, List.of(MusicianFeedFeedbackAction.HIDE, MusicianFeedFeedbackAction.REPORT),
+                Map.of("trackId", targetId));
+    }
+
+    private MusicianFeedItemResponse item(String id, MusicianFeedItemType type, String targetType,
+                                          UUID targetId, MusicianFeedItemResponse.Promotion promotion) {
+        UUID profileId = UUID.randomUUID();
+        var author = new MusicianFeedItemResponse.Author(UUID.randomUUID(), profileId,
+                "MUSICIAN", "artist", "Artist", null, true);
+        MusicianFeedReasonCode reason = promotion == null
+                ? MusicianFeedReasonCode.FOLLOWING_PUBLICATION : MusicianFeedReasonCode.SPONSORED;
+        return new MusicianFeedItemResponse(id, type, 1, now,
+                new MusicianFeedItemResponse.Reason(reason, List.of(author), 0), author,
+                new MusicianFeedItemResponse.Target(targetType, targetId), null, promotion,
+                List.of(MusicianFeedFeedbackAction.HIDE), Map.of("targetId", targetId));
+    }
+
+    private void execute(String sql) throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            statement.execute(sql);
+        }
+    }
+
+    private long number(String sql) {
+        try (Connection connection = connection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            rows.next();
+            return rows.getLong(1);
+        } catch (SQLException failure) {
+            throw new AssertionError(failure);
+        }
+    }
+
+    private Connection connection() throws SQLException {
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    }
+}

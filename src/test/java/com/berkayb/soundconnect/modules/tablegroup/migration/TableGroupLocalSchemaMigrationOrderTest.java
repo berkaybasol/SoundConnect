@@ -63,6 +63,6 @@ class TableGroupLocalSchemaMigrationOrderTest {
 		assertThat(devScript.indexOf(listenerErasure)).isLessThan(devScript.indexOf(tableProfileShares));
 		assertThat(devScript.indexOf(tableProfileShares)).isLessThan(devScript.indexOf(tableProfileHistory));
 		assertThat(devScript).contains(
-				"Local Studio, Collab, TableGroup, listener-profile, event-consent, performer-calendar, and event-publication schemas are ready.");
+                "Local application schemas, including push delivery, are ready.");
 	}
 }

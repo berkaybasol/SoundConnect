@@ -17,8 +17,14 @@ public record TableGroupParticipantDto(
 		String username, //eklendi
 		String profilePictureUrl, //eklendi
 		@JsonInclude(JsonInclude.Include.NON_NULL)
-		ListenerVisibilityMode visibilityMode
+		ListenerVisibilityMode visibilityMode,
+		@JsonInclude(JsonInclude.Include.NON_NULL) UUID applicationId
 ) {
+	public TableGroupParticipantDto(UUID userId, Instant joinedAt, ParticipantStatus status, String joinNote,
+		String username, String profilePictureUrl, ListenerVisibilityMode visibilityMode) {
+		this(userId, joinedAt, status, joinNote, username, profilePictureUrl, visibilityMode, null);
+	}
+
 	public TableGroupParticipantDto {
 		visibilityMode = ghostOnly(visibilityMode);
 	}

@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.notification.config;
 import com.berkayb.soundconnect.modules.collab.outbox.CollabNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.event.performer.outbox.EventPerformerNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.overthinking.outbox.OverthinkingNotificationOutboxProperties;
+import com.berkayb.soundconnect.modules.studio.reservation.outbox.StudioReservationNotificationOutboxProperties;
 import com.berkayb.soundconnect.modules.tablegroup.notification.outbox.TableGroupNotificationOutboxProperties;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import org.junit.jupiter.api.Test;
@@ -25,12 +26,18 @@ class NotificationOutboxLeaseConfigurationValidatorTest {
         collab.setLeaseDuration(Duration.ofSeconds(10));
         tableGroup.setLeaseDuration(Duration.ofSeconds(10));
         eventPerformer.setLeaseDuration(Duration.ofSeconds(10));
+        OverthinkingNotificationOutboxProperties overthinking = new OverthinkingNotificationOutboxProperties();
+        overthinking.setLeaseDuration(Duration.ofSeconds(10));
+        StudioReservationNotificationOutboxProperties studio = new StudioReservationNotificationOutboxProperties();
+        studio.setLeaseDuration(Duration.ofSeconds(10));
 
         try (AnnotationConfigApplicationContext context = context(
                 publisher,
                 collab,
                 tableGroup,
-                eventPerformer
+                eventPerformer,
+                overthinking,
+                studio
         )) {
             assertThatCode(context::refresh).doesNotThrowAnyException();
         }
@@ -94,6 +101,45 @@ class NotificationOutboxLeaseConfigurationValidatorTest {
         }
     }
 
+    @Test
+    void startupRejectsAStudioLeaseThatCanExpireWhileWaitingForConfirm() {
+        StudioReservationNotificationOutboxProperties studio = new StudioReservationNotificationOutboxProperties();
+        studio.setLeaseDuration(Duration.ofSeconds(9));
+        assertStudioLeaseRejected(studio);
+    }
+
+    @Test
+    void startupRejectsAMissingStudioLease() {
+        StudioReservationNotificationOutboxProperties studio = new StudioReservationNotificationOutboxProperties();
+        studio.setLeaseDuration(null);
+        assertStudioLeaseRejected(studio);
+    }
+
+    private static void assertStudioLeaseRejected(StudioReservationNotificationOutboxProperties studio) {
+        try (AnnotationConfigApplicationContext context = context(
+                publisher(Duration.ofSeconds(9)), new CollabNotificationOutboxProperties(),
+                new TableGroupNotificationOutboxProperties(), new EventPerformerNotificationOutboxProperties(),
+                new OverthinkingNotificationOutboxProperties(), studio
+        )) {
+            assertThatThrownBy(context::refresh)
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("app.notification.studio-reservation-outbox.lease-duration must be at least "
+                            + "app.messaging.notification.publisher-confirm-timeout + 1s");
+        }
+    }
+
+    @Test
+    void startupRejectsFollowLeaseThatCanExpireDuringConfirm() {
+        var follow=new com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxProperties();
+        follow.setLeaseDuration(Duration.ofSeconds(9));
+        try(var context=context(publisher(Duration.ofSeconds(9)),new CollabNotificationOutboxProperties(),
+                new TableGroupNotificationOutboxProperties(),new EventPerformerNotificationOutboxProperties())) {
+            context.registerBean(com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxProperties.class,() -> follow);
+            assertThatThrownBy(context::refresh).hasRootCauseInstanceOf(IllegalStateException.class)
+                .hasRootCauseMessage("app.notification.follow-outbox.lease-duration must be at least app.messaging.notification.publisher-confirm-timeout + 1s");
+        }
+    }
+
     private static NotificationPublisherProperties publisher(Duration timeout) {
         NotificationPublisherProperties properties = new NotificationPublisherProperties();
         properties.setPublisherConfirmTimeout(timeout);
@@ -131,12 +177,26 @@ class NotificationOutboxLeaseConfigurationValidatorTest {
             EventPerformerNotificationOutboxProperties eventPerformer,
             OverthinkingNotificationOutboxProperties overthinking
     ) {
+        return context(publisher, collab, tableGroup, eventPerformer, overthinking,
+                new StudioReservationNotificationOutboxProperties());
+    }
+
+    private static AnnotationConfigApplicationContext context(
+            NotificationPublisherProperties publisher,
+            CollabNotificationOutboxProperties collab,
+            TableGroupNotificationOutboxProperties tableGroup,
+            EventPerformerNotificationOutboxProperties eventPerformer,
+            OverthinkingNotificationOutboxProperties overthinking,
+            StudioReservationNotificationOutboxProperties studio
+    ) {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
         context.registerBean(NotificationPublisherProperties.class, () -> publisher);
         context.registerBean(CollabNotificationOutboxProperties.class, () -> collab);
         context.registerBean(TableGroupNotificationOutboxProperties.class, () -> tableGroup);
         context.registerBean(EventPerformerNotificationOutboxProperties.class, () -> eventPerformer);
         context.registerBean(OverthinkingNotificationOutboxProperties.class, () -> overthinking);
+        context.registerBean(StudioReservationNotificationOutboxProperties.class, () -> studio);
+        context.registerBean(com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxProperties.class);
         context.register(NotificationOutboxLeaseConfigurationValidator.class);
         return context;
     }

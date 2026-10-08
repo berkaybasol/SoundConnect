@@ -5,5 +5,11 @@ import java.util.UUID;
 
 public record UserProfilesResolveResponseDto(
 		UUID userId,
-		List<UserProfileTargetDto> profiles
-) {}
+		List<UserProfileTargetDto> profiles,
+		@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+		String accessRestriction
+) {
+	public UserProfilesResolveResponseDto(UUID userId, List<UserProfileTargetDto> profiles) {
+		this(userId, profiles, null);
+	}
+}

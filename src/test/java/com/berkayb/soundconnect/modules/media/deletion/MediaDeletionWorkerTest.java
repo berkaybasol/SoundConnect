@@ -178,4 +178,27 @@ class MediaDeletionWorkerTest {
 		verifyNoInteractions(storageClient);
 		verifyNoInteractions(mediaAssetReferenceGuard);
 	}
+
+	@Test
+	void privateImageProducerGraceAndFinalSweepCoverTheImmutableThumbnail() {
+		UUID id = UUID.randomUUID();
+		String key = "protected/private-verified/media/" + id + "/source.jpg";
+		LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+		when(stateService.getPendingTarget(id)).thenReturn(Optional.of(
+				new MediaDeletionStateService.DeletionTarget(id, key, MediaKind.IMAGE, MediaVisibility.PRIVATE,
+						now.minusHours(2), now.minusSeconds(5), now.minusSeconds(5))), Optional.of(
+				new MediaDeletionStateService.DeletionTarget(id, key, MediaKind.IMAGE, MediaVisibility.PRIVATE,
+						now.minusHours(3), now.minusHours(2), now.minusHours(2))));
+		when(presignedUploadWriteWindow.isSafeToDelete(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+		var worker = new MediaDeletionWorker(stateService, storageClient, mediaPolicy,
+				presignedUploadWriteWindow, mediaAssetReferenceGuard);
+
+		worker.delete(id);
+		verifyNoInteractions(storageClient, mediaAssetReferenceGuard);
+		worker.delete(id);
+		verify(storageClient).deleteObject(key.replace("source.jpg", "thumbnail.jpg"));
+		verify(storageClient).deleteObject(key);
+		verify(mediaAssetReferenceGuard).assertNotReferenced(id);
+		verify(stateService).finish(id);
+	}
 }

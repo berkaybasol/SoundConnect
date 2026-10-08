@@ -7,5 +7,5 @@ import java.util.UUID;
 public interface EngagementTargetValidator {
 	// verilen targetType ve targetId sistemde var mi kontrol eder. eger yoksa exception firlatir
 	void validateExists(EngagementTargetType targetType, UUID targedId);
-	
+	void validateExists(UUID viewerId, EngagementTargetType targetType, UUID targetId);
 }

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.follow.controller;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
@@ -60,7 +62,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // (opsiyonel) sınıf bitince context’i at → daha da izole
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("web")
+@H2NotificationIdentityTestBoundary
 class FollowControllerTest {
+
+    // This H2 HTTP contract fixture does not emulate PostgreSQL's durable INSERT.
+    // Real follow+intent transactions are covered by FollowNotificationOutboxPostgresRabbitIT.
+    @MockitoBean com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService notificationOutbox;
 	
 	@Autowired MockMvc mockMvc;
 	@Autowired UserRepository userRepository;

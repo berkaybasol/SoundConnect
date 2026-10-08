@@ -36,6 +36,28 @@ public class FfmpegService {
 
 	private final TranscodeProperties props;
 
+    /** One normalized MP4 for protected playback, using the existing process and disk budgets. */
+    public void generateProgressive(Path input, Path output) throws IOException, InterruptedException {
+        Files.createDirectories(output.getParent());
+        runCommand(buildProgressiveCommand(input, output), output.getParent(), input.getParent(), List.of(output));
+        assertOutputBudgets(input.getParent(), List.of(output));
+    }
+
+    List<String> buildProgressiveCommand(Path input, Path output) throws IOException {
+        TranscodeVariant variant = props.getLadder().stream()
+                .filter(candidate -> candidate.getHeight() <= 720)
+                .max(java.util.Comparator.comparingInt(TranscodeVariant::getHeight))
+                .orElseGet(() -> props.getLadder().getFirst());
+        int height = Math.min(720, variant.getHeight());
+        return List.of(props.getFfmpegBinary(), "-y", "-t", String.valueOf(props.getMaxDurationSeconds()),
+                "-i", input.toAbsolutePath().toString(), "-t", String.valueOf(props.getMaxDurationSeconds()),
+                "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=-2:trunc(min(ih\\," + height + ")/2)*2",
+                "-c:v", "libx264", "-preset", props.getPreset(), "-crf", String.valueOf(props.getCrf()),
+                "-pix_fmt", "yuv420p", "-b:v", variant.getVideoBitrate(), "-maxrate", variant.getVideoBitrate(),
+                "-bufsize", doubledBitrate(variant.getVideoBitrate()), "-c:a", "aac", "-b:a", variant.getAudioBitrate(),
+                "-movflags", "+faststart", "-f", "mp4", output.toAbsolutePath().toString());
+    }
+
 	/** Generates every configured HLS variant and the master playlist. */
 	public void generateHlsLadder(Path input, Path outDir) throws IOException, InterruptedException {
 		Files.createDirectories(outDir);
@@ -255,7 +277,9 @@ public class FfmpegService {
 			int width = (int) (Math.round(height * 16.0 / 9.0) / 2) * 2;
 			content.append("#EXT-X-STREAM-INF:BANDWIDTH=").append(bandwidth)
 					.append(",RESOLUTION=").append(width).append('x').append(height)
-					.append(",CODECS=\"avc1.42E01E,mp4a.40.2\"\n")
+					// CODECS is optional: let the player inspect the encoded tracks.
+					// A fixed value invents AAC on video-only inputs and guesses AVC profile/level.
+					.append('\n')
 					.append(height).append("p/index.m3u8\n");
 		}
 

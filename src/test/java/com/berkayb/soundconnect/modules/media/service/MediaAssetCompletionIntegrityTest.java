@@ -15,7 +15,10 @@ import com.berkayb.soundconnect.modules.media.storage.StorageObjectMetadata;
 import com.berkayb.soundconnect.modules.media.storage.PresignedUploadWriteWindow;
 import com.berkayb.soundconnect.modules.media.verification.MediaUploadVerificationCoordinator;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
 import com.berkayb.soundconnect.modules.profile.ProducerProfile.repository.ProducerProfileRepository;
@@ -43,7 +46,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class MediaAssetCompletionIntegrityTest {
 	@Mock MediaAssetRepository mediaAssetRepository;
-	@Mock BandRepository bandRepository;
+	@Mock BandMemberRepository bandMemberRepository;
 	@Mock VenueRepository venueRepository;
 	@Mock MusicianProfileRepository musicianProfileRepository;
 	@Mock ProducerProfileRepository producerProfileRepository;
@@ -195,6 +198,68 @@ class MediaAssetCompletionIntegrityTest {
 		verifyNoInteractions(storageClient, mediaPolicy, applicationEventPublisher);
 		verify(mediaUploadVerificationCoordinator).complete(
 				asset.getId(), MediaOwnerType.USER, ownerId);
+	}
+
+	@Test
+	void completeUploadAuthorizesActiveBandManagerWithoutTraversingBandAggregate() {
+		UUID actingUserId = UUID.randomUUID();
+		UUID bandId = UUID.randomUUID();
+		MediaAsset bandAsset = MediaAsset.builder()
+				.id(UUID.randomUUID())
+				.kind(MediaKind.IMAGE)
+				.status(MediaStatus.UPLOADING)
+				.visibility(MediaVisibility.PUBLIC)
+				.ownerType(MediaOwnerType.BAND)
+				.ownerId(bandId)
+				.mimeType("image/png")
+				.size(128L)
+				.storageKey("quarantine/media/band/avatar.png")
+				.build();
+		BandMember membership = BandMember.builder()
+				.status(BandMemberShipStatus.ACTIVE)
+				.bandRole(BandRole.MANAGER)
+				.build();
+		when(mediaAssetRepository.findById(bandAsset.getId())).thenReturn(Optional.of(bandAsset));
+		when(bandMemberRepository.findByBandIdAndUserId(bandId, actingUserId))
+				.thenReturn(Optional.of(membership));
+		when(mediaUploadVerificationCoordinator.complete(
+				bandAsset.getId(), MediaOwnerType.BAND, bandId)).thenReturn(bandAsset);
+
+		assertThat(service.completeUpload(actingUserId, bandAsset.getId())).isSameAs(bandAsset);
+
+		verify(bandMemberRepository).findByBandIdAndUserId(bandId, actingUserId);
+		verify(mediaUploadVerificationCoordinator).complete(
+				bandAsset.getId(), MediaOwnerType.BAND, bandId);
+	}
+
+	@Test
+	void completeUploadRejectsBandMemberWithoutManagementRole() {
+		UUID actingUserId = UUID.randomUUID();
+		UUID bandId = UUID.randomUUID();
+		MediaAsset bandAsset = MediaAsset.builder()
+				.id(UUID.randomUUID())
+				.kind(MediaKind.IMAGE)
+				.status(MediaStatus.UPLOADING)
+				.visibility(MediaVisibility.PUBLIC)
+				.ownerType(MediaOwnerType.BAND)
+				.ownerId(bandId)
+				.mimeType("image/png")
+				.size(128L)
+				.storageKey("quarantine/media/band/avatar.png")
+				.build();
+		BandMember membership = BandMember.builder()
+				.status(BandMemberShipStatus.ACTIVE)
+				.bandRole(BandRole.MEMBER)
+				.build();
+		when(mediaAssetRepository.findById(bandAsset.getId())).thenReturn(Optional.of(bandAsset));
+		when(bandMemberRepository.findByBandIdAndUserId(bandId, actingUserId))
+				.thenReturn(Optional.of(membership));
+
+		assertThatThrownBy(() -> service.completeUpload(actingUserId, bandAsset.getId()))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS));
+
+		verifyNoInteractions(mediaUploadVerificationCoordinator);
 	}
 
 	@Test

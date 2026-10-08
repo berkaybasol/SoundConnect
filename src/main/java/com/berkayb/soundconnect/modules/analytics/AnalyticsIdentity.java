@@ -31,8 +31,11 @@ public class AnalyticsIdentity {
     public byte[] viewer(UUID venueId, String actor) { return digest("viewer|" + venueId + "|" + actor); }
     public byte[] receiptActor(String actor) { return digest("receipt-actor|" + actor); }
     public byte[] payload(UUID clientId, AnalyticsRequest.Observation observation) {
-        return digest("payload|" + clientId + "|" + observation.id() + "|" + observation.type() + "|"
-                + observation.eventId() + "|" + observation.venueId() + "|" + observation.sourceEventId() + "|" + observation.observedAt());
+        String legacy = "payload|" + clientId + "|" + observation.id() + "|" + observation.type() + "|"
+                + observation.eventId() + "|" + observation.venueId() + "|" + observation.sourceEventId() + "|" + observation.observedAt();
+        // Preserve existing receipt hashes across deployment for queued venue retries.
+        return digest(observation.type().announcement() ? legacy + "|" + observation.announcementId()
+                + "|" + observation.source() + "|" + observation.playbackId() + "|" + observation.impressionToken() : legacy);
     }
     public String quotaKey(String scope, String subject) { return HexFormat.of().formatHex(digest("quota|" + scope + "|" + subject)); }
     private byte[] digest(String value) {

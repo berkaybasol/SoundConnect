@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - master
 
 permissions:
   contents: read
@@ -16,11 +17,25 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The first cold hosted run reached the 30-minute limit before the full
+    # suite finished. Keep all tests and allow their bounded fixtures to finish.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Record exact checkout provenance
+        run: python3 .github/scripts/capture-provenance.py "$RUNNER_TEMP/source-provenance.json"
+
+      - name: Preserve checkout provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-provenance-${{ github.job }}
+          path: ${{ runner.temp }}/source-provenance.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -32,8 +47,37 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
+      - name: Prepare real media and Rabbit integration prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+          docker build --tag soundconnect-rabbitmq:3.13.7 docker/rabbitmq
+          {
+            ffmpeg -version
+            ffprobe -version
+            docker image inspect soundconnect-rabbitmq:3.13.7 --format '{{.Id}}'
+          } > test-prerequisites.log
+
       - name: Run backend tests
-        run: ./gradlew clean test --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean test -I scripts/band-test-events.gradle --no-daemon --stacktrace --console=plain 2>&1 | tee band-tests.log
+
+      - name: Require executed marketplace PostgreSQL and security coverage
+        run: |
+          python3 scripts/test_verify_marketplace_test_reports.py
+          python3 scripts/verify_marketplace_test_reports.py build/test-results/test
+
+      - name: Require actual BAND schema, registry, startup and HTTP tests
+        run: |
+          python3 scripts/test_verify_band_test_reports.py
+          python3 scripts/verify_band_test_reports.py build/test-results/test band-tests.log
+
+      - name: Verify existing push migration selection and execution
+        run: pwsh -NoProfile -File scripts/verify-push-migrations.ps1
 
       - name: Upload test reports
         if: always()
@@ -43,5 +87,8 @@ jobs:
           path: |
             build/reports/tests/
             build/test-results/
-          if-no-files-found: ignore
+            build/test-evidence/
+            band-tests.log
+            test-prerequisites.log
+          if-no-files-found: error
           retention-days: 7

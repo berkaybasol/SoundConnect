@@ -67,6 +67,8 @@ class EventServiceImplTest {
 	private VenueRepository venueRepository;
 	@Mock
 	private EventPerformerRequestService eventPerformerRequestService;
+	@Mock
+	private com.berkayb.soundconnect.modules.event.plan.EventPlanLifecycle eventPlanLifecycle;
 	
 	@InjectMocks
 	private EventServiceImpl eventService;
@@ -299,7 +301,7 @@ class EventServiceImplTest {
 	@Test
 	void createEvent_shouldThrowExceptionWhenBothPerformerProvided() {
 		var dto = new EventCreateRequestDto(
-				"Title", null, LocalDate.now(), LocalTime.now(), null,
+				"Title", null, LocalDate.of(2026, 9, 23), LocalTime.of(20, 0), null,
 				null, venueId, UUID.randomUUID(), UUID.randomUUID(), null
 		);
 		User owner = new User();
@@ -413,6 +415,30 @@ class EventServiceImplTest {
 				.isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.INVALID_PARAMETER);
 		verify(eventRepository, never()).save(any());
 		verifyNoInteractions(eventPerformerRequestService);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"20:00:00.000000001", "20:00:00.123456789", "20:00:00.999999999"})
+	void createEvent_rejectsFractionalScheduleBeforeItCanBeRoundedByStorage(String time) {
+		for (boolean fractionalStart : new boolean[]{true, false}) {
+			var dto = new EventCreateRequestDto("Concert", null, LocalDate.of(2026, 9, 20),
+					fractionalStart ? LocalTime.parse(time) : LocalTime.of(19, 0),
+					fractionalStart ? LocalTime.of(21, 0) : LocalTime.parse(time),
+					null, venueId, null, null, null);
+			assertThatThrownBy(() -> eventService.createEvent(userId, dto))
+					.isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.INVALID_PARAMETER);
+		}
+		verifyNoInteractions(userEntityFinder, venueEntityFinder, eventRepository, eventPerformerRequestService);
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {-999999999, 0, 10000, 999999999})
+	void createEvent_rejectsDatesOutsideThePublicCalendarRange(int year) {
+		var dto = new EventCreateRequestDto("Concert", null, LocalDate.of(year, 1, 1),
+				LocalTime.of(20, 0), null, null, venueId, null, null, null);
+		assertThatThrownBy(() -> eventService.createEvent(userId, dto))
+				.isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.INVALID_PARAMETER);
+		verifyNoInteractions(userEntityFinder, venueEntityFinder, eventRepository, eventPerformerRequestService);
 	}
 
 	@Test

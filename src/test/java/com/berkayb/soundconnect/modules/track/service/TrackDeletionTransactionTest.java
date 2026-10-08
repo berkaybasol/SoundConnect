@@ -4,10 +4,15 @@ import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.repository.*;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
+import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
 import com.berkayb.soundconnect.modules.track.entity.Track;
 import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.mapper.TrackMapper;
@@ -25,6 +30,7 @@ import org.springframework.transaction.annotation.*;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.util.UUID;
+import java.util.Optional;
 import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.*;
 
@@ -45,8 +51,9 @@ class TrackDeletionTransactionTest {
   @Autowired PlatformTransactionManager manager;
   @MockitoBean TrackMapper mapper;
   @MockitoBean MediaAssetService media;
-  @MockitoBean MusicianProfileService musicians;
-  @MockitoBean BandService bands;
+  @MockitoBean MusicianProfileRepository musicians;
+  @MockitoBean BandRepository bands;
+  @MockitoBean BandMemberRepository bandMembers;
   @MockitoBean StudioProfileRepository studios;
 
   @Test void failedMediaDeletionRollsBackTheFlushedTrackRemoval() {
@@ -58,7 +65,7 @@ class TrackDeletionTransactionTest {
       return tracks.saveAndFlush(Track.builder().ownerId(owner).ownerType(TrackOwnerType.MUSICIAN_PROFILE)
           .mediaAssetId(asset.getId()).title("Deletion rollback test").build());
     });
-    when(musicians.getProfileEntity(owner)).thenReturn(MusicianProfile.builder().user(User.builder().id(user).build()).build());
+    when(musicians.findById(owner)).thenReturn(Optional.of(MusicianProfile.builder().user(User.builder().id(user).build()).build()));
     doAnswer(invocation -> {
       assertThat(references.countTrackReferences(track.getMediaAssetId())).isZero();
       throw new IllegalStateException("media deletion rejected");
@@ -69,4 +76,44 @@ class TrackDeletionTransactionTest {
     assertThat(assets.findById(track.getMediaAssetId()).orElseThrow().getStatus()).isEqualTo(MediaStatus.READY);
     assertThat(references.countTrackReferences(track.getMediaAssetId())).isEqualTo(1);
   }
+
+	@Test
+	void bandTrackCreationCommitsThroughTheRealTransactionalServiceProxy() {
+		UUID owner = UUID.randomUUID(), user = UUID.randomUUID();
+		MediaAsset asset = new TransactionTemplate(manager).execute(status -> assets.saveAndFlush(
+				MediaAsset.builder()
+						.ownerId(owner)
+						.ownerType(MediaOwnerType.BAND)
+						.kind(MediaKind.AUDIO)
+						.status(MediaStatus.READY)
+						.visibility(MediaVisibility.PUBLIC)
+						.size(100L)
+						.mimeType("audio/mpeg")
+						.storageKey("test/" + UUID.randomUUID())
+						.playbackUrl("https://example.test/track.mp3")
+						.build()));
+		when(musicians.existsById(owner)).thenReturn(false);
+		when(bands.existsById(owner)).thenReturn(true);
+		when(bandMembers.findByBandIdAndUserId(owner, user)).thenReturn(Optional.of(
+				BandMember.builder()
+						.status(BandMemberShipStatus.ACTIVE)
+						.bandRole(BandRole.FOUNDER)
+						.build()));
+		when(mapper.toDto(any(Track.class), same(media))).thenAnswer(invocation -> {
+			Track track = invocation.getArgument(0);
+			return new TrackResponseDto(
+					track.getId(), track.getMediaAssetId(), track.getTitle(),
+					"https://example.test/track.mp3", track.getDurationSeconds(), track.getBpm());
+		});
+
+		TrackResponseDto created = service.createTrack(
+				owner,
+				user,
+				new com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto(
+						asset.getId(), "Band transaction", 1, 120));
+
+		assertThat(created.title()).isEqualTo("Band transaction");
+		assertThat(tracks.findByOwnerTypeAndOwnerIdAndMediaAssetId(
+				TrackOwnerType.BAND, owner, asset.getId())).isPresent();
+	}
 }

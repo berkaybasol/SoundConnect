@@ -68,11 +68,11 @@ Backend'e breakpoint koymak ve IntelliJ debugger kullanmak istediğinde:
    .\dev.cmd idea
    ```
 
-3. Komut PostgreSQL, Redis ve RabbitMQ'yu çalıştırır; Docker backend'ini durdurur.
-4. IntelliJ'de `SoundConnectApplication` için yeşil Run veya Debug düğmesine bas.
+3. Komut PostgreSQL, Redis ve RabbitMQ'yu çalıştırır; Docker backend ve media worker'ı durdurup şemayı hazırlar. IntelliJ'yi kendisi açmaz.
+4. IntelliJ çalıştırma listesinden **SoundConnect Local Push** seç; ardından yeşil Run veya Debug düğmesine bas. Bu yerel yapılandırma `local` profilini ve mevcut dış Google oturum dosyasının yolunu kullanır.
 5. Flutter için Android Studio'daki yeşil Run düğmesine bas.
 
-IntelliJ backend'i `.env.local` dosyasını otomatik yükler. IntelliJ Run Configuration içine env değerlerini yeniden yazman gerekmez.
+IntelliJ backend'i `.env.local` dosyasını otomatik yükler. Bildirim açıkken gereken `GOOGLE_APPLICATION_CREDENTIALS` işlem değişkeni ayrıca gereklidir; yerel **SoundConnect Local Push** yapılandırmasında mevcut dış ADC dosyasının yolu ayarlıdır. Eski `SoundConnectApplication` seçimi otomatik değiştirilmedi. Launcher artık uygulanmış V1/V2/V3/V4 adımlarını tekrar daraltmadan eksik migration'ları sırayla tamamlar. [Firebase/IDE bağlantı ayarları](../CALISTIRMA_REHBERI.md#yerel-firebase-bildirim-bağlantısı).
 
 Docker backend moduna dönmek için önce IntelliJ'deki backend'i kırmızı Stop düğmesiyle durdur, ardından:
 

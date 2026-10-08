@@ -28,6 +28,8 @@ class ErrorTypeContractTest {
 	void securityAndRequestErrorsUseHttpSemantics() {
 		assertThat(ErrorType.INVALID_CREDENTIALS.getHttpStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
 		assertThat(ErrorType.UNAUTHORIZED.getHttpStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(ErrorType.EMAIL_VERIFICATION_REQUIRED.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+		assertThat(ErrorType.EMAIL_VERIFICATION_CODE_INVALID.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(ErrorType.FORBIDDEN_ACCESS.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.TRACK_OWNER_INVALID.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 		assertThat(ErrorType.INVALID_PARAMETER.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -45,6 +47,11 @@ class ErrorTypeContractTest {
 				.isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 		assertThat(ErrorType.LISTENER_PROFILE_CHOICE_REQUIRED.getHttpStatus())
 				.isEqualTo(HttpStatus.PRECONDITION_REQUIRED);
+		assertThat(ErrorType.MUSICIAN_FEED_CURSOR_INVALID.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(ErrorType.MUSICIAN_FEED_RATE_LIMITED.getHttpStatus())
+				.isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+		assertThat(ErrorType.MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE.getHttpStatus())
+				.isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@Test

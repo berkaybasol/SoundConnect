@@ -5,13 +5,11 @@ import com.berkayb.soundconnect.modules.application.venueapplication.enums.Appli
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
-import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
+import com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailIntentStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -22,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +30,7 @@ public class StudioApplicationAdminMailService {
 			DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm", Locale.forLanguageTag("tr-TR"));
 	private static final ZoneId ISTANBUL = ZoneId.of("Europe/Istanbul");
 
-	private final MailProducer mailProducer;
+	private final ApplicationMailIntentStore mailIntents;
 
 	@Value("${soundconnect.admin-notifications.studio-application-emails:backstage@soundconnect.com.tr,berkay@soundconnect.com.tr}")
 	private String studioApplicationEmails;
@@ -49,14 +46,12 @@ public class StudioApplicationAdminMailService {
 		List<MailSendRequest> requests = recipients.stream()
 				.map(recipient -> buildRequest(recipient, application))
 				.toList();
-		publishAfterCommit(requests, application.getId(), "admin");
+		requests.forEach(request -> mailIntents.enqueue(application.getId(), "CREATED", request));
 	}
 
 	/**
-	 * Queues the applicant-facing terminal decision only after the surrounding
-	 * approval/rejection transaction commits. The service receives an already
-	 * populated application so the immutable Rabbit payload is captured before
-	 * the persistence context closes.
+	 * Persists the terminal decision snapshot in the surrounding business transaction.
+	 * The worker reads only this snapshot after commit, never a detached lazy entity.
 	 */
 	public void sendApplicantDecisionMail(StudioApplication application) {
 		if (application == null) {
@@ -78,45 +73,7 @@ public class StudioApplicationAdminMailService {
 		}
 
 		MailSendRequest request = buildDecisionRequest(recipient, application);
-		publishAfterCommit(List.of(request), application.getId(), "applicant-decision");
-	}
-
-	private void publishAfterCommit(
-			List<MailSendRequest> requests,
-			UUID applicationId,
-			String mailPurpose
-	) {
-		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-			dispatch(requests, applicationId, mailPurpose);
-			return;
-		}
-
-		// Creation and terminal decisions can join wider transactions. Capture an
-		// immutable payload while lazy relations are available, but publish it only
-		// after the database changes are durable.
-		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-			@Override
-			public void afterCommit() {
-				dispatch(requests, applicationId, mailPurpose);
-			}
-		});
-	}
-
-	private void dispatch(
-			List<MailSendRequest> requests,
-			UUID applicationId,
-			String mailPurpose
-	) {
-		for (MailSendRequest request : requests) {
-			try {
-				mailProducer.send(request);
-			} catch (Exception exception) {
-				// Do not log the recipient, reason, body, provider response, or any
-				// other applicant PII. Rabbit/MailSender own masked delivery logging.
-				log.warn("Studio application {} mail queue failed. applicationId={}, exceptionType={}",
-						mailPurpose, applicationId, exception.getClass().getSimpleName());
-			}
-		}
+		mailIntents.enqueue(application.getId(), application.getStatus().name(), request);
 	}
 
 	private MailSendRequest buildRequest(String recipient, StudioApplication application) {

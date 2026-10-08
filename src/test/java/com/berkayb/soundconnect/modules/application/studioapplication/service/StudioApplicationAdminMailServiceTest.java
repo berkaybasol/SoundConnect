@@ -30,10 +30,34 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
+@org.testcontainers.junit.jupiter.Testcontainers
 class StudioApplicationAdminMailServiceTest {
 
 	@Mock MailProducer mailProducer;
-	@InjectMocks StudioApplicationAdminMailService service;
+	StudioApplicationAdminMailService service;
+    @org.testcontainers.junit.jupiter.Container
+    static final org.testcontainers.containers.PostgreSQLContainer<?> PG = new org.testcontainers.containers.PostgreSQLContainer<>("postgres:16.4-alpine")
+            .withDatabaseName("bil011_studio_mail").withUsername("bil011").withPassword("bil011");
+    org.springframework.transaction.support.TransactionTemplate transaction;
+    com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailDispatcher dispatcher;
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @org.junit.jupiter.api.BeforeEach void realTransactionFixture() {
+        var ds = new org.springframework.jdbc.datasource.DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
+        jdbc = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.FileSystemResource(
+                "scripts/db/2026-10-06-application-mail-intents.sql")).execute(ds);
+        jdbc.execute("DELETE FROM tbl_application_mail_intent"); // This test's disposable PG only.
+        var tm = new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        transaction = new org.springframework.transaction.support.TransactionTemplate(tm);
+        var properties = new com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailProperties();
+        var store = new com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailIntentStore(
+                new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(ds),new com.fasterxml.jackson.databind.ObjectMapper(),tm,properties);
+        service = new StudioApplicationAdminMailService(store);
+        dispatcher = new com.berkayb.soundconnect.modules.application.mailintent.ApplicationMailDispatcher(store,mailProducer,properties,Runnable::run);
+    }
+    void commitAndDispatch(Runnable send) { transaction.executeWithoutResult(tx -> send.run()); dispatcher.dispatchBatch(); }
+    long intents() { return jdbc.queryForObject("SELECT count(*) FROM tbl_application_mail_intent",Long.class); }
+
 
 	@AfterEach
 	void clearTransactionSynchronization() {
@@ -51,13 +75,13 @@ class StudioApplicationAdminMailServiceTest {
 		);
 		StudioApplication application = application();
 
-		service.sendNewApplicationMail(application);
+		commitAndDispatch(() -> service.sendNewApplicationMail(application));
 
 		ArgumentCaptor<MailSendRequest> captor = ArgumentCaptor.forClass(MailSendRequest.class);
 		verify(mailProducer, times(2)).send(captor.capture());
 		List<MailSendRequest> requests = captor.getAllValues();
 		assertThat(requests).extracting(MailSendRequest::to)
-				.containsExactly("ops@example.com", "admin@example.com");
+				.containsExactlyInAnyOrder("ops@example.com", "admin@example.com");
 		MailSendRequest request = requests.getFirst();
 		assertThat(request.kind()).isEqualTo(MailKind.STUDIO_APPLICATION_ADMIN);
 		assertThat(request.subject()).isEqualTo("Yeni Stüdyo Başvurusu: Devo Studio");
@@ -78,40 +102,31 @@ class StudioApplicationAdminMailServiceTest {
 
 	@Test
 	void defersNotificationUntilTheCreatingTransactionCommits() {
-		ReflectionTestUtils.setField(service, "studioApplicationEmails", "ops@example.com");
-		StudioApplication application = application();
-		TransactionSynchronizationManager.initSynchronization();
-
-		service.sendNewApplicationMail(application);
-
-		verify(mailProducer, never()).send(org.mockito.ArgumentMatchers.any());
-		List<TransactionSynchronization> synchronizations =
-				TransactionSynchronizationManager.getSynchronizations();
-		assertThat(synchronizations).hasSize(1);
-
-		synchronizations.getFirst().afterCommit();
-
-		verify(mailProducer).send(org.mockito.ArgumentMatchers.any());
+        ReflectionTestUtils.setField(service,"studioApplicationEmails","ops@example.com");
+        transaction.executeWithoutResult(tx -> {
+            service.sendNewApplicationMail(application());
+            verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
+            assertThat(intents()).isEqualTo(1);
+        });
+        verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
+        dispatcher.dispatchBatch();
+        verify(mailProducer).send(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test
 	void doesNotNotifyForARolledBackApplication() {
-		ReflectionTestUtils.setField(service, "studioApplicationEmails", "ops@example.com");
-		TransactionSynchronizationManager.initSynchronization();
-
-		service.sendNewApplicationMail(application());
-		TransactionSynchronizationManager.getSynchronizations().forEach(
-				synchronization -> synchronization.afterCompletion(
-						TransactionSynchronization.STATUS_ROLLED_BACK));
-
-		verify(mailProducer, never()).send(org.mockito.ArgumentMatchers.any());
+        ReflectionTestUtils.setField(service,"studioApplicationEmails","ops@example.com");
+        transaction.executeWithoutResult(tx -> { service.sendNewApplicationMail(application()); tx.setRollbackOnly(); });
+        assertThat(intents()).isZero();
+        dispatcher.dispatchBatch();
+        verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test
 	void sendsApprovedDecisionToApplicantWithStudioSpecificCopy() {
 		StudioApplication application = decidedApplication(ApplicationStatus.APPROVED);
 
-		service.sendApplicantDecisionMail(application);
+		commitAndDispatch(() -> service.sendApplicantDecisionMail(application));
 
 		ArgumentCaptor<MailSendRequest> captor = ArgumentCaptor.forClass(MailSendRequest.class);
 		verify(mailProducer).send(captor.capture());
@@ -136,7 +151,7 @@ class StudioApplicationAdminMailServiceTest {
 		StudioApplication application = decidedApplication(ApplicationStatus.REJECTED);
 		application.setRejectionReason("Belgeler doğrulanamadı.");
 
-		service.sendApplicantDecisionMail(application);
+		commitAndDispatch(() -> service.sendApplicantDecisionMail(application));
 
 		ArgumentCaptor<MailSendRequest> captor = ArgumentCaptor.forClass(MailSendRequest.class);
 		verify(mailProducer).send(captor.capture());
@@ -153,31 +168,22 @@ class StudioApplicationAdminMailServiceTest {
 
 	@Test
 	void defersApplicantDecisionUntilCommit() {
-		StudioApplication application = decidedApplication(ApplicationStatus.APPROVED);
-		TransactionSynchronizationManager.initSynchronization();
-
-		service.sendApplicantDecisionMail(application);
-
-		verify(mailProducer, never()).send(org.mockito.ArgumentMatchers.any());
-		List<TransactionSynchronization> synchronizations =
-				TransactionSynchronizationManager.getSynchronizations();
-		assertThat(synchronizations).hasSize(1);
-
-		synchronizations.getFirst().afterCommit();
-
-		verify(mailProducer).send(org.mockito.ArgumentMatchers.any());
+        transaction.executeWithoutResult(tx -> {
+            service.sendApplicantDecisionMail(decidedApplication(ApplicationStatus.APPROVED));
+            verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
+            assertThat(intents()).isEqualTo(1);
+        });
+        verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
+        dispatcher.dispatchBatch();
+        verify(mailProducer).send(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test
 	void doesNotSendApplicantDecisionWhenTransactionRollsBack() {
-		TransactionSynchronizationManager.initSynchronization();
-
-		service.sendApplicantDecisionMail(decidedApplication(ApplicationStatus.REJECTED));
-		TransactionSynchronizationManager.getSynchronizations().forEach(
-				synchronization -> synchronization.afterCompletion(
-						TransactionSynchronization.STATUS_ROLLED_BACK));
-
-		verify(mailProducer, never()).send(org.mockito.ArgumentMatchers.any());
+        transaction.executeWithoutResult(tx -> { service.sendApplicantDecisionMail(decidedApplication(ApplicationStatus.REJECTED)); tx.setRollbackOnly(); });
+        assertThat(intents()).isZero();
+        dispatcher.dispatchBatch();
+        verify(mailProducer,never()).send(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test

@@ -8,6 +8,9 @@ import com.berkayb.soundconnect.modules.message.dm.entity.DMConversation;
 import com.berkayb.soundconnect.modules.message.dm.entity.DMMessage;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMConversationRepository;
 import com.berkayb.soundconnect.modules.message.dm.repository.DMMessageRepository;
+import com.berkayb.soundconnect.modules.message.dm.service.DmModerationService;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,6 +30,7 @@ public class DMAdminController {
 	
 	private final DMConversationRepository conversationRepository;
 	private final DMMessageRepository messageRepository;
+	private final DmModerationService moderation;
 	
 	// GET /api/v1/admin/dm/conversations
 	@GetMapping(EndPoints.DM.ADMIN_CONVERSATIONS)
@@ -50,7 +54,7 @@ public class DMAdminController {
 	@GetMapping(EndPoints.DM.ADMIN_CONVERSATION_BY_ID)
 	public ResponseEntity<BaseResponse<DMConversation>> getConversationById(@PathVariable UUID conversationId) {
 		DMConversation conv = conversationRepository.findById(conversationId)
-		                                            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+		                                            .orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
 		
 		return ResponseEntity.ok(BaseResponse.<DMConversation>builder()
 		                                     .success(true)
@@ -63,11 +67,7 @@ public class DMAdminController {
 	// DELETE /api/v1/admin/dm/{conversationId}
 	@DeleteMapping(EndPoints.DM.ADMIN_CONVERSATION_BY_ID)
 	public ResponseEntity<BaseResponse<Void>> deleteConversation(@PathVariable UUID conversationId) {
-		if (!conversationRepository.existsById(conversationId)) {
-			throw new IllegalArgumentException("Conversation not found: " + conversationId);
-		}
-		// Not: İleride soft delete düşünürsen DMConversation'a deletedAt ekleyebilirsin.
-		conversationRepository.deleteById(conversationId);
+		moderation.deleteConversation(conversationId);
 		
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)
@@ -82,7 +82,7 @@ public class DMAdminController {
 	public ResponseEntity<BaseResponse<List<DMMessageResponseDto>>> getMessages(@RequestParam UUID conversationId) {
 		// varsa yoksa kontrolü
 		conversationRepository.findById(conversationId)
-		                      .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+		                      .orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
 		
 		List<DMMessageResponseDto> data = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId)
 		                                                   .stream()
@@ -101,15 +101,7 @@ public class DMAdminController {
 	@DeleteMapping(EndPoints.DM.ADMIN_DELETE_MESSAGE)
 	public ResponseEntity<BaseResponse<Void>> deleteMessage(@PathVariable UUID conversationId,
 	                                                        @PathVariable UUID messageId) {
-		DMMessage msg = messageRepository.findById(messageId)
-		                                 .orElseThrow(() -> new IllegalArgumentException("Message not found: " + messageId));
-		
-		if (!msg.getConversationId().equals(conversationId)) {
-			throw new IllegalArgumentException("Message does not belong to this conversation");
-		}
-		
-		// Not: İleride soft delete istersen msg.setDeletedAt(LocalDateTime.now()) ile güncelleyebilirsin.
-		messageRepository.delete(msg);
+		moderation.deleteMessage(conversationId, messageId);
 		
 		return ResponseEntity.ok(BaseResponse.<Void>builder()
 		                                     .success(true)

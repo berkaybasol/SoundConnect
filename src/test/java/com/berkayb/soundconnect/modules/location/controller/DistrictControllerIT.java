@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.location.controller;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
@@ -43,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"spring.jpa.hibernate.ddl-auto=create-drop"
 })
 @WithMockUser(authorities = "MANAGE_LOCATIONS")
+@H2NotificationIdentityTestBoundary
 class DistrictControllerIT {
 	
 	@Autowired MockMvc mockMvc;

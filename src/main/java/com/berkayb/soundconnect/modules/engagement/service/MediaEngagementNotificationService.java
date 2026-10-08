@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.engagement.service;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.service.TransactionalNotificationService;
+import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -52,11 +53,8 @@ public class MediaEngagementNotificationService {
                         + recipientQuery + ") order by id", (rs, row) -> rs.getObject(1, UUID.class), owner.id());
         if (recipients.isEmpty() || recipients.contains(actorId)) return;
 
-        // Canonical username is also the permitted ghost identity. Never snapshot
-        // alternate profile names, avatars, comment text or media access URLs.
-        String username = jdbc.queryForObject("select user_name from tbl_user where id=?", String.class, actorId);
-        String name = username == null || username.isBlank() ? "Bir kullanıcı" : username.strip();
-        if (name.length() > 80) name = name.substring(0, 80);
+        // Persist only a stable reference. Current visibility/name is resolved at
+        // read and final delivery, never from this transaction's old snapshot.
         NotificationType type = commentId == null ? NotificationType.SOCIAL_LIKE : NotificationType.SOCIAL_COMMENT;
         for (UUID recipient : recipients) {
             String identity = commentId == null ? "like:" + actorId + ":" + assetId : "comment:" + commentId;
@@ -65,11 +63,13 @@ public class MediaEngagementNotificationService {
             payload.put("module", "SOCIAL");
             payload.put("targetType", "MEDIA");
             payload.put("targetId", assetId.toString());
+            payload.put("actorId", actorId.toString());
+            payload.put("mediaIdentityVersion", 1);
             if (commentId != null) payload.put("commentId", commentId.toString());
             inbox.persistInCurrentTransaction(NotificationInboundEvent.builder()
                     .eventId(eventId).recipientId(recipient).type(type)
-                    .title(name + (commentId == null ? " içeriğini beğendi" : " içeriğine yorum yaptı"))
-                    .message("Bildirime dokunarak içeriği açabilirsin.")
+                    .title(MediaNotificationIdentity.title(type, null))
+                    .message(MediaNotificationIdentity.MESSAGE)
                     .payload(payload).emailForce(false).occurredAt(Instant.now()).build());
         }
     }

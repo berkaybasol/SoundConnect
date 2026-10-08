@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.role.controller;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
@@ -52,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser(username = "test-admin",
 		authorities = {"MANAGE_ROLES"})
 @Tag("web")
+@H2NotificationIdentityTestBoundary
 class RoleControllerTest {
 	
 	@Autowired MockMvc mockMvc;

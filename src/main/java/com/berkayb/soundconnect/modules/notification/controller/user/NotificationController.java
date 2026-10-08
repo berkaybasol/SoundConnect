@@ -1,12 +1,15 @@
 package com.berkayb.soundconnect.modules.notification.controller.user;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.notification.dto.request.NotificationDeliveryStateRequest;
+import com.berkayb.soundconnect.modules.notification.dto.response.NotificationDeliveryStateResponse;
 import com.berkayb.soundconnect.modules.notification.dto.response.NotificationResponseDto;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,29 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.Notification.*;
 public class NotificationController {
 	
 	private final NotificationService notificationService;
+
+	@GetMapping(BY_ID)
+	public BaseResponse<NotificationResponseDto> getNotification(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@PathVariable("id") UUID notificationId
+	) {
+		var notification = notificationService.getUserNotification(principal.getId(), notificationId);
+		return BaseResponse.<NotificationResponseDto>builder()
+				.success(true).code(200).message("Notification fetched")
+				.data(notification).build();
+	}
+
+	// POST is a bounded lookup only; it does not acknowledge or delete notifications.
+	@PostMapping(DELIVERY_STATE)
+	public BaseResponse<NotificationDeliveryStateResponse> deliveryState(
+			@AuthenticationPrincipal UserDetailsImpl principal,
+			@Valid @RequestBody NotificationDeliveryStateRequest request
+	) {
+		var dismissed = notificationService.getDismissedDeliveryIds(principal.getId(), request.notificationIds());
+		return BaseResponse.<NotificationDeliveryStateResponse>builder()
+				.success(true).code(200).message("Notification delivery state fetched")
+				.data(new NotificationDeliveryStateResponse(dismissed)).build();
+	}
 	
 	// GET /api/v1/user/notifications?types=MEDIA,VENUE
 	@GetMapping(LIST)

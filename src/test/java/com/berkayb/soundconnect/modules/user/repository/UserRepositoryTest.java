@@ -10,6 +10,14 @@ import com.berkayb.soundconnect.shared.util.UsernameUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
+import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.location.entity.District;
+import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -157,6 +165,33 @@ class UserRepositoryTest {
 				.containsExactlyInAnyOrder(
 						RoleEnum.ROLE_LISTENER.name(),
 						RoleEnum.ROLE_MUSICIAN.name());
+		assertThat(userRepository.findExistingPersonalProfileRoleNames(UUID.randomUUID())).isEmpty();
+	}
+
+	@ParameterizedTest(name = "campaign profile projection through real repository: {0}")
+	@ValueSource(strings = {"MUSICIAN", "LISTENER", "VENUE", "STUDIO"})
+	void campaignProfileProjectionReadsEachActualAggregateAndItsCurrentRole(String profile) {
+		Role role = entityManager.persistAndFlush(Role.builder().name("ROLE_" + profile).build());
+		User user = newUser(randomUsername("campaign_"), "campaign-" + profile + "@test.com");
+		user.setRoles(Set.of(role));
+		User saved = userRepository.saveAndFlush(user);
+		switch (profile) {
+			case "MUSICIAN" -> entityManager.persistAndFlush(MusicianProfile.builder().user(saved).build());
+			case "LISTENER" -> entityManager.persistAndFlush(ListenerProfile.builder().user(saved).build());
+			case "STUDIO" -> entityManager.persistAndFlush(StudioProfile.builder().user(saved).build());
+			case "VENUE" -> {
+				City city = entityManager.persistAndFlush(City.builder().name(randomUsername("city_")).build());
+				District district = entityManager.persistAndFlush(District.builder().city(city).name("İlçe").build());
+				Neighborhood neighborhood = entityManager.persistAndFlush(
+						Neighborhood.builder().district(district).name("Mahalle").build());
+				entityManager.persistAndFlush(Venue.builder().owner(saved).name("Kabul mekânı").address("Kabul adresi")
+						.city(city).district(district).neighborhood(neighborhood).status(VenueStatus.APPROVED).build());
+			}
+			default -> throw new IllegalArgumentException(profile);
+		}
+		entityManager.clear();
+		assertThat(userRepository.findExistingPersonalProfileRoleNames(saved.getId())).containsExactly("ROLE_" + profile);
+		assertThat(userRepository.findRoleNamesByUserId(saved.getId())).containsExactly("ROLE_" + profile);
 		assertThat(userRepository.findExistingPersonalProfileRoleNames(UUID.randomUUID())).isEmpty();
 	}
 	

@@ -75,8 +75,8 @@ class FfmpegServiceMasterPlaylistTest {
 			assertThat(text).contains("#EXT-X-STREAM-INF:BANDWIDTH=" + bw720 + ",RESOLUTION=1280x720");
 			assertThat(text).contains("720p/index.m3u8");
 			
-			// CODECS deklarasyonu her varyantta bekleniyor
-			assertThat(text).contains(",CODECS=\"avc1.42E01E,mp4a.40.2\"");
+			// Optional CODECS must not invent audio or a fixed AVC profile/level.
+			assertThat(text).doesNotContain("CODECS=");
 		} finally {
 			// Temizlik
 			try { Files.walk(outDir).sorted(java.util.Comparator.reverseOrder())

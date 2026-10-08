@@ -104,6 +104,8 @@ public class DataInitializer implements ApplicationRunner {
 				MANAGE_DM,
 				MANAGE_BACKLINE_CATALOG,
 				MANAGE_COLLAB_REPORTS,
+				MANAGE_MARKETPLACE_REPORTS,
+				MANAGE_MUSICIAN_FEED_REPORTS,
 				DELETE_COMMENT
 		));
 		Role venueRole = upsertRole(ROLE_VENUE.name(), permissions(

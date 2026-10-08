@@ -25,6 +25,10 @@ public class TableGroupParticipant {
 	
 	@Column(name = "user_id", nullable = false, columnDefinition = "uuid")
 	private UUID userId;
+
+	// Nullable only for pre-cycle rows and the still-running legacy expiry writer.
+	@Column(name = "application_id", columnDefinition = "uuid")
+	private UUID applicationId;
 	
 	@Column(name = "joined_at", nullable = false)
 	private Instant joinedAt; // katilimci ne zaman eklendi?

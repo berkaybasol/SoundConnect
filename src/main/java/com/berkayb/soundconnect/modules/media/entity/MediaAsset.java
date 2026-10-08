@@ -57,6 +57,17 @@ public class MediaAsset extends BaseEntity {
 	@Builder.Default
 	@Column(nullable = false, length = 16)
 	private MediaVisibility visibility = MediaVisibility.PUBLIC; // medyanin gorunurlugu public, unlisted(only link), private
+
+	@Enumerated(EnumType.STRING)
+	@Builder.Default
+	@Column(nullable = false, length = 16)
+	@org.hibernate.annotations.ColumnDefault("'MAINSTAGE'")
+	private MediaContentAudience contentAudience = MediaContentAudience.MAINSTAGE;
+
+	public MediaContentAudience getContentAudience() {
+		return MediaContentAudience.forOwner(ownerType, contentAudience);
+	}
+
 	
 	
 	@Enumerated(EnumType.STRING)
@@ -91,6 +102,10 @@ public class MediaAsset extends BaseEntity {
 	
 	@Column(length = 1024)
 	private String thumbnailUrl;
+
+	/** Server-only derivative key; protected variants never have a stable delivery URL. */
+	@Column(length = 512)
+	private String thumbnailStorageKey;
 
 	/**
 	 * Stable timestamp for asynchronous deletion fencing. Unlike {@code updatedAt},
@@ -215,6 +230,7 @@ public class MediaAsset extends BaseEntity {
 	@PrePersist
 	@PreUpdate
 	private void enforceProtectedUrlInvariant() {
+		contentAudience = getContentAudience();
 		if (visibility != null && visibility != MediaVisibility.PUBLIC) {
 			sourceUrl = null;
 			playbackUrl = null;

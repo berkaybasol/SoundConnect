@@ -1,6 +1,8 @@
 // src/test/java/com/berkayb/soundconnect/modules/media/service/MediaAssetServiceImplTest.java
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
@@ -44,6 +46,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -61,6 +64,13 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Tag("service")
+// Marketplace uses explicit JDBC migrations, so Hibernate's legacy H2 fixture
+// needs the two reference-index tables consulted by the shared deletion guard.
+@Sql(statements = {
+		"create table if not exists tbl_marketplace_listing_photo(listing_id uuid,media_asset_id uuid,position integer)",
+		"create table if not exists tbl_marketplace_report_photo(report_id uuid,media_asset_id uuid)"
+})
+@H2NotificationIdentityTestBoundary
 class MediaAssetServiceImplTest {
 	
 	@Autowired MediaAssetService mediaService;

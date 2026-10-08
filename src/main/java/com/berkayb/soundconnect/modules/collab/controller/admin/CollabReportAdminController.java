@@ -13,6 +13,7 @@ import com.berkayb.soundconnect.shared.response.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,19 +32,22 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.CollabAdmin.REV
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(BASE)
-@PreAuthorize("hasAuthority('MANAGE_COLLAB_REPORTS')")
+@PreAuthorize("!hasRole('LISTENER') and hasAuthority('MANAGE_COLLAB_REPORTS')")
 public class CollabReportAdminController {
     private final CollabReportModerationService service;
 
     @GetMapping
     public ResponseEntity<BaseResponse<PageResponse<CollabReportAdminResponse>>> list(
+            @AuthenticationPrincipal UserDetailsImpl principal,
             @RequestParam(required = false) CollabReportStatus status,
             @RequestParam(required = false) CollabReportReason reason,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(BaseResponse.<PageResponse<CollabReportAdminResponse>>builder()
+        if (principal == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+                .body(BaseResponse.<PageResponse<CollabReportAdminResponse>>builder()
                 .success(true).code(200).message("Collab raporları listelendi.")
-                .data(service.list(status, reason, page, size)).build());
+                .data(service.list(principal.getId(), status, reason, page, size)).build());
     }
 
     @PostMapping(REVIEW)
@@ -54,7 +58,8 @@ public class CollabReportAdminController {
         if (principal == null) {
             throw new SoundConnectException(ErrorType.UNAUTHORIZED);
         }
-        return ResponseEntity.ok(BaseResponse.<CollabReportAdminResponse>builder()
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+                .body(BaseResponse.<CollabReportAdminResponse>builder()
                 .success(true).code(200).message("Collab raporu sonuçlandırıldı.")
                 .data(service.review(principal.getId(), reportId, request)).build());
     }

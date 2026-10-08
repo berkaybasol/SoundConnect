@@ -30,10 +30,10 @@ class ImageVariantBackfillSchedulerTest {
 		UUID oldestB = UUID.randomUUID();
 		UUID newer = UUID.randomUUID();
 		when(repository.findIdsMissingThumbnail(
-				MediaKind.IMAGE, MediaVisibility.PUBLIC, MediaStatus.READY, PageRequest.of(0, 2)))
+				MediaKind.IMAGE, MediaStatus.READY, PageRequest.of(0, 2)))
 				.thenReturn(List.of(oldestA, oldestB));
 		when(repository.findIdsMissingThumbnail(
-				MediaKind.IMAGE, MediaVisibility.PUBLIC, MediaStatus.READY, PageRequest.of(1, 2)))
+				MediaKind.IMAGE, MediaStatus.READY, PageRequest.of(1, 2)))
 				.thenReturn(List.of(newer));
 		when(dispatcher.submit(oldestA)).thenReturn(true);
 		when(dispatcher.submit(oldestB)).thenReturn(true);
@@ -50,6 +50,6 @@ class ImageVariantBackfillSchedulerTest {
 		verify(dispatcher).submit(oldestB);
 		verify(dispatcher).submit(newer);
 		verify(repository).findIdsMissingThumbnail(
-				MediaKind.IMAGE, MediaVisibility.PUBLIC, MediaStatus.READY, PageRequest.of(1, 2));
+				MediaKind.IMAGE, MediaStatus.READY, PageRequest.of(1, 2));
 	}
 }

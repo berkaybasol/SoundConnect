@@ -21,6 +21,7 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -55,6 +56,7 @@ public class CommentServiceImpl implements CommentService {
 	private final CommentBurstGuard burstGuard;
 	private final LikeRepository likes;
 	private final MediaEngagementNotificationService notifications;
+    private final AnnouncementAnalyticsStore announcementAnalytics;
 	
 	@Override
 	@Transactional(readOnly = true)
@@ -82,7 +84,7 @@ public class CommentServiceImpl implements CommentService {
 		validateCommentText(request.text());
 		
 		requireActiveActor(userId);
-		targetAccess.requireReadable(targetType, targetId);
+		requireReadable(userId, targetType, targetId);
 		
 		User author = userEntityFinder.getUser(userId);
 		
@@ -116,6 +118,11 @@ public class CommentServiceImpl implements CommentService {
 		                         .build();
 		
 		comment = commentRepository.save(comment);
+        if (targetType == EngagementTargetType.ANNOUNCEMENT) {
+            commentRepository.flush();
+            announcementAnalytics.recordEngagement(userId, targetId, comment.getId(),
+                    AnnouncementAnalyticsStore.EngagementMetric.COMMENT, java.time.Instant.now());
+        }
 		notifications.commented(userId, targetType, targetId, comment.getId());
 		
 		return mapToCommentResponse(comment, 0, userId, resolveAuthorContext(List.of(comment), userId),Map.of());
@@ -149,7 +156,7 @@ public class CommentServiceImpl implements CommentService {
 			Pageable pageable
 	) {
 		Pageable safePageable = buildCommentPageable(pageable);
-		targetAccess.requireReadable(targetType, targetId);
+		requireReadable(viewerId, targetType, targetId);
 		
 		Page<Comment> page = commentRepository.findByTargetTypeAndTargetIdAndParentCommentIsNull(
 				targetType,
@@ -172,7 +179,7 @@ public class CommentServiceImpl implements CommentService {
 	public Page<CommentReplyResponseDto> getReplies(UUID viewerId, UUID parentCommentId, Pageable pageable) {
 		Comment parent = commentEntityFinder.getById(parentCommentId);
 		if (parent.getParentComment() != null) throw new SoundConnectException(ErrorType.COMMENT_REPLY_DEPTH_NOT_ALLOWED);
-		targetAccess.requireReadable(parent.getTargetType(), parent.getTargetId());
+		requireReadable(viewerId, parent.getTargetType(), parent.getTargetId());
 		
 		Pageable safePageable = buildReplyPageable(pageable);
 		
@@ -187,6 +194,16 @@ public class CommentServiceImpl implements CommentService {
 	@Transactional(readOnly = true)
 	public long countComments(EngagementTargetType targetType, UUID targetId) {
 		return commentRepository.countByTargetTypeAndTargetId(targetType, targetId);
+	}
+
+	@Override
+	@Transactional(isolation = Isolation.REPEATABLE_READ)
+	public long countReadableComments(UUID viewerId, EngagementTargetType targetType, UUID targetId) {
+		if (viewerId == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+		// Access guards lock current publication/privacy state in this transaction,
+		// just as comment list reads do. Do not expose the legacy unguarded count.
+		requireReadable(viewerId, targetType, targetId);
+		return commentRepository.countActiveByTarget(targetType, targetId);
 	}
 	
 	private void validateCommentText(String text) {
@@ -266,6 +283,11 @@ public class CommentServiceImpl implements CommentService {
 				dto.parentCommentId(),dto.createdAt(),state==null ? 0 : state.getLikeCount(),
 				viewerId!=null && state!=null && state.getLikedByMe());
 	}
+
+    private void requireReadable(UUID viewerId, EngagementTargetType type, UUID id) {
+        if (type == EngagementTargetType.ANNOUNCEMENT) targetAccess.requireReadable(viewerId, type, id);
+        else targetAccess.requireReadable(type, id);
+    }
 
 	private void requireActiveActor(UUID userId) {
 		// The JWT filter runs before this transaction. Recheck account eligibility

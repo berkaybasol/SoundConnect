@@ -49,6 +49,7 @@ public class UserServiceImpl implements UserService {
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	private final ListenerProfileProvisioner listenerProfileProvisioner;
 	private final com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
+	private final com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle marketplaceMediaLifecycle;
 	
 	// kullaniciyi guncellerken yalnizca dolu gelen alanlari degistiriyoruz
 	@Override
@@ -161,6 +162,7 @@ public class UserServiceImpl implements UserService {
 				|| userRepository.findExistingPersonalProfileRoleNames(id).contains("ROLE_LISTENER")) {
 			listenerAccountDeletionService.deleteByAdministrator(id);
 		} else {
+			marketplaceMediaLifecycle.purgeAccount(id);
 			userRepository.delete(user);
 		}
 		log.info("User deleted by administrator. actorId={} targetId={}", actingUserId, id);

@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -86,6 +87,20 @@ public class CommentController {
 		                                     .build());
 	}
 	
+	@GetMapping(COUNT_BY_TARGET)
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "Silinmemiş yorum ve yanıtların toplamını getir")
+	public ResponseEntity<BaseResponse<Long>> getCommentCount(
+			@AuthenticationPrincipal(expression = "id") UUID viewerId,
+			@PathVariable EngagementTargetType targetType,
+			@PathVariable UUID targetId
+	) {
+		long count = commentService.countReadableComments(viewerId, targetType, targetId);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+				.body(BaseResponse.<Long>builder()
+						.success(true).message("Yorum sayısı getirildi").code(200).data(count).build());
+	}
+
 	@GetMapping(LIST_REPLIES)
 	@Operation(summary = "Yanitlari getir")
 	public ResponseEntity<BaseResponse<Page<CommentReplyResponseDto>>> getReplies(

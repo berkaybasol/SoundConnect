@@ -5,6 +5,7 @@ package com.berkayb.soundconnect.modules.promotion.enums;
 public enum PromotionPlacement {
 	//FIXME baska sayfaya reklam yayinlamak istersek buraya ekleyebiliriz
 	
-	VENUE_MANAGEMENT_PANEL
+	VENUE_MANAGEMENT_PANEL,
+	FEED
 	
 }

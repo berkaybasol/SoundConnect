@@ -27,5 +27,6 @@ public interface VenueApplicationMapper {
 	@Mapping(target = "status", ignore = true)
 	@Mapping(target = "applicationDate", ignore = true)
 	@Mapping(target = "decisionDate", ignore = true)
+	@Mapping(target = "approvedVenue", ignore = true)
 	VenueApplication toEntity(VenueApplicationCreateRequestDto dto);
 }

@@ -200,6 +200,21 @@ class ProfileSearchServiceImplTest {
 	}
 
 	@Test
+	void listenerCannotOptIntoStudioSearchButGuestSearchRemainsAvailable() {
+		var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+		context.setAuthentication(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+				"viewer", "n/a", List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+		try {
+			assertThat(service.searchProfiles("Studio", 15, Set.of(ProfileSearchType.STUDIO))).isEmpty();
+			verifyNoInteractions(studioProfileRepository);
+		} finally {
+			org.springframework.security.core.context.SecurityContextHolder.clearContext();
+		}
+		service.searchProfiles("Studio", 15, Set.of(ProfileSearchType.STUDIO));
+		verify(studioProfileRepository).searchByNameUsernameOrDescription(eq("Studio"), anyString(), any());
+	}
+
+	@Test
 	void performerScopeQueriesOnlyMusiciansAndBandsBeforeApplyingGlobalLimit() {
 		Band band = Band.builder().id(UUID.randomUUID()).name("Şahbaz").build();
 		when(musicianProfileRepository.searchByStageNameOrUsername(anyString(), anyString(), any()))

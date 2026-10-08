@@ -122,7 +122,7 @@ class TableGroupChatControllerTest {
 		
 		// when: MockMvc değil, direkt controller çağrısı
 		ResponseEntity<BaseResponse<Page<TableGroupMessageResponseDto>>> response =
-				controller.getMessages(userDetails, tableGroupId, pageable);
+				controller.getMessages(userDetails, tableGroupId, pageable, true, null);
 		
 		// then
 		assertThat(response.getStatusCode().value()).isEqualTo(200);

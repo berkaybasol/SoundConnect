@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -23,7 +24,7 @@ public class PublicProfileResolverController {
 	) {
 		UserProfilesResolveResponseDto data = resolverService.resolveByUserId(userId);
 		
-		return ResponseEntity.ok(
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate()).body(
 				BaseResponse.<UserProfilesResolveResponseDto>builder()
 				            .success(true)
 				            .message("Profiles resolved")

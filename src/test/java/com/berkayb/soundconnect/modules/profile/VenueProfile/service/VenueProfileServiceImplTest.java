@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.location.entity.City;
@@ -52,6 +54,7 @@ import static org.assertj.core.api.Assertions.*;
 		"spring.jpa.hibernate.ddl-auto=create-drop"
 })
 @Tag("service")
+@H2NotificationIdentityTestBoundary
 class VenueProfileServiceImplTest {
 	
 	// MailProducerImpl yüzünden gerekecek

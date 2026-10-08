@@ -28,7 +28,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataRedisTest
+@DataRedisTest(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		"spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce",
+		"app.listener-profile.visibility-rate-limit.enabled=true"
+})
 @Import({
 		ListenerVisibilityRateLimitConfiguration.class,
 		ListenerVisibilityRateLimitGuard.class

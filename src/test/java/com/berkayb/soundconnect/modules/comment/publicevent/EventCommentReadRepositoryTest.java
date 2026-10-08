@@ -82,6 +82,11 @@ import static org.mockito.Mockito.*;
         GhostListenerIdentityBatchResolver.class, CommentAuthorBatchResolver.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class EventCommentReadRepositoryTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore announcementAnalytics;
+
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("event_comments_test").withUsername("event_comments_test")

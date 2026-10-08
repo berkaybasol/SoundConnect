@@ -9,6 +9,22 @@ import java.util.*;
 
 public interface TableGroupNotificationOutboxRepository extends JpaRepository<TableGroupNotificationOutbox, UUID> {
 
+	/** Crashes and expired leases also consume the durable attempt budget. */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update TableGroupNotificationOutbox event
+			   set event.status = :deadLetter, event.leaseOwner = null, event.leaseUntil = null,
+			       event.lastErrorType = 'AttemptBudgetExhausted', event.updatedAt = :now
+			 where event.eventId = :eventId and event.attemptCount >= :maxAttempts
+			   and ((event.status = :pending and event.nextAttemptAt <= :now)
+			     or (event.status = :inFlight and (event.leaseUntil is null or event.leaseUntil <= :now)))
+			""")
+	int deadLetterExhausted(@Param("eventId") UUID eventId, @Param("maxAttempts") int maxAttempts,
+			@Param("pending") TableGroupNotificationOutboxStatus pending,
+			@Param("inFlight") TableGroupNotificationOutboxStatus inFlight,
+			@Param("deadLetter") TableGroupNotificationOutboxStatus deadLetter,
+			@Param("now") Instant now);
+
 	@Query("""
 			select event.eventId from TableGroupNotificationOutbox event
 			where (event.status = :pending and event.nextAttemptAt <= :now)
@@ -29,11 +45,13 @@ public interface TableGroupNotificationOutboxRepository extends JpaRepository<Ta
 			    event.leaseUntil = :leaseUntil, event.attemptCount = event.attemptCount + 1,
 			    event.updatedAt = :now
 			where event.eventId = :eventId
+			  and event.attemptCount < :maxAttempts
 			  and ((event.status = :pending and event.nextAttemptAt <= :now)
 			    or (event.status = :inFlight and (event.leaseUntil is null or event.leaseUntil <= :now)))
 			""")
 	int claim(
 			@Param("eventId") UUID eventId,
+			@Param("maxAttempts") int maxAttempts,
 			@Param("pending") TableGroupNotificationOutboxStatus pending,
 			@Param("inFlight") TableGroupNotificationOutboxStatus inFlight,
 			@Param("leaseOwner") String leaseOwner,

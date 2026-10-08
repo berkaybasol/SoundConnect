@@ -27,6 +27,7 @@ class NotificationErasureBoundaryPostgresTest {
     JdbcTemplate jdbc; TransactionTemplate transaction; AccountDeliveryFence accounts;
     NotificationDeliveryPolicy policy; AfterCommitDeliveryExecutor executor;
     UUID recipient, requester, post, request, notification;
+    NotificationInboundEvent source;
 
     @BeforeEach void setup() throws Exception {
         var dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
@@ -36,10 +37,14 @@ class NotificationErasureBoundaryPostgresTest {
         }
         jdbc=new JdbcTemplate(dataSource);
         jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
-        jdbc.execute("create table if not exists tbl_overthinking_post(id uuid primary key)");
+        jdbc.execute("create table if not exists tbl_overthinking_post(id uuid primary key,author_id uuid,visibility_type text,musician_track_id uuid,band_track_id uuid)");
         jdbc.execute("create table if not exists tbl_overthinking_reveal_request(id uuid primary key,post_id uuid,status text,requester_id uuid,author_id uuid)");
+        jdbc.execute("create table if not exists tbl_role(id uuid primary key,name text);create table if not exists user_roles(user_id uuid,role_id uuid)");
+        jdbc.execute("create table if not exists tbl_studio_profile(user_id uuid);create table if not exists tbl_tracks(id uuid,media_asset_id uuid)");
+        jdbc.execute("create table if not exists tbl_media_asset(id uuid,content_audience text,owner_type text)");
+        jdbc.execute("create table if not exists tbl_overthinking_notification_outbox(event_id uuid primary key,recipient_id uuid,notification_type text,payload jsonb,occurred_at timestamptz)");
         jdbc.execute("create table if not exists tbl_notification(id uuid primary key,recipient_id uuid)");
-        jdbc.execute("truncate tbl_notification,tbl_overthinking_reveal_request,tbl_overthinking_post,tbl_user");
+        jdbc.execute("truncate tbl_notification,tbl_overthinking_reveal_request,tbl_overthinking_post,tbl_user,tbl_overthinking_notification_outbox");
         var manager=new DataSourceTransactionManager(dataSource);
         transaction=new TransactionTemplate(manager);
         var named=new NamedParameterJdbcTemplate(dataSource);
@@ -48,16 +53,20 @@ class NotificationErasureBoundaryPostgresTest {
         recipient=UUID.randomUUID(); requester=UUID.randomUUID(); post=UUID.randomUUID();
         request=UUID.randomUUID(); notification=UUID.randomUUID();
         jdbc.update("insert into tbl_user values (?,'ACTIVE',true,null),(?,'ACTIVE',true,null)",recipient,requester);
-        jdbc.update("insert into tbl_overthinking_post values (?)",post);
+        jdbc.update("insert into tbl_overthinking_post values (?,?,'ANONYMOUS',null,null)",post,recipient);
         jdbc.update("insert into tbl_overthinking_reveal_request values (?,?,'PENDING',?,?)",request,post,requester,recipient);
         jdbc.update("insert into tbl_notification values (?,?)",notification,recipient);
+        source = new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.OVERTHINKING_REVEAL_REQUEST_RECEIVED,
+            "Old title","Old message",Map.of("module","OVERTHINKING","action","REVEAL_REQUEST_RECEIVED",
+                "postTitle","Old title","postId",post.toString(),"revealRequestId",request.toString(),
+                "requesterId",requester.toString()),false,Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
+        jdbc.update("insert into tbl_overthinking_notification_outbox values(?,?,?,?::jsonb,?)",source.eventId(),recipient,
+            source.type().name(),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(source.payload()),java.sql.Timestamp.from(source.occurredAt()));
     }
     @AfterEach void close() { executor.close(); }
 
     NotificationInboundEvent event() {
-        return new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.OVERTHINKING_REVEAL_REQUEST_RECEIVED,
-                "Old title","Old message",Map.of("postId",post.toString(),"revealRequestId",request.toString(),
-                        "requesterId",requester.toString()),false,Instant.now());
+        return source;
     }
     boolean eligible() { return Boolean.TRUE.equals(transaction.execute(status -> policy.eligible(event()))); }
 
@@ -103,7 +112,7 @@ class NotificationErasureBoundaryPostgresTest {
             executor.submit(drained::countDown); release.countDown();
             assertThat(drained.await(5,TimeUnit.SECONDS)).isTrue();
             assertThat(deliveries).hasValue(0);
-            if(!eraseAccount) jdbc.update("insert into tbl_overthinking_post values (?)",post);
+            if(!eraseAccount) jdbc.update("insert into tbl_overthinking_post values (?,?,'ANONYMOUS',null,null)",post,recipient);
         }
     }
 

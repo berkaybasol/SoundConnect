@@ -31,6 +31,8 @@ public enum ErrorType {
 	PASSWORD_RESET_PROVIDER_UNSUPPORTED(1110, "Password reset is not supported for this account provider", HttpStatus.CONFLICT, "Bu hesap harici bir sağlayıcıyla giriş yapıyor. Şifre sıfırlama desteklenmiyor."),
 	PASSWORD_RESET_DELIVERY_FAILED(1111, "Password reset email could not be queued", HttpStatus.SERVICE_UNAVAILABLE, "Şifre sıfırlama e-postası gönderilemedi. Lütfen tekrar deneyin."),
 	STUDIO_APPLICATION_REJECTED(1112, "Studio application was rejected", HttpStatus.FORBIDDEN, "Stüdyo başvurunuz reddedildi. İtiraz veya bilgi için destek ekibimizle iletişime geçebilirsiniz."),
+	EMAIL_VERIFICATION_REQUIRED(1113, "Email verification is required", HttpStatus.FORBIDDEN, "Giriş yapmak için e-posta adresini doğrulamalısın."),
+	EMAIL_VERIFICATION_CODE_INVALID(1114, "Email verification code is invalid or expired", HttpStatus.BAD_REQUEST, "Doğrulama kodu geçersiz veya süresi dolmuş. Yeni kod isteyip tekrar deneyin."),
 	
 	// FOLLOW (1200-1299)
 	FOLLOW_RELATION_NOT_FOUND(1200, "Follow relation not found", HttpStatus.NOT_FOUND, "Takip ilişkisi bulunamadı."),
@@ -60,6 +62,14 @@ public enum ErrorType {
 	MUSICIAN_CALENDAR_RATE_LIMIT_UNAVAILABLE(1314, "Event profile publication protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik görünürlüğü şu an değiştirilemiyor. Kısa süre sonra tekrar dene."),
 	MUSICIAN_CALENDAR_QUERY_INVALID(1315, "Invalid musician calendar range or pagination", HttpStatus.BAD_REQUEST, "Takvim için en fazla 31 günlük geçerli bir tarih aralığı seçin."),
 	EVENT_CALENDAR_SETTINGS_RETIRED(1316, "Global calendar settings retired", HttpStatus.GONE, "Profil görünürlüğü artık her etkinlik için ayrı yönetiliyor. Uygulamayı güncelleyin."),
+	MUSICIAN_FEED_PREFERENCE_VERSION_CONFLICT(1317, "Musician feed preferences changed", HttpStatus.CONFLICT, "Akış tercihlerin başka bir oturumda değişti. Yenileyip tekrar dene."),
+	MUSICIAN_FEED_CURSOR_INVALID(1318, "Musician feed cursor is expired or incompatible", HttpStatus.BAD_REQUEST, "Akış oturumunun süresi doldu veya sürümü değişti. Akışı yenileyip tekrar dene."),
+	MUSICIAN_FEED_RATE_LIMITED(1319, "Too many musician feed requests", HttpStatus.TOO_MANY_REQUESTS, "Akışı çok hızlı yeniliyorsun. Kısa süre sonra tekrar dene."),
+	MUSICIAN_FEED_RATE_LIMIT_UNAVAILABLE(1320, "Musician feed protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Akış geçici olarak kullanılamıyor. Kısa süre sonra tekrar dene."),
+	MUSICIAN_FEED_REPORT_NOT_FOUND(1321, "Musician feed report not found", HttpStatus.NOT_FOUND, "Akış şikâyeti bulunamadı."),
+	MUSICIAN_FEED_REPORT_CONFLICT(1322, "Musician feed report review conflict", HttpStatus.CONFLICT, "Şikâyetin durumu değişti. Güncel kaydı inceleyip tekrar deneyin."),
+	MUSICIAN_FEED_REPORT_CURSOR_INVALID(1323, "Musician feed report cursor invalid", HttpStatus.BAD_REQUEST, "Şikâyet listesinin sayfa bilgisi geçersiz. Listeyi yenileyin."),
+	MUSICIAN_FEED_CAPACITY_UNAVAILABLE(1324, "Musician feed capacity temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Akış geçici olarak yoğun. Kısa süre sonra tekrar dene."),
 	
 	// INSTRUMENT (1400-1499)
 	INSTRUMENT_NOT_FOUND(1400, "Instrument not found", HttpStatus.NOT_FOUND, "Enstrüman bulunamadı."),
@@ -81,6 +91,7 @@ public enum ErrorType {
 	
 	// VENUEAPPLICATION ( 1600 - 1699)
 	VENUE_APPLICATION_ALREADY_EXISTS(1600,"Venue application already exists", HttpStatus.CONFLICT, "Zaten basvuru yapilmis."),
+	VENUE_APPLICANT_EMAIL_VERIFICATION_REQUIRED(1613, "Venue applicant email verification required", HttpStatus.CONFLICT, "Başvuru sahibinin e-posta doğrulaması tamamlanmadan karar verilemez."),
 	VENUE_APPLICATION_NOT_FOUND(1601,"Venue application not found", HttpStatus.NOT_FOUND, "Basvuru bulunamadi"),
 	INVALID_APPLICATION_STATUS(1602,"Invalid application status", HttpStatus.CONFLICT, "Bu basvuruya zaten islem yapilmis"),
 	STUDIO_APPLICATION_ALREADY_EXISTS(1608, "Studio application already exists", HttpStatus.CONFLICT, "Zaten bekleyen bir studyo basvurusu var."),
@@ -94,6 +105,9 @@ public enum ErrorType {
 			"mesaji okumaya yetkisi yok"),
 	NOT_PARTICIPANT_OF_CONVERSATION(1607,"User is not a participant of the conversation",HttpStatus.FORBIDDEN,"Bu " +
 			"kullanici bu konusmanin katilimsici degil"),
+	DM_MESSAGE_IDEMPOTENCY_CONFLICT(1610,"DM message key conflict",HttpStatus.CONFLICT,"Mesaj anahtarı farklı bir gönderim için daha önce kullanılmış."),
+	DM_RATE_LIMITED(1611,"DM rate limited",HttpStatus.TOO_MANY_REQUESTS,"Çok hızlı mesaj gönderiyorsun. Kısa süre sonra tekrar dene."),
+	DM_RATE_LIMIT_UNAVAILABLE(1612,"DM protection unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Mesaj gönderimi geçici olarak kullanılamıyor. Tekrar dene."),
 	
 	// MEDIA & HLS ( 1800 - 1900)
 	MEDIA_ASSET_NOT_FOUND(1800, "Media asset not found", HttpStatus.NOT_FOUND, "Yüklenmek istenen medya varlığı bulunamadı."),
@@ -125,6 +139,8 @@ public enum ErrorType {
 	
 	// NOTIFICATION (1900 - 2000)
 	NOTIFICATION_NOT_FOUND(1900,"Notification not found", HttpStatus.NOT_FOUND, "Bildirim bulunamadi." ),
+	NOTIFICATION_CAMPAIGN_CONFLICT(1910,"Notification campaign version or state conflict",HttpStatus.CONFLICT,"Özel bildirimin durumu değişti. Güncel kaydı yenileyip tekrar dene."),
+	NOTIFICATION_CAMPAIGN_UNAVAILABLE(1911,"Notification campaigns unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Özel bildirim gönderimi şu anda kullanıma açık değil."),
 	NOTIFICATION_ALREADY_READ(1901,"Notification already read", HttpStatus.CONFLICT, "Bildirim zaten okunmus" ),
 	NOTIFICATION_UPDATE_FAILED(1902,"Notification updated failed", HttpStatus.INTERNAL_SERVER_ERROR,"Bildirim guncellenemedi."),
 	NOTIFICATION_ALREADY_DELETED(1903,"Notification already deleted.", HttpStatus.CONFLICT, "Bildirim zaten silinmis." ),
@@ -236,6 +252,9 @@ public enum ErrorType {
 	EVENT_PERFORMER_REQUEST_FINALIZED(9253, "Event performer request already finalized", HttpStatus.CONFLICT, "Etkinlik katılım isteği daha önce farklı bir kararla sonuçlandırılmış."),
 	EVENT_PERFORMER_REQUEST_INVALID(9254, "Event performer request is no longer valid", HttpStatus.CONFLICT, "Etkinlik katılım isteği artık geçerli değil."),
 	EVENT_PERFORMER_REQUEST_EXPIRED(9255, "Event invitation decision deadline has passed", HttpStatus.CONFLICT, "Etkinlik başladığı için davet kararını artık değiştiremezsin."),
+	EVENT_PLAN_RATE_LIMITED(9256, "Too many event plan requests", HttpStatus.TOO_MANY_REQUESTS, "Planlı etkinlik işlemlerini çok sık yapıyorsun. Biraz sonra tekrar dene."),
+	EVENT_PLAN_UNAVAILABLE(9257, "Event plan protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Planlı etkinlik işlemleri şu anda kullanılamıyor. Biraz sonra tekrar dene."),
+	EVENT_PLAN_LIMIT_REACHED(9258, "Active event plan limit reached", HttpStatus.CONFLICT, "En fazla 50 aktif etkinlik planı oluşturabilirsin. Yeni plan için kullanmadığın bir planı durdur."),
 	
 	// COLLAB (9300 - 9349)
 	COLLAB_NOT_FOUND(9300, "Collab listing not found", HttpStatus.NOT_FOUND, "İlan bulunamadı."),
@@ -372,6 +391,28 @@ public enum ErrorType {
 	EVENT_INTENT_CLOSED(9922, "Event intent window closed", HttpStatus.CONFLICT, "Geçmiş etkinlik için yeni plan veya paylaşım oluşturulamaz."),
 	EVENT_INTENT_RATE_LIMITED(9923, "Event intent rate limited", HttpStatus.TOO_MANY_REQUESTS, "Planlarını çok sık değiştiriyorsun. Biraz sonra tekrar dene."),
 	EVENT_INTENT_UNAVAILABLE(9924, "Event intent temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Etkinlik planları şu anda kullanılamıyor."),
+	// FEED ANNOUNCEMENTS (9930-9936)
+	ANNOUNCEMENT_INVALID(9930, "Invalid announcement", HttpStatus.BAD_REQUEST, "Duyuru bilgilerini kontrol et."),
+	ANNOUNCEMENT_NOT_FOUND(9931, "Announcement not found", HttpStatus.NOT_FOUND, "Duyuru bulunamadı."),
+	ANNOUNCEMENT_VERSION_CONFLICT(9932, "Announcement changed", HttpStatus.CONFLICT, "Duyuru değişti. Güncel kaydı açıp tekrar dene."),
+	ANNOUNCEMENT_STATE_CONFLICT(9933, "Announcement transition unavailable", HttpStatus.CONFLICT, "Duyurunun mevcut durumu bu işleme uygun değil."),
+	ANNOUNCEMENT_MEDIA_INVALID(9934, "Announcement media unavailable", HttpStatus.BAD_REQUEST, "Duyuruya ait hazır bir fotoğraf veya video seç."),
+	ANNOUNCEMENT_FORBIDDEN(9935, "Announcement access denied", HttpStatus.FORBIDDEN, "Bu duyuru işlemine erişimin yok."),
+	ANNOUNCEMENT_CURSOR_INVALID(9936, "Invalid announcement cursor", HttpStatus.BAD_REQUEST, "Duyuru listesini yenileyip tekrar dene."),
+	// MARKETPLACE (9940-9949)
+	MARKETPLACE_INVALID(9940, "Invalid marketplace request", HttpStatus.BAD_REQUEST, "İlan bilgilerini kontrol et."),
+	MARKETPLACE_FORBIDDEN(9941, "Marketplace access denied", HttpStatus.FORBIDDEN, "Ekipman Pazarı yalnız Backstage hesaplarına açık."),
+	MARKETPLACE_NOT_FOUND(9942, "Marketplace listing not found", HttpStatus.NOT_FOUND, "İlan bulunamadı veya artık yayında değil."),
+	MARKETPLACE_VERSION_CONFLICT(9943, "Marketplace listing changed", HttpStatus.CONFLICT, "İlan değişti. Güncel kaydı açıp tekrar dene."),
+	MARKETPLACE_STATE_CONFLICT(9944, "Marketplace transition unavailable", HttpStatus.CONFLICT, "İlanın mevcut durumu bu işleme uygun değil."),
+	MARKETPLACE_INCOMPLETE(9945, "Marketplace listing incomplete", HttpStatus.BAD_REQUEST, "Yayınlamak için gerekli ilan bilgilerini ve en az bir fotoğrafı tamamla."),
+	MARKETPLACE_LIMIT_REACHED(9946, "Marketplace listing limit reached", HttpStatus.CONFLICT, "İlan sınırına ulaştın. Kullanmadığın taslakları veya ilanları kaldır."),
+	MARKETPLACE_IDEMPOTENCY_CONFLICT(9947, "Marketplace request conflict", HttpStatus.CONFLICT, "Bu istek anahtarı farklı bilgilerle kullanılmış."),
+	MARKETPLACE_REPORT_DUPLICATE(9948, "Marketplace report already exists", HttpStatus.CONFLICT, "Bu ilanı zaten bildirdin."),
+	MARKETPLACE_REPORT_NOT_FOUND(9949, "Marketplace report not found", HttpStatus.NOT_FOUND, "İlan bildirimi bulunamadı."),
+	// PUSH DEVICE MUTATIONS (9950-9951)
+	PUSH_DEVICE_RATE_LIMITED(9950, "Too many push device updates", HttpStatus.TOO_MANY_REQUESTS, "Bildirim ayarları çok sık güncelleniyor. Biraz sonra tekrar dene."),
+	PUSH_DEVICE_UNAVAILABLE(9951, "Push device protection unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Bildirim ayarları şu anda güncellenemiyor. Biraz sonra tekrar dene."),
 	// GENEL (9999)
 
 	BAD_REQUEST(9998,"Bad request", HttpStatus.BAD_REQUEST, "Istek gecersiz."),

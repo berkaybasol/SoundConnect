@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,18 +16,26 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CommentTargetAccessGuard {
     private final CommentTargetAccessRepository repository;
+    private final AnnouncementAccess announcements;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireReadable(EngagementTargetType type, UUID id) {
+        requireReadable(null, type, id);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireReadable(UUID viewerId, EngagementTargetType type, UUID id) {
         if (type == null || id == null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
         boolean visible = switch (type) {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
             case EVENT_POST -> readableEventPost(id);
             case TABLE_GROUP_POST -> readableTablePost(id);
-            case OVERTHINKING -> repository.lockPost(id).isPresent();
+            case OVERTHINKING_PROFILE_SHARE -> readableOverthinkingProfileShare(id);
+            case OVERTHINKING -> lockReadablePost(id);
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
             case COMMENT -> false;
+            case ANNOUNCEMENT -> { announcements.requireVisible(viewerId, id); yield true; }
         };
         if (!visible) throw new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
     }
@@ -56,6 +65,20 @@ public class CommentTargetAccessGuard {
         return repository.lockPublishedTablePost(id, owner.getUserId(), owner.getTableGroupId(), java.time.Instant.now()).isPresent();
     }
 
+    private boolean readableOverthinkingProfileShare(UUID id) {
+        var owner = repository.overthinkingProfileShareOwner(id).orElse(null);
+        if (owner == null || owner.getUserId() == null || owner.getSourcePostId() == null) return false;
+        // Match publication writes/removal: account -> listener visibility ->
+        // source -> exact publication. This prevents a source/profile deletion
+        // from committing between validation and an engagement insert.
+        if (repository.lockActivePostAuthor(owner.getUserId()).isEmpty()
+                || !repository.eligibleListenerPostAuthor(owner.getUserId())
+                || !repository.lockListenerVisibility(owner.getUserId(), false).orElse(false)
+                || !lockReadablePost(owner.getSourcePostId())) return false;
+        return repository.lockPublishedOverthinkingProfileShare(
+                id, owner.getUserId(), owner.getSourcePostId()).isPresent();
+    }
+
     private boolean readableMedia(UUID id) {
         var owner = repository.mediaOwner(id).orElse(null);
         if (owner == null || owner.getOwnerId() == null || owner.getOwnerType() == null) return false;
@@ -65,6 +88,14 @@ public class CommentTargetAccessGuard {
             if (!repository.lockListenerVisibility(owner.getOwnerId(), listener).orElse(!listener)) return false;
         }
         // Recheck owner after locking: ownership cannot change between the privacy check and access.
+        if (com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()) {
+            return repository.lockMainstagePublicMedia(id, owner.getOwnerType(), owner.getOwnerId()).isPresent();
+        }
         return repository.lockPublicMedia(id, owner.getOwnerType(), owner.getOwnerId()).isPresent();
+    }
+
+    private boolean lockReadablePost(UUID id) {
+        return com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+                ? repository.lockMainstagePost(id).isPresent() : repository.lockPost(id).isPresent();
     }
 }

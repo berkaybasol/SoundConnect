@@ -2,6 +2,10 @@ package com.berkayb.soundconnect.modules.notification.config;
 
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationPublisherProperties;
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.boot.autoconfigure.amqp.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +24,21 @@ import java.util.Map;
 @Configuration
 @EnableConfigurationProperties(NotificationPublisherProperties.class)
 public class NotificationRabbitConfig {
+	/** Only notification ingress uses this policy; mail and media keep their own factories. */
+	@Bean(name = "notificationListenerFactory")
+	public SimpleRabbitListenerContainerFactory notificationListenerFactory(
+			SimpleRabbitListenerContainerFactoryConfigurer configurer, ConnectionFactory connectionFactory) {
+		var factory = new SimpleRabbitListenerContainerFactory();
+		configurer.configure(factory, connectionFactory);
+		factory.setAcknowledgeMode(AcknowledgeMode.AUTO);
+		factory.setDefaultRequeueRejected(false);
+		factory.setAdviceChain(RetryInterceptorBuilder.stateless()
+				.retryOperations(NotificationListenerFailurePolicy.retryTemplate())
+				.recoverer(NotificationListenerFailurePolicy::rejectExhausted)
+				.build());
+		factory.setErrorHandler(NotificationListenerFailurePolicy::rejectSafely);
+		return factory;
+	}
 	
 	@Value("${app.messaging.notification.exchange:notification.exchange}")
 	private String notificationExchangeName;

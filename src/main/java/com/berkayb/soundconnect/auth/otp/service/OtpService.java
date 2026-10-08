@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,7 +41,9 @@ public class OtpService {
 					+ "local separator = string.find(value, ':', 1, true); "
 					+ "if not separator then redis.call('DEL', KEYS[1]); return -(tonumber(ARGV[2]) + 1); end; "
 					+ "local cachedCode = string.sub(value, 1, separator - 1); "
-					+ "local attempts = tonumber(string.sub(value, separator + 1)); "
+					+ "local attemptText, metadata = string.match(string.sub(value, separator + 1), '^(%d+)(.*)$'); "
+					+ "local attempts = tonumber(attemptText); "
+					+ "if metadata and metadata ~= '' and not string.match(metadata, '^:[%x%-]+:%d+$') then attempts = nil; end; "
 					+ "local maxAttempts = tonumber(ARGV[2]); "
 					+ "if not attempts then redis.call('DEL', KEYS[1]); return -(maxAttempts + 1); end; "
 					+ "if attempts >= maxAttempts then redis.call('DEL', KEYS[1]); return -attempts; end; "
@@ -50,7 +53,7 @@ public class OtpService {
 					+ "redis.call('DEL', KEYS[1]); "
 					+ "else "
 					+ "local ttl = redis.call('PTTL', KEYS[1]); "
-					+ "if ttl > 0 then redis.call('PSETEX', KEYS[1], ttl, cachedCode .. ':' .. attempts); "
+					+ "if ttl > 0 then redis.call('PSETEX', KEYS[1], ttl, cachedCode .. ':' .. attempts .. metadata); "
 					+ "else redis.call('DEL', KEYS[1]); end; "
 					+ "end; "
 					+ "return -attempts;",
@@ -72,14 +75,39 @@ public class OtpService {
 	private static final DefaultRedisScript<Long> CANCEL_OTP_ISSUE_ATOMIC = new DefaultRedisScript<>(
 			"local value = redis.call('GET', KEYS[1]); "
 					+ "if not value then return 0; end; "
-					+ "local separator = string.find(value, ':', 1, true); "
-					+ "if not separator then return 0; end; "
-					+ "local cachedCode = string.sub(value, 1, separator - 1); "
-					+ "if cachedCode ~= ARGV[1] then return 0; end; "
+					+ "local generation = string.match(value, '^%d+:%d+:([^:]+):%d+$'); "
+					+ "if not generation or generation ~= ARGV[1] then return 0; end; "
 					+ "redis.call('DEL', KEYS[1], KEYS[2]); "
 					+ "return 1;",
 			Long.class
 	);
+
+	// Same authoritative OTP key and cooldown as registration; no second claim store.
+	// Redis TIME makes the absolute deadline agree with the installed TTL.
+	private static final DefaultRedisScript<Long> ACQUIRE_RESET_ISSUE_ATOMIC = new DefaultRedisScript<>(
+			"if redis.call('EXISTS', KEYS[2]) == 1 then "
+					+ "return -math.max(1, redis.call('PTTL', KEYS[2])); end; "
+					+ "local now = redis.call('TIME'); "
+					+ "local expires = now[1] * 1000 + math.floor(now[2] / 1000) + tonumber(ARGV[3]); "
+					+ "redis.call('PSETEX', KEYS[2], ARGV[2], '1'); "
+					+ "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[1] .. ':0:' .. ARGV[4] .. ':' .. string.format('%.0f', expires)); "
+					+ "return expires;", Long.class);
+
+	/**
+	 * This script is the send-authorization linearization point. Issue, cancel and
+	 * consume execute on the same Redis key and are ordered with this decision.
+	 * It changes neither attempts, TTL nor cooldown. The provider IO that follows
+	 * is intentionally outside Redis; an already authorized send cannot be recalled.
+	 */
+	private static final DefaultRedisScript<Long> AUTHORIZE_RESET_MAIL_ATOMIC = new DefaultRedisScript<>(
+			"local value = redis.call('GET', KEYS[1]); "
+					+ "if not value then return 0; end; "
+					+ "local attempts, generation, expires = string.match(value, '^%d+:(%d+):([^:]+):(%d+)$'); "
+					+ "if not generation or generation ~= ARGV[1] or expires ~= ARGV[2] then return 0; end; "
+					+ "if tonumber(attempts) >= tonumber(ARGV[3]) or redis.call('PTTL', KEYS[1]) <= 0 then return 0; end; "
+					+ "local now = redis.call('TIME'); "
+					+ "if tonumber(expires) <= now[1] * 1000 + math.floor(now[2] / 1000) then return 0; end; "
+					+ "return 1;", Long.class);
 
 	private final RedisTemplate<String, String> redisTemplate;
 
@@ -189,12 +217,13 @@ public class OtpService {
 	}
 
 	/**
-	 * Removes an issue claim only when the stored code still belongs to that
+	 * Removes an issue claim only when the stored generation still belongs to that
 	 * caller. This is used when bounded executor submission fails synchronously;
 	 * an already queued asynchronous delivery is never cancelled.
 	 */
-	public boolean cancelPasswordResetOtpIssue(String email, String code) {
+	public boolean cancelPasswordResetOtpIssue(String email, String generationId) {
 		validateConfiguration();
+		if (!validGeneration(generationId)) return false;
 		String normalizedEmail = normalize(email);
 		Long result = redisTemplate.execute(
 				CANCEL_OTP_ISSUE_ATOMIC,
@@ -202,12 +231,29 @@ public class OtpService {
 						buildOtpKey(normalizedEmail, OtpPurpose.PASSWORD_RESET, false),
 						buildResendGuardKey(normalizedEmail, OtpPurpose.PASSWORD_RESET, false)
 				),
-				Objects.requireNonNull(code, "code must not be null")
+				generationId
 		);
 		if (result == null) {
 			throw new IllegalStateException("Redis returned no OTP cancellation result");
 		}
 		return result == VERIFY_SUCCESS;
+	}
+
+	public boolean authorizePasswordResetMail(String recipient, String generationId, long expiresAtEpochMillis) {
+		validateConfiguration();
+		if (recipient == null || recipient.isBlank() || !validGeneration(generationId)
+				|| expiresAtEpochMillis <= 0) return false;
+		Long result = redisTemplate.execute(AUTHORIZE_RESET_MAIL_ATOMIC,
+				List.of(buildOtpKey(normalize(recipient), OtpPurpose.PASSWORD_RESET, false)),
+				generationId, Long.toString(expiresAtEpochMillis), Integer.toString(maxAttempt));
+		if (result == null) throw new IllegalStateException("Redis returned no reset mail authorization result");
+		return result == VERIFY_SUCCESS;
+	}
+
+	private static boolean validGeneration(String value) {
+		if (value == null) return false;
+		try { return UUID.fromString(value).toString().equals(value); }
+		catch (IllegalArgumentException invalid) { return false; }
 	}
 
 	private OtpIssueClaim acquireOtpIssue(
@@ -221,23 +267,25 @@ public class OtpService {
 		String otpCode = generateRandomOtpCode();
 		long cooldownMillis = Duration.ofSeconds(resendCoolDownSeconds).toMillis();
 		long otpTtlMillis = Duration.ofMinutes(otpExpiredMinutes).toMillis();
+		String generationId = purpose == OtpPurpose.PASSWORD_RESET ? UUID.randomUUID().toString() : null;
+		Object[] arguments = generationId == null
+				? new Object[]{otpCode, Long.toString(cooldownMillis), Long.toString(otpTtlMillis)}
+				: new Object[]{otpCode, Long.toString(cooldownMillis), Long.toString(otpTtlMillis), generationId};
 
 		Long result = redisTemplate.execute(
-				ACQUIRE_OTP_ISSUE_ATOMIC,
+				generationId == null ? ACQUIRE_OTP_ISSUE_ATOMIC : ACQUIRE_RESET_ISSUE_ATOMIC,
 				List.of(
 						buildOtpKey(normalizedEmail, purpose, decoy),
 						buildResendGuardKey(normalizedEmail, purpose, decoy)
 				),
-				otpCode,
-				Long.toString(cooldownMillis),
-				Long.toString(otpTtlMillis)
+				arguments
 		);
 		if (result == null) {
 			throw new IllegalStateException("Redis returned no OTP resend claim result");
 		}
-		if (result == VERIFY_SUCCESS) {
+		if (result > 0) {
 			log.info("OTP {} issue claimed for email={}", issueKind, EmailUtils.maskForLog(email));
-			return OtpIssueClaim.acquired(otpCode);
+			return new OtpIssueClaim(true, otpCode, 0L, generationId, generationId == null ? 0L : result);
 		}
 
 		long cooldownMillisLeft = result < 0 ? Math.abs(result) : 1L;
@@ -360,7 +408,11 @@ public class OtpService {
 	/**
 	 * The code is deliberately redacted from {@link #toString()}.
 	 */
-	public record OtpIssueClaim(boolean acquired, String code, long cooldownSeconds) {
+	public record OtpIssueClaim(boolean acquired, String code, long cooldownSeconds,
+	                           String generationId, long expiresAtEpochMillis) {
+		public OtpIssueClaim(boolean acquired, String code, long cooldownSeconds) {
+			this(acquired, code, cooldownSeconds, null, 0L);
+		}
 		public OtpIssueClaim {
 			if (acquired) {
 				if (code == null || code.isBlank() || cooldownSeconds != 0L) {
@@ -369,10 +421,10 @@ public class OtpService {
 			} else if (code != null || cooldownSeconds < 1L) {
 				throw new IllegalArgumentException("A rejected resend claim requires a positive cooldown and no code");
 			}
-		}
-
-		private static OtpIssueClaim acquired(String code) {
-			return new OtpIssueClaim(true, code, 0L);
+			if ((generationId == null && expiresAtEpochMillis != 0)
+					|| (generationId != null && (!acquired || !validGeneration(generationId) || expiresAtEpochMillis <= 0))) {
+				throw new IllegalArgumentException("Invalid OTP generation metadata");
+			}
 		}
 
 		private static OtpIssueClaim rejected(long cooldownSeconds) {

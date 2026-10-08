@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.media.controller.user;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.media.dto.request.CompleteUploadRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.request.UploadInitRequestDto;
+import com.berkayb.soundconnect.modules.media.dto.request.MediaContentAudienceUpdateRequestDto;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
@@ -52,7 +53,8 @@ public class UserMediaAssetController {
 				dto.visibility(),
 				dto.mimeType(),
 				dto.sizeBytes(),
-				dto.originalFileName()
+				dto.originalFileName(),
+				dto.contentAudience()
 		);
 		return BaseResponse.<UploadInitResultResponseDto>builder()
 		                   .success(true)
@@ -73,6 +75,17 @@ public class UserMediaAssetController {
 		                   .message("Upload completed.")
 		                   .data(mapper.toDto(asset))
 		                   .build();
+	}
+
+	@PatchMapping("/{assetId}/content-audience")
+	public BaseResponse<MediaResponseDto> updateContentAudience(
+			@PathVariable UUID assetId,
+			@AuthenticationPrincipal UserDetailsImpl userDetails,
+			@Valid @RequestBody MediaContentAudienceUpdateRequestDto dto) {
+		MediaAsset asset = mediaAssetService.updateContentAudience(
+				currentUserId(userDetails), assetId, dto.contentAudience());
+		return BaseResponse.<MediaResponseDto>builder().success(true).code(200)
+				.message("Media content audience updated").data(mapper.toDto(asset)).build();
 	}
 	
 	@GetMapping(LIST_BY_OWNER)

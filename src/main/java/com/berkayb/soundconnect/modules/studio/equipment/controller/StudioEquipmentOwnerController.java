@@ -41,7 +41,7 @@ import java.util.UUID;
 @Validated
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('STUDIO')")
+@PreAuthorize("hasRole('STUDIO') and !hasRole('LISTENER')")
 @RequestMapping("/api/v1/user/studio-profiles/me/equipment")
 @Tag(name = "Studio Equipment - Owner", description = "Studio-owned equipment inventory and daily availability")
 public class StudioEquipmentOwnerController {

@@ -15,6 +15,32 @@ import java.util.List;
 import java.util.UUID;
 
 public interface OverthinkingPostRepository extends JpaRepository<OverthinkingPost, UUID> {
+	String MAINSTAGE = com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL;
+
+	@Query(value = "select post.id from tbl_overthinking_post post where post.id in (:ids) and " + MAINSTAGE,
+			nativeQuery = true)
+	List<UUID> findMainstageVisibleIds(@Param("ids") Collection<UUID> ids);
+
+	@Query(value = "select post.* from tbl_overthinking_post post where " + MAINSTAGE + """
+			 and (cast(:authorId as uuid) is null or post.author_id=:authorId)
+			 and (cast(:artistId as uuid) is null or post.artist_id=:artistId)
+			 order by case when :oldest then post.created_at end asc,
+			          case when :oldest then post.id end asc,
+			          post.created_at desc, post.id desc
+			""", countQuery = "select count(*) from tbl_overthinking_post post where " + MAINSTAGE + """
+			 and (cast(:authorId as uuid) is null or post.author_id=:authorId)
+			 and (cast(:artistId as uuid) is null or post.artist_id=:artistId)
+			""", nativeQuery = true)
+	Page<OverthinkingPost> findMainstagePage(@Param("authorId") UUID authorId, @Param("artistId") UUID artistId,
+			@Param("oldest") boolean oldest, Pageable pageable);
+
+	@Query(value = """
+			select post.* from tbl_overthinking_post post left join (
+			 select target_id,count(*) as likes from tbl_like where target_type='OVERTHINKING' group by target_id
+			) engagement on engagement.target_id=post.id where
+			""" + MAINSTAGE + " order by coalesce(engagement.likes,0) desc, post.created_at desc, post.id desc",
+			countQuery = "select count(*) from tbl_overthinking_post post where " + MAINSTAGE, nativeQuery = true)
+	Page<OverthinkingPost> findMainstageMostLiked(Pageable pageable);
 	/** All post/reveal mutations acquire the post lock before any reveal row lock. */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select post from OverthinkingPost post where post.id = :postId")

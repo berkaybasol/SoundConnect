@@ -4,14 +4,14 @@ spring:
     url: jdbc:h2:mem:testdb-${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false
     username: sa
     password:
-    driver-class-name: org.h2.Driver
+    # Infer the driver from the URL: dedicated PostgreSQL fixtures override it.
 
   jpa:
     hibernate:
       ddl-auto: create-drop
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
+        # Infer the dialect from the actual fixture's JDBC metadata.
         format_sql: true
     open-in-view: false
     show-sql: false
@@ -60,6 +60,20 @@ spring:
 
 # Uygulama konfigleri (test modu)
 app:
+  share-base-url: https://share.soundconnect.test
+  messaging:
+    notification:
+      exchange: notification.test.exchange
+      queue: notification.test.queue
+      routingKey: notification.#
+      publishRoutingKey: notification.event
+      dlxExchange: notification.test.dlx
+      dlq: notification.test.queue.dlq
+  notification:
+    push:
+      # General Spring contexts use no external Firebase credentials. Dedicated
+      # push configuration/security tests explicitly enable their own fixtures.
+      enabled: false
   jwt:
     secret: test-jwt-secret-key-at-least-32-bytes-long
     expiration: 3600000
@@ -102,8 +116,12 @@ otp:
       seconds: 30
 
 # Mail test stub (MailerSend'e çıkmasın)
+mail:
+  queueName: mail.test.queue
 mailersend:
   api-key: test-mailersend-api-key
+  connectTimeoutMs: 5000
+  readTimeoutSec: 8
   from-email: test@soundconnect.app
   from-name: SoundConnect Test
   otp-validity-minutes: 3
@@ -196,6 +214,10 @@ rabbitmq:
       videoHlsRequest: video.hls.request
       videoHlsRequestDlq: video.hls.request.dlq
     listenerConcurrency: 1
+
+marketplace:
+  media-cleanup:
+    enabled: false
 
 logging:
   level:

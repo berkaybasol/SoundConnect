@@ -1,7 +1,7 @@
 package com.berkayb.soundconnect.modules.follow.service;
 
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
-import com.berkayb.soundconnect.modules.follow.event.FollowNotificationRequestedEvent;
+import com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
@@ -10,11 +10,11 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,7 +27,7 @@ public class FollowServiceImpl implements FollowService {
 	private final FollowRepository followRepository;
 	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
 	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
-	private final ApplicationEventPublisher applicationEventPublisher;
+	private final FollowNotificationOutboxService notificationOutbox;
 	
 	@Transactional // islemlerden birinde bile hata olursa butun islemleri geri al
 	@Override
@@ -69,9 +69,10 @@ public class FollowServiceImpl implements FollowService {
 		
 		followRepository.save(follow);
 		
-		log.info("User {} succesfully followed user {}", follower.getId(), following.getId());
-		
-		requestNewFollowerNotification(follower.getId(), following.getId());
+		// Durable intent is part of this transaction. A DB failure must roll back the relationship.
+		notificationOutbox.enqueue(follow.getId(), follower.getId(), following.getId(), null,
+                Instant.now());
+		log.info("Follow and notification intent staged. followerId={}, followingId={}", follower.getId(), following.getId());
 	}
 	
 	@Transactional // islemlerden biri bile basarisiz olursa butun islemleri geri al
@@ -180,16 +181,4 @@ public class FollowServiceImpl implements FollowService {
 		}
 	}
 
-	private void requestNewFollowerNotification(UUID followerId, UUID followingId) {
-		try {
-			applicationEventPublisher.publishEvent(
-					new FollowNotificationRequestedEvent(followerId, followingId)
-			);
-		} catch (RuntimeException exception) {
-			// Notification registration is best effort and must never roll back the
-			// successfully validated follow relationship.
-			log.warn("Follow notification request failed. followerId={}, followingId={}, exceptionType={}",
-					followerId, followingId, exception.getClass().getSimpleName());
-		}
-	}
 }

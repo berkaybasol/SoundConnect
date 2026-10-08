@@ -4,9 +4,10 @@ import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.track.entity.Track;
 import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
@@ -26,14 +27,15 @@ class TrackDeletionTest {
   @Mock TrackRepository tracks;
   @Mock TrackMapper mapper;
   @Mock MediaAssetService media;
-  @Mock MusicianProfileService musicians;
-  @Mock BandService bands;
+  @Mock MusicianProfileRepository musicians;
+  @Mock BandRepository bands;
+  @Mock BandMemberRepository bandMembers;
   @Mock StudioProfileRepository studios;
   @Mock MediaAssetRepository assets;
   @InjectMocks TrackServiceImpl service;
   final UUID owner = UUID.randomUUID(), user = UUID.randomUUID(), asset = UUID.randomUUID(), id = UUID.randomUUID();
   Track track() { return Track.builder().id(id).ownerId(owner).ownerType(TrackOwnerType.MUSICIAN_PROFILE).mediaAssetId(asset).build(); }
-  void owner() { when(musicians.getProfileEntity(owner)).thenReturn(MusicianProfile.builder().user(User.builder().id(user).build()).build()); }
+  void owner() { when(musicians.findById(owner)).thenReturn(Optional.of(MusicianProfile.builder().user(User.builder().id(user).build()).build())); }
   @Test void detachesAndFlushesBeforeGuardedMediaDeletion() {
     var track = track(); when(tracks.findById(id)).thenReturn(Optional.of(track)); owner();
     when(assets.findByIdAndOwnerForUpdate(asset, MediaOwnerType.MUSICIAN_PROFILE, owner)).thenReturn(Optional.of(MediaAsset.builder().id(asset).build()));

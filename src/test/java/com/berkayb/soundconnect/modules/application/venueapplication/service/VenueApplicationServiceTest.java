@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.service;
 
+import com.berkayb.soundconnect.shared.config.ExternalRabbitConsumersTestIsolation;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.application.venueapplication.dto.request.VenueApplicationCreateRequestDto;
@@ -13,6 +15,9 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
+import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
@@ -31,27 +36,80 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest(classes = SoundConnectApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@SpringBootTest(classes = {SoundConnectApplication.class, VenueApplicationServiceTest.NotificationIdentityFixture.class},
+        webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = {"spring.config.location=classpath:/application-test.yml", "spring.config.import="})
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
+@Import(ExternalRabbitConsumersTestIsolation.class)
+@Testcontainers(disabledWithoutDocker = true)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class VenueApplicationServiceTest {
+	@Container
+	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
+			.withDatabaseName("venue_application_service_test").withUsername("fixture").withPassword("fixture")
+			.withLabel("soundconnect.task", "venue-application-service-test").withReuse(false);
+
+	@DynamicPropertySource
+	static void database(DynamicPropertyRegistry properties) {
+		properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+		properties.add("spring.datasource.username", POSTGRES::getUsername);
+		properties.add("spring.datasource.password", POSTGRES::getPassword);
+		properties.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+		properties.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
+		properties.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class NotificationIdentityFixture {
+		@Bean @DependsOn("entityManagerFactory")
+		InitializingBean notificationIdentityMigrations(JdbcTemplate jdbc) {
+			return () -> {
+				try (var connection = Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
+					assertThat(connection.getMetaData().getURL()).isEqualTo(POSTGRES.getJdbcUrl());
+				}
+				for (String file : List.of("2026-09-28-media-notification-identity.sql",
+						"2026-09-29-band-notification-identity.sql", "2026-10-06-application-mail-intents.sql")) {
+					jdbc.execute(Files.readString(Path.of("scripts/db", file)));
+				}
+			};
+		}
+	}
 	
 	@Autowired VenueApplicationService venueApplicationService;
 	@Autowired VenueApplicationRepository venueAppRepo;
@@ -62,6 +120,9 @@ class VenueApplicationServiceTest {
 	@Autowired RoleRepository roleRepo;
 	@Autowired VenueRepository venueRepo;
 	@Autowired VenueProfileRepository venueProfileRepo;
+	@Autowired NotificationRepository notifications;
+	@Autowired NotificationReceiptRepository receipts;
+	@Autowired PlatformTransactionManager transactionManager;
 	
 	// Rabbit ihtiyacı olan bean’ler için
 	// MailProducerImpl yüzünden gerekecek
@@ -88,6 +149,8 @@ class VenueApplicationServiceTest {
 	// Bazı config'ler ConnectionFactory isterse güvence:
 	@MockitoBean(name = "rabbitConnectionFactory")
 	org.springframework.amqp.rabbit.connection.CachingConnectionFactory rabbitConnectionFactory;
+	@MockitoBean(enforceOverride=true)
+	com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker dlqBroker;
 	
 	
 	// İstersen tüketiciyi de körle (gerekmeden geçmesi lazım ama garanti):
@@ -103,9 +166,11 @@ class VenueApplicationServiceTest {
 	@BeforeEach
 	void setUp() {
 		// FK sırasına dikkat ederek temizlik
+		notifications.deleteAll();
+		receipts.deleteAll();
 		venueProfileRepo.deleteAll();
-		venueRepo.deleteAll();
 		venueAppRepo.deleteAll();
+		venueRepo.deleteAll();
 		userRepo.deleteAll();
 		roleRepo.deleteAll();
 		neighborhoodRepo.deleteAll();
@@ -247,6 +312,7 @@ class VenueApplicationServiceTest {
 		}
 		// profil otomatik yaratıldı mı?
 		assertThat(venueProfileRepo.findByVenueId(v.getId())).isPresent();
+		assertDecisionNotification(appId, ApplicationStatus.APPROVED);
 	}
 	
 	@Test
@@ -260,6 +326,8 @@ class VenueApplicationServiceTest {
 		// when/then
 		assertThatThrownBy(() -> venueApplicationService.approveApplication(created.id(), UUID.randomUUID()))
 				.isInstanceOf(SoundConnectException.class);
+		assertThat(notifications.count()).isZero();
+		assertThat(receipts.count()).isZero();
 	}
 	
 	@Test
@@ -283,5 +351,56 @@ class VenueApplicationServiceTest {
 		boolean hasVenueRole = refreshed.getRoles().stream()
 		                                .anyMatch(r -> r.getName().equals(RoleEnum.ROLE_VENUE.name()));
 		assertThat(hasVenueRole).isFalse();
+		assertDecisionNotification(created.id(), ApplicationStatus.REJECTED);
+	}
+
+	@Test
+	void laterFailureRollsBackActualApprovalDomainInboxAndReceiptTogether() {
+		UUID applicationId = venueApplicationService.createApplication(applicant.getId(), req()).id();
+		var outerTransaction = new TransactionTemplate(transactionManager);
+
+		assertThatThrownBy(() -> outerTransaction.executeWithoutResult(status -> {
+			var approved = venueApplicationService.approveApplication(applicationId, UUID.randomUUID());
+			assertThat(approved.status()).isEqualTo(ApplicationStatus.APPROVED);
+			var application = venueAppRepo.findById(applicationId).orElseThrow();
+			assertThat(application.getApprovedVenue()).isNotNull();
+			assertThat(venueProfileRepo.findByVenueId(application.getApprovedVenue().getId())).isPresent();
+			var activated = userRepo.findById(applicant.getId()).orElseThrow();
+			assertThat(activated.getStatus()).isEqualTo(UserStatus.ACTIVE);
+			assertThat(activated.getRoles()).anyMatch(role -> role.getName().equals(RoleEnum.ROLE_VENUE.name()));
+			// Preconditions prove real receipt/inbox writes happened before the outer failure.
+			assertDecisionNotification(applicationId, ApplicationStatus.APPROVED);
+			throw new IllegalStateException("after real decision notification persistence");
+		})).isInstanceOf(IllegalStateException.class)
+				.hasMessage("after real decision notification persistence");
+
+		var pending = venueAppRepo.findById(applicationId).orElseThrow();
+		assertThat(pending.getStatus()).isEqualTo(ApplicationStatus.PENDING);
+		assertThat(pending.getDecisionDate()).isNull();
+		assertThat(pending.getApprovedVenue()).isNull();
+		var unchanged = userRepo.findById(applicant.getId()).orElseThrow();
+		assertThat(unchanged.getStatus()).isEqualTo(UserStatus.PENDING_VENUE_REQUEST);
+		assertThat(unchanged.getRoles()).noneMatch(role -> role.getName().equals(RoleEnum.ROLE_VENUE.name()));
+		assertThat(venueRepo.findAllByOwnerId(applicant.getId())).isEmpty();
+		assertThat(venueProfileRepo.count()).isZero();
+		assertThat(notifications.count()).isZero();
+		assertThat(receipts.count()).isZero();
+	}
+
+	private void assertDecisionNotification(UUID applicationId, ApplicationStatus status) {
+		var inbox = notifications.findAll();
+		assertThat(inbox).hasSize(1);
+		var notification = inbox.getFirst();
+		assertThat(notification.getRecipientId()).isEqualTo(applicant.getId());
+		assertThat(notification.getType()).isEqualTo(NotificationType.valueOf("VENUE_APPLICATION_" + status.name()));
+		assertThat(notification.isRead()).isFalse();
+		assertThat(notification.getSourceEventId()).isNotNull();
+		assertThat(notification.getPayload()).containsExactlyInAnyOrderEntriesOf(Map.of(
+				"module", "VENUE_APPLICATION", "applicationId", applicationId.toString(),
+				"applicantUserId", applicant.getId().toString(), "status", status.name(),
+				"action", "APPLICATION_" + status.name()));
+		assertThat(receipts.count()).isEqualTo(1);
+		assertThat(receipts.findById(notification.getSourceEventId()).orElseThrow().getRecipientId())
+				.isEqualTo(applicant.getId());
 	}
 }

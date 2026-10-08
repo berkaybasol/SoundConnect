@@ -239,6 +239,7 @@ public class StudioEquipmentService {
             int page,
             int size
     ) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         PageRequest pageable = equipmentPage(page, size);
         StudioProfile studio = findStudio(studioProfileId);
         LocalDate today = timeProvider.today(studio.getTimeZone());
@@ -259,6 +260,7 @@ public class StudioEquipmentService {
 
     @Transactional(readOnly = true)
     public EquipmentPublicResponse getPublic(UUID studioProfileId, UUID equipmentId) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         StudioProfile studio = findStudio(studioProfileId);
         StudioEquipment equipment = equipmentRepository
                 .findByIdAndStudioProfileIdAndArchivedAtIsNull(equipmentId, studioProfileId)
@@ -285,6 +287,7 @@ public class StudioEquipmentService {
             LocalDate startDate,
             LocalDate endDate
     ) {
+        com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.requireStudioAccess();
         StudioEquipment equipment = equipmentRepository
                 .findByIdAndStudioProfileIdAndArchivedAtIsNull(equipmentId, studioProfileId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_EQUIPMENT_NOT_FOUND));

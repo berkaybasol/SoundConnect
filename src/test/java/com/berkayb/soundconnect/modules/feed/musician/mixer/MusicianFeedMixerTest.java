@@ -1,0 +1,993 @@
+package com.berkayb.soundconnect.modules.feed.musician.mixer;
+
+import com.berkayb.soundconnect.modules.feed.musician.api.*;
+import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedCandidate;
+import com.berkayb.soundconnect.modules.feed.musician.candidate.MusicianFeedLane;
+import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
+import com.berkayb.soundconnect.modules.feed.musician.delivery.MusicianFeedDeliverySnapshot;
+import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
+import com.berkayb.soundconnect.modules.feed.musician.sponsor.MusicianFeedPromotionCadence;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.IntStream;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class MusicianFeedMixerTest {
+    private static final Instant ANCHOR = Instant.parse("2026-09-11T12:00:00Z");
+    private static final UUID VIEWER = UUID.fromString("15a5e2b1-8ab3-46de-b4b0-b8fb3437bc50");
+    private final MusicianFeedMixer mixer = new MusicianFeedMixer();
+
+    @Test
+    void filtersOwnershipFeedbackAndUnsupportedTypesThenDeduplicatesNativeTargets() {
+        UUID muted = UUID.randomUUID();
+        UUID sharedTarget = UUID.randomUUID();
+        MusicianFeedCandidate kept = candidate("TRACK:kept", MusicianFeedItemType.TRACK,
+                UUID.randomUUID(), sharedTarget, 900_000, false, null);
+        List<MusicianFeedCandidate> candidates = List.of(
+                kept,
+                candidate("TRACK:duplicate", MusicianFeedItemType.TRACK, UUID.randomUUID(), sharedTarget,
+                        100_000, false, null),
+                candidate("TRACK:hidden", MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                        2_000_000, false, null),
+                candidate("TRACK:muted", MusicianFeedItemType.TRACK, muted, UUID.randomUUID(),
+                        2_000_000, false, null),
+                candidate("TRACK:own-flag", MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                        2_000_000, true, null),
+                candidate("TRACK:self", MusicianFeedItemType.TRACK, VIEWER, UUID.randomUUID(),
+                        2_000_000, false, null),
+                candidate("COLLAB:unsupported", MusicianFeedItemType.COLLAB, UUID.randomUUID(), UUID.randomUUID(),
+                        2_000_000, false, null));
+        UUID mutedProfile = candidates.get(3).author().profileId();
+        MusicianFeedFeedbackSnapshot feedback = new MusicianFeedFeedbackSnapshot(
+                Set.of("TRACK:hidden"),
+                Set.of(MusicianFeedFeedbackSnapshot.authorKey("MUSICIAN", mutedProfile)), Map.of());
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20, Set.of(MusicianFeedItemType.TRACK), feedback,
+                candidates, List.of(), null, 0);
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:kept");
+    }
+
+    @Test
+    void diversityOrderingAndRetryRemainDeterministic() {
+        UUID authorA = UUID.randomUUID();
+        UUID authorB = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = List.of(
+                candidate("TRACK:a1", MusicianFeedItemType.TRACK, authorA, UUID.randomUUID(), 1_000_000, false, null),
+                candidate("TRACK:a2", MusicianFeedItemType.TRACK, authorA, UUID.randomUUID(), 999_000, false, null),
+                candidate("PROFILE_MEDIA:b", MusicianFeedItemType.PROFILE_MEDIA, authorB, UUID.randomUUID(),
+                        995_000, false, null));
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.PROFILE_MEDIA);
+
+        var first = mixer.mix(VIEWER, ANCHOR, 3, types, MusicianFeedFeedbackSnapshot.empty(),
+                candidates, List.of(), null, 0);
+        var second = mixer.mix(VIEWER, ANCHOR, 3, types, MusicianFeedFeedbackSnapshot.empty(),
+                candidates, List.of(), null, 0);
+
+        assertThat(first.items()).extracting(MusicianFeedItemResponse::id)
+                .containsExactly("TRACK:a1", "PROFILE_MEDIA:b", "TRACK:a2");
+        assertThat(second).isEqualTo(first);
+        assertThat(first.cursorBoundary().itemId()).isEqualTo("PROFILE_MEDIA:b");
+    }
+
+    @Test
+    void diversitySelectsAnotherAuthorFromOutsideTheOriginalTopTwenty() {
+        UUID prolific = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 20).forEach(index -> candidates.add(candidateWithAuthor(
+                "TRACK:prolific:" + index, MusicianFeedItemType.TRACK, prolific, prolific,
+                "MUSICIAN", UUID.randomUUID(), 1_000_000)));
+        candidates.add(candidateWithAuthor("TRACK:other", MusicianFeedItemType.TRACK,
+                other, other, "MUSICIAN", UUID.randomUUID(), 990_000));
+        candidates.add(candidateWithLane("COLLAB:matched", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), UUID.randomUUID(), 600_000, MusicianFeedLane.RELEVANT_OPPORTUNITY));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().subList(0, 4)).extracting(MusicianFeedItemResponse::id)
+                .contains("TRACK:other", "COLLAB:matched");
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void densePrimaryPoolReservesMatchedJobsAndKeepsDiscoveryBounded() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(30);
+        IntStream.range(0, 8).forEach(index -> candidates.add(candidateWithLane(
+                "COLLAB:matched:" + index, MusicianFeedItemType.COLLAB, UUID.randomUUID(), UUID.randomUUID(),
+                600_000 - index, MusicianFeedLane.RELEVANT_OPPORTUNITY)));
+        IntStream.range(0, 20).forEach(index -> candidates.add(candidateWithLane(
+                "PROFILE:discovery:" + index, MusicianFeedItemType.PROFILE, UUID.randomUUID(), UUID.randomUUID(),
+                400_000 - index, MusicianFeedLane.GENERAL_DISCOVERY)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB, MusicianFeedItemType.PROFILE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream().filter(value -> value.type() == MusicianFeedItemType.COLLAB)).hasSize(4);
+        assertThat(page.itemLanes().stream().filter(value -> value == MusicianFeedLane.GENERAL_DISCOVERY)).hasSize(2);
+        assertThat(page.items().getFirst().type()).isEqualTo(MusicianFeedItemType.TRACK);
+    }
+
+    @Test
+    void placeProfilesCannotConsumeTheMatchedJobReservation() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(30);
+        IntStream.range(0, 8).forEach(index -> candidates.add(candidateWithLane(
+                "PROFILE:place:" + index, MusicianFeedItemType.PROFILE, UUID.randomUUID(), UUID.randomUUID(),
+                1_200_000 - index, MusicianFeedLane.RELEVANT_OPPORTUNITY)));
+        IntStream.range(0, 4).forEach(index -> candidates.add(candidateWithLane(
+                "COLLAB:job:" + index, MusicianFeedItemType.COLLAB, UUID.randomUUID(), UUID.randomUUID(),
+                600_000 - index, MusicianFeedLane.RELEVANT_OPPORTUNITY)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB, MusicianFeedItemType.PROFILE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream().filter(value -> value.type() == MusicianFeedItemType.COLLAB)).hasSize(4);
+    }
+
+    @Test
+    void oneSlotPageKeepsPrimaryContentAheadOfDiscovery() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(1);
+        candidates.add(candidateWithLane("TRACK:discovery", MusicianFeedItemType.TRACK,
+                UUID.randomUUID(), UUID.randomUUID(), 300_000, MusicianFeedLane.GENERAL_DISCOVERY));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 1, Set.of(MusicianFeedItemType.TRACK),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:primary:0");
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void coldStartFillsTwentySlotsFromTwentyEligibleDiscoveries() {
+        var candidates = IntStream.range(0, 20).mapToObj(index -> candidateWithLane(
+                "TRACK:discovery:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                300_000 - index, MusicianFeedLane.GENERAL_DISCOVERY)).toList();
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20, Set.of(MusicianFeedItemType.TRACK),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void missingOpportunitySupplyBackfillsWithPrimaryContent() {
+        var page = mixer.mix(VIEWER, ANCHOR, 20, Set.of(MusicianFeedItemType.TRACK),
+                MusicianFeedFeedbackSnapshot.empty(), primaryTracks(30), List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20).allMatch(value -> value.type() == MusicianFeedItemType.TRACK);
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void promotionsAndAnnouncementsCannotTrimTheMatchedOpportunityMinimum() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(30);
+        IntStream.range(0, 4).forEach(index -> candidates.add(candidateWithLane(
+                "COLLAB:job:" + index, MusicianFeedItemType.COLLAB, UUID.randomUUID(), UUID.randomUUID(),
+                600_000 - index, MusicianFeedLane.RELEVANT_OPPORTUNITY)));
+        List<MusicianFeedAnnouncementPlan.Entry> entries = new ArrayList<>();
+        for (int index = 0; index < 3; index++) {
+            UUID id = UUID.randomUUID();
+            entries.add(new MusicianFeedAnnouncementPlan.Entry(id, index == 0 ? 1 : 4));
+            candidates.add(candidateWithLane("ANNOUNCEMENT:" + id, MusicianFeedItemType.ANNOUNCEMENT,
+                    UUID.randomUUID(), id, 2_000_000, MusicianFeedLane.SYSTEM));
+        }
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB,
+                        MusicianFeedItemType.ANNOUNCEMENT, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), candidates,
+                List.of(sponsored("SPONSORED:first"), sponsored("SPONSORED:second")),
+                null, 0, 0, false, null, null, 0, 0, 0,
+                new MusicianFeedAnnouncementPlan(entries), MusicianFeedDeliverySnapshot.empty(0));
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream().filter(value -> value.type() == MusicianFeedItemType.COLLAB)).hasSize(4);
+        assertThat(page.items().stream().filter(value -> value.type() == MusicianFeedItemType.ANNOUNCEMENT)).hasSize(3);
+        assertThat(page.items()).anyMatch(value -> value.promotion() != null);
+    }
+
+    @Test
+    void dueSponsorCannotDisplaceTheOnlySelectedOpportunityOnASmallPage() {
+        var opportunity = candidateWithLane("COLLAB:only", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), UUID.randomUUID(), 600_000, MusicianFeedLane.RELEVANT_OPPORTUNITY);
+        var page = mixer.mix(VIEWER, ANCHOR, 1,
+                Set.of(MusicianFeedItemType.COLLAB, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), List.of(opportunity), List.of(sponsored("SPONSORED:due")),
+                null, 20, 0, false);
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("COLLAB:only");
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void matchedNativeOpportunityStillUpgradesToItsSponsorAtTheCadenceSlot() {
+        int gap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = primaryTracks(gap);
+        candidates.add(candidateWithLane("COLLAB:matched-native", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 600_000, MusicianFeedLane.RELEVANT_OPPORTUNITY));
+        var promoted = candidate("COLLAB:matched-promoted", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, gap + 1,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(promoted), null, 0);
+
+        assertThat(page.items()).hasSize(gap + 1);
+        assertThat(page.items().stream().filter(value -> value.target().id().equals(target)))
+                .singleElement().satisfies(value -> assertThat(value.promotion()).isNotNull());
+        assertThat(page.items().getLast().id()).isEqualTo(promoted.itemId());
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void previousPageAuthorAndTypeHistoryAffectsSelectionBeforeTheNextPageLimit() {
+        UUID previous = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        var repeated = candidateWithAuthor("TRACK:repeated", MusicianFeedItemType.TRACK,
+                previous, previous, "MUSICIAN", UUID.randomUUID(), 1_000_000);
+        var different = candidateWithAuthor("PROFILE_MEDIA:different", MusicianFeedItemType.PROFILE_MEDIA,
+                other, other, "MUSICIAN", UUID.randomUUID(), 950_000);
+        var history = List.of(new MusicianFeedDeliverySnapshot.OrganicHistoryEntry(
+                "MUSICIAN:" + previous, MusicianFeedItemType.TRACK, MusicianFeedLane.FOLLOWING));
+
+        var page = mixWithSnapshot(List.of(repeated, different), 1, snapshot(Set.of(), history));
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id).containsExactly("PROFILE_MEDIA:different");
+    }
+
+    @Test
+    void previousSessionImpressionsPreferUnseenTargetsWithoutExcludingSparseContent() {
+        var seen = candidateWithLane("TRACK:seen", MusicianFeedItemType.TRACK,
+                UUID.randomUUID(), UUID.randomUUID(), 1_000_000, MusicianFeedLane.FOLLOWING);
+        var unseen = candidateWithLane("TRACK:unseen", MusicianFeedItemType.TRACK,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000, MusicianFeedLane.FOLLOWING);
+        var state = snapshot(Set.of(seen.target().type() + ":" + seen.target().id()), List.of());
+
+        assertThat(mixWithSnapshot(List.of(seen, unseen), 1, state).items())
+                .extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:unseen");
+        assertThat(mixWithSnapshot(List.of(seen), 20, state).items())
+                .extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:seen");
+    }
+
+    @Test
+    void poolOrderDoesNotAffectAHistoryAwareRetry() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(30);
+        var state = snapshot(Set.of(candidates.getFirst().target().type() + ":" + candidates.getFirst().target().id()),
+                List.of(new MusicianFeedDeliverySnapshot.OrganicHistoryEntry(
+                        "MUSICIAN:" + candidates.get(1).author().profileId(), MusicianFeedItemType.TRACK,
+                        MusicianFeedLane.FOLLOWING)));
+        var first = mixWithSnapshot(candidates, 20, state);
+        Collections.reverse(candidates);
+
+        assertThat(mixWithSnapshot(candidates, 20, state)).isEqualTo(first);
+    }
+
+    @Test
+    void lowScoringModuleReservationsLeaveEnoughSeparatorsToFillThePage() {
+        List<MusicianFeedCandidate> candidates = primaryTracks(18);
+        IntStream.range(0, 2).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:low:" + index, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 100_000, MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixWithSnapshot(candidates, 20, MusicianFeedDeliverySnapshot.empty(0));
+
+        assertThat(page.items()).hasSize(20);
+        for (int index = 1; index < page.itemLanes().size(); index++) {
+            assertThat(page.itemLanes().get(index - 1) == MusicianFeedLane.MODULE_SHARE
+                    && page.itemLanes().get(index) == MusicianFeedLane.MODULE_SHARE).isFalse();
+        }
+    }
+
+    @Test
+    void aModuleOnlyTailDoesNotAdvertiseAnEmptyContinuationAtAnyPageSize() {
+        var modules = IntStream.range(0, 10).mapToObj(index -> candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:tail:" + index, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000, MusicianFeedLane.MODULE_SHARE)).toList();
+        for (int size = 1; size <= 50; size++) {
+            var page = mixer.mix(VIEWER, ANCHOR, size, Set.of(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE),
+                    MusicianFeedFeedbackSnapshot.empty(), modules, List.of(), null, 0);
+
+            assertThat(page.items()).as("size=%s: module-only supply still respects separation", size).hasSize(1);
+            assertThat(page.hasMore()).as("size=%s: remaining modules cannot follow the last module", size).isFalse();
+        }
+    }
+
+    @Test
+    void aPromotedCommentTargetBackfillsFromUnselectedPrimarySupplyAtEveryPageSize() {
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = primaryTracks(60);
+        IntStream.range(0, 60).forEach(index -> candidates.add(candidate(
+                "ACTIVITY_COMMENT:same-target:" + index, MusicianFeedItemType.ACTIVITY_COMMENT,
+                UUID.randomUUID(), target, 2_000_000, false, null)));
+        var promoted = candidate("SPONSORED:comment-target", MusicianFeedItemType.SPONSORED,
+                UUID.randomUUID(), target, 3_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/media"));
+        for (int size = 1; size <= 50; size++) {
+            var page = mixer.mix(VIEWER, ANCHOR, size,
+                    Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.SPONSORED),
+                    MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(promoted), null, 20, 0, false);
+
+            assertThat(page.items()).as("size=%s: a promoted target must not leave available primary slots empty", size)
+                    .hasSize(size).noneMatch(value -> value.type() == MusicianFeedItemType.ACTIVITY_COMMENT);
+            assertThat(page.items().stream().map(MusicianFeedItemResponse::id).distinct()).hasSize(size);
+            assertThat(page.hasMore()).isTrue();
+        }
+    }
+
+    @Test
+    void aDeferredNativeSponsorSeparatorCannotLeaveAdjacentModuleShares() {
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = primaryTracks(30);
+        candidates.add(candidateWithLane("OVERTHINKING_PROFILE_SHARE:first", MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000, MusicianFeedLane.MODULE_SHARE));
+        candidates.add(candidateWithLane("TABLEGROUP_PROFILE_SHARE:second", MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 1_900_000, MusicianFeedLane.MODULE_SHARE));
+        candidates.add(candidateWithLane("COLLAB:deferred-separator", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 600_000, MusicianFeedLane.RELEVANT_OPPORTUNITY));
+        var promoted = candidate("COLLAB:promoted-separator", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 3_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20, EnumSet.allOf(MusicianFeedItemType.class),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(promoted), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        for (int index = 1; index < page.itemLanes().size(); index++) {
+            assertThat(page.itemLanes().get(index - 1) == MusicianFeedLane.MODULE_SHARE
+                    && page.itemLanes().get(index) == MusicianFeedLane.MODULE_SHARE).isFalse();
+        }
+        assertThat(page.items().stream().filter(value -> value.target().id().equals(target)))
+                .singleElement().satisfies(value -> assertThat(value.promotion()).isNotNull());
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    private MusicianFeedMixer.MixedPage mixWithSnapshot(List<MusicianFeedCandidate> candidates, int size,
+                                                        MusicianFeedDeliverySnapshot snapshot) {
+        return mixer.mix(VIEWER, ANCHOR, size, EnumSet.allOf(MusicianFeedItemType.class),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0,
+                0, false, null, null, 0, 0, 0, MusicianFeedAnnouncementPlan.EMPTY, snapshot);
+    }
+
+    private static MusicianFeedDeliverySnapshot snapshot(Set<String> seen,
+            List<MusicianFeedDeliverySnapshot.OrganicHistoryEntry> history) {
+        return new MusicianFeedDeliverySnapshot(Set.of(), Set.of(), Set.of(), Set.of(), Set.of(),
+                0, 0, 0, false, null, null, 0, 0, Set.of(), 0, 0, seen, history);
+    }
+
+    private static List<MusicianFeedCandidate> primaryTracks(int count) {
+        return new ArrayList<>(IntStream.range(0, count).mapToObj(index -> candidateWithLane(
+                "TRACK:primary:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)).toList());
+    }
+
+    @Test
+    void commentsStayIndividualWhileLikeStoriesOnTheSameTargetCollapse() {
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> candidates = List.of(
+                candidate("ACTIVITY_COMMENT:c1", MusicianFeedItemType.ACTIVITY_COMMENT,
+                        UUID.randomUUID(), target, 900_000, false, null),
+                candidate("ACTIVITY_COMMENT:c2", MusicianFeedItemType.ACTIVITY_COMMENT,
+                        UUID.randomUUID(), target, 890_000, false, null),
+                candidate("ACTIVITY_LIKE:l1", MusicianFeedItemType.ACTIVITY_LIKE,
+                        UUID.randomUUID(), target, 880_000, false, null),
+                candidate("ACTIVITY_LIKE:l2", MusicianFeedItemType.ACTIVITY_LIKE,
+                        UUID.randomUUID(), target, 870_000, false, null));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 10,
+                Set.of(MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.ACTIVITY_LIKE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id)
+                .contains("ACTIVITY_COMMENT:c1", "ACTIVITY_COMMENT:c2")
+                .containsAnyOf("ACTIVITY_LIKE:l1", "ACTIVITY_LIKE:l2")
+                .hasSize(3);
+    }
+
+    @Test
+    void promotionsUseVariableOrganicGapsAndContinueBeyondThreeDistinctSponsors() {
+        List<MusicianFeedCandidate> organic = IntStream.range(0, 100)
+                .mapToObj(index -> candidate("TRACK:" + index, MusicianFeedItemType.TRACK,
+                        UUID.randomUUID(), UUID.randomUUID(), 1_000_000 - index, false, null))
+                .toList();
+        List<MusicianFeedCandidate> sponsors = IntStream.range(0, 12)
+                .mapToObj(index -> candidate("SPONSORED:" + index, MusicianFeedItemType.SPONSORED,
+                        UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index, false,
+                        new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "https://example.test")))
+                .toList();
+
+        var page = mixer.mix(VIEWER, ANCHOR, 90,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), organic, sponsors, null, 0);
+
+        List<Integer> promotedPositions = IntStream.range(0, page.items().size())
+                .filter(index -> page.items().get(index).promotion() != null).boxed().toList();
+        List<Integer> expectedPositions = new ArrayList<>();
+        int nextPosition = 0;
+        for (int ordinal = 0; ordinal < sponsors.size(); ordinal++) {
+            nextPosition += MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, ordinal);
+            if (nextPosition >= 90) break;
+            expectedPositions.add(nextPosition++);
+        }
+        assertThat(promotedPositions).containsExactlyElementsOf(expectedPositions).hasSizeGreaterThan(3);
+        List<Integer> gaps = new ArrayList<>();
+        int previousPosition = -1;
+        for (int position : promotedPositions) {
+            gaps.add(position - previousPosition - 1);
+            previousPosition = position;
+        }
+        assertThat(gaps).allSatisfy(gap -> assertThat(gap).isBetween(6, 10));
+        assertThat(new HashSet<>(gaps)).hasSizeGreaterThan(1);
+        assertThat(page.items().subList(0, 6)).allMatch(item -> item.promotion() == null);
+        assertThat(page.deliveredOrganicCount()).isEqualTo(90 - promotedPositions.size());
+        assertThat(page.hasMore()).isTrue();
+    }
+
+    @Test
+    void commentIndividualityNeverAllowsASponsorForItsUnderlyingOrganicTarget() {
+        UUID target = UUID.randomUUID();
+        var comment = candidate("ACTIVITY_COMMENT:c1", MusicianFeedItemType.ACTIVITY_COMMENT,
+                UUID.randomUUID(), target, 900_000, false, null);
+        var duplicateSponsor = candidate("SPONSORED:s1", MusicianFeedItemType.SPONSORED,
+                UUID.randomUUID(), target, 2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/open"));
+        List<MusicianFeedCandidate> organic = new ArrayList<>();
+        organic.add(comment);
+        IntStream.range(0, 12).forEach(index -> organic.add(candidate("TRACK:x" + index,
+                MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                800_000 - index, false, null)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 12,
+                Set.of(MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.TRACK,
+                        MusicianFeedItemType.SPONSORED), MusicianFeedFeedbackSnapshot.empty(),
+                organic, List.of(duplicateSponsor), null, 0);
+
+        assertThat(page.items()).noneMatch(item -> item.promotion() != null);
+    }
+
+    @Test
+    void suppressedCommentTailCannotAdvertiseASecondSponsorContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        UUID firstTarget = UUID.randomUUID();
+        List<MusicianFeedCandidate> comments = IntStream.range(0, firstGap)
+                .mapToObj(index -> candidate("ACTIVITY_COMMENT:" + index,
+                        MusicianFeedItemType.ACTIVITY_COMMENT, UUID.randomUUID(), firstTarget,
+                        900_000 - index, false, null))
+                .toList();
+        var firstSponsor = candidate("SPONSORED:first", MusicianFeedItemType.SPONSORED,
+                UUID.randomUUID(), firstTarget, 2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/first"));
+        var secondSponsor = candidate("SPONSORED:second", MusicianFeedItemType.SPONSORED,
+                UUID.randomUUID(), UUID.randomUUID(), 1_900_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/second"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 1,
+                Set.of(MusicianFeedItemType.ACTIVITY_COMMENT, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), comments, List.of(firstSponsor, secondSponsor),
+                null, firstGap, 0, false);
+
+        assertThat(page.items()).singleElement().satisfies(value ->
+                assertThat(value.id()).isEqualTo("SPONSORED:first"));
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void exactCadenceThresholdKeepsAContinuationForTheWaitingSponsor() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        List<MusicianFeedCandidate> organic = IntStream.range(0, firstGap)
+                .mapToObj(index -> candidate("TRACK:" + index, MusicianFeedItemType.TRACK,
+                        UUID.randomUUID(), UUID.randomUUID(), 1_000_000 - index, false, null))
+                .toList();
+        var sponsor = candidate("SPONSORED:one", MusicianFeedItemType.SPONSORED,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/open"));
+
+        var thresholdPage = mixer.mix(VIEWER, ANCHOR, firstGap,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), organic, List.of(sponsor), null, 0, 0, false);
+        assertThat(thresholdPage.items()).allMatch(value -> value.promotion() == null);
+        assertThat(thresholdPage.hasMore()).isTrue();
+        assertThat(thresholdPage.cursorBoundary()).isNotNull();
+
+        var sponsorPage = mixer.mix(VIEWER, ANCHOR, 1,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.SPONSORED),
+                MusicianFeedFeedbackSnapshot.empty(), List.of(), List.of(sponsor), null,
+                thresholdPage.deliveredOrganicCount(), 0, false);
+        assertThat(sponsorPage.items()).singleElement().satisfies(value ->
+                assertThat(value.promotion()).isNotNull());
+        assertThat(sponsorPage.cursorBoundary()).isNotNull();
+        assertThat(sponsorPage.hasMore()).isFalse();
+    }
+
+    @Test
+    void delayedSponsorStartsAFreshGapWithoutCatchingUpOnMissedSlots() {
+        int delayedOrganicCount = 23;
+        int secondGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 1);
+        var firstSponsor = sponsored("SPONSORED:late");
+        var nextSponsor = sponsored("SPONSORED:next");
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.SPONSORED);
+
+        var latePage = mixer.mix(VIEWER, ANCHOR, 1, types,
+                MusicianFeedFeedbackSnapshot.empty(), List.of(), List.of(firstSponsor),
+                null, delayedOrganicCount, 0, false, null, 0);
+        assertThat(latePage.items()).singleElement().satisfies(item ->
+                assertThat(item.promotion()).isNotNull());
+        assertThat(latePage.deliveredOrganicCount()).isEqualTo(delayedOrganicCount);
+        assertThat(latePage.hasMore()).isFalse();
+
+        List<MusicianFeedCandidate> nextOrganic = IntStream.range(0, secondGap)
+                .mapToObj(index -> candidate("TRACK:late-separator:" + index,
+                        MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                        1_000_000 - index, false, null)).toList();
+        var almostReady = mixer.mix(VIEWER, ANCHOR, secondGap - 1, types,
+                MusicianFeedFeedbackSnapshot.empty(), nextOrganic, List.of(nextSponsor), null,
+                delayedOrganicCount, 1, true, MusicianFeedItemType.SPONSORED, delayedOrganicCount);
+        assertThat(almostReady.items()).hasSize(secondGap - 1)
+                .allMatch(item -> item.promotion() == null);
+        assertThat(almostReady.hasMore()).isTrue();
+
+        Set<String> emittedIds = almostReady.items().stream().map(MusicianFeedItemResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        var ready = mixer.mix(VIEWER, ANCHOR, 2, types,
+                MusicianFeedFeedbackSnapshot.empty(), nextOrganic.stream()
+                        .filter(item -> !emittedIds.contains(item.itemId())).toList(),
+                List.of(nextSponsor), null, almostReady.deliveredOrganicCount(), 1, false,
+                MusicianFeedItemType.TRACK, delayedOrganicCount);
+        assertThat(ready.items()).hasSize(2);
+        assertThat(ready.items().getFirst().promotion()).isNull();
+        assertThat(ready.items().getLast().id()).isEqualTo(nextSponsor.itemId());
+        assertThat(ready.deliveredOrganicCount()).isEqualTo(delayedOrganicCount + secondGap);
+        assertThat(ready.hasMore()).isFalse();
+    }
+
+    @Test
+    void legacyOverloadsKeepASafeGapAfterADelayedSponsorEvenWithoutItsExactPosition() {
+        int delayedPromotionOrganicPosition = 23;
+        int secondGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 1);
+        var sponsor = sponsored("SPONSORED:legacy-continuation");
+        Set<MusicianFeedItemType> types = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.SPONSORED);
+        // Exercise both an ad-ending page and a page with one organic item after that ad.
+        // A nominal first slot would make the late campaign look overdue in both cases.
+        for (boolean lastItemPromoted : List.of(true, false)) {
+            int alreadySeparated = lastItemPromoted ? 0 : 1;
+            int remainingGap = secondGap - alreadySeparated;
+            int organicAlreadyDelivered = delayedPromotionOrganicPosition + alreadySeparated;
+            List<MusicianFeedCandidate> separators = IntStream.range(0, remainingGap)
+                    .mapToObj(index -> candidate("TRACK:legacy-separator:" + index,
+                            MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                            1_000_000 - index, false, null)).toList();
+
+            var shortPage = mixer.mix(VIEWER, ANCHOR, remainingGap + 1, types,
+                    MusicianFeedFeedbackSnapshot.empty(), separators, List.of(sponsor), null,
+                    organicAlreadyDelivered, 1, lastItemPromoted);
+            var typedPage = mixer.mix(VIEWER, ANCHOR, remainingGap + 1, types,
+                    MusicianFeedFeedbackSnapshot.empty(), separators, List.of(sponsor), null,
+                    organicAlreadyDelivered, 1, lastItemPromoted,
+                    lastItemPromoted ? MusicianFeedItemType.SPONSORED : MusicianFeedItemType.TRACK);
+
+            for (var page : List.of(shortPage, typedPage)) {
+                assertThat(page.items()).hasSize(remainingGap + 1);
+                assertThat(page.items().subList(0, remainingGap))
+                        .allMatch(item -> item.promotion() == null);
+                assertThat(page.items().getLast().id()).isEqualTo(sponsor.itemId());
+                assertThat(alreadySeparated + remainingGap).isGreaterThanOrEqualTo(6);
+                assertThat(page.deliveredOrganicCount())
+                        .isEqualTo(delayedPromotionOrganicPosition + secondGap);
+                assertThat(page.hasMore()).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void nativeCampaignUpgradesItsOrganicTargetAtTheSlotWithoutDuplicatingIt() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> organic = new ArrayList<>();
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
+                MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, false, null)));
+        organic.add(candidate("COLLAB:organic", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 900_000, false, null));
+        var promotedNative = candidate("COLLAB:promoted", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 2,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
+                MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null, 0, 0, false);
+
+        assertThat(page.items().stream().filter(value -> value.target().id().equals(target))).singleElement()
+                .satisfies(value -> assertThat(value.promotion()).isNotNull());
+    }
+
+    @Test
+    void promotedDeferredNativeTargetDoesNotCreateAPhantomContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> organic = new ArrayList<>();
+        organic.add(candidate("COLLAB:organic", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 2_000_000, false, null));
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
+                MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, false, null)));
+        var promotedNative = candidate("COLLAB:promoted", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 2_100_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 1,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
+                MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null,
+                0, 0, false);
+
+        assertThat(page.items()).hasSize(firstGap + 1);
+        assertThat(page.items().getLast().promotion()).isNotNull();
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void promotedUnexaminedNativeTailDoesNotCreateAPhantomContinuation() {
+        int firstGap = MusicianFeedPromotionCadence.organicGap(VIEWER, ANCHOR, 0);
+        UUID target = UUID.randomUUID();
+        List<MusicianFeedCandidate> organic = new ArrayList<>();
+        IntStream.range(0, firstGap).forEach(index -> organic.add(candidate("TRACK:" + index,
+                MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                2_000_000 - index, false, null)));
+        organic.add(candidate("COLLAB:organic-tail", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 100_000, false, null));
+        var promotedNative = candidate("COLLAB:promoted", MusicianFeedItemType.COLLAB,
+                UUID.randomUUID(), target, 2_100_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Başvur", "/collab"));
+
+        var page = mixer.mix(VIEWER, ANCHOR, firstGap + 1,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.COLLAB),
+                MusicianFeedFeedbackSnapshot.empty(), organic, List.of(promotedNative), null,
+                0, 0, false);
+
+        assertThat(page.items()).hasSize(firstGap + 1);
+        assertThat(page.items().getLast().promotion()).isNotNull();
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void discoveryFillsASparsePrimaryPoolWhileModuleSharesKeepTheirBudgetAndSeparation() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 20).forEach(index -> candidates.add(candidateWithLane(
+                "PROFILE:" + index, MusicianFeedItemType.PROFILE, UUID.randomUUID(), UUID.randomUUID(),
+                400_000 - index, MusicianFeedLane.GENERAL_DISCOVERY)));
+        IntStream.range(0, 20).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000 - index, MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 20).forEach(index -> candidates.add(candidateWithLane(
+                "ACTIVITY_LIKE:module:" + index, MusicianFeedItemType.ACTIVITY_LIKE,
+                UUID.randomUUID(), UUID.randomUUID(), 850_000 - index, MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.PROFILE, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        MusicianFeedItemType.ACTIVITY_LIKE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0, 0, false, null);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream().filter(value -> value.type() == MusicianFeedItemType.PROFILE).count())
+                .isEqualTo(18);
+        Set<MusicianFeedItemType> moduleTypes = Set.of(
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE, MusicianFeedItemType.ACTIVITY_LIKE);
+        assertThat(page.items().stream().filter(value -> moduleTypes.contains(value.type())).count())
+                .isLessThanOrEqualTo(2);
+        for (int index = 1; index < page.items().size(); index++) {
+            boolean previousModule = moduleTypes.contains(page.items().get(index - 1).type());
+            boolean currentModule = moduleTypes.contains(page.items().get(index).type());
+            assertThat(previousModule && currentModule).isFalse();
+        }
+    }
+
+    @Test
+    void twoSlotModuleBudgetIncludesBothNativeShareTypesDespiteScoreGap() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "TABLEGROUP_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK,
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(20);
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE))
+                .hasSize(1);
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE))
+                .hasSize(1);
+        for (int index = 1; index < page.items().size(); index++) {
+            assertThat(page.itemLanes().get(index - 1) == MusicianFeedLane.MODULE_SHARE
+                    && page.itemLanes().get(index) == MusicianFeedLane.MODULE_SHARE).isFalse();
+        }
+    }
+
+    @Test
+    void moduleSubtypeReservationBackfillsWhenOnlyOneNativeShareTypeExists() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 6).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20,
+                Set.of(MusicianFeedItemType.TRACK,
+                        MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                        MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE),
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(page.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE))
+                .hasSize(2);
+        assertThat(page.items())
+                .noneMatch(value -> value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE);
+    }
+
+    @Test
+    void oneSlotModuleBudgetAlternatesTheLeastDeliveredSubtypeAcrossSessionPages() {
+        List<MusicianFeedCandidate> remaining = new ArrayList<>();
+        IntStream.range(0, 30).forEach(index -> remaining.add(candidateWithLane(
+                "TRACK:" + index, MusicianFeedItemType.TRACK, UUID.randomUUID(), UUID.randomUUID(),
+                1_000_000 - index, MusicianFeedLane.FOLLOWING)));
+        IntStream.range(0, 5).forEach(index -> remaining.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 2_000_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 5).forEach(index -> remaining.add(candidateWithLane(
+                "TABLEGROUP_PROFILE_SHARE:" + index,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 1_900_000 - index,
+                MusicianFeedLane.MODULE_SHARE)));
+        Set<MusicianFeedItemType> supported = Set.of(MusicianFeedItemType.TRACK,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE);
+        List<MusicianFeedItemType> deliveredModuleTypes = new ArrayList<>();
+        long deliveredOrganic = 0;
+        long deliveredOverthinking = 0;
+        long deliveredTableGroup = 0;
+        MusicianFeedItemType lastType = null;
+        MusicianFeedLane lastLane = null;
+
+        for (int pageIndex = 0; pageIndex < 3; pageIndex++) {
+            var page = mixer.mix(VIEWER, ANCHOR, 10, supported,
+                    MusicianFeedFeedbackSnapshot.empty(), remaining, List.of(), null,
+                    deliveredOrganic, 0, false, lastType, lastLane, 0,
+                    deliveredOverthinking, deliveredTableGroup);
+            assertThat(page.items()).hasSize(10);
+            List<MusicianFeedItemType> pageModuleTypes = page.items().stream()
+                    .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE
+                            || value.type() == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
+                    .map(MusicianFeedItemResponse::type).toList();
+            assertThat(pageModuleTypes).hasSize(1);
+            deliveredModuleTypes.addAll(pageModuleTypes);
+            deliveredOverthinking += pageModuleTypes.stream()
+                    .filter(value -> value == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE).count();
+            deliveredTableGroup += pageModuleTypes.stream()
+                    .filter(value -> value == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE).count();
+            Set<String> deliveredIds = page.items().stream()
+                    .map(MusicianFeedItemResponse::id).collect(java.util.stream.Collectors.toSet());
+            remaining.removeIf(value -> deliveredIds.contains(value.itemId()));
+            deliveredOrganic = page.deliveredOrganicCount();
+            lastType = page.items().getLast().type();
+            lastLane = page.itemLanes().getLast();
+        }
+
+        assertThat(deliveredModuleTypes).containsExactly(
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+    }
+
+    @Test
+    void quotaWithheldHigherRankedSharesKeepAUsableContinuation() {
+        List<MusicianFeedCandidate> candidates = new ArrayList<>();
+        IntStream.range(0, 8).forEach(index -> candidates.add(candidateWithLane(
+                "OVERTHINKING_PROFILE_SHARE:remaining:" + index,
+                MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE,
+                UUID.randomUUID(), UUID.randomUUID(), 970_000, MusicianFeedLane.MODULE_SHARE)));
+        IntStream.range(0, 18).forEach(index -> candidates.add(candidateWithLane(
+                "EVENT:separator:" + index, MusicianFeedItemType.EVENT,
+                UUID.randomUUID(), UUID.randomUUID(), 880_000, MusicianFeedLane.FOLLOWING)));
+        var supported = Set.of(MusicianFeedItemType.EVENT, MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+
+        var first = mixer.mix(VIEWER, ANCHOR, 20, supported,
+                MusicianFeedFeedbackSnapshot.empty(), candidates, List.of(), null, 0);
+
+        assertThat(first.items()).hasSize(20);
+        assertThat(first.items().stream()
+                .filter(value -> value.type() == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE)).hasSize(2);
+        assertThat(first.itemLanes().getLast()).isEqualTo(MusicianFeedLane.FOLLOWING);
+        assertThat(first.hasMore()).isTrue();
+        Set<String> delivered = first.items().stream().map(MusicianFeedItemResponse::id)
+                .collect(java.util.stream.Collectors.toSet());
+        var remaining = candidates.stream().filter(value -> !delivered.contains(value.itemId())).toList();
+        assertThat(remaining).hasSize(6);
+
+        var second = mixer.mix(VIEWER, ANCHOR, 20, supported,
+                MusicianFeedFeedbackSnapshot.empty(), remaining, List.of(), null,
+                first.deliveredOrganicCount(), 0, false, first.items().getLast().type(),
+                first.itemLanes().getLast(), 0);
+
+        assertThat(second.items()).singleElement().satisfies(value -> {
+            assertThat(value.type()).isEqualTo(MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE);
+            assertThat(delivered).doesNotContain(value.id());
+        });
+    }
+
+    @Test
+    void deliveredIndividualCommentsDoNotCreateAPhantomContinuation() {
+        UUID sharedTarget = UUID.randomUUID();
+        var comments = IntStream.range(0, 2).mapToObj(index -> candidate(
+                "ACTIVITY_COMMENT:exhausted:" + index, MusicianFeedItemType.ACTIVITY_COMMENT,
+                UUID.randomUUID(), sharedTarget, 900_000, false, null)).toList();
+
+        var partial = mixer.mix(VIEWER, ANCHOR, 1, Set.of(MusicianFeedItemType.ACTIVITY_COMMENT),
+                MusicianFeedFeedbackSnapshot.empty(), comments, List.of(), null, 0);
+        assertThat(partial.items()).hasSize(1);
+        assertThat(partial.hasMore()).as("another comment on the same target remains").isTrue();
+
+        var page = mixer.mix(VIEWER, ANCHOR, 20, Set.of(MusicianFeedItemType.ACTIVITY_COMMENT),
+                MusicianFeedFeedbackSnapshot.empty(), comments, List.of(), null, 0);
+
+        assertThat(page.items()).hasSize(2);
+        assertThat(page.hasMore()).isFalse();
+    }
+
+    @Test
+    void moduleActivityLaneIsRememberedAcrossPageBoundaries() {
+        var activity = candidateWithLane("ACTIVITY_LIKE:module", MusicianFeedItemType.ACTIVITY_LIKE,
+                UUID.randomUUID(), UUID.randomUUID(), 900_000, MusicianFeedLane.MODULE_SHARE);
+        var first = mixer.mix(VIEWER, ANCHOR, 1,
+                Set.of(MusicianFeedItemType.ACTIVITY_LIKE), MusicianFeedFeedbackSnapshot.empty(),
+                List.of(activity), List.of(), null, 0, 0, false, null,
+                null, 0);
+        assertThat(first.itemLanes()).containsExactly(MusicianFeedLane.MODULE_SHARE);
+
+        var nextModule = candidateWithLane("ACTIVITY_LIKE:next", MusicianFeedItemType.ACTIVITY_LIKE,
+                UUID.randomUUID(), UUID.randomUUID(), 800_000, MusicianFeedLane.MODULE_SHARE);
+        var primary = candidateWithLane("TRACK:separator", MusicianFeedItemType.TRACK,
+                UUID.randomUUID(), UUID.randomUUID(), 700_000, MusicianFeedLane.FOLLOWING);
+        var second = mixer.mix(VIEWER, ANCHOR, 2,
+                Set.of(MusicianFeedItemType.ACTIVITY_LIKE, MusicianFeedItemType.TRACK),
+                MusicianFeedFeedbackSnapshot.empty(), List.of(nextModule, primary), List.of(), null,
+                first.deliveredOrganicCount(), 0, false, MusicianFeedItemType.ACTIVITY_LIKE,
+                first.itemLanes().getLast(), 0);
+
+        assertThat(second.items()).extracting(MusicianFeedItemResponse::id).containsExactly("TRACK:separator");
+    }
+
+    @Test
+    void authorDiversityUsesStableProfileIdentityRatherThanOwnerUserId() {
+        UUID sharedOwner = UUID.randomUUID();
+        UUID venueOne = UUID.randomUUID();
+        UUID venueTwo = UUID.randomUUID();
+        var first = candidateWithAuthor("PROFILE:v1", MusicianFeedItemType.PROFILE,
+                sharedOwner, venueOne, "VENUE", UUID.randomUUID(), 1_000_000);
+        var second = candidateWithAuthor("PROFILE:v2", MusicianFeedItemType.PROFILE,
+                sharedOwner, venueTwo, "VENUE", UUID.randomUUID(), 999_000);
+
+        var page = mixer.mix(VIEWER, ANCHOR, 2, Set.of(MusicianFeedItemType.PROFILE),
+                MusicianFeedFeedbackSnapshot.empty(), List.of(first, second), List.of(), null, 0);
+
+        assertThat(page.items()).extracting(MusicianFeedItemResponse::id)
+                .containsExactly("PROFILE:v1", "PROFILE:v2");
+    }
+
+    @Test
+    void sameTargetSocialProofKeepsNativePayloadAndAggregatesTheStrongestReason() {
+        UUID target = UUID.randomUUID();
+        UUID publisherUser = UUID.randomUUID();
+        UUID publisherProfile = UUID.randomUUID();
+        UUID actorUser = UUID.randomUUID();
+        UUID actorProfile = UUID.randomUUID();
+        var publisher = new MusicianFeedItemResponse.Author(publisherUser, publisherProfile,
+                "MUSICIAN", "publisher", "Publisher", null, true);
+        var actor = new MusicianFeedItemResponse.Author(actorUser, actorProfile,
+                "LISTENER", "listener", "Listener", null, true);
+        var nativeItem = new MusicianFeedCandidate("TRACK:native", MusicianFeedItemType.TRACK, 1,
+                ANCHOR.minusSeconds(60), new MusicianFeedItemResponse.Reason(
+                MusicianFeedReasonCode.FOLLOWING_PUBLICATION, List.of(publisher), 0), publisher,
+                new MusicianFeedItemResponse.Target("MEDIA", target), null, null,
+                List.of(MusicianFeedFeedbackAction.HIDE), Map.of("trackId", target),
+                900_000, 0, MusicianFeedLane.FOLLOWING, false);
+        var likeStory = new MusicianFeedCandidate("ACTIVITY_LIKE:one", MusicianFeedItemType.ACTIVITY_LIKE, 1,
+                ANCHOR.minusSeconds(30), new MusicianFeedItemResponse.Reason(
+                MusicianFeedReasonCode.FOLLOWED_USER_LIKED, List.of(actor), 0), actor,
+                new MusicianFeedItemResponse.Target("MEDIA", target), null, null,
+                List.of(MusicianFeedFeedbackAction.HIDE), Map.of("action", "LIKE"),
+                1_000_000, 0, MusicianFeedLane.FOLLOWING, false);
+
+        var page = mixer.mix(VIEWER, ANCHOR, 10,
+                Set.of(MusicianFeedItemType.TRACK, MusicianFeedItemType.ACTIVITY_LIKE),
+                MusicianFeedFeedbackSnapshot.empty(), List.of(nativeItem, likeStory), List.of(), null, 0);
+
+        assertThat(page.items()).singleElement().satisfies(value -> {
+            assertThat(value.type()).isEqualTo(MusicianFeedItemType.TRACK);
+            assertThat(value.author().profileId()).isEqualTo(publisherProfile);
+            assertThat(value.reason().code()).isEqualTo(MusicianFeedReasonCode.FOLLOWED_USER_LIKED);
+            assertThat(value.reason().actors()).extracting(MusicianFeedItemResponse.Author::profileId)
+                    .contains(actorProfile, publisherProfile);
+            assertThat(value.payload()).isEqualTo(Map.of("trackId", target));
+        });
+    }
+
+    private static MusicianFeedCandidate sponsored(String id) {
+        return candidate(id, MusicianFeedItemType.SPONSORED, UUID.randomUUID(), UUID.randomUUID(),
+                2_000_000, false,
+                new MusicianFeedItemResponse.Promotion(UUID.randomUUID(), "Sponsored", "Aç", "/open"));
+    }
+
+    private static MusicianFeedCandidate candidate(
+            String id,
+            MusicianFeedItemType type,
+            UUID authorId,
+            UUID targetId,
+            long baseScore,
+            boolean owned,
+            MusicianFeedItemResponse.Promotion promotion
+    ) {
+        var author = new MusicianFeedItemResponse.Author(authorId, UUID.randomUUID(), "MUSICIAN",
+                "user", "User", null, true);
+        return new MusicianFeedCandidate(id, type, 1, ANCHOR.minusSeconds(60),
+                new MusicianFeedItemResponse.Reason(MusicianFeedReasonCode.FOLLOWING_PUBLICATION,
+                        List.of(author), 0), author,
+                new MusicianFeedItemResponse.Target("MEDIA", targetId), null, promotion,
+                List.of(MusicianFeedFeedbackAction.HIDE), Map.of("id", id),
+                baseScore, 0, MusicianFeedLane.FOLLOWING, owned);
+    }
+
+    private static MusicianFeedCandidate candidateWithLane(
+            String id, MusicianFeedItemType type, UUID authorId, UUID targetId,
+            long baseScore, MusicianFeedLane lane) {
+        MusicianFeedCandidate value = candidate(id, type, authorId, targetId, baseScore, false, null);
+        return new MusicianFeedCandidate(value.itemId(), value.type(), value.payloadVersion(),
+                value.occurredAt(), value.reason(), value.author(), value.target(), value.engagement(),
+                value.promotion(), value.feedbackCapabilities(), value.payload(), value.baseScore(),
+                value.relevanceScore(), lane, value.ownedByViewer());
+    }
+
+    private static MusicianFeedCandidate candidateWithAuthor(
+            String id, MusicianFeedItemType type, UUID userId, UUID profileId,
+            String profileType, UUID targetId, long score) {
+        var author = new MusicianFeedItemResponse.Author(userId, profileId, profileType,
+                "owner", "Owner", null, false);
+        return new MusicianFeedCandidate(id, type, 1, ANCHOR.minusSeconds(60),
+                new MusicianFeedItemResponse.Reason(MusicianFeedReasonCode.DISCOVERY, List.of(), 0),
+                author, new MusicianFeedItemResponse.Target("PROFILE", targetId), null, null,
+                List.of(MusicianFeedFeedbackAction.HIDE), Map.of("id", id), score, 0,
+                MusicianFeedLane.FOLLOWING, false);
+    }
+}

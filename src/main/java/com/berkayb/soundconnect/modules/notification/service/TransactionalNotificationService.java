@@ -1,11 +1,13 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
+import com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity;
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class TransactionalNotificationService {
     private final NotificationService notificationService;
     private final NotificationReceiptRepository receiptRepository;
     private final NotificationDeliveryPolicy deliveryPolicy;
+    private final org.springframework.context.ApplicationEventPublisher applicationEvents;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void persistInCurrentTransaction(NotificationInboundEvent event) {
@@ -46,9 +49,11 @@ public class TransactionalNotificationService {
         if (!Boolean.FALSE.equals(event.emailForce())) {
             throw new IllegalArgumentException("Transactional in-app notifications require emailForce=false");
         }
-        String title = event.title() == null || event.title().isBlank()
+        boolean media = MediaNotificationIdentity.applies(event.type(), event.payload());
+        boolean band = BandNotificationIdentity.applies(event.type());
+        String title = band ? BandNotificationIdentity.title(event.type()) : media ? MediaNotificationIdentity.title(event.type(), null) : event.title() == null || event.title().isBlank()
                 ? event.type().getDefaultTitle() : event.title();
-        String message = event.message() == null ? "" : event.message();
+        String message = band ? BandNotificationIdentity.MESSAGE : media ? MediaNotificationIdentity.MESSAGE : event.message() == null ? "" : event.message();
         if (title.length() > 160 || message.length() > 1000) {
             throw new IllegalArgumentException("Notification title/message exceeds storage limits");
         }
@@ -63,10 +68,11 @@ public class TransactionalNotificationService {
                 .type(event.type())
                 .title(title)
                 .message(message)
-                .payload(event.payload() == null ? null : new LinkedHashMap<>(event.payload()))
+                .payload(band ? BandNotificationIdentity.payload(event.type(),event.payload()) : media ? MediaNotificationIdentity.payload(event.payload()) : event.payload() == null ? null : new LinkedHashMap<>(event.payload()))
                 .occurredAt(event.occurredAt())
                 .read(false)
                 .build());
+        applicationEvents.publishEvent(new com.berkayb.soundconnect.modules.notification.push.NotificationPersisted(saved));
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -86,7 +92,7 @@ public class TransactionalNotificationService {
         }
         try {
             var dto = notificationMapper.toDto(notification);
-            if (dto != null && NotificationService.requiresActorIdentityRefresh(dto.type())) {
+            if (dto != null && NotificationService.requiresActorIdentityRefresh(dto.type(), dto.payload())) {
                 dto = notificationService.refreshActorIdentityForDelivery(dto);
             }
             notificationWebSocketService.sendNotificationToUser(

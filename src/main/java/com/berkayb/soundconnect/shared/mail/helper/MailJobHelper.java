@@ -116,8 +116,8 @@ public class MailJobHelper {
 			return Boolean.TRUE.equals(ok);
 		} catch (DataAccessException ex) {
 			// redis yoksa idempotency devre disi kalsin
-			log.warn("Idempotency check FAILED (redis). key={}, exceptionType={}",
-			         key, ex.getClass().getSimpleName());
+			log.warn("Idempotency check FAILED (redis). exceptionType={}",
+			         ex.getClass().getSimpleName());
 			return true;
 		}
 	}
@@ -131,8 +131,8 @@ public class MailJobHelper {
 			String v = redis.opsForValue().get(sentKey);
 			return v != null;
 		} catch (DataAccessException ex) {
-			log.warn("Sent-check Failed (redis). key={}, exceptionType={}",
-			         sentKey, ex.getClass().getSimpleName());
+			log.warn("Sent-check Failed (redis). exceptionType={}",
+			         ex.getClass().getSimpleName());
 			return false; // fail-closed: tekrar dene
 		}
 	}
@@ -149,8 +149,8 @@ public class MailJobHelper {
 			String val = "1@" + Instant.now();
 			redis.opsForValue().setIfAbsent(sentKey, val, ttl);
 		} catch (DataAccessException ex) {
-			log.warn("Mark-sent FAILED (redis). key={}, exceptionType={}",
-			         sentKey, ex.getClass().getSimpleName());
+			log.warn("Mark-sent FAILED (redis). exceptionType={}",
+			         ex.getClass().getSimpleName());
 		}
 	}
 	
@@ -159,8 +159,8 @@ public class MailJobHelper {
 		try {
 			redis.delete(lockKey);
 		} catch (DataAccessException ex) {
-			log.warn("Release-lock FAILED (redis). key={}, exceptionType={}",
-			         lockKey, ex.getClass().getSimpleName());
+			log.warn("Release-lock FAILED (redis). exceptionType={}",
+			         ex.getClass().getSimpleName());
 		}
 	}
 	
@@ -222,7 +222,7 @@ public class MailJobHelper {
 	public String maskEmail(String email) {
 		if (email == null) return "null";
 		int at = email.indexOf('@');
-		if (at <= 1) return "***";
+		if (at <= 1 || at == email.length() - 1) return "***";
 		String local = email.substring(0, at);
 		String domain = email.substring(at + 1);
 		String maskedLocal = local.charAt(0) + "***";

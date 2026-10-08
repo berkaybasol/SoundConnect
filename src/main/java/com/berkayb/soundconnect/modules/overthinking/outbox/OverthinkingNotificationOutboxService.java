@@ -40,8 +40,19 @@ public class OverthinkingNotificationOutboxService {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Optional<OverthinkingNotificationOutboxClaim> claim(UUID eventId, String leaseOwner) {
 		Instant now = timeProvider.now();
+		if (repository.deadLetterExhausted(
+				eventId,
+				properties.getMaxAttempts(),
+				OverthinkingNotificationOutboxStatus.PENDING,
+				OverthinkingNotificationOutboxStatus.IN_FLIGHT,
+				OverthinkingNotificationOutboxStatus.DEAD_LETTER,
+				now
+		) == 1) {
+			return Optional.empty();
+		}
 		int claimed = repository.claim(
 				eventId,
+				properties.getMaxAttempts(),
 				OverthinkingNotificationOutboxStatus.PENDING,
 				OverthinkingNotificationOutboxStatus.IN_FLIGHT,
 				leaseOwner,

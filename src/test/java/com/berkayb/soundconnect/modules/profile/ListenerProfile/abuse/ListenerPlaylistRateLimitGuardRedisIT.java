@@ -28,7 +28,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
-@DataRedisTest
+@DataRedisTest(properties = {
+		"spring.config.location=classpath:/application-test.yml", "spring.config.import=",
+		"spring.autoconfigure.exclude=", "spring.data.redis.client-type=lettuce",
+		"app.listener-profile.playlist-rate-limit.enabled=true"
+})
 @Import({
 		ListenerPlaylistRateLimitConfiguration.class,
 		ListenerPlaylistRateLimitGuard.class

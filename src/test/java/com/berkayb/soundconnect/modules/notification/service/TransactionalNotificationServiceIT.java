@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
+import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +52,7 @@ import static org.mockito.Mockito.*;
 @ContextConfiguration(classes = TransactionalNotificationServiceIT.ConfigurationForTest.class)
 class TransactionalNotificationServiceIT {
     @Autowired NotificationRepository repository;
+    @Autowired NotificationReceiptRepository receipts;
     @Autowired TransactionalNotificationService notifications;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired JdbcTemplate jdbc;
@@ -63,6 +65,7 @@ class TransactionalNotificationServiceIT {
     @BeforeEach
     void setup() {
         repository.deleteAll();
+        receipts.deleteAll();
         jdbc.execute("create table if not exists notification_domain_test (id uuid primary key)");
         jdbc.update("delete from notification_domain_test");
         reset(mapper, badges, websocket, identityService);
@@ -78,10 +81,15 @@ class TransactionalNotificationServiceIT {
     @Test
     void commitMakesDomainChangeAndInboxDurableBeforeAnyRealtimeDelivery() {
         NotificationInboundEvent event = event();
+        when(identityService.refreshActorIdentityForDelivery(any())).thenAnswer(call -> {
+            NotificationResponseDto stored = call.getArgument(0);
+            return new NotificationResponseDto(stored.id(), stored.recipientId(), stored.type(),
+                    "Current safe band identity", stored.message(), stored.read(), stored.createdAt(), stored.payload());
+        });
         transactions.executeWithoutResult(status -> {
             jdbc.update("insert into notification_domain_test(id) values (?)", event.eventId());
             notifications.persistInCurrentTransaction(event);
-            verifyNoInteractions(mapper, badges, websocket);
+            verifyNoInteractions(mapper, badges, websocket, identityService);
         });
 
         assertThat(domainCount()).isEqualTo(1);
@@ -89,9 +97,18 @@ class TransactionalNotificationServiceIT {
         assertThat(stored.getRecipientId()).isEqualTo(event.recipientId());
         assertThat(stored.getOccurredAt()).isEqualTo(event.occurredAt());
         assertThat(stored.isRead()).isFalse();
-        verify(websocket).sendNotificationToUser(eq(event.recipientId()), any());
+        assertThat(receipts.findById(event.eventId()).orElseThrow().getRecipientId()).isEqualTo(event.recipientId());
+        NotificationResponseDto persisted = new NotificationResponseDto(stored.getId(), stored.getRecipientId(), stored.getType(),
+                stored.getTitle(), stored.getMessage(), stored.isRead(), stored.getOccurredAt(), stored.getPayload());
+        NotificationResponseDto refreshed = new NotificationResponseDto(persisted.id(), persisted.recipientId(), persisted.type(),
+                "Current safe band identity", persisted.message(), persisted.read(), persisted.createdAt(), persisted.payload());
+        var order = inOrder(mapper, identityService, websocket);
+        order.verify(mapper).toDto(any(Notification.class));
+        order.verify(identityService).refreshActorIdentityForDelivery(persisted);
+        order.verify(websocket).sendNotificationToUser(event.recipientId(), refreshed);
+        verify(websocket, never()).sendNotificationToUser(event.recipientId(), persisted);
         verify(badges).setUnreadWithTtl(event.recipientId(), 1L);
-        verifyNoInteractions(identityService);
+        verifyNoMoreInteractions(identityService);
     }
 
     @Test
@@ -112,15 +129,18 @@ class TransactionalNotificationServiceIT {
     void failedInboxValidationRollsBackTheCallingDomainChange() {
         NotificationInboundEvent valid = event();
         NotificationInboundEvent invalid = new NotificationInboundEvent(valid.eventId(), valid.recipientId(),
-                valid.type(), "x".repeat(161), valid.message(), valid.payload(), false, valid.occurredAt());
+                valid.type(), valid.title(), valid.message(), valid.payload(), true, valid.occurredAt());
         assertThatThrownBy(() -> transactions.executeWithoutResult(status -> {
             jdbc.update("insert into notification_domain_test(id) values (?)", valid.eventId());
+            assertThat(domainCount()).isEqualTo(1);
             notifications.persistInCurrentTransaction(invalid);
-        })).isInstanceOf(IllegalArgumentException.class);
+        })).isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Transactional in-app notifications require emailForce=false");
 
         assertThat(domainCount()).isZero();
         assertThat(repository.count()).isZero();
-        verifyNoInteractions(mapper, badges, websocket);
+        assertThat(receipts.count()).isZero();
+        verifyNoInteractions(mapper, badges, websocket, identityService);
     }
 
     @Test
@@ -174,6 +194,7 @@ class TransactionalNotificationServiceIT {
     @Configuration(proxyBeanMethods = false)
     @EntityScan(basePackageClasses = Notification.class)
     @EnableJpaRepositories(basePackageClasses = NotificationRepository.class)
-    @Import({TransactionalNotificationService.class, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})
+    @Import({TransactionalNotificationService.class, com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class,
+            com.berkayb.soundconnect.modules.notification.support.NotificationAudienceTestSchema.class})
     static class ConfigurationForTest { }
 }

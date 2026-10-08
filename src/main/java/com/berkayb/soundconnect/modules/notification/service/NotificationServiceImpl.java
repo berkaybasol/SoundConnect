@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
+import com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity;
 import com.berkayb.soundconnect.modules.notification.dto.response.NotificationResponseDto;
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
@@ -8,6 +9,7 @@ import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
+import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentity;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
@@ -39,11 +41,15 @@ import java.util.UUID;
 
 @Slf4j
 @Service
+@org.springframework.context.annotation.Import(BandNotificationProjection.class)
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class NotificationServiceImpl implements NotificationService {
+	@org.springframework.beans.factory.annotation.Autowired
+	private BandNotificationProjection bandProjection;
 	private static final int MAX_PAGE = 1000;
 	private static final int MAX_PAGE_SIZE = 100;
+	private static final int MAX_DELIVERY_STATE_IDS = 100;
 	private static final String SAFE_DM_TITLE = "Yeni mesaj";
 	private static final Sort NOTIFICATION_SORT = Sort.by(
 			Sort.Order.desc("occurredAt"),
@@ -56,6 +62,34 @@ public class NotificationServiceImpl implements NotificationService {
 	private final NotificationWebSocketService notificationWebSocketService;
 	private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
 	private final NotificationReceiptRepository receiptRepository;
+
+	@Override
+	@Transactional
+	public NotificationResponseDto getUserNotification(UUID userId, UUID notificationId) {
+		if (userId == null || notificationId == null) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		}
+		// This repository method applies the same live recipient/audience filter
+		// as the inbox. Missing and another account's IDs have the same result.
+		var notification = notificationRepository.findByIdAndRecipientId(notificationId, userId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.NOTIFICATION_NOT_FOUND));
+		// A logical read can take the existing identity fence locks. It must not
+		// acknowledge this row, mutate other unread rows or reuse a stale ghost name.
+		return rehydrateActorIdentities(List.of(notificationMapper.toDto(notification))).getFirst();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<UUID> getDismissedDeliveryIds(UUID userId, List<UUID> notificationIds) {
+		if (userId == null || notificationIds == null || notificationIds.size() > MAX_DELIVERY_STATE_IDS
+				|| notificationIds.stream().anyMatch(Objects::isNull)) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		}
+		if (notificationIds.isEmpty()) return List.of();
+		var requested = new LinkedHashSet<>(notificationIds);
+		var retained = new LinkedHashSet<>(notificationRepository.findVisibleUnreadIds(userId, requested));
+		return requested.stream().filter(id -> !retained.contains(id)).toList();
+	}
 
 	@Override
 	@Transactional(propagation = Propagation.REQUIRED)
@@ -130,6 +164,34 @@ public class NotificationServiceImpl implements NotificationService {
 				.anyMatch(notification -> hasActorIdentity(notification.type()));
 		if (!hasIdentitySnapshot) return notifications;
 
+        Map<UUID,NotificationResponseDto> bandProjections = Map.of();
+        if (notifications.stream().anyMatch(n -> n != null && BandNotificationIdentity.applies(n.type()))) {
+            try {
+                bandProjections = bandProjection.project(notifications);
+            } catch (RuntimeException unavailable) {
+                log.warn("BAND identity unavailable; anonymous projection. exceptionType={}", unavailable.getClass().getSimpleName());
+            }
+        }
+        final var currentBandProjections = bandProjections;
+
+		// MEDIA names are obtained under account and visibility locks before mapping.
+		// The persisted and queued title is deliberately anonymous in every case.
+		var mediaIds = new LinkedHashSet<UUID>();
+		for (var notification : notifications) {
+			if (notification != null && MediaNotificationIdentity.applies(notification.type(), notification.payload()))
+				MediaNotificationIdentity.actorId(notification.payload()).ifPresent(mediaIds::add);
+		}
+		Map<UUID,String> mediaNames;
+		try {
+			mediaNames = mediaIds.isEmpty() ? Map.of() : Objects.requireNonNull(
+					ghostListenerIdentityBatchResolver.resolveCurrentCanonicalNames(mediaIds));
+		} catch (RuntimeException exception) {
+			mediaNames = Map.of();
+			log.warn("MEDIA notification identity refresh failed; anonymous projection. exceptionType={}",
+					exception.getClass().getSimpleName());
+		}
+		final Map<UUID,String> currentMediaNames = mediaNames;
+
 		LinkedHashSet<UUID> actorIds = new LinkedHashSet<>();
 		for (NotificationResponseDto notification : notifications) {
 			if (notification != null && hasActorIdentity(notification.type())) {
@@ -156,7 +218,21 @@ public class NotificationServiceImpl implements NotificationService {
 		final boolean failed = identityResolutionFailed;
 		final Map<UUID, GhostListenerIdentity> identities = ghostIdentities;
 		return notifications.stream()
-				.map(notification -> rehydrateActorIdentity(notification, identities, failed))
+				.map(notification -> {
+                    if (notification != null && BandNotificationIdentity.applies(notification.type())) {
+                        return currentBandProjections.getOrDefault(notification.id(),new NotificationResponseDto(
+                                notification.id(),notification.recipientId(),notification.type(),
+                                BandNotificationIdentity.title(notification.type()),BandNotificationIdentity.MESSAGE,
+                                notification.read(),notification.createdAt(),BandNotificationIdentity.payload(notification.type(),notification.payload())));
+                    }
+					if (notification != null && MediaNotificationIdentity.applies(notification.type(), notification.payload())) {
+						String name = MediaNotificationIdentity.actorId(notification.payload()).map(currentMediaNames::get).orElse(null);
+						return new NotificationResponseDto(notification.id(), notification.recipientId(), notification.type(),
+								MediaNotificationIdentity.title(notification.type(), name), MediaNotificationIdentity.MESSAGE,
+								notification.read(), notification.createdAt(), MediaNotificationIdentity.payload(notification.payload()));
+					}
+					return rehydrateActorIdentity(notification, identities, failed);
+				})
 				.toList();
 	}
 
@@ -389,6 +465,14 @@ public class NotificationServiceImpl implements NotificationService {
 				userId,
 				conversationId.toString()
 		);
+		projectUnreadAfterCommit(userId);
+		return updated;
+	}
+
+	@Override
+	@Transactional
+	public int markDmMessageAsRead(UUID userId, UUID messageId) {
+		int updated = notificationRepository.markUnreadDmNotificationsAsReadByMessage(userId, messageId.toString());
 		projectUnreadAfterCommit(userId);
 		return updated;
 	}

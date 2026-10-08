@@ -14,6 +14,7 @@ public interface TrackMapper {
 			target = "playbackUrl",
 			expression = "java(mediaAssetService.getPlaybackUrl(track.getMediaAssetId()))"
 	)
+	@Mapping(target = "contentAudience", expression = "java(mediaAssetService.getById(track.getMediaAssetId()).getContentAudience())")
 	TrackResponseDto toDto(
 			Track track,
 			@Context MediaAssetService mediaAssetService

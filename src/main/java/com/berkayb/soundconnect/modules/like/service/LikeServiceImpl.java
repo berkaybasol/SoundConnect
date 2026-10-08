@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.like.repository.LikeRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class LikeServiceImpl implements LikeService{
 	private final EngagementTargetValidator engagementTargetValidator;
 	private final CommentLikeAccessGuard commentAccess;
 	private final MediaEngagementNotificationService notifications;
+    private final AnnouncementAnalyticsStore announcementAnalytics;
 
 	@Override
 	public CommentLikeState setCommentLike(UUID userId,UUID commentId,boolean liked) {
@@ -37,7 +39,7 @@ public class LikeServiceImpl implements LikeService{
 	@Override
 	public CommentLikeState readCommentLike(UUID userId,UUID commentId) {
 		requireActiveActor(userId);
-		commentAccess.requireLikeable(commentId,false);
+		commentAccess.requireLikeable(userId,commentId,false);
 		return commentState(userId,commentId);
 	}
 
@@ -76,7 +78,12 @@ public class LikeServiceImpl implements LikeService{
 	@Override
 	public void like(UUID userId, EngagementTargetType targetType, UUID targetId) {
 		validateMutation(userId,targetType,targetId);
-		if (likeRepository.insertIfAbsent(UUID.randomUUID(),userId,targetType.name(),targetId) > 0) {
+		UUID likeId = UUID.randomUUID();
+        if (likeRepository.insertIfAbsent(likeId,userId,targetType.name(),targetId) > 0) {
+            if (targetType == EngagementTargetType.ANNOUNCEMENT) {
+                announcementAnalytics.recordEngagement(userId, targetId, likeId,
+                        AnnouncementAnalyticsStore.EngagementMetric.LIKE, java.time.Instant.now());
+            }
 			notifications.liked(userId, targetType, targetId);
 		}
 	}
@@ -92,15 +99,21 @@ public class LikeServiceImpl implements LikeService{
 	@Transactional
 	public boolean isLiked(UUID userId, EngagementTargetType targetType, UUID targetId) {
 		requireActiveActor(userId);
-		validateRead(targetType, targetId);
+		validateRead(userId, targetType, targetId);
 		return likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, targetType, targetId);
 	}
 	
 	@Override
 	@Transactional
 	public long countLikes(EngagementTargetType targetType, UUID targetId) {
-		validateRead(targetType, targetId);
-		return likeRepository.countByTargetTypeAndTargetId(targetType, targetId);
+        return countLikes(null, targetType, targetId);
+    }
+
+    @Override
+    @Transactional
+    public long countLikes(UUID viewerId, EngagementTargetType targetType, UUID targetId) {
+        validateRead(viewerId, targetType, targetId);
+        return likeRepository.countByTargetTypeAndTargetId(targetType, targetId);
 	}
 
 	private void validateMutation(UUID userId,EngagementTargetType type,UUID id) {
@@ -108,17 +121,22 @@ public class LikeServiceImpl implements LikeService{
 		if(type==null || id==null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
 		requireActiveActor(userId);
 		if(type==EngagementTargetType.COMMENT) {
-			commentAccess.requireLikeable(id,true);
+			commentAccess.requireLikeable(userId,id,true);
 		} else {
-			engagementTargetValidator.validateExists(type,id);
+			validateTarget(userId,type,id);
 		}
 	}
 
-	private void validateRead(EngagementTargetType type, UUID id) {
+	private void validateRead(UUID viewerId, EngagementTargetType type, UUID id) {
 		if(type==null || id==null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
-		if(type==EngagementTargetType.COMMENT) commentAccess.requireLikeable(id,false);
-		else engagementTargetValidator.validateExists(type,id);
+		if(type==EngagementTargetType.COMMENT) commentAccess.requireLikeable(viewerId,id,false);
+		else validateTarget(viewerId,type,id);
 	}
+
+    private void validateTarget(UUID viewerId, EngagementTargetType type, UUID id) {
+        if (type == EngagementTargetType.ANNOUNCEMENT) engagementTargetValidator.validateExists(viewerId,type,id);
+        else engagementTargetValidator.validateExists(type,id);
+    }
 
 	private void requireActiveActor(UUID userId) {
 		if(userId==null || likeRepository.lockActiveActor(userId).isEmpty()) throw new SoundConnectException(ErrorType.UNAUTHORIZED);

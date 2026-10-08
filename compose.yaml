@@ -12,6 +12,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
+      # Allows the one-time empty-schema bootstrap to force push off before SQL migrations.
+      SOUNDCONNECT_PUSH_ENABLED: ${SOUNDCONNECT_PUSH_ENABLED:-false}
       SOUNDCONNECT_POSTGRES_URL: jdbc:postgresql://postgres:5432/${SOUNDCONNECT_POSTGRES_DB:-soundconnect}
       SOUNDCONNECT_POSTGRES_USERNAME: ${SOUNDCONNECT_POSTGRES_USERNAME:-soundconnect}
       SOUNDCONNECT_POSTGRES_PASSWORD: ${SOUNDCONNECT_POSTGRES_PASSWORD:?SOUNDCONNECT_POSTGRES_PASSWORD must be set in .env.local}

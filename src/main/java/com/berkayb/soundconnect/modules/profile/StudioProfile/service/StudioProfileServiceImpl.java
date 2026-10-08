@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.StudioProfile.service;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileProvisioningCommand;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.StudioProfileResponseDto;
@@ -155,6 +156,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 	@Override
 	@Transactional(readOnly = true)
 	public StudioProfileResponseDto getProfileByProfileId(UUID profileId) {
+		MediaContentAudiencePolicy.requireStudioAccess();
 		return toResponseDto(studioProfileRepository.findById(profileId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)));
 	}

@@ -67,6 +67,7 @@ class UserServiceImplTest {
 	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Mock private ListenerProfileProvisioner listenerProfileProvisioner;
 	@Mock private com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService listenerAccountDeletionService;
+	@Mock private com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle marketplaceMediaLifecycle;
 	
 	// ==== Test edeceğimiz servis ====
 	@InjectMocks
@@ -613,7 +614,9 @@ class UserServiceImplTest {
 		InOrder lockOrder = inOrder(userRepository);
 		lockOrder.verify(userRepository).findByIdForUpdate(lowerTargetId);
 		lockOrder.verify(userRepository).findByIdForUpdate(higherActorId);
-		verify(userRepository).delete(regularTarget);
+		InOrder cleanupOrder = inOrder(marketplaceMediaLifecycle, userRepository);
+		cleanupOrder.verify(marketplaceMediaLifecycle).purgeAccount(lowerTargetId);
+		cleanupOrder.verify(userRepository).delete(regularTarget);
 	}
 	
 	/**

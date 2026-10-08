@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.auth.passwordreset.service.PasswordResetService;
 import com.berkayb.soundconnect.auth.service.AuthService;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.EmailVerificationRequiredException;
 import com.berkayb.soundconnect.shared.exception.GlobalExceptionHandler;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -76,6 +77,52 @@ class AuthControllerPasswordValidationMvcTest {
 				.andExpect(jsonPath("$.success").value(true));
 
 		verify(authService).login(request);
+	}
+
+	@Test
+	void loginVerificationRecoveryUsesTheTypedCodeAndSingleCanonicalEmailDetail() throws Exception {
+		LoginRequestDto request = new LoginRequestDto("berna", "secret");
+		when(authService.login(request))
+				.thenThrow(new EmailVerificationRequiredException(" Berna@Example.COM "));
+
+		performLogin(request)
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1113))
+				.andExpect(jsonPath("$.message").value("Email verification is required"))
+				.andExpect(jsonPath("$.details.length()").value(1))
+				.andExpect(jsonPath("$.details[0]").value("berna@example.com"))
+				.andExpect(jsonPath("$.path").value(EndPoints.Auth.BASE + EndPoints.Auth.LOGIN))
+				.andExpect(jsonPath("$.data.token").doesNotExist());
+	}
+
+	@Test
+	void arbitraryDomainDetailsCannotDiscloseAnEmailEvenWhenUsingTheRecoveryCode() throws Exception {
+		LoginRequestDto request = new LoginRequestDto("berna", "secret");
+		when(authService.login(request)).thenThrow(new SoundConnectException(
+				ErrorType.EMAIL_VERIFICATION_REQUIRED, "private@example.com"));
+
+		performLogin(request)
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.code").value(1113))
+				.andExpect(jsonPath("$.details.length()").value(1))
+				.andExpect(jsonPath("$.details[0]")
+						.value(ErrorType.EMAIL_VERIFICATION_REQUIRED.getDetails()));
+	}
+
+	@Test
+	void expiredVerificationCodeReturnsAnActionableStableMessage() throws Exception {
+		VerifyCodeRequestDto request = new VerifyCodeRequestDto("user@example.com", "123456");
+		when(authService.verifyCode(request))
+				.thenThrow(new SoundConnectException(ErrorType.EMAIL_VERIFICATION_CODE_INVALID));
+
+		mockMvc.perform(post(EndPoints.Auth.BASE + EndPoints.Auth.VERIFY_CODE)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsBytes(request)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value(1114))
+				.andExpect(jsonPath("$.details.length()").value(1))
+				.andExpect(jsonPath("$.details[0]").value(
+						"Doğrulama kodu geçersiz veya süresi dolmuş. Yeni kod isteyip tekrar deneyin."));
 	}
 
 	@Test

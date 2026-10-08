@@ -19,6 +19,9 @@ public interface MediaAssetReferenceRepository extends Repository<MediaAsset, UU
 	@Query("select count(p) from Promotion p where p.mediaAsset.id = :assetId")
 	long countPromotionReferences(@Param("assetId") UUID assetId);
 
+	@Query(value = "select (select count(*) from tbl_marketplace_listing_photo where media_asset_id = :assetId) + (select count(*) from tbl_marketplace_report_photo where media_asset_id = :assetId)", nativeQuery = true)
+	long countMarketplaceReferences(@Param("assetId") UUID assetId);
+
 	@Query("select count(t) from Track t where t.mediaAssetId = :assetId")
 	long countTrackReferences(@Param("assetId") UUID assetId);
 
@@ -57,5 +60,9 @@ public interface MediaAssetReferenceRepository extends Repository<MediaAsset, UU
 			where lower(trim(e.posterImage)) = :assetIdText
 			""")
 	long countEventPosterReferences(@Param("assetIdText") String assetIdText);
+
+	/** A future plan pins its poster even before its first event is materialized. */
+	@Query(value = "select count(*) from event_plans where lower(trim(poster_image)) = :assetIdText", nativeQuery = true)
+	long countEventPlanPosterReferences(@Param("assetIdText") String assetIdText);
 
 }

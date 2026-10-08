@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.track.service;
 
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
+import com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
@@ -8,8 +10,9 @@ import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
 import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
@@ -37,29 +40,47 @@ public class TrackServiceImpl implements TrackService {
 	private final TrackRepository trackRepository;
 	private final TrackMapper trackMapper;
 	private final MediaAssetService mediaAssetService;
-	private final MusicianProfileService musicianProfileService;
-	private final BandService bandService;
+	private final MusicianProfileRepository musicianProfileRepository;
+	private final BandRepository bandRepository;
+	private final BandMemberRepository bandMemberRepository;
 	private final StudioProfileRepository studioProfileRepository;
 	private final MediaAssetRepository mediaAssetRepository;
 
 	@Override
 	@Transactional(readOnly = true)
 	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
-		List<Track> tracks = trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
+		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		List<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
+				? trackRepository.findMainstageByOwner(ownerId, ownerType)
+				: trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
 		Map<UUID, String> playbackUrls = mediaAssetService.getPlaybackUrlMap(
 				tracks.stream().map(Track::getMediaAssetId).toList()
 		);
-		return tracks.stream().map(track -> toDto(track, playbackUrls)).toList();
+		Map<UUID, MediaContentAudience> audiences = mediaAssetService.getContentAudienceMap(
+				tracks.stream().map(Track::getMediaAssetId).toList());
+		return tracks.stream()
+				.filter(track -> !MediaContentAudiencePolicy.isListenerViewer() || playbackUrls.containsKey(track.getMediaAssetId()))
+				.map(track -> toDto(track, playbackUrls, audiences)).toList();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public Page<TrackResponseDto> listTracks(UUID ownerId, TrackOwnerType ownerType, Pageable pageable) {
-		Page<Track> tracks = trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
+		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		Page<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
+				? trackRepository.findMainstageByOwner(ownerId, ownerType, pageable)
+				: trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
 		Map<UUID, String> playbackUrls = mediaAssetService.getPlaybackUrlMap(
 				tracks.getContent().stream().map(Track::getMediaAssetId).toList()
 		);
-		return tracks.map(track -> toDto(track, playbackUrls));
+		Map<UUID, MediaContentAudience> audiences = mediaAssetService.getContentAudienceMap(
+				tracks.getContent().stream().map(Track::getMediaAssetId).toList());
+		if (MediaContentAudiencePolicy.isListenerViewer()) {
+			return new org.springframework.data.domain.PageImpl<>(tracks.getContent().stream()
+					.filter(track -> playbackUrls.containsKey(track.getMediaAssetId()))
+					.map(track -> toDto(track, playbackUrls, audiences)).toList(), pageable, tracks.getTotalElements());
+		}
+		return tracks.map(track -> toDto(track, playbackUrls, audiences));
 	}
 
 	@Override
@@ -146,8 +167,11 @@ public class TrackServiceImpl implements TrackService {
 	}
 
 	private TrackOwnerType resolveOwnerType(UUID ownerId) {
-		boolean musician = ownerExistsAsMusician(ownerId);
-		boolean band = ownerExistsAsBand(ownerId);
+		// Owner probing must remain non-throwing. Catching PROFILE_NOT_FOUND or
+		// BAND_NOT_FOUND from another transactional service would still mark this
+		// transaction rollback-only before the fallback owner type is resolved.
+		boolean musician = musicianProfileRepository.existsById(ownerId);
+		boolean band = bandRepository.existsById(ownerId);
 		boolean studio = studioProfileRepository.existsById(ownerId);
 		int matches = (musician ? 1 : 0) + (band ? 1 : 0) + (studio ? 1 : 0);
 		if (matches != 1) {
@@ -159,42 +183,21 @@ public class TrackServiceImpl implements TrackService {
 		return TrackOwnerType.STUDIO_PROFILE;
 	}
 
-	private boolean ownerExistsAsMusician(UUID ownerId) {
-		try {
-			musicianProfileService.getProfileEntity(ownerId);
-			return true;
-		} catch (SoundConnectException exception) {
-			if (exception.getErrorType() != ErrorType.PROFILE_NOT_FOUND) throw exception;
-			return false;
-		}
-	}
-
-	private boolean ownerExistsAsBand(UUID ownerId) {
-		try {
-			bandService.getBandEntity(ownerId);
-			return true;
-		} catch (SoundConnectException exception) {
-			if (exception.getErrorType() != ErrorType.BAND_NOT_FOUND) throw exception;
-			return false;
-		}
-	}
-
 	private void validateOwner(UUID ownerId, UUID userId, TrackOwnerType ownerType) {
 		switch (ownerType) {
 			case MUSICIAN_PROFILE -> {
-				var profile = musicianProfileService.getProfileEntity(ownerId);
+				var profile = musicianProfileRepository.findById(ownerId)
+						.orElseThrow(() -> new SoundConnectException(ErrorType.TRACK_OWNER_INVALID));
 				if (!profile.getUser().getId().equals(userId)) {
 					throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 				}
 			}
 			case BAND -> {
-				var band = bandService.getBandEntity(ownerId);
-				boolean authorized = band.getMembers().stream().anyMatch(member ->
-						member.getUser() != null
-								&& member.getUser().getId().equals(userId)
-								&& member.getStatus() == BandMemberShipStatus.ACTIVE
-								&& (member.getBandRole() == BandRole.FOUNDER
-								|| member.getBandRole() == BandRole.MANAGER));
+				boolean authorized = bandMemberRepository.findByBandIdAndUserId(ownerId, userId)
+						.filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
+						.filter(member -> member.getBandRole() == BandRole.FOUNDER
+								|| member.getBandRole() == BandRole.MANAGER)
+						.isPresent();
 				if (!authorized) throw new SoundConnectException(ErrorType.TRACK_OWNER_INVALID);
 			}
 			case STUDIO_PROFILE -> {
@@ -217,14 +220,16 @@ public class TrackServiceImpl implements TrackService {
 		};
 	}
 
-	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls) {
+	private TrackResponseDto toDto(Track track, Map<UUID, String> playbackUrls,
+			Map<UUID, MediaContentAudience> audiences) {
 		return new TrackResponseDto(
 				track.getId(),
 				track.getMediaAssetId(),
 				track.getTitle(),
 				playbackUrls.get(track.getMediaAssetId()),
 				track.getDurationSeconds(),
-				track.getBpm()
+				track.getBpm(),
+				audiences.getOrDefault(track.getMediaAssetId(), MediaContentAudience.MAINSTAGE)
 		);
 	}
 }

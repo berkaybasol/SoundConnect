@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.collab.service;
 import com.berkayb.soundconnect.modules.collab.dto.response.CollabActorSummary;
 import com.berkayb.soundconnect.modules.collab.entity.CollabActor;
 import com.berkayb.soundconnect.modules.collab.repository.CollabActorRepository;
+import com.berkayb.soundconnect.modules.collab.support.CollabAccessGuard;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.profile.shared.ownership.*;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
@@ -27,9 +28,11 @@ public class CollabActorService {
     private final ProfileOwnershipResolver ownershipResolver;
     private final UserRepository userRepository;
     private final BandRepository bandRepository;
+    private final CollabAccessGuard access;
 
     @Transactional
     public List<CollabActorSummary> listMine(UUID userId) {
+        access.requireBackstage(userId);
         // The user row is the mutex for a non-band profile whose actor projection does not exist yet.
         User contactUser = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
@@ -49,6 +52,7 @@ public class CollabActorService {
 
     @Transactional
     public CollabActor requireOwned(UUID userId, UUID actorId) {
+        access.requireBackstage(userId);
         CollabActor actorSnapshot = actorRepository.findById(actorId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
         if (!ALLOWED_TYPES.contains(actorSnapshot.getProfileType())) {

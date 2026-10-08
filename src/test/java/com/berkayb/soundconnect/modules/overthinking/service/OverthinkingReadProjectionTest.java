@@ -25,6 +25,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class OverthinkingReadProjectionTest {
+    @org.junit.jupiter.api.AfterEach void clearViewer() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
     private final OverthinkingPostRepository repository = mock(OverthinkingPostRepository.class);
     private final CommentAuthorBatchResolver identities = mock(CommentAuthorBatchResolver.class);
     private final PublicProfileResolverService navigationResolver = mock(PublicProfileResolverService.class);
@@ -72,6 +75,53 @@ class OverthinkingReadProjectionTest {
         Pageable safe = PageRequest.of(0,50,Sort.by(Sort.Direction.DESC,"createdAt","id"));
         verify(repository).findAll(safe); verify(repository).findByArtistId(artist,safe); verify(repository).findByAuthorId(user,safe);
         assertThatThrownBy(() -> posts.getAll(null,PageRequest.of(1001,20))).isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);
+    }
+
+    @Test void anonymousStudioSourceIsOmittedWhileOriginalListenerAnonymousSourceKeepsItsIdAndPrivacy() {
+        listener();
+        var hidden = post(User.builder().id(UUID.randomUUID()).build(), OverthinkingVisibilityType.ANONYMOUS);
+        var visible = post(User.builder().id(UUID.randomUUID()).build(), OverthinkingVisibilityType.ANONYMOUS);
+        List<UUID> ids = List.of(hidden.getId(), visible.getId());
+        when(repository.findForViewerProjection(ids)).thenReturn(List.of(hidden, visible));
+        when(repository.findMainstageVisibleIds(ids)).thenReturn(List.of(visible.getId()));
+        var result = posts.getByIdsForViewer(UUID.randomUUID(), ids);
+        assertThat(result).containsOnlyKeys(visible.getId());
+        assertThat(result.get(visible.getId()).id()).isEqualTo(visible.getId());
+        assertThat(result.get(visible.getId()).authorId()).isNull();
+        assertThat(result.get(visible.getId()).canViewAuthor()).isFalse();
+        verifyNoInteractions(identities, navigationResolver);
+    }
+
+    @Test void listenerDetailRejectsSourceExcludedByCurrentDatabaseAudience() {
+        listener();
+        var hidden = post(User.builder().id(UUID.randomUUID()).build(), OverthinkingVisibilityType.ANONYMOUS);
+        when(repository.findById(hidden.getId())).thenReturn(Optional.of(hidden));
+        when(repository.findMainstageVisibleIds(List.of(hidden.getId()))).thenReturn(List.of());
+        assertThatThrownBy(() -> posts.getById(hidden.getId(), UUID.randomUUID()))
+                .isInstanceOfSatisfying(com.berkayb.soundconnect.shared.exception.SoundConnectException.class,
+                        exception -> assertThat(exception.getErrorType())
+                                .isEqualTo(com.berkayb.soundconnect.shared.exception.ErrorType.OVERTHINKING_POST_NOT_FOUND));
+        verifyNoInteractions(identities, navigationResolver);
+    }
+
+    @Test void listenerListsApplyFilteringBeforePaginationAndRetainRequestedOrder() {
+        listener();
+        var safe = PageRequest.of(0, 50);
+        when(repository.findMainstagePage(null, null, true, safe)).thenReturn(Page.empty(safe));
+        when(repository.findMainstageMostLiked(safe)).thenReturn(Page.empty(safe));
+        var unsafeSort = PageRequest.of(0, 200, Sort.by("author.email"));
+        posts.getAll(UUID.randomUUID(), unsafeSort, OverthinkingFeedOrder.OLDEST);
+        posts.getAll(UUID.randomUUID(), unsafeSort, OverthinkingFeedOrder.MOST_LIKED);
+        verify(repository).findMainstagePage(null, null, true, safe);
+        verify(repository).findMainstageMostLiked(safe);
+        verify(repository, never()).findAll(any(Pageable.class));
+        verify(repository, never()).findMostLiked(any());
+    }
+
+    private void listener() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("viewer", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
     }
 
     private OverthinkingPost post(User author, OverthinkingVisibilityType visibility) {

@@ -1,0 +1,528 @@
+[
+  {
+    "code": "GUITARS",
+    "name": "Gitar ve Bas",
+    "children": [
+      {
+        "code": "ELECTRIC_GUITAR",
+        "name": "Elektro gitar"
+      },
+      {
+        "code": "ACOUSTIC_GUITAR",
+        "name": "Akustik / elektro akustik gitar"
+      },
+      {
+        "code": "CLASSICAL_GUITAR",
+        "name": "Klasik / flamenko gitar"
+      },
+      {
+        "code": "BASS_GUITAR",
+        "name": "Bas gitar"
+      },
+      {
+        "code": "UKULELE",
+        "name": "Ukulele"
+      },
+      {
+        "code": "MANDOLIN_BANJO",
+        "name": "Mandolin / banjo"
+      }
+    ]
+  },
+  {
+    "code": "KEYBOARDS",
+    "name": "Piyano ve Tuşlu Çalgılar",
+    "children": [
+      {
+        "code": "ACOUSTIC_PIANO",
+        "name": "Akustik piyano"
+      },
+      {
+        "code": "DIGITAL_PIANO",
+        "name": "Dijital piyano"
+      },
+      {
+        "code": "ARRANGER_KEYBOARD",
+        "name": "Org / aranjör klavye"
+      },
+      {
+        "code": "SYNTH_WORKSTATION",
+        "name": "Synthesizer / workstation"
+      },
+      {
+        "code": "MIDI_KEYBOARD",
+        "name": "MIDI klavye"
+      },
+      {
+        "code": "ACCORDION",
+        "name": "Akordeon"
+      }
+    ]
+  },
+  {
+    "code": "STRINGS",
+    "name": "Yaylı Çalgılar",
+    "children": [
+      {
+        "code": "VIOLIN",
+        "name": "Keman"
+      },
+      {
+        "code": "VIOLA",
+        "name": "Viyola"
+      },
+      {
+        "code": "CELLO",
+        "name": "Çello"
+      },
+      {
+        "code": "DOUBLE_BASS",
+        "name": "Kontrbas"
+      },
+      {
+        "code": "STRING_BOW",
+        "name": "Yay"
+      }
+    ]
+  },
+  {
+    "code": "WIND",
+    "name": "Nefesli Çalgılar",
+    "children": [
+      {
+        "code": "FLUTE",
+        "name": "Yan flüt / pikolo"
+      },
+      {
+        "code": "CLARINET",
+        "name": "Klarnet"
+      },
+      {
+        "code": "SAXOPHONE",
+        "name": "Saksafon"
+      },
+      {
+        "code": "OBOE_BASSOON",
+        "name": "Obua / fagot"
+      },
+      {
+        "code": "TRUMPET",
+        "name": "Trompet / kornet / flugelhorn"
+      },
+      {
+        "code": "TROMBONE",
+        "name": "Trombon"
+      },
+      {
+        "code": "HORN_TUBA",
+        "name": "Korno / tuba"
+      },
+      {
+        "code": "RECORDER_PANFLUTE",
+        "name": "Blok flüt / pan flüt"
+      },
+      {
+        "code": "HARMONICA",
+        "name": "Mızıka"
+      },
+      {
+        "code": "MELODICA",
+        "name": "Melodika"
+      }
+    ]
+  },
+  {
+    "code": "TRADITIONAL",
+    "name": "Geleneksel Çalgılar",
+    "children": [
+      {
+        "code": "BAGLAMA",
+        "name": "Bağlama / saz"
+      },
+      {
+        "code": "OUD",
+        "name": "Ud"
+      },
+      {
+        "code": "QANUN",
+        "name": "Kanun"
+      },
+      {
+        "code": "NEY_KAVAL",
+        "name": "Ney / kaval"
+      },
+      {
+        "code": "KEMENCE",
+        "name": "Kemençe"
+      },
+      {
+        "code": "CUMBUS_TANBUR",
+        "name": "Cümbüş / tanbur"
+      },
+      {
+        "code": "OTHER_TRADITIONAL",
+        "name": "Diğer geleneksel çalgılar"
+      }
+    ]
+  },
+  {
+    "code": "DRUMS",
+    "name": "Davul ve Perküsyon",
+    "children": [
+      {
+        "code": "ACOUSTIC_DRUMS",
+        "name": "Akustik davul seti"
+      },
+      {
+        "code": "ELECTRONIC_DRUMS",
+        "name": "Elektronik davul seti"
+      },
+      {
+        "code": "SNARE_TOM_KICK",
+        "name": "Trampet / tom / kick"
+      },
+      {
+        "code": "CYMBALS",
+        "name": "Zil"
+      },
+      {
+        "code": "DRUM_HARDWARE",
+        "name": "Davul sehpası / donanımı"
+      },
+      {
+        "code": "DRUM_PEDAL",
+        "name": "Davul pedalı"
+      },
+      {
+        "code": "DRUM_PAD",
+        "name": "Davul pedi / modülü"
+      },
+      {
+        "code": "CAJON",
+        "name": "Cajon"
+      },
+      {
+        "code": "DARBUKA_DJEMBE",
+        "name": "Darbuka / djembe"
+      },
+      {
+        "code": "CONGA_BONGO_TIMBALE",
+        "name": "Conga / bongo / timbal"
+      },
+      {
+        "code": "HAND_PERCUSSION",
+        "name": "El perküsyonu"
+      },
+      {
+        "code": "MALLET_ORFF",
+        "name": "Kalimba / melodik perküsyon / Orff"
+      },
+      {
+        "code": "ORCHESTRAL_PERCUSSION",
+        "name": "Orkestra perküsyonu"
+      }
+    ]
+  },
+  {
+    "code": "AMPS_EFFECTS",
+    "name": "Amfi ve Efekt",
+    "children": [
+      {
+        "code": "GUITAR_AMP",
+        "name": "Gitar amfisi"
+      },
+      {
+        "code": "BASS_AMP",
+        "name": "Bas amfisi"
+      },
+      {
+        "code": "ACOUSTIC_AMP",
+        "name": "Akustik enstrüman amfisi"
+      },
+      {
+        "code": "KEYBOARD_AMP",
+        "name": "Klavye / çok amaçlı amfi"
+      },
+      {
+        "code": "AMP_CABINET",
+        "name": "Amfi kabini"
+      },
+      {
+        "code": "EFFECT_PEDAL",
+        "name": "Efekt pedalı"
+      },
+      {
+        "code": "MULTI_EFFECTS",
+        "name": "Prosesör / çoklu efekt"
+      },
+      {
+        "code": "PEDALBOARD_POWER",
+        "name": "Pedalboard / pedal güç kaynağı"
+      }
+    ]
+  },
+  {
+    "code": "MICROPHONES",
+    "name": "Mikrofon",
+    "children": [
+      {
+        "code": "DYNAMIC_MIC",
+        "name": "Dinamik mikrofon"
+      },
+      {
+        "code": "CONDENSER_MIC",
+        "name": "Condenser / ribbon mikrofon"
+      },
+      {
+        "code": "USB_MIC",
+        "name": "USB mikrofon"
+      },
+      {
+        "code": "WIRELESS_MIC",
+        "name": "Kablosuz mikrofon sistemi"
+      },
+      {
+        "code": "LAVALIER_HEADSET_MIC",
+        "name": "Yaka / headset mikrofon"
+      },
+      {
+        "code": "INSTRUMENT_MIC",
+        "name": "Enstrüman mikrofonu / mikrofon seti"
+      },
+      {
+        "code": "SHOTGUN_CONFERENCE_MIC",
+        "name": "Kamera / konferans mikrofonu"
+      }
+    ]
+  },
+  {
+    "code": "RECORDING",
+    "name": "Stüdyo ve Kayıt",
+    "children": [
+      {
+        "code": "AUDIO_INTERFACE",
+        "name": "Ses kartı"
+      },
+      {
+        "code": "STUDIO_MONITORS",
+        "name": "Stüdyo monitörü / subwoofer"
+      },
+      {
+        "code": "STUDIO_HEADPHONES",
+        "name": "Stüdyo kulaklığı"
+      },
+      {
+        "code": "MIC_PREAMP",
+        "name": "Mikrofon preampı"
+      },
+      {
+        "code": "OUTBOARD",
+        "name": "Harici kompresör / EQ / işlemci"
+      },
+      {
+        "code": "AUDIO_RECORDER",
+        "name": "Ses kayıt cihazı"
+      },
+      {
+        "code": "CONTROL_SURFACE",
+        "name": "MIDI kontrolcü / kontrol yüzeyi"
+      },
+      {
+        "code": "HEADPHONE_AMP",
+        "name": "Kulaklık amfisi"
+      },
+      {
+        "code": "RECORDING_BUNDLE",
+        "name": "Kayıt ekipmanı seti"
+      },
+      {
+        "code": "ACOUSTIC_TREATMENT",
+        "name": "Akustik panel / izolasyon ekipmanı"
+      }
+    ]
+  },
+  {
+    "code": "DJ",
+    "name": "DJ Ekipmanı",
+    "children": [
+      {
+        "code": "DJ_CONTROLLER",
+        "name": "DJ kontrolcü"
+      },
+      {
+        "code": "DJ_PLAYER",
+        "name": "DJ medya çalar / CDJ"
+      },
+      {
+        "code": "DJ_TURNTABLE",
+        "name": "DJ pikabı"
+      },
+      {
+        "code": "DJ_MIXER",
+        "name": "DJ mikseri"
+      },
+      {
+        "code": "DJ_SAMPLER",
+        "name": "Sampler / groovebox"
+      },
+      {
+        "code": "DJ_HEADPHONES",
+        "name": "DJ kulaklığı"
+      },
+      {
+        "code": "DJ_CARTRIDGE",
+        "name": "Pikap iğnesi / kartuşu"
+      }
+    ]
+  },
+  {
+    "code": "LIVE_SOUND",
+    "name": "Ses Sistemi",
+    "children": [
+      {
+        "code": "ACTIVE_SPEAKER",
+        "name": "Aktif hoparlör"
+      },
+      {
+        "code": "PASSIVE_SPEAKER",
+        "name": "Pasif hoparlör"
+      },
+      {
+        "code": "PA_SUBWOOFER",
+        "name": "PA subwoofer"
+      },
+      {
+        "code": "STAGE_MONITOR",
+        "name": "Sahne monitörü"
+      },
+      {
+        "code": "ANALOG_MIXER",
+        "name": "Analog mikser"
+      },
+      {
+        "code": "DIGITAL_MIXER",
+        "name": "Dijital mikser"
+      },
+      {
+        "code": "POWER_AMP",
+        "name": "Güç amfisi"
+      },
+      {
+        "code": "PA_PROCESSOR",
+        "name": "Sistem işlemcisi / crossover"
+      },
+      {
+        "code": "IEM_SYSTEM",
+        "name": "In-ear monitör sistemi"
+      },
+      {
+        "code": "PORTABLE_PA",
+        "name": "Taşınabilir ses sistemi"
+      },
+      {
+        "code": "DI_STAGEBOX",
+        "name": "DI box / splitter / stagebox"
+      }
+    ]
+  },
+  {
+    "code": "LIGHTING_STAGE",
+    "name": "Işık ve Sahne Ekipmanı",
+    "children": [
+      {
+        "code": "STAGE_LIGHT",
+        "name": "Sahne ışığı / LED PAR"
+      },
+      {
+        "code": "MOVING_HEAD",
+        "name": "Moving head / efekt ışığı"
+      },
+      {
+        "code": "DMX_CONTROL",
+        "name": "DMX kontrolcü / arayüz"
+      },
+      {
+        "code": "STAGE_EFFECT",
+        "name": "Sis / haze / sahne efekt cihazı"
+      },
+      {
+        "code": "TRUSS_STAGE",
+        "name": "Truss / sahne platformu"
+      },
+      {
+        "code": "RIGGING_STAND",
+        "name": "Işık sehpası / askı ekipmanı"
+      },
+      {
+        "code": "POWER_DISTRIBUTION",
+        "name": "Sahne güç dağıtımı"
+      }
+    ]
+  },
+  {
+    "code": "ACCESSORIES",
+    "name": "Aksesuar ve Yedek Parça",
+    "children": [
+      {
+        "code": "INSTRUMENT_STRINGS",
+        "name": "Enstrüman teli"
+      },
+      {
+        "code": "PICKS_CAPOS_SLIDES",
+        "name": "Pena / kapo / slide"
+      },
+      {
+        "code": "STRAPS",
+        "name": "Askı / kayış"
+      },
+      {
+        "code": "TUNER_METRONOME",
+        "name": "Akort cihazı / metronom"
+      },
+      {
+        "code": "CASES_BAGS",
+        "name": "Kılıf / çanta / hardcase"
+      },
+      {
+        "code": "STANDS_BENCHES",
+        "name": "Enstrüman standı / sehpa / tabure"
+      },
+      {
+        "code": "MUSIC_STANDS",
+        "name": "Nota sehpası"
+      },
+      {
+        "code": "CABLES_CONNECTORS",
+        "name": "Kablo / adaptör / konnektör"
+      },
+      {
+        "code": "MIC_ACCESSORIES",
+        "name": "Mikrofon standı / filtre / aksesuar"
+      },
+      {
+        "code": "DRUM_ACCESSORIES",
+        "name": "Baget / fırça / davul derisi"
+      },
+      {
+        "code": "WIND_ACCESSORIES",
+        "name": "Kamış / ağızlık / nefesli aksesuarı"
+      },
+      {
+        "code": "PARTS_PICKUPS",
+        "name": "Manyetik / elektronik / yedek parça"
+      },
+      {
+        "code": "RACKS_FLIGHTCASES",
+        "name": "Rack / flightcase"
+      },
+      {
+        "code": "MAINTENANCE_TOOLS",
+        "name": "Bakım ürünü / aleti"
+      },
+      {
+        "code": "KEYBOARD_PEDALS",
+        "name": "Klavye pedalı / aksesuarı"
+      }
+    ]
+  }
+]

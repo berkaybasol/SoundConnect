@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.user.controller;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.Gender;
@@ -50,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 // 🧪 Bu import ile aşağıdaki DummyRabbitFactory test context'e bean olarak girer
 @Import(UserControllerIT.DummyRabbitFactoryConfig.class)
+@H2NotificationIdentityTestBoundary
 class UserControllerIT {
 	
 	@Autowired private MockMvc mockMvc;

@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -59,5 +60,35 @@ class ImageThumbnailServiceTest {
 		assertThatThrownBy(() -> ImageThumbnailService.thumbnailKeyFor(
 				"protected/media/id/source.jpg"))
 				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void protectedThumbnail_staysInImmutableAttemptWithoutPublicUrlOrCache() throws Exception {
+		UUID assetId = UUID.randomUUID();
+		String source = "protected/private-verified/media/" + assetId + "/attempts/"
+				+ UUID.randomUUID() + "/source.png";
+		String key = source.replace("source.png", "thumbnail.jpg");
+		when(thumbnailProcessor.createThumbnail(any(Path.class), any(Path.class)))
+				.thenReturn(new ProcessedImageThumbnail(2000, 1000, 960, 480));
+		ImageThumbnailService service = new ImageThumbnailService(
+				storageClient, thumbnailProcessor, new MediaImageVariantProperties());
+
+		ImageThumbnailResult result = service.generateAndStoreDetached(assetId, source);
+
+		assertThat(result.thumbnailKey()).isEqualTo(key);
+		assertThat(result.thumbnailUrl()).isNull();
+		verify(storageClient, never()).publicUrl(any());
+		verify(storageClient).putFile(any(Path.class), org.mockito.ArgumentMatchers.eq(key),
+				org.mockito.ArgumentMatchers.eq("image/jpeg"),
+				org.mockito.ArgumentMatchers.eq("private,no-store,max-age=0"));
+	}
+
+	@Test
+	void protectedThumbnail_rejectsMutablePublicAndTraversalSources() {
+		for (String unsafe : java.util.List.of("protected/media/id/source.jpg", "media/id/source.jpg",
+				"protected/private-verified/media/id/../other/source.jpg")) {
+			assertThatThrownBy(() -> ImageThumbnailService.protectedThumbnailKeyFor(unsafe))
+					.isInstanceOf(IllegalArgumentException.class);
+		}
 	}
 }

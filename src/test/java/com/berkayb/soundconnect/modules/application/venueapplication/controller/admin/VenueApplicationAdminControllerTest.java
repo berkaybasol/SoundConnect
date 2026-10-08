@@ -1,11 +1,14 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.controller.admin;
 
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
+
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.application.venueapplication.entity.VenueApplication;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 import com.berkayb.soundconnect.modules.application.venueapplication.repository.VenueApplicationRepository;
+import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationDecisionNotifications;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
@@ -19,6 +22,7 @@ import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
@@ -68,6 +72,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
 		"spring.jpa.hibernate.ddl-auto=create-drop"
 })
+@H2NotificationIdentityTestBoundary
 class VenueApplicationAdminControllerTest {
 	
 	private static final String BASE = "/api/v1/admin/venue-applications";
@@ -102,6 +107,9 @@ class VenueApplicationAdminControllerTest {
 	
 	// Profil oluşturmayı stub’la
 	@MockitoBean VenueProfileService venueProfileService;
+	// H2 exercises the HTTP/domain decision. Native receipt/inbox atomicity is
+	// covered by VenueApplicationPushPostgresTest with the real decision producer.
+	@MockitoBean VenueApplicationDecisionNotifications decisionNotifications;
 	
 	private User admin;
 	private UserDetailsImpl adminDetails;
@@ -113,8 +121,8 @@ class VenueApplicationAdminControllerTest {
 	@BeforeEach
 	void setup() {
 		// --- temizle (FK sırasına dikkat) ---
-		venueRepository.deleteAll();
 		venueApplicationRepository.deleteAll();
+		venueRepository.deleteAll();
 		userRepository.deleteAll();
 		neighborhoodRepository.deleteAll();
 		districtRepository.deleteAll();
@@ -166,6 +174,7 @@ class VenueApplicationAdminControllerTest {
 		                               .password("x")
 		                               .provider(AuthProvider.LOCAL)
 		                               .emailVerified(true)
+		                               .status(UserStatus.PENDING_VENUE_REQUEST)
 		                               .city(city)
 		                               .phone("05551234567")
 		                               .build());
@@ -190,6 +199,7 @@ class VenueApplicationAdminControllerTest {
 	void approve_ok() throws Exception {
 		var applicant = seedApplicant();
 		var app = seedApp(applicant, ApplicationStatus.PENDING);
+		expectDecisionAtInvocation(app.getId(), applicant.getId(), ApplicationStatus.APPROVED);
 		
 		mockMvc.perform(post(BASE + "/approve/{id}", app.getId())
 				                .with(authentication(adminAuth())))
@@ -209,6 +219,11 @@ class VenueApplicationAdminControllerTest {
 		List<Venue> venues = venueRepository.findAll();
 		assertThat(venues).isNotEmpty();
 		assertThat(venues.get(0).getOwner().getId()).isEqualTo(applicant.getId());
+		Mockito.verify(decisionNotifications).decided(Mockito.argThat(decision ->
+				decision.getId().equals(app.getId())
+						&& decision.getApplicant().getId().equals(applicant.getId())
+						&& decision.getStatus() == ApplicationStatus.APPROVED
+						&& decision.getDecisionDate() != null));
 	}
 	
 	@Test
@@ -227,6 +242,7 @@ class VenueApplicationAdminControllerTest {
 	void reject_ok() throws Exception {
 		var applicant = seedApplicant();
 		var app = seedApp(applicant, ApplicationStatus.PENDING);
+		expectDecisionAtInvocation(app.getId(), applicant.getId(), ApplicationStatus.REJECTED);
 		
 		mockMvc.perform(post(BASE + "/reject/{id}", app.getId())
 				                .param("reason", "Eksik bilgi")
@@ -235,6 +251,30 @@ class VenueApplicationAdminControllerTest {
 		       .andExpect(status().isOk())
 		       .andExpect(jsonPath("$.success").value(true))
 		       .andExpect(jsonPath("$.data.status").value("REJECTED"));
+		Mockito.verify(decisionNotifications).decided(Mockito.argThat(decision ->
+				decision.getId().equals(app.getId())
+						&& decision.getApplicant().getId().equals(applicant.getId())
+						&& decision.getStatus() == ApplicationStatus.REJECTED
+						&& decision.getDecisionDate() != null));
+	}
+
+	private void expectDecisionAtInvocation(UUID applicationId, UUID recipientId, ApplicationStatus status) {
+		Mockito.doAnswer(invocation -> {
+			VenueApplication decision = invocation.getArgument(0);
+			// Check now: a later mutation of the same entity must not repair an early call.
+			assertThat(decision.getId()).isEqualTo(applicationId);
+			assertThat(decision.getApplicant().getId()).isEqualTo(recipientId);
+			assertThat(decision.getStatus()).isEqualTo(status);
+			assertThat(decision.getDecisionDate()).isNotNull();
+			if (status == ApplicationStatus.APPROVED) {
+				assertThat(decision.getApprovedVenue()).isNotNull();
+				assertThat(decision.getApprovedVenue().getId()).isNotNull();
+				assertThat(decision.getApprovedVenue().getOwner().getId()).isEqualTo(recipientId);
+			} else {
+				assertThat(decision.getApprovedVenue()).isNull();
+			}
+			return null;
+		}).when(decisionNotifications).decided(Mockito.any(VenueApplication.class));
 	}
 	
 	@Test

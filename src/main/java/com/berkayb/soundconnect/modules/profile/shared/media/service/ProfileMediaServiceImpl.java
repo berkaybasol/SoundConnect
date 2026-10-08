@@ -174,7 +174,8 @@ public class ProfileMediaServiceImpl implements ProfileMediaService{
 			case ORGANIZER -> organizerProfileRepository.findById(profileId)
 					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
 					.orElse(false);
-			case STUDIO -> studioProfileRepository.findById(profileId)
+			case STUDIO -> !com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
+					&& studioProfileRepository.findById(profileId)
 					.map(profile -> profile.getUser() != null && profile.getUser().getId().equals(actingUserId))
 					.orElse(false);
 			case LISTENER -> listenerProfileRepository.findById(profileId)

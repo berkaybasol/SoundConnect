@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.auth.passwordreset.service;
 
+import com.berkayb.soundconnect.auth.otp.service.OtpService.OtpIssueClaim;
+import com.berkayb.soundconnect.shared.util.EmailUtils;
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.mail.helper.MailContentBuilder;
@@ -8,7 +10,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class PasswordResetMailService {
@@ -35,11 +36,16 @@ public class PasswordResetMailService {
 	 * thread therefore reports success only after the reset job is durably
 	 * accepted by the broker.
 	 */
-	public void queueResetCode(String recipient, String code) {
-		mailProducer.send(buildRequest(recipient, code));
+	public void queueResetCode(String recipient, OtpIssueClaim claim) {
+		if (claim == null || !claim.acquired() || claim.generationId() == null
+				|| claim.expiresAtEpochMillis() <= 0) {
+			throw new IllegalArgumentException("Password reset mail requires an issued generation");
+		}
+		mailProducer.send(buildRequest(EmailUtils.normalize(recipient), claim));
 	}
 
-	private MailSendRequest buildRequest(String recipient, String code) {
+	private MailSendRequest buildRequest(String recipient, OtpIssueClaim claim) {
+		String code = claim.code();
 		String htmlBody = mailContentBuilder.buildPasswordResetMail(code, otpValidityMinutes);
 		String textBody = """
 				Şifrenizi sıfırlamak için kodunuz: %s
@@ -54,7 +60,9 @@ public class PasswordResetMailService {
 				textBody,
 				MailKind.PASSWORD_RESET,
 				Map.of(
-						"requestId", UUID.randomUUID().toString(),
+						"requestId", claim.generationId(),
+						"claimRecipient", recipient,
+						"expiresAtEpochMillis", claim.expiresAtEpochMillis(),
 						"validityMinutes", otpValidityMinutes
 				)
 		);

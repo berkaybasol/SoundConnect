@@ -21,6 +21,43 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
+	interface MarketplaceOrphan {
+		UUID getAssetId();
+		UUID getListingId();
+	}
+
+	/**
+	 * Bind the cutoff through the same Hibernate LocalDateTime/JDBC timezone path
+	 * that writes the audit field. Raw JDBC Timestamp binding can shift this
+	 * candidate window when the JVM timezone differs from hibernate.jdbc.time_zone.
+	 */
+	@Query(value = """
+			select m.id as "assetId", m.owner_id as "listingId" from tbl_media_asset m
+			where m.owner_type='MARKETPLACE' and m.status='READY' and m.created_at<:cutoff
+			  and not exists(select 1 from tbl_marketplace_listing_photo p where p.media_asset_id=m.id)
+			  and not exists(select 1 from tbl_marketplace_report_photo p where p.media_asset_id=m.id)
+			order by m.created_at,m.id
+			""", nativeQuery = true)
+	List<MarketplaceOrphan> findMarketplaceOrphansBefore(@Param("cutoff") LocalDateTime cutoff, Pageable pageable);
+
+	/** Scalar audience read avoids an OSIV-cached asset reviving changed content. */
+	@Query(value = """
+			select id from tbl_media_asset where id in (:ids)
+			  and content_audience='MAINSTAGE' and owner_type<>'STUDIO_PROFILE'
+			  and status='READY' and visibility='PUBLIC'
+			""", nativeQuery = true)
+	List<UUID> findMainstagePublicIds(@Param("ids") List<UUID> ids);
+	@Query("""
+			select asset from MediaAsset asset
+			where asset.ownerType=:ownerType and asset.ownerId=:ownerId
+			  and (:kind is null or asset.kind=:kind)
+			  and asset.visibility=com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PUBLIC
+			  and asset.status=com.berkayb.soundconnect.modules.media.enums.MediaStatus.READY
+			  and asset.contentAudience=com.berkayb.soundconnect.modules.media.enums.MediaContentAudience.MAINSTAGE
+			  and asset.ownerType<>com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.STUDIO_PROFILE
+			""")
+	Page<MediaAsset> findMainstagePublicByOwner(@Param("ownerType") MediaOwnerType ownerType,
+			@Param("ownerId") UUID ownerId, @Param("kind") MediaKind kind, Pageable pageable);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select asset from MediaAsset asset where asset.id = :assetId")
@@ -50,15 +87,17 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 	@Query("""
 			select asset.id from MediaAsset asset
 			where asset.kind = :kind
-			  and asset.visibility = :visibility
 			  and asset.status = :status
-			  and (asset.thumbnailUrl is null or trim(asset.thumbnailUrl) = '')
+			  and ((asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PUBLIC
+			        and (asset.thumbnailUrl is null or trim(asset.thumbnailUrl) = ''))
+			    or (asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE
+			        and asset.storageKey like 'protected/private-verified/%'
+			        and asset.thumbnailStorageKey is null))
 			  and asset.storageKey is not null
 			order by asset.createdAt asc, asset.id asc
 			""")
 	List<UUID> findIdsMissingThumbnail(
 			@Param("kind") MediaKind kind,
-			@Param("visibility") MediaVisibility visibility,
 			@Param("status") MediaStatus status,
 			Pageable pageable
 	);
@@ -84,6 +123,28 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			@Param("status") MediaStatus status,
 			@Param("expectedSourceKey") String expectedSourceKey,
 			@Param("thumbnailUrl") String thumbnailUrl,
+			@Param("sourceWidth") Integer sourceWidth,
+			@Param("sourceHeight") Integer sourceHeight
+	);
+
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update MediaAsset asset
+			set asset.thumbnailStorageKey = :thumbnailKey,
+			    asset.width = :sourceWidth, asset.height = :sourceHeight,
+			    asset.updatedAt = CURRENT_TIMESTAMP
+			where asset.id = :assetId
+			  and asset.kind = com.berkayb.soundconnect.modules.media.enums.MediaKind.IMAGE
+			  and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE
+			  and asset.status = com.berkayb.soundconnect.modules.media.enums.MediaStatus.READY
+			  and asset.storageKey = :expectedSourceKey
+			  and asset.storageKey like 'protected/private-verified/%'
+			  and asset.thumbnailStorageKey is null
+			""")
+	int attachProtectedImageThumbnailIfEligible(
+			@Param("assetId") UUID assetId,
+			@Param("expectedSourceKey") String expectedSourceKey,
+			@Param("thumbnailKey") String thumbnailKey,
 			@Param("sourceWidth") Integer sourceWidth,
 			@Param("sourceHeight") Integer sourceHeight
 	);
@@ -169,6 +230,12 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			@Param("pendingStatus") MediaStatus pendingStatus
 	);
 
+    @Query("""
+            select asset from MediaAsset asset where asset.kind=:kind and asset.status=:status
+              and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE)) order by asset.createdAt asc
+            """)
 	Page<MediaAsset> findByKindAndVisibilityAndStatusOrderByCreatedAtAsc(
 			MediaKind kind,
 			MediaVisibility visibility,
@@ -176,6 +243,12 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			Pageable pageable
 	);
 
+    @Query("""
+            select asset from MediaAsset asset where asset.kind=:kind and asset.status=:status
+              and asset.updatedAt<:cutoff and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE)) order by asset.updatedAt asc
+            """)
 	List<MediaAsset> findByKindAndVisibilityAndStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(
 			MediaKind kind,
 			MediaVisibility visibility,
@@ -191,7 +264,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :queuedStatus
 			""")
 	int markTranscodeSent(
@@ -209,7 +284,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :sentStatus
 			  and asset.updatedAt < :cutoff
 			""")
@@ -229,7 +306,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :sentStatus
 			""")
 	int requeueUnclaimedTranscodeSignal(
@@ -254,7 +333,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status in (:queuedStatus, :sentStatus)
 			  and asset.transcodeAttemptCount < :maxAttempts
 			""")
@@ -278,7 +359,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and asset.transcodeAttemptToken = :attemptToken
 			  and asset.transcodeLeaseUntil > :now
@@ -351,7 +434,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and asset.transcodeAttemptToken = :attemptToken
 			  and asset.transcodeLeaseUntil > :now
@@ -379,7 +464,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and asset.transcodeAttemptToken = :attemptToken
 			  and asset.transcodeLeaseUntil > :now
@@ -412,7 +499,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and asset.transcodeAttemptToken = :attemptToken
 			  and asset.transcodeLeaseUntil > :now
@@ -443,7 +532,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.transcodeRetainSourceAfterCleanup = false,
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and (asset.transcodeLeaseUntil is null or asset.transcodeLeaseUntil <= :now)
 			  and asset.transcodeAttemptCount < :maxAttempts
@@ -468,7 +559,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.transcodeRetainSourceAfterCleanup = true,
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :processingStatus
 			  and (asset.transcodeLeaseUntil is null or asset.transcodeLeaseUntil <= :now)
 			  and asset.transcodeAttemptCount >= :maxAttempts
@@ -499,7 +592,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :cleanupStatus
 			""")
 	int completeHlsCleanup(
@@ -525,7 +620,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :cleanupStatus
 			  and asset.transcodeRetryPending = true
 			  and asset.transcodeAttemptCount < :maxAttempts
@@ -548,7 +645,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :cleanupStatus
 			  and asset.transcodeRetryPending = true
 			  and asset.transcodeAttemptCount >= :maxAttempts
@@ -580,7 +679,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			    asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :cleanupStatus
 			  and asset.transcodeRetryPending = false
 			  and asset.transcodeRetainSourceAfterCleanup = true
@@ -599,7 +700,9 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, UUID> {
 			set asset.updatedAt = CURRENT_TIMESTAMP
 			where asset.id = :assetId
 			  and asset.kind = :kind
-			  and asset.visibility = :visibility
+			  and (asset.visibility = :visibility or
+              (asset.ownerType = com.berkayb.soundconnect.modules.media.enums.MediaOwnerType.PROMOTION
+               and asset.visibility = com.berkayb.soundconnect.modules.media.enums.MediaVisibility.PRIVATE))
 			  and asset.status = :cleanupStatus
 			""")
 	int deferHlsCleanup(

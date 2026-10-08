@@ -27,6 +27,9 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OverthinkingMusicSourceTest {
+    @org.junit.jupiter.api.AfterEach void clearViewer() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
     private static final String TRACK = "4uLU6hMCjMI75M1A2tKUQC";
     private static final String ARTIST = "0TnOYISbd1XYRBk9myaseg";
     private static final String URL = "https://open.spotify.com/track/" + TRACK;
@@ -84,6 +87,25 @@ class OverthinkingMusicSourceTest {
         assertInvalid(() -> resolver.resolveAndSetArtist(new OverthinkingPost(), dto(URL, "artist-invalid", null, null, null)));
         assertInvalid(() -> resolver.resolveAndSetArtist(new OverthinkingPost(), dto(URL, null, null, null, "javascript:alert(1)")));
         assertInvalid(() -> resolver.resolveAndSetArtist(new OverthinkingPost(), dto(URL, null, "x".repeat(513), null, null)));
+    }
+
+    @Test void listenerCannotAttachBackstageTrackEvenWhenTheTrackExists() {
+        UUID trackId = UUID.randomUUID(), assetId = UUID.randomUUID(), ownerId = UUID.randomUUID();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("viewer", "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LISTENER"))));
+        var track = com.berkayb.soundconnect.modules.track.entity.Track.builder().id(trackId).mediaAssetId(assetId)
+                .ownerId(ownerId).ownerType(com.berkayb.soundconnect.modules.track.enums.TrackOwnerType.MUSICIAN_PROFILE).build();
+        when(tracks.findById(trackId)).thenReturn(Optional.of(track));
+        when(tracks.existsById(trackId)).thenReturn(true);
+        var request = new OverthinkingPostSaveRequestDto("Title", "Body", OverthinkingVisibilityType.VISIBLE,
+                null, null, null, null, null, trackId, null);
+        assertThatThrownBy(() -> resolver.resolveAndSetArtist(new OverthinkingPost(), request))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        exception -> assertThat(exception.getErrorType()).isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND));
+        verify(media).lockMainstagePublicMedia(assetId, "MUSICIAN_PROFILE", ownerId);
+        verify(media, never()).lockPublicMedia(any(), any(), any());
+        verify(tracks, never()).lockForReference(any());
     }
 
     @Test void onlyAuthoritativeMatchingTrackAndArtistCanBindAMusicianProfile() {

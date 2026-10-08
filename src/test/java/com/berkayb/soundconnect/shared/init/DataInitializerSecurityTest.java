@@ -135,7 +135,7 @@ class DataInitializerSecurityTest {
 	}
 
 	@Test
-	void runtimeAdminRoleReceivesBacklineCatalogAuthority() {
+	void runtimeAdminRoleReceivesCatalogAndMusicianFeedModerationAuthorities() {
 		List<Permission> permissions = Arrays.stream(PermissionEnum.values())
 		                                       .map(permissionEnum -> {
 			                                       Permission permission = (Permission) Permission.builder()
@@ -169,7 +169,8 @@ class DataInitializerSecurityTest {
 		assertThat(admin).isNotNull();
 		assertThat(admin.getPermissions())
 				.extracting(Permission::getName)
-				.contains(PermissionEnum.MANAGE_BACKLINE_CATALOG.name());
+				.contains(PermissionEnum.MANAGE_BACKLINE_CATALOG.name(),
+						PermissionEnum.MANAGE_MUSICIAN_FEED_REPORTS.name());
 	}
 
 	private void configureOwner(String password) {

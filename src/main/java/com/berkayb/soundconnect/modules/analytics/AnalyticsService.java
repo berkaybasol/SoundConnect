@@ -19,6 +19,8 @@ public class AnalyticsService {
 
     public AnalyticsResponse.Acknowledgement observe(UUID userId, AnalyticsRequest request) {
         identity.requireEnabled(); validate(request);
+        if (userId == null && request.observations().stream().anyMatch(o -> o.type().announcement()))
+            throw new SoundConnectException(ErrorType.UNAUTHORIZED);
         guard.observations(userId, request.clientId(), request.observations().size());
         return storage(() -> {
             store.observe(userId, request, clock.instant());
@@ -53,12 +55,22 @@ public class AnalyticsService {
                     || !ids.add(observation.id()) || observation.type() == null || observation.observedAt() == null) throw invalid();
             if (AnalyticsIdentity.NONE.equals(observation.eventId()) || AnalyticsIdentity.NONE.equals(observation.venueId())
                     || AnalyticsIdentity.NONE.equals(observation.sourceEventId())) throw invalid();
-            if (observation.type() == AnalyticsRequest.Type.VENUE_PROFILE_VIEW) {
+            if (observation.type().announcement()) {
+                if (observation.announcementId() == null || AnalyticsIdentity.NONE.equals(observation.announcementId())
+                        || observation.source() == null || observation.eventId() != null || observation.venueId() != null
+                        || observation.sourceEventId() != null || observation.type().video() != (observation.playbackId() != null)
+                        || (observation.source() == AnalyticsRequest.Source.FEED) != (observation.impressionToken() != null)
+                        || AnalyticsIdentity.NONE.equals(observation.playbackId())
+                        || (observation.impressionToken() != null && (observation.impressionToken().isBlank()
+                            || observation.impressionToken().length() > 4096))) throw invalid();
+            } else if (observation.announcementId() != null || observation.source() != null
+                    || observation.playbackId() != null || observation.impressionToken() != null) throw invalid();
+            else if (observation.type() == AnalyticsRequest.Type.VENUE_PROFILE_VIEW) {
                 if (observation.venueId() == null || observation.eventId() != null) throw invalid();
             } else if (observation.eventId() == null || observation.venueId() != null || observation.sourceEventId() != null) throw invalid();
         }
     }
-    private <T> T storage(Supplier<T> work) {
+    static <T> T storage(Supplier<T> work) {
         try { return work.get(); }
         catch (DataAccessException | TransactionException unavailable) { throw AnalyticsIdentity.unavailable(); }
     }

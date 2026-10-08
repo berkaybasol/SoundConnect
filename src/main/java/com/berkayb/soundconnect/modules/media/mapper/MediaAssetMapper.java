@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.media.dto.response.MediaResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.data.domain.Page;
@@ -28,6 +29,7 @@ public interface MediaAssetMapper {
 	 */
 	default String exposedUrl(MediaAsset entity, String url) {
 		return entity != null
+				&& entity.getOwnerType() != MediaOwnerType.MARKETPLACE
 				&& entity.getStatus() == MediaStatus.READY
 				&& entity.getVisibility() == MediaVisibility.PUBLIC
 				? url

@@ -21,6 +21,8 @@ import java.util.UUID;
 
 public interface EventPerformerRequestRepository extends JpaRepository<EventPerformerRequest, UUID> {
 
+	Optional<EventPerformerRequest> findByEvent_Id(UUID eventId);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select request from EventPerformerRequest request where request.id = :requestId")
 	Optional<EventPerformerRequest> findByIdForUpdate(@Param("requestId") UUID requestId);

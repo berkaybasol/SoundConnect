@@ -80,8 +80,7 @@ public class MediaHlsCleanupDispatcher {
 				// Crash recovery preserves the immutable, verified source. Only the
 				// deterministic derivative tree may contain partial bytes from the dead
 				// attempt, and requeue happens strictly after this delete succeeds.
-				storageClient.deleteFolder(mediaPolicy.buildHlsPrefix(assetId));
-				storageClient.invalidatePublicAsset(assetId);
+				deleteDerivatives(assetId, target.sourceKey());
 				var outcome = statusUpdater.completeHlsRetryCleanup(assetId);
 				log.info("[media-transcode] HLS retry cleanup completed assetId={} outcome={}",
 						assetId, outcome);
@@ -89,8 +88,7 @@ public class MediaHlsCleanupDispatcher {
 			}
 
 			if (target.retainSourceAfterCleanup()) {
-				storageClient.deleteFolder(mediaPolicy.buildHlsPrefix(assetId));
-				storageClient.invalidatePublicAsset(assetId);
+				deleteDerivatives(assetId, target.sourceKey());
 				boolean completed = statusUpdater.completeRetainedSourceFailure(assetId);
 				log.warn("[media-transcode] exhausted retry derivatives cleaned; verified source retained privately for manual recovery assetId={} stateUpdated={}",
 						assetId, completed);
@@ -106,8 +104,7 @@ public class MediaHlsCleanupDispatcher {
 					storageClient.deleteObject(key);
 				}
 			}
-			storageClient.deleteFolder(mediaPolicy.buildHlsPrefix(assetId));
-			storageClient.invalidatePublicAsset(assetId);
+			deleteDerivatives(assetId, target.sourceKey());
 			if (!isUploadWriteWindowClosed(target)) {
 				statusUpdater.deferHlsCleanup(assetId);
 				log.info("[media-transcode] HLS cleanup retained through PUT completion grace assetId={}",
@@ -137,4 +134,11 @@ public class MediaHlsCleanupDispatcher {
 		return presignedUploadWriteWindow.isSafeToDelete(
 				target.uploadWriteAuthorityExpiresAt(), target.createdAt());
 	}
+    private void deleteDerivatives(UUID assetId, String sourceKey) {
+        boolean privateVideo = StorageObjectKeys.isPrivateVerified(sourceKey);
+        String prefix = mediaPolicy.buildHlsPrefix(assetId);
+        storageClient.deleteFolder(privateVideo ? StorageObjectKeys.protectedKey(prefix) : prefix);
+        if (!privateVideo) storageClient.invalidatePublicAsset(assetId);
+    }
+
 }

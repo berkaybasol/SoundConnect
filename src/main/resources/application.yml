@@ -221,6 +221,30 @@ app:
         limit: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_LIMIT:10}
         window: ${AUTH_RATE_LIMIT_PASSWORD_RESET_CONFIRM_WINDOW:5m}
   notification:
+    campaigns:
+      # Enable only after the independent notification-campaigns migration.
+      enabled: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_ENABLED:false}
+      poll-delay-ms: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_POLL_DELAY_MS:1000}
+      initial-delay-ms: ${SOUNDCONNECT_NOTIFICATION_CAMPAIGNS_INITIAL_DELAY_MS:30000}
+    push:
+      # Explicit opt-in. Apply the SQL migration and supply external credentials first.
+      enabled: ${SOUNDCONNECT_PUSH_ENABLED:false}
+      token-encryption-key: ${SOUNDCONNECT_PUSH_TOKEN_ENCRYPTION_KEY:}
+      allowed-types: ${SOUNDCONNECT_PUSH_ALLOWED_TYPES:DM_NEW_MESSAGE}
+      worker-threads: ${SOUNDCONNECT_PUSH_WORKER_THREADS:2}
+      batch-size: ${SOUNDCONNECT_PUSH_BATCH_SIZE:25}
+      max-attempts: ${SOUNDCONNECT_PUSH_MAX_ATTEMPTS:8}
+      max-sends-per-second: ${SOUNDCONNECT_PUSH_MAX_SENDS_PER_SECOND:20}
+      lease-duration: ${SOUNDCONNECT_PUSH_LEASE_DURATION:2m}
+      message-ttl: ${SOUNDCONNECT_PUSH_MESSAGE_TTL:24h}
+      retry-initial-delay: ${SOUNDCONNECT_PUSH_RETRY_INITIAL_DELAY:30s}
+      retry-max-delay: ${SOUNDCONNECT_PUSH_RETRY_MAX_DELAY:30m}
+      terminal-retention: ${SOUNDCONNECT_PUSH_TERMINAL_RETENTION:7d}
+      device-stale-after: ${SOUNDCONNECT_PUSH_DEVICE_STALE_AFTER:60d}
+      fcm:
+        project-id: ${SOUNDCONNECT_FCM_PROJECT_ID:}
+        credentials-path: ${SOUNDCONNECT_FCM_CREDENTIALS_PATH:}
+        max-concurrent-requests: ${SOUNDCONNECT_PUSH_WORKER_THREADS:2}
     retention-days: ${SOUNDCONNECT_NOTIFICATION_RETENTION_DAYS:30}
     cleanup-cron: "${SOUNDCONNECT_NOTIFICATION_CLEANUP_CRON:0 20 4 * * *}"
     event-performer-outbox:
@@ -275,6 +299,19 @@ app:
       published-retention: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_PUBLISHED_RETENTION:7d}
       health-undelivered-age-threshold: ${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_HEALTH_UNDELIVERED_AGE_THRESHOLD:30m}
       cleanup-cron: "${SOUNDCONNECT_COLLAB_NOTIFICATION_OUTBOX_CLEANUP_CRON:0 35 4 * * *}"
+    studio-reservation-outbox:
+      batch-size: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_BATCH_SIZE:25}
+      max-attempts: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:8}
+      worker-threads: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_WORKER_THREADS:2}
+      queue-capacity: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_QUEUE_CAPACITY:250}
+      poll-delay-ms: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_POLL_DELAY_MS:5000}
+      initial-delay-ms: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_INITIAL_DELAY_MS:5000}
+      lease-duration: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_LEASE_DURATION:30s}
+      retry-initial-delay: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_RETRY_INITIAL_DELAY:5s}
+      retry-max-delay: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_RETRY_MAX_DELAY:15m}
+      published-retention: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_PUBLISHED_RETENTION:7d}
+      health-undelivered-age-threshold: ${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_HEALTH_UNDELIVERED_AGE_THRESHOLD:30m}
+      cleanup-cron: "${SOUNDCONNECT_STUDIO_RESERVATION_NOTIFICATION_OUTBOX_CLEANUP_CRON:0 50 4 * * *}"
   share-base-url: ${APP_SHARE_BASE_URL:http://localhost:8080}
   data:
     init:
@@ -307,6 +344,15 @@ app:
       publisher-confirm-timeout: ${SOUNDCONNECT_NOTIFICATION_PUBLISHER_CONFIRM_TIMEOUT:5s}
       dlxExchange: notification.dlx
       dlq: notification.queue.dlq
+      dlq-ops:
+        replay-enabled: ${SOUNDCONNECT_NOTIFICATION_DLQ_REPLAY_ENABLED:false}
+        window: 10
+        max-body-bytes: 65536
+        max-window-bytes: 262144
+        rpc-timeout-ms: 2000
+        deadline-ms: 10000
+        interval-ms: 30000
+        stale-ms: 90000
 
 otp:
   ttl:

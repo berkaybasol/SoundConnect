@@ -234,6 +234,9 @@ public class EndPoints {
 		// ===== LIST ROOT COMMENTS ===== //
 		// GET /comments/{targetType}/{targetId}
 		public static final String LIST_BY_TARGET = "/{targetType}/{targetId}";
+
+		// GET /comments/{targetType}/{targetId}/count: live roots and replies.
+		public static final String COUNT_BY_TARGET = "/{targetType}/{targetId}/count";
 		
 		// ===== LIST REPLIES ===== //
 		// GET /comments/replies/{commentId}
@@ -317,6 +320,8 @@ public class EndPoints {
 	}
 	
 	public static class Notification {
+		public static final String BY_ID = "/{id}";
+		public static final String DELIVERY_STATE = "/delivery-state";
 		public static final String USER_BASE = API + VERSION + "/user/notifications";
 		public static final String LIST = "";
 		public static final String RECENT = "/recent";
@@ -349,6 +354,11 @@ public class EndPoints {
 		public static final String PUBLIC_BASE = API + VERSION + "/public/musician-profiles"; //eklendi
 		public static final String SEARCH = "/search"; //eklendi
 		public static final String PUBLIC_BY_PROFILE_ID = "/{profileId}"; //eklendi
+	}
+
+	public static class MusicianFeed {
+		public static final String BASE = API + VERSION + "/feed/musician";
+		public static final String PREFERENCES = "/preferences";
 	}
 	
 	public static class VenueApplication {

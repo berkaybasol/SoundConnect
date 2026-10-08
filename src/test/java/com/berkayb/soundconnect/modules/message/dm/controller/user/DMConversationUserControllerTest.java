@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
+import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,9 +38,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(classes = SoundConnectApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@SpringBootTest(classes = SoundConnectApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = {"spring.config.import=", "app.notification.push.enabled=false"})
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
+@H2NotificationIdentityTestBoundary
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Tag("web")
 class DMConversationUserControllerTest {
@@ -54,6 +57,7 @@ class DMConversationUserControllerTest {
 	
 	// MailProducerImpl yüzünden gerekecek
 	@MockitoBean RabbitTemplate rabbitTemplate;
+	@MockitoBean com.berkayb.soundconnect.shared.messaging.events.notification.NotificationProducer notificationProducer;
 	@MockitoBean
 	RedisConnectionFactory redisConnectionFactory;
 	@MockitoBean

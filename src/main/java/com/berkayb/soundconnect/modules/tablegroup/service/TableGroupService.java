@@ -33,9 +33,11 @@ public interface TableGroupService {
 	
 	// masa sahibi katilim istegini onaylar
 	void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);
+	void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId, UUID expectedApplicationId);
 	
 	// masa sahibi katilim istegini reddeder
 	void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);
+	void rejectJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId, UUID expectedApplicationId);
 	
 	// katilimci masadan kendisi ayrilir
 	void leaveTableGroup(UUID userId, UUID tableGroupId);

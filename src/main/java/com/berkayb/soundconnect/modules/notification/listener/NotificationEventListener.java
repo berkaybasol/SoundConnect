@@ -1,11 +1,13 @@
 package com.berkayb.soundconnect.modules.notification.listener;
 
+import com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity;
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.helper.NotificationBadgeCacheHelper;
 import com.berkayb.soundconnect.modules.notification.mapper.NotificationMapper;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationRepository;
 import com.berkayb.soundconnect.modules.notification.repository.NotificationReceiptRepository;
 import com.berkayb.soundconnect.modules.notification.service.NotificationService;
+import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
 import com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy;
 import com.berkayb.soundconnect.modules.notification.websocket.NotificationWebSocketService;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
@@ -48,26 +50,22 @@ public class NotificationEventListener {
 	private final NotificationService notificationService;
 	private final NotificationReceiptRepository receiptRepository;
 	private final NotificationDeliveryPolicy deliveryPolicy;
+	private final org.springframework.context.ApplicationEventPublisher applicationEvents;
 	
 	
 	// RabbitMQ'dan notification queue'undan mesajlari dinler. her gelen event icin bu method cagrilir
 	@Transactional
-	@RabbitListener(queues = "${app.messaging.notification.queue:notification.queue}")
+	@RabbitListener(queues = "${app.messaging.notification.queue:notification.queue}", containerFactory = "notificationListenerFactory")
 	public void handle (NotificationInboundEvent event) {
-		// event dogrulamasini yap. eksik veya hatali ise isleme alma log bas ve cik
+		final boolean eligible;
 		try {
 			validate(event);
+			eligible = deliveryPolicy.eligible(event);
 		} catch (IllegalArgumentException e) {
-			log.warn(
-					"Invalid NotificationInboundEvent, skipping. eventId={}, type={}, reason={}",
-					event == null ? null : event.eventId(),
-					event == null ? null : event.type(),
-					e.getMessage()
-			);
-			return;
+			// Keep malformed input for protected DLQ inspection, including policy
+			// payload bounds. Never log/attach arbitrary exception messages or data.
+			throw new AmqpRejectAndDontRequeueException("Malformed notification event");
 		}
-
-		boolean eligible = deliveryPolicy.eligible(event);
 		if (receiptRepository.claim(event.eventId(), event.recipientId()) == 0 ||
 				notificationRepository.existsBySourceEventId(event.eventId())) {
 			log.debug(
@@ -88,14 +86,16 @@ public class NotificationEventListener {
 		}
 		
 		// Notification entity'sini event verisinden olustur
+		boolean media = MediaNotificationIdentity.applies(event.type(), event.payload());
+        boolean band = BandNotificationIdentity.applies(event.type());
 		Notification entity = Notification.builder()
 				.sourceEventId(event.eventId())
 				.recipientId(event.recipientId())
 				.type(event.type())
-				.title(normalizeTitle(event))
-				.message(event.message() == null ? "" : event.message())
+				.title(band ? BandNotificationIdentity.title(event.type()) : media ? MediaNotificationIdentity.title(event.type(), null) : normalizeTitle(event))
+				.message(band ? BandNotificationIdentity.MESSAGE : media ? MediaNotificationIdentity.MESSAGE : event.message() == null ? "" : event.message())
 				.occurredAt(occurredAt)
-				.payload(event.payload())
+				.payload(band ? BandNotificationIdentity.payload(event.type(),event.payload()) : media ? MediaNotificationIdentity.payload(event.payload()) : event.payload())
 				.read(false) // yeni bildirim default olarak okunmadi
 				.build();
 		
@@ -104,6 +104,7 @@ public class NotificationEventListener {
 		// constraint is the final concurrency fence when duplicate Rabbit
 		// deliveries race on different consumer threads/nodes.
 		Notification persisted = notificationRepository.saveAndFlush(entity);
+		applicationEvents.publishEvent(new com.berkayb.soundconnect.modules.notification.push.NotificationPersisted(persisted));
 		runAfterCommit(() -> deliveryPolicy.schedule(event, persisted.getId(), () -> dispatchCommitted(persisted, event)));
 		log.debug("Notification persistence staged: id={}, user={}, type={}",
 				persisted.getId(), persisted.getRecipientId(), persisted.getType());
@@ -121,7 +122,7 @@ public class NotificationEventListener {
 
 		try {
 			var dto = notificationMapper.toDto(entity);
-			if (dto != null && NotificationService.requiresActorIdentityRefresh(dto.type())) {
+			if (dto != null && NotificationService.requiresActorIdentityRefresh(dto.type(), dto.payload())) {
 				dto = notificationService.refreshActorIdentityForDelivery(dto);
 			}
 			notificationWebSocketService.sendNotificationToUser(

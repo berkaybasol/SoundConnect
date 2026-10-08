@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
+import com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
@@ -281,7 +282,7 @@ public class BandServiceImpl implements BandService {
 				NotificationType.BAND_INVITE_ACCEPTED,
 				safe(member.getUser().getUsername(), "Bir kullanıcı") + " band davetini kabul etti",
 				safe(member.getBand().getName(), "Band") + " için gönderilen davet kabul edildi.",
-				Map.of("action", "INVITE_ACCEPTED", "memberId", userId.toString())
+				Map.of("action", "INVITE_ACCEPTED", "memberId", userId.toString(), "invitationId", invitationId.toString())
 		);
 	}
 	
@@ -304,7 +305,7 @@ public class BandServiceImpl implements BandService {
 				NotificationType.BAND_INVITE_REJECTED,
 				safe(member.getUser().getUsername(), "Bir kullanıcı") + " band davetini reddetti",
 				safe(member.getBand().getName(), "Band") + " için gönderilen davet reddedildi.",
-				Map.of("action", "INVITE_REJECTED", "memberId", userId.toString())
+				Map.of("action", "INVITE_REJECTED", "memberId", userId.toString(), "invitationId", invitationId.toString())
 		);
 	}
 	
@@ -719,16 +720,16 @@ public class BandServiceImpl implements BandService {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("module", "BAND");
 		payload.put("bandId", band.getId().toString());
-		payload.put("bandName", safe(band.getName(), "Band"));
+		payload.put("bandIdentityVersion", 1);
 		if (extraPayload != null) payload.putAll(extraPayload);
 		transactionalNotificationService.persistInCurrentTransaction(
 				NotificationInboundEvent.builder()
 						.eventId(UUID.randomUUID())
 						.recipientId(recipientId)
 						.type(type)
-						.title(title)
-						.message(message)
-						.payload(payload)
+						.title(BandNotificationIdentity.title(type))
+						.message(BandNotificationIdentity.MESSAGE)
+						.payload(BandNotificationIdentity.payload(type, payload))
 						.emailForce(false)
 						.occurredAt(Instant.now())
 						.build()

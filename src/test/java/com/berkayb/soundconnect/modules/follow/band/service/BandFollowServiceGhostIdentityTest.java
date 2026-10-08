@@ -2,7 +2,7 @@ package com.berkayb.soundconnect.modules.follow.band.service;
 
 import com.berkayb.soundconnect.modules.follow.band.dto.response.BandFollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.band.entity.BandFollow;
-import com.berkayb.soundconnect.modules.follow.band.event.BandFollowNotificationRequestedEvent;
+import com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService;
 import com.berkayb.soundconnect.modules.follow.band.mapper.BandFollowMapper;
 import com.berkayb.soundconnect.modules.follow.band.repository.BandFollowRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -47,7 +47,7 @@ class BandFollowServiceGhostIdentityTest {
 	@Mock BandEntityFinder bandEntityFinder;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock GhostListenerIdentityBatchResolver ghostIdentityBatchResolver;
-	@Mock ApplicationEventPublisher applicationEventPublisher;
+	@Mock FollowNotificationOutboxService notificationOutbox;
 
 	private BandFollowServiceImpl service;
 
@@ -61,7 +61,7 @@ class BandFollowServiceGhostIdentityTest {
 				mapper,
 				mediaAssetService,
 				ghostIdentityBatchResolver,
-				applicationEventPublisher
+				notificationOutbox
 		);
 	}
 
@@ -128,7 +128,11 @@ class BandFollowServiceGhostIdentityTest {
 				.user(recipient)
 				.status(BandMemberShipStatus.ACTIVE)
 				.build();
-		band.setMembers(Set.of(member));
+		band.setMembers(new java.util.HashSet<>(Arrays.asList(member, null,
+                BandMember.builder().id(UUID.randomUUID()).user(recipient).status(BandMemberShipStatus.ACTIVE).build(),
+                BandMember.builder().id(UUID.randomUUID()).user(follower).status(BandMemberShipStatus.ACTIVE).build(),
+                BandMember.builder().id(UUID.randomUUID()).user(User.builder().id(UUID.randomUUID()).build()).status(BandMemberShipStatus.LEFT).build(),
+                BandMember.builder().id(UUID.randomUUID()).status(BandMemberShipStatus.ACTIVE).build())));
 		when(userEntityFinder.getUser(followerId)).thenReturn(follower);
 		when(bandEntityFinder.getBand(bandId)).thenReturn(band);
 		when(bandEntityFinder.getBandMember(bandId, followerId))
@@ -136,20 +140,12 @@ class BandFollowServiceGhostIdentityTest {
 		when(bandFollowRepository.existsByFollowerAndBand(follower, band)).thenReturn(false);
 		when(bandFollowRepository.save(org.mockito.ArgumentMatchers.any(BandFollow.class)))
 				.thenAnswer(invocation -> invocation.getArgument(0));
-		ArgumentCaptor<BandFollowNotificationRequestedEvent> eventCaptor =
-				ArgumentCaptor.forClass(BandFollowNotificationRequestedEvent.class);
-
-		service.followBand(followerId, bandId);
-
-		verify(applicationEventPublisher).publishEvent(eventCaptor.capture());
-		assertThat(eventCaptor.getValue().followerId()).isEqualTo(followerId);
-		assertThat(eventCaptor.getValue().bandId()).isEqualTo(bandId);
-		assertThat(eventCaptor.getValue().recipientIds()).containsExactly(recipientId);
-		assertThat(Arrays.stream(BandFollowNotificationRequestedEvent.class.getRecordComponents())
-				.map(component -> component.getType().getName())
-				.toList())
-				.containsExactly(UUID.class.getName(), UUID.class.getName(), List.class.getName());
-	}
+        service.followBand(followerId, bandId);
+        verify(notificationOutbox).enqueue(org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(followerId), org.mockito.ArgumentMatchers.eq(recipientId),
+                org.mockito.ArgumentMatchers.eq(bandId), org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verifyNoMoreInteractions(notificationOutbox);
+    }
 
 	private BandFollow follow(User follower, Band band) {
 		return BandFollow.builder()

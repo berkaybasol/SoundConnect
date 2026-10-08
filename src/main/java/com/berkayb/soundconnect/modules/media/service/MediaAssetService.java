@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlRespons
 import com.berkayb.soundconnect.modules.media.dto.response.UploadInitResultResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import org.springframework.data.domain.Page;
@@ -31,6 +32,14 @@ public interface MediaAssetService {
 			long sizeBytes, // byte cinsinden dosya boyutu
 			String originalFileName // dosyanin orjinal adi
 	);
+
+	UploadInitResultResponseDto initUpload(UUID actingUserId, MediaOwnerType ownerType, UUID ownerId,
+			MediaKind kind, MediaVisibility visibility, String mimeType, long sizeBytes,
+			String originalFileName, MediaContentAudience contentAudience);
+
+	MediaAsset updateContentAudience(UUID actingUserId, UUID assetId, MediaContentAudience contentAudience);
+
+	Map<UUID, MediaContentAudience> getContentAudienceMap(List<UUID> mediaAssetIds);
 	
 	
 	// upload tamamlandiktan sonra cagirilan metod

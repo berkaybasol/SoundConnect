@@ -31,7 +31,8 @@ public class CommentAuthorBatchResolver {
         var visibleIds = authorIds.stream().filter(id -> !ghosts.containsKey(id)).toList();
         var rows = visibleIds.isEmpty() ? List.<CommentAuthorRepository.Candidate>of() : repository.candidates(visibleIds);
         Set<UUID> mediaIds = new LinkedHashSet<>();
-        for (var row : rows) if (!row.getErased()) for (UUID id : mediaIds(row)) if (id != null) mediaIds.add(id);
+        for (var row : rows) if (!row.getErased() && !hiddenStudio(row))
+            for (UUID id : mediaIds(row)) if (id != null) mediaIds.add(id);
         ghosts.values().stream().filter(CommentAuthorRepository.ListenerIdentity::getChoiceCompleted)
                 .map(CommentAuthorRepository.ListenerIdentity::getAvatar).filter(Objects::nonNull).forEach(mediaIds::add);
         Map<UUID, String> urls = Map.of();
@@ -47,6 +48,11 @@ public class CommentAuthorBatchResolver {
                     pending || ghost.getAvatar() == null ? null : urls.get(ghost.getAvatar()), ListenerVisibilityMode.GHOST));
         }
         for (var row : rows) {
+            if (hiddenStudio(row)) {
+                // Keep the discussion/count intact without exposing a Backstage identity or route.
+                result.put(row.getUserId(), new UserSummaryDto(null, null, null));
+                continue;
+            }
             if (row.getErased()) {
                 result.put(row.getUserId(), new UserSummaryDto(row.getUserId(), "Silinmiş hesap", null, ListenerVisibilityMode.GHOST));
                 continue;
@@ -64,6 +70,11 @@ public class CommentAuthorBatchResolver {
             result.put(row.getUserId(), new UserSummaryDto(row.getUserId(), row.getUsername(), avatar));
         }
         return Map.copyOf(result);
+    }
+
+    private boolean hiddenStudio(CommentAuthorRepository.Candidate row) {
+        return row.getStudioAccount()
+                && com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer();
     }
 
     private UUID[] mediaIds(CommentAuthorRepository.Candidate row) {

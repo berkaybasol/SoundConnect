@@ -17,6 +17,10 @@ import java.util.UUID;
 
 public interface EventRepository extends JpaRepository<Event, UUID> {
 
+	@EntityGraph("event.card")
+	@Query("select e from Event e where e.venue.id = :venueId and e.id in :ids and e.eventOrigin = com.berkayb.soundconnect.modules.event.enums.EventOrigin.VENUE")
+	List<Event> findOwnerCardsByIds(@Param("venueId") UUID venueId, @Param("ids") List<UUID> ids);
+
 	/** All public entry points enforce the same venue/account/location eligibility as discovery. */
 	String PUBLIC_EVENT = """
 			select e from Event e join e.venue venue join venue.owner owner

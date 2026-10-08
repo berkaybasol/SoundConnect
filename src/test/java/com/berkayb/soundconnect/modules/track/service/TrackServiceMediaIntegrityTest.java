@@ -7,9 +7,13 @@ import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.service.MusicianProfileService;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.repository.StudioProfileRepository;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
 import com.berkayb.soundconnect.modules.track.dto.request.TrackCreateRequestDto;
@@ -42,8 +46,9 @@ class TrackServiceMediaIntegrityTest {
 	@Mock TrackMapper trackMapper;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock MediaAssetRepository mediaAssetRepository;
-	@Mock MusicianProfileService musicianProfileService;
-	@Mock BandService bandService;
+	@Mock MusicianProfileRepository musicianProfileRepository;
+	@Mock BandRepository bandRepository;
+	@Mock BandMemberRepository bandMemberRepository;
 	@Mock StudioProfileRepository studioProfileRepository;
 	@InjectMocks TrackServiceImpl service;
 
@@ -63,8 +68,8 @@ class TrackServiceMediaIntegrityTest {
 		User user = mock(User.class);
 		lenient().when(profile.getUser()).thenReturn(user);
 		lenient().when(user.getId()).thenReturn(userId);
-		when(musicianProfileService.getProfileEntity(ownerId)).thenReturn(profile);
-		when(bandService.getBandEntity(ownerId)).thenThrow(new SoundConnectException(ErrorType.BAND_NOT_FOUND));
+		lenient().when(musicianProfileRepository.existsById(ownerId)).thenReturn(true);
+		lenient().when(musicianProfileRepository.findById(ownerId)).thenReturn(Optional.of(profile));
 	}
 
 	@Test
@@ -137,8 +142,7 @@ class TrackServiceMediaIntegrityTest {
 
 	@Test
 	void createTrack_supportsStudioOwnedAudioWithoutRoutingItToMusician() {
-		when(musicianProfileService.getProfileEntity(ownerId))
-				.thenThrow(new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		when(musicianProfileRepository.existsById(ownerId)).thenReturn(false);
 		when(studioProfileRepository.existsById(ownerId)).thenReturn(true);
 		StudioProfile studio = mock(StudioProfile.class);
 		User owner = mock(User.class);
@@ -161,6 +165,42 @@ class TrackServiceMediaIntegrityTest {
 				TrackOwnerType.STUDIO_PROFILE, ownerId, assetId);
 		verify(trackRepository).save(argThat(track ->
 				track.getOwnerType() == TrackOwnerType.STUDIO_PROFILE));
+	}
+
+	@Test
+	void createTrack_supportsBandOwnedAudioThroughDirectActiveManagerMembership() {
+		when(musicianProfileRepository.existsById(ownerId)).thenReturn(false);
+		when(bandRepository.existsById(ownerId)).thenReturn(true);
+		when(bandMemberRepository.findByBandIdAndUserId(ownerId, userId))
+				.thenReturn(Optional.of(BandMember.builder()
+						.status(BandMemberShipStatus.ACTIVE)
+						.bandRole(BandRole.MANAGER)
+						.build()));
+		MediaAsset asset = asset(
+				MediaStatus.READY, MediaVisibility.PUBLIC, ownerId, MediaOwnerType.BAND);
+		when(mediaAssetRepository.findByIdForUpdate(assetId)).thenReturn(Optional.of(asset));
+		TrackResponseDto expected = new TrackResponseDto(null, assetId, "Track", "url", 180, 120);
+		when(trackMapper.toDto(any(Track.class), same(mediaAssetService))).thenReturn(expected);
+
+		assertThat(service.createTrack(ownerId, userId, request)).isSameAs(expected);
+
+		verify(bandMemberRepository).findByBandIdAndUserId(ownerId, userId);
+		verify(trackRepository).save(argThat(track -> track.getOwnerType() == TrackOwnerType.BAND));
+	}
+
+	@Test
+	void createTrack_rejectsOrdinaryBandMember() {
+		when(musicianProfileRepository.existsById(ownerId)).thenReturn(false);
+		when(bandRepository.existsById(ownerId)).thenReturn(true);
+		when(bandMemberRepository.findByBandIdAndUserId(ownerId, userId))
+				.thenReturn(Optional.of(BandMember.builder()
+						.status(BandMemberShipStatus.ACTIVE)
+						.bandRole(BandRole.MEMBER)
+						.build()));
+
+		assertError(ErrorType.TRACK_OWNER_INVALID);
+		verifyNoInteractions(mediaAssetRepository);
+		verify(trackRepository, never()).save(any());
 	}
 
 	private MediaAsset asset(MediaStatus status, MediaVisibility visibility, UUID mediaOwnerId) {

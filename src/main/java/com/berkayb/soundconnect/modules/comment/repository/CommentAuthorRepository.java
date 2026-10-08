@@ -25,7 +25,7 @@ public interface CommentAuthorRepository extends Repository<User, UUID> {
     /** One row per author, including business profiles; no collection fetch or per-comment query. */
     @Query(value = """
             select u.id as "userId",u.user_name as "username",u.profile_picture as "legacyAvatar",
-                (u.erased_at is not null) as "erased",
+                (u.erased_at is not null) as "erased",(s.id is not null) as "studioAccount",
                 m.profile_picture_media_id as "musician",l.profile_picture_media_id as "listener",
                 o.profile_picture_media_id as "organizer",p.profile_picture_media_id as "producer",
                 s.profile_picture_media_id as "studio",v.avatar as "venue"
@@ -47,6 +47,7 @@ public interface CommentAuthorRepository extends Repository<User, UUID> {
 
     interface Candidate {
         boolean getErased();
+        boolean getStudioAccount();
         UUID getUserId(); String getUsername(); String getLegacyAvatar();
         UUID getMusician(); UUID getListener(); UUID getOrganizer(); UUID getProducer();
         UUID getStudio(); UUID getVenue();

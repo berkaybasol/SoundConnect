@@ -7,5 +7,6 @@ import java.util.UUID;
 public final class OverthinkingProfileShareResponse {
     private OverthinkingProfileShareResponse() { }
     public record State(UUID postId, UUID shareId, boolean publishedOnProfile, String note, Instant publishedAt, boolean canPublish) { }
-    public record Post(UUID shareId, String note, Instant publishedAt, OverthinkingPostResponseDto post) { }
+    public record Post(UUID shareId, String note, Instant publishedAt, OverthinkingPostResponseDto post,
+                       long likeCount, long commentCount, boolean likedByMe) { }
 }

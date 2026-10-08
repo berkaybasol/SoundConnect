@@ -219,11 +219,10 @@ public class MediaTranscodeDispatcher {
 		MediaAsset asset = mediaAssetRepository.findById(assetId).orElse(null);
 		if (asset == null
 				|| asset.getKind() != MediaKind.VIDEO
-				|| asset.getVisibility() != MediaVisibility.PUBLIC
+				|| !MediaAssetStatusUpdater.supportedVideoVisibility(asset)
 				|| asset.getStatus() != MediaStatus.TRANSCODE_QUEUED
 				|| !StringUtils.hasText(asset.getStorageKey())
-				|| !StorageObjectKeys.isVerified(asset.getStorageKey())
-				|| StorageObjectKeys.isProtected(asset.getStorageKey())) {
+				|| !MediaAssetStatusUpdater.validVerifiedSource(asset)) {
 			return;
 		}
 

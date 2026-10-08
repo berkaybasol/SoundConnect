@@ -68,6 +68,16 @@ public class GlobalExceptionHandler {
 		return response(errorType, request);
 	}
 
+	@ExceptionHandler(EmailVerificationRequiredException.class)
+	public ResponseEntity<ErrorResponse> handleEmailVerificationRequired(
+			EmailVerificationRequiredException exception,
+			HttpServletRequest request
+	) {
+		// Typed login recovery metadata, never arbitrary exception details. Login
+		// proves the password before disclosing this existing OTP destination.
+		return response(ErrorType.EMAIL_VERIFICATION_REQUIRED, request, List.of(exception.getEmail()));
+	}
+
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	public ResponseEntity<ErrorResponse> handleUnreadableMessage(
 			HttpMessageNotReadableException exception,

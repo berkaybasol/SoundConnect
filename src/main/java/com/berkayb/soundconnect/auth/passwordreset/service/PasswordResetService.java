@@ -75,9 +75,9 @@ public class PasswordResetService {
 		}
 
 		try {
-			mailService.queueResetCode(email, claim.code());
+			mailService.queueResetCode(email, claim);
 		} catch (RuntimeException exception) {
-			cancelFailedMailClaim(email, claim.code());
+			cancelFailedMailClaim(email, claim.generationId());
 			log.error(
 					"Password reset mail could not be queued for email={}, exceptionType={}",
 					EmailUtils.maskForLog(email),
@@ -92,9 +92,9 @@ public class PasswordResetService {
 				.build();
 	}
 
-	private void cancelFailedMailClaim(String email, String code) {
+	private void cancelFailedMailClaim(String email, String generationId) {
 		try {
-			if (!otpService.cancelPasswordResetOtpIssue(email, code)) {
+			if (!otpService.cancelPasswordResetOtpIssue(email, generationId)) {
 				log.warn(
 						"Password reset OTP cancellation did not match an active claim for email={}",
 						EmailUtils.maskForLog(email));

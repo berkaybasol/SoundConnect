@@ -37,7 +37,7 @@ public class ImageVariantBackfillService {
 		boolean attached = finalizer.attachIfStillEligible(assetId, expectedSourceKey, result);
 		if (!attached) {
 			// Generation raced with deletion, replacement, or another state change.
-			// Never leave its deterministic public derivative orphaned.
+			// Never leave its deterministic derivative orphaned.
 			imageThumbnailService.deleteStoredVariant(result.thumbnailKey());
 		}
 		return attached;

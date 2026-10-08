@@ -142,7 +142,8 @@ public class SecurityConfig {
 				"Content-Type",
 				"Accept",
 				"Origin",
-				"X-Requested-With"
+				"X-Requested-With",
+				"X-Announcement-Source"
 		));
 		configuration.setAllowCredentials(false);
 		configuration.setMaxAge(3600L);

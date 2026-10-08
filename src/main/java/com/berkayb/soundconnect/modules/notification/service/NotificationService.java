@@ -11,13 +11,25 @@ import java.util.UUID;
 
 public interface NotificationService {
 	static boolean requiresActorIdentityRefresh(NotificationType type) {
-		return type == NotificationType.DM_NEW_MESSAGE
+		return com.berkayb.soundconnect.modules.notification.support.BandNotificationIdentity.applies(type)
+				|| type == NotificationType.DM_NEW_MESSAGE
 				|| type == NotificationType.SOCIAL_NEW_FOLLOWER
-				|| type == NotificationType.SOCIAL_NEW_BAND_FOLLOWER;
+				|| type == NotificationType.SOCIAL_NEW_BAND_FOLLOWER
+				|| type == NotificationType.SOCIAL_LIKE
+				|| type == NotificationType.SOCIAL_COMMENT;
+	}
+
+	static boolean requiresActorIdentityRefresh(NotificationType type, java.util.Map<String,Object> payload) {
+		return requiresActorIdentityRefresh(type)
+				&& ((type != NotificationType.SOCIAL_LIKE && type != NotificationType.SOCIAL_COMMENT)
+				|| com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity.applies(type, payload));
 	}
 
 	// Refresh privacy-sensitive actor snapshots immediately before realtime delivery.
 	NotificationResponseDto refreshActorIdentityForDelivery(NotificationResponseDto notification);
+
+	// Read one current recipient-visible notification without acknowledging it.
+	NotificationResponseDto getUserNotification(UUID userId, UUID notificationId);
 	
 	// kullanicinin bildirimlerini yeniden eskiye sayfali getir
 	Page<NotificationResponseDto> getUserNotifications(UUID userId, int page, int size);
@@ -35,6 +47,9 @@ public interface NotificationService {
 	
 	// okunmamis bildirim sayisi (badge)
 	long getUnreadCount(UUID userId);
+
+	// Read-only OS reconciliation; only returns IDs from the bounded request.
+	List<UUID> getDismissedDeliveryIds(UUID userId, List<UUID> notificationIds);
 	
 	// tum okunmamislari okunduya cek
 	int markAllAsRead(UUID userId);
@@ -44,6 +59,8 @@ public interface NotificationService {
 
 	// DM konusmasi acildiginda o konusmaya ait okunmamis DM bildirimlerini okundu yapar
 	int markDmConversationAsRead(UUID userId, UUID conversationId);
+
+	int markDmMessageAsRead(UUID userId, UUID messageId);
 	
 	// sahiplik kontroluyle tek bir bildirimi siler
 	boolean deleteById(UUID userId, UUID notificationId);

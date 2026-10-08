@@ -4,10 +4,12 @@ package com.berkayb.soundconnect.modules.engagement.enums;
 public enum EngagementTargetType {
 	
 	OVERTHINKING,
+	OVERTHINKING_PROFILE_SHARE,
 	MEDIA,
 	EVENT,
 	EVENT_POST,
 	TABLE_GROUP_POST,
+	ANNOUNCEMENT,
 	COMMENT
 	
 	//FIXME BASKA MODULE GEREKTIGI ZAMAN BURAYA EKLE

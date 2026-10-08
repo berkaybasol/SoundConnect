@@ -115,7 +115,7 @@ class DMMessageUserControllerTest {
 		       .andExpect(jsonPath("$.data.content[0].content").value("a"))
 		       .andExpect(jsonPath("$.data.content[1].content").value("b"));
 
-		verify(notificationService).markDmConversationAsRead(currentUserId, conversationId);
+		verifyNoInteractions(notificationService);
 	}
 	
 	@Test
@@ -172,6 +172,32 @@ class DMMessageUserControllerTest {
 		       .andExpect(jsonPath("$.message", containsString("marked as read")));
 		
 		verify(messageService).markMessageAsRead(messageId, currentUserId);
+	}
+
+	@Test
+	void invalidMessageRequestsReturn400WithoutInvokingTheWriteService() throws Exception {
+		var principal = authentication(UUID.randomUUID(), "fixture");
+		UUID conversation = UUID.randomUUID(), recipient = UUID.randomUUID();
+		for (var request : List.of(
+				new DMMessageRequestDto(null, recipient, "text", "text"),
+				new DMMessageRequestDto(conversation, null, "text", "text"),
+				new DMMessageRequestDto(conversation, recipient, " \n ", "text"),
+				new DMMessageRequestDto(conversation, recipient, "x".repeat(10_001), "text"),
+				new DMMessageRequestDto(conversation, recipient, "text", "unknown"))) {
+			mockMvc.perform(post(BASE + PATH_SEND).principal(principal).contentType(MediaType.APPLICATION_JSON)
+					.content(objectMapper.writeValueAsBytes(request))).andExpect(status().isBadRequest());
+		}
+		verifyNoInteractions(messageService);
+	}
+
+	@Test
+	void readingAnUnrelatedConversationReturns403AndNeverListsItsMessages() throws Exception {
+		var principal = authentication(UUID.randomUUID(), "fixture");
+		UUID conversation = UUID.randomUUID();
+		when(conversationRepository.findById(conversation)).thenReturn(Optional.of(DMConversation.builder()
+				.id(conversation).userAId(UUID.randomUUID()).userBId(UUID.randomUUID()).build()));
+		mockMvc.perform(get(BASE + PATH_LIST, conversation).principal(principal)).andExpect(status().isForbidden());
+		verifyNoInteractions(messageService, notificationService);
 	}
 
 	@Test
