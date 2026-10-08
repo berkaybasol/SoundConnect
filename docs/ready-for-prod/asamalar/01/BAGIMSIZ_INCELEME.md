@@ -1,5 +1,23 @@
 # Aşama 01 — bağımsız teknik inceleme
 
+<!-- stage01-publication -->
+## Yayın kanıtı güncellemesi — 8 Ekim 2026 12:28
+
+FE PR5 ve ana dal CI SUCCESS:7126 Flutter PASS/2 mevcut skip, analyze temiz,
+coverage%78,50;457 JVM ve Android ürün/emülatör kapıları PASS. PR native
+instrumentation138/138 PASS. BE PR CI37747634929 SUCCESS:753 suite/6056 PASS,
+0 hata; mevcut101 skip+18 açılmamış parametre şablonu; ilgili454 testte0skip.
+BE ana dal CI [37751998581](https://github.com/berkaybasol/SoundConnect/actions/runs/37751998581): SUCCESS; 6056 PASS / 0 hata, aynı mevcut skip kümesi ve zorunlu rapor kapıları doğrulandı.
+
+Normal ürün merge'leri FE `d94487ea47a16e5f2dd3882181182010bc7a48cf`, BE `05d0e11e15d6d7523d4274e4c9caca4e4b0102f9`.
+Kanonik Git kaynak sürekliliği PASS; PR ile ürün merge tree'leri eş, ürün diff'i yok. Checkout öncesi 2234 BE / 1623 FE ham hash eşliği kaydedildi. Checkout sonrası BE'de 2187 ham hash aynı, 37 dosyada yalnız LF/CRLF farkı kabul SHA'sı yeniden kurularak doğrulandı. Diğer 10 dosyanın eski ham satır sonu düzeni yeniden oluşturulamadı; bu 10 dosyanın kaynak bağı checkout öncesi temiz 7309c370/hash kaydı ve değişmeyen Git blob/tree zinciriyle doğrulandı. FE'de 1622 ham hash aynı, yalnız app_route_guard.dart CRLF→LF farkı kabul SHA'sıyla doğrulandı. Bütün ham baytlar eş veya 10 eski düzen yeniden kuruldu denmez. Kanıt: W/artifacts/ready-for-prod-01-20261008/publication/source-verification.json ve backend-source-provenance-proof.json.
+
+Bu ek root'un yayın kanıtını aktarır; önceki incelemeciler yeni test yapmış veya
+kendi yazdıkları işe bağımsız onay vermiş sayılmaz. Tanımlı01 v1 kapanış sonucu
+KAPANDI — TANIMLI 01 V1 KAPSAMI; [DURUM](../../DURUM.md) ve [CALISMA](CALISMA.md) güncel kayıttır.
+Geniş observability, PC kapalı alarm ve02 uygulaması bu kabule eklenmez.
+<!-- /stage01-publication -->
+
 **8 Ekim 2026; kapsam:** [01 GÖREV](GOREV.md). Bu rapor tamamlanmış dar kaynak
 incelemelerini ve mevcut kanıtları birleştirir; yeni geniş denetim veya test
 koşusu değildir. İlk rapor kesiminde süren auth mobil/sonAPK03 sağlık ve tam
@@ -13,7 +31,7 @@ sağlık yaşı bulgusu düzeltildi, yazar dışında yeniden incelendi. Bu sonu
 manuel/görsel kabul veya üretime çıkış onayı anlamına gelmez. Eksik kabul ve
 CI sonuçları, doğrulanmış kod kusurundan ayrı açık kapılardır.
 
-## Kaynak kesimi ve kanıt yolları
+## İnceleme sırasındaki tarihsel kaynak kesimi ve kanıt yolları
 
 - Backend: `ready-for-prod-01`, HEAD
   `c537c27ce512d0c0c05063092a898c8bb5383da5`.
@@ -178,11 +196,12 @@ incelemecilerinin kendi yazdığı işe bağımsız ürün onayı olarak sunulma
 onaylıyorum o zaman” cevabı final03APK ve gösterilenakışlar için alındı.
 Kullanıcının fiziksel veya üretim kabulü verdiği iddia edilmez.
 
-**Henüz kapanış olarak işaretlenmeyenler:** mevcut PLAN kapsamında commit/push,
+**İlk rapor kesimindeki açık Git kapıları (tarihsel):** mevcut PLAN kapsamında commit/push,
 PR/ana dal CI ve uzak ref/kaynak eşliği. Teknik/kullanıcı kabulü tek başına bu
 Git/CI kapılarını geçmez. Yerel startup/readiness,
 pasif admin HTTP ve son mobil kanıtlar [CALISMA](CALISMA.md) ile
-[MANUEL_KABUL](MANUEL_KABUL.md) içinde ayrı kayıtlıdır. Aşama henüz kapanmadı.
+[MANUEL_KABUL](MANUEL_KABUL.md) içinde ayrı kayıtlıdır. Bu paragraf ilk rapor
+kesimidir; güncel yayın sonucu üstteki ek ve DURUM'dadır.
 
 **Kapsanmayan kanıtlar:** fiziksel Vivo/OEM/donanım, iOS, native fatal/ANR/NDK,
 yan isolate ve login öncesi/guest crash kapsamı, gerçek üretim fleet/ingress ve

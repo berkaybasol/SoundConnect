@@ -1,8 +1,9 @@
 # Aşama 01 — hesap güvenliği ve sağlık/uyarı temeli
 
-Durum: **KABUL ONAYLI; GIT/CI KAPANIŞI SÜRÜYOR.** Branch iki repoda
-`ready-for-prod-01`. Kullanıcı onaylı genel sıra [PLAN](../../PLAN.md), gerçek
-ilerleme [DURUM](../../DURUM.md), işlem günlüğü [CALISMA](CALISMA.md).
+Durum: **KAPANDI — TANIMLI 01 V1 KAPSAMI.** Ürün geliştirmesi iki repoda
+`ready-for-prod-01` üzerinde yürütüldü. Güncel yayın ve sıradaki adım
+[DURUM](../../DURUM.md), işlem günlüğü [CALISMA](CALISMA.md), yetki/sıra
+[PLAN](../../PLAN.md) içindedir.
 
 ## Amaç ve kalite
 
@@ -126,8 +127,11 @@ teşhis → düzeltme → test/build → gerçek kabul → tek teslim olarak tam
 
 ## Kapanış
 
-Kabul ve bağımsız inceleme tamamlanınca PLAN'daki mevcut commit/push/normal merge
-yetkisini uygula. PR/ana dal CI ve kaynak/uzak ref kontrolünü kaydet. Sonraki
-`ready-for-prod-02` branch'ini yeni ana daldan hazırla, güncel 02 görevini yaz,
-CALISMA → DURUM → BASLA → hafiza sırasıyla devri güncelle. 02 ürün işine geçme.
-Eksik kontrol varken 01 tamamlandı veya ana dal kabulü var deme.
+Kabul ve bağımsız inceleme sonrası PLAN'daki mevcut commit/push/normal merge
+yetkisiyle PR/ana dal CI, kaynak ve canlı uzak ref kontrolünü tamamla; gerçek
+sonucu CALISMA → DURUM → BASLA → hafıza sırasıyla kaydet. Eksik kapı varken
+01 tamamlandı veya ana dal kabulü var deme. Son kullanıcı kararıyla 01 v1
+kapanışının ardından, 02'den önce kapsamlı observability ve PC kapalıyken alarm
+için bağımsız izleme/barındırma/maliyet görüşülür. 02 görevi hazır tutulur;
+görüşmeden önce 02 branch geçişi, ürün geliştirmesi veya yeni izleyici kurulumu
+yapılmaz. Bu görüşme ücretli hizmet veya canlı deploy yetkisi değildir.

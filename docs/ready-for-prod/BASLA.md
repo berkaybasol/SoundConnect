@@ -1,75 +1,75 @@
 # SoundConnect — yeni oturum başlangıcı
 
-Son güncelleme: **8 Ekim 2026**. Bu paket, kullanıcının onayladığı sekiz aşamalı
-üretime hazırlık çalışmasının tek güncel girişidir. Kullanıcı her oturumda
-geçmişi yeniden anlatmak istemiyor. İlgili bağlamı sen bu kayıtlardan edin.
+Son güncelleme: **8 Ekim 2026, 12:28 TRT**. Bu paket, onaylı sekiz
+aşamanın tek güncel girişidir. Geçmişi kullanıcıya yeniden anlattırma; güncel
+kanıt ve yetkiyi aşağıdaki kayıtlardan doğrula.
 
 ## Şimdi nerede kaldık?
 
-- **Aşama 01: KABUL ONAYLI; GIT/CI KAPANIŞI SÜRÜYOR.** İki repoda `ready-for-prod-01` açık; başlangıç
-  HEAD'leri taze doğrulandı, önceki hazırlık belgeleri korundu.
-- 8 Ekim yeni oturumunda kullanıcı uygulamayı başlattı. Bu oturumun mobil kabulü
-  açık kullanıcı kararıyla Android Studio emülatöründe; fiziksel Vivo zorunlu
-  değil. Emülatör kanıtı fiziksel kabul sayılmaz, insan görsel onayı ayrıdır.
-- Kullanıcı yeni oturumda bu dosyadan devam etmeni istediğinde **01'in mevcut
-  yetkili kapsamını uygula**; sekiz aşamanın tamamını birden başlatma.
-- 01 kapsamı: şifre sıfırlama sonrası eski oturumlar, Redis kesintisinde giriş
-  deneme koruması ve sağlık/uyarı v1. Ayrıntı [01 görevi](asamalar/01/GOREV.md).
-  Teknik kabulü baştan başlatma; kullanıcı sonAPK/gösterilenakışları onayladı.
-  Somut sonraki adım yetkili Git/CI kapanışını tamamlamaktır. Son kullanıcı
-  talimatıyla bunun ardından02öncesi kapsamlı observability ve PC kapalıyken
-  alarm için dış izleme/barındırma/maliyet konuşulacak;02geçişi henüz yapılmaz.
-- Son kanıt: iki güvenlik düzeltmesi ve bağlı admin parola yolu testleri geçti;
-  izole gerçek HTTP/STOMP kabulü geçti. Sağlık/mobil ekranı uygulandı, APK
-  emülatöre verileri korunarak yüklendi. İki TEST e-posta iki alıcıya teslim
-  edildi. Startup sırasında bulunan lifecycle sorunu düzeltildi; son runtime
-  healthy ve hash eşliği doğrulandı. Mobil deneme raporu gerçek DB ve UI'da
-  görüldü. Final03APK ile rapor/eski ölçüm/toparlanma ve reset sonrası eski
-  oturumun reddi/yeni parola ile giriş geçti. Son tam backend6056PASS/0hata;
-  mevcut101skip+18parametreşablonu ayrı, aşamayla ilgili454testte0skip.
-  Asıl emülatör admin oturumuna dönüldü; mevcut veriler korundu. Kullanıcı
-  doğrudan kabul verdi; mevcut commit/push/PR/CI/normalmerge yetkisi uygulanıyor.
-  FE e33ffd17/PR5/CI başladı; BE yayın hazırlanıyor. Gerçek sonuçları DURUM'dan
-  doğrula; tekrar izin sorma.02branch geçişi yukarıdaki konuşmadan sonraya kaldı. Tüm PC kesintisine
-  dayanıklı dış host kabulü yoktur. Ayrıntı ve sonraki adım DURUM/CALISMA'dadır.
+- **Aşama 01 v1 kapanış sonucu: KAPANDI — TANIMLI 01 V1 KAPSAMI.** Güvenlik ve sağlık/uyarı v1'in
+  teknik kabulleri ile final03 APK/gösterilen akışlar için insan onayı tamam.
+  İki reponun yayın/ana dal CI/ref sonuçları [DURUM](DURUM.md) içindedir.
+- Frontend ana dal `main`, ürün merge SHA `d94487ea47a16e5f2dd3882181182010bc7a48cf`; backend ana dal
+  `master`, ürün merge SHA `05d0e11e15d6d7523d4274e4c9caca4e4b0102f9`. Fiilî checkout/HEAD ve uzak eşliği
+  yeni oturumda salt okunur doğrula; önceki branch veya dirty durumu varsayma.
+- **Somut sonraki adım: 02'den önce kapsamlı observability ve bilgisayar
+  kapalıyken de alarm için bağımsız izleme/barındırma/maliyet görüşmesi.**
+  Kullanıcının son kararı budur. [02 görevi](asamalar/02/GOREV.md) hazırdır;
+  02 branch geçişi ve ürün geliştirmesi bu görüşmeden önce yapılmaz.
+- Yeni izleyici, hizmet satın alma veya monitoring stack kurulumu başlamadı.
+  Bu devir ve görüşme, bunları kendiliğinden uygulama yetkisi değildir.
+
+Bu SHA'lar doğrulanmış ürün yayını kesimidir; sonradan yalnız kapanış belgeleri
+commit edilebilir. Güncel belge HEAD'i ve çalışma ağacı Git'ten ayrıca okunur.
+
+## Kabulün kapsamı
+
+01; reset ve yönetici parola değişimi sonrası eski HTTP/WS oturumlarının
+reddi, Redis limiter kesintisinde güvenli hata, pasif admin sağlık görünümü,
+güvenli mobil hata alımı ve kontrollü kesinti/toparlanma alarmı temelidir.
+Gerçek API/DB/realtime, mobil ve harici mail kanıtları
+[MANUEL_KABUL](asamalar/01/MANUEL_KABUL.md) içinde ayrı tutulur.
+
+Son normal APK SHA-256:
+`8122a81c10d8fc272a342faf1a61111eb806a9101dc8888abcbeef2bf0e67b34`.
+Bu oturumdaki açık kullanıcı tercihiyle mobil kabul Android Studio emülatöründe
+yapıldı; Vivo kullanılmadı. Bu istisna sonraki oturumlar için kalıcı fiziksel
+cihaz muafiyeti değildir. Kullanıcı final03 ve gösterilen sağlık/reset-yeniden
+giriş yollarını doğrudan onayladı; fiziksel veya üretim kabulü çıkarılmaz.
+
+İki TEST alarmı iki alıcı için dört provider teslimi ve bağlı Gmail'de iki
+INBOX kaydıyla doğrulandı. Tam PC/elektrik/ağ kesintisi, sürekli bağımsız host
+izlemesi ve üretim alarm işletimi kabul edilmedi. CPU/RAM/JVM/disk geçmişi,
+p95/p99, merkezi backend log araması ve dağıtık trace henüz uygulanmadı.
 
 ## Kısa okuma sırası
 
 1. Çalışma alanı ve ilgili reponun `AGENTS.md` dosyaları.
-2. [DURUM.md](DURUM.md): aktif aşama, branch/commit, gerçekleşenler ve açıklar.
-3. [PLAN.md](PLAN.md): onaylı sıra, Git kapanışı ve yetki sınırları.
-4. DURUM'da gösterilen aktif görev ve çalışma kaydı; şu an
-   [01/GOREV.md](asamalar/01/GOREV.md) ve [01/CALISMA.md](asamalar/01/CALISMA.md).
-5. Yalnız ihtiyaç duyulan bulgular için [kaynak incelemesi](INCELEME-20261008.md)
-   ve oradan ilgili gerçek kod. Tarihsel günlüklerin tamamını baştan okuma.
+2. [DURUM.md](DURUM.md): son yayın kimlikleri, kanıtlar, açık sınırlar ve sonraki adım.
+3. [PLAN.md](PLAN.md): sekiz aşama, Git kapanış yetkisi ve son 02 bekletme kararı.
+4. Gerekirse [01 çalışma kaydı](asamalar/01/CALISMA.md),
+   [gerçek kabul](asamalar/01/MANUEL_KABUL.md) ve
+   [bağımsız inceleme](asamalar/01/BAGIMSIZ_INCELEME.md).
+5. 02 kapsamı görüşülürken [hazır görev](asamalar/02/GOREV.md).
+   Eski [kaynak incelemesi](INCELEME-20261008.md) tarihsel başlangıç bulgusudur;
+   bugün açık kusur veya tamamlanmış kabul yerine kullanılmaz.
 
-Bu repo, `C:\Users\user\Desktop\SoundConnect` içindeki iki ayrı Git reposundan
-biridir. Frontend kardeş `SoundConnect-Frontend`, backend `SoundConnect-Backend`.
-Üst klasör Git reposu değildir. Komutları doğru repoda çalıştır.
+## Devralırken ve çalışırken
 
-## Devralırken doğrula
+Üst `SoundConnect/` klasörü Git reposu değildir; frontend ve backend ayrı
+repolardır. Komutları doğru repoda çalıştır. İki repo HEAD/branch/diff/staging
+ve untracked durumunu taze oku. Beklenmeyen farkın kaynağını belirle; kullanıcı
+işini, kanıtları, APK/JAR geçmişini, cihaz oturumlarını ve ortak servisleri koru.
+Çalışan ortamın önceki kabuldeki durumda kaldığını varsayma.
 
-Her iki reponun HEAD, branch, staged/unstaged/untracked durumunu taze oku.
-Başlangıç SHA'larını DURUM ile karşılaştır. Hazırlığın AGENTS/MD belgeleri ve
-devam oturumunun Aşama01 kaynak/test değişiklikleri
-bilinçli ve henüz commit edilmemiştir; silme veya ilgisiz dirty iş sayma.
-Fark varsa kaynağını belirle, kullanıcı işini koru. Çalışan servis/cihazın eski
-kayıttaki durumda kaldığını varsayma; gerekli dar kontrolleri yap.
-
-## Her oturumun sorumluluğu
-
-Aktif aşamanın somut çalışma kaydını ilerledikçe güncelle. Oturum biterken önce
-o kayıt ve kabul kanıtlarını, sonra DURUM'u, son olarak bu dosyanın “Şimdi nerede
-kaldık?” bölümünü güncelle. Yeni karar varsa PLAN ve proje `hafiza` özetine işle.
-Kullanıcıya kopyalatılan uzun ve farklı devir promptları üretme; bu giriş sabit
-kalsın. [Devir şablonundaki](DEVIR_SABLONU.md) bilgileri mevcut kayda yerleştir.
-
-Kabulü, branch'i, CI'ı veya dış erişimi varsayarak tamamlandı işaretleme.
-Belgeler arasında çelişki varsa en yeni açık kullanıcı talimatını koru ve farkı
-kaydet. Liste, sıradaki aşamayı kendiliğinden geliştirme yetkisi değildir.
+Doğrulanmış kapanışı teknik kontrolleri baştan başlatma gerekçesi yapma.
+Yeni yetkili işte önce asıl çalışma/kabul kaydı, sonra DURUM ve BASLA güncellenir;
+karar değişirse PLAN ve proje hafıza özeti kaynakla bağlanır. Ayrıntılı devir için
+[DEVIR_SABLONU](DEVIR_SABLONU.md) kullanılır. Teknik test, API/kalıcılık,
+cihaz, insan onayı, CI ve üretim kabulü birbirinden türetilmez.
 
 ## Yeni oturum için tek mesaj
 
 > SoundConnect-Backend/docs/ready-for-prod/BASLA.md dosyasını oku. Güncel durumu
-> doğrula ve aktif aşamanın yetkili kapsamından devam et. Devir kayıtlarını
-> çalışma boyunca güncel tut.
+> doğrula; son kullanıcı kararı ve burada kayıtlı somut sonraki adımdan devam et.
+> 02 ürün işini veya yeni izleme kurulumunu kendiliğinden başlatma.

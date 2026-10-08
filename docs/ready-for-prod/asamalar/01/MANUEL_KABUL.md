@@ -1,6 +1,20 @@
 # Aşama 01 — gerçek kabul ve paket kaydı
 
-8 Ekim 2026. **Çalışan kabul kaydı; aşama henüz kapanmadı.** Kullanıcının bu
+<!-- stage01-publication -->
+## Yayınla kabul kaynağının eşlenmesi — 8 Ekim 2026 12:28
+
+KAPANDI — TANIMLI 01 V1 KAPSAMI. FE ürün merge `d94487ea47a16e5f2dd3882181182010bc7a48cf`, BE ürün merge `05d0e11e15d6d7523d4274e4c9caca4e4b0102f9`.
+PR5'ler başarılı CI sonrasında normal birleştirildi. FE ana dal CI SUCCESS;
+BE ana dal CI [37751998581](https://github.com/berkaybasol/SoundConnect/actions/runs/37751998581): SUCCESS; 6056 PASS / 0 hata, aynı mevcut skip kümesi ve zorunlu rapor kapıları doğrulandı. Ayrıntılı yayın tablosu [DURUM](../../DURUM.md).
+
+Kanonik Git kaynak sürekliliği PASS; PR ile ürün merge tree'leri eş, ürün diff'i yok. Checkout öncesi 2234 BE / 1623 FE ham hash eşliği kaydedildi. Checkout sonrası BE'de 2187 ham hash aynı, 37 dosyada yalnız LF/CRLF farkı kabul SHA'sı yeniden kurularak doğrulandı. Diğer 10 dosyanın eski ham satır sonu düzeni yeniden oluşturulamadı; bu 10 dosyanın kaynak bağı checkout öncesi temiz 7309c370/hash kaydı ve değişmeyen Git blob/tree zinciriyle doğrulandı. FE'de 1622 ham hash aynı, yalnız app_route_guard.dart CRLF→LF farkı kabul SHA'sıyla doğrulandı. Bütün ham baytlar eş veya 10 eski düzen yeniden kuruldu denmez. Kanıt: W/artifacts/ready-for-prod-01-20261008/publication/source-verification.json ve backend-source-provenance-proof.json.
+
+JAR ve final03 APK hashleri aşağıdaki kabul kaydındaki değerlerini korur.
+Bu yayın ekinden yeni runtime/cihaz, fiziksel OEM, tam observability veya
+PC kapalı dış izleme kabulü çıkarılmaz. İnsan onayı gösterilen yollar içindir.
+<!-- /stage01-publication -->
+
+8 Ekim 2026. **Teknik ve kullanıcı kabul kaydı; güncel yayın sonucu DURUM'dadır.** Kullanıcının bu
 oturuma özel kararıyla mobil kabul Android Studio emülatöründedir. Fiziksel
 Vivo veya insan görsel onayı bu teknik sonuçlardan türetilmez.
 
@@ -10,7 +24,7 @@ Vivo veya insan görsel onayı bu teknik sonuçlardan türetilmez.
 | --- | --- |
 | Backend branch / başlangıç HEAD | `ready-for-prod-01` / `c537c27ce512d0c0c05063092a898c8bb5383da5` |
 | Frontend branch / başlangıç HEAD | `ready-for-prod-01` / `f68140a843e631bbd69dfada9716b9c67f7ae935` |
-| Çalışma ağacı | Bu HEAD'lerin üzerinde commit edilmemiş Aşama 01 değişiklikleri |
+| Kabul kaynak kesimi | Başlangıç HEAD'leri üzerinde geliştirilen kaynaklar; manifest, paket hashleri ve yayın ekiyle bağlıdır |
 | Son JAR SHA-256 | `ed1ba65697aa9fceb1c23b0620d0087aff8cc20893ce7a4322ff8b80459b34a1` |
 | Çalışan API image | `sha256:249a4ddc6d7734fa7b84318bc78aaa18ca77e73337e10a2ad73408a97ebcf7b7` |
 | Son normal debug APK SHA-256 | `8122a81c10d8fc272a342faf1a61111eb806a9101dc8888abcbeef2bf0e67b34` |
@@ -149,8 +163,7 @@ barındırma ve işletim yapılandırması sonraki06/08 kapsamından tamamlanmı
   yaptıysan onaylıyorum o zaman” dedi. Öncesinde ilgili teknik kontroller
   tamamlanmıştı. Kabul final03APK ve gösterilen kapsam içindir; kullanıcının
   bilgisayarda bizzat yeniden test yaptığı veya fiziksel/prod kabulü değildir.
-- Commit/push/PR/ana dal CI/merge: PLAN'daki mevcut yetkiyle KAPANIŞ SÜRÜYOR.
-  Her adım gerçek sonucu ile çalışma kaydına yazılır; henüz CI/merge PASS yok.
-  Backend workflow'una monitor Python test adımı eklendi; mevcut CI
-  korumaları aynen durur. Workflow kaynağı incelemesi hostedCI sonucu değildir.
+- Commit/push/PR/ana dal CI/merge: güncel gerçek sonuç bu belgenin yayın
+  ekinde ve DURUM/CALISMA'dadır. Monitor Python CI kapısı uygulanmış ve PR'da
+  çalışmıştır; kaynak incelemesi ile hosted test sonucu ayrı kanıtlardır.
 - Canlı dağıtım, yeni bildirim matrisi, Analytics ve02 ürün geliştirmesi yok.
