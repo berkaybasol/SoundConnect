@@ -47,36 +47,8 @@ can advance despite the base digest pin: record the final image digest and exact
 installed package inventory. Updating a base or package is not itself a security
 acceptance result.
 
-## Acceptance
+## Verification
 
-`scripts/staging/test_media_runtime.py --run --images <candidate-images.json>
---evidence <new-directory>` runs only owned synthetic containers and an internal
-network. It compiles a small Java harness against the exact image JAR and exercises
-the existing production media classes, not a copied implementation. The checks
-cover Java DNS/TLS (including wrong CA/hostname), HLS fMP4/TS with and without AAC,
-MP4/video thumbnails, AV1/VP9/HEVC inputs, PNG/JPEG/WebP image thumbnails, local
-protocol restrictions, malformed input and output-budget rejection. No Spring
-application context, AWS, database or real user media is used.
+The FFmpeg image build checks the signed source archive and local patches and runs the upstream encryption-info test. Build configuration, licenses, and source and patch hashes are retained in the worker image under `/usr/local/share/soundconnect-ffmpeg`.
 
-`scripts/staging/media_runtime/encryption_info_smoke.c` is a bounded normal API
-compatibility check (null, one and four valid nodes); it is not an exploit test.
-
-`scripts/staging/test_ffmpeg_pssh_cpu.py --run --candidate <candidate.json>
---evidence <new-directory>` compares the existing worker with its native
-candidate in owned, network-disabled containers. Valid synthetic MP4 fixtures
-contain at most 1,024 PSSH records. Deterministic calls/record counts check that
-repeated previous-list decoding is removed; CPU timing is diagnostic only.
-The same binary checks exact bytes/order/roundtrips, codecpar ownership,
-allocation refusal and retry, and copy followed by fragment/root parsing.
-These checks do not claim capacity, malformed-media coverage or live acceptance.
-
-The 13 October native candidate is recorded separately from the still-running
-staging image. A local patch/build result does not update that worker or close
-its deployment acceptance. See the dated readiness record for the tested image,
-remaining limits, review and explicit rollout decision.
-
-Source-built FFmpeg may be absent from an OS package scanner's findings. Keep the
-signed-source, upstream patch/CVE mapping, exact native build configuration and
-runtime inventory as separate evidence; an empty scanner result is not proof
-that FFmpeg has no vulnerabilities. Real staging API/worker and media-delivery
-acceptance remain separate deployment gates.
+Staging operators separately checked the worker with a real video, verified playback artifacts, and removed the test data. See the [Stage 01 acceptance record](../../docs/ready-for-prod/asamalar/01/KAPANIS_01_8_20261121.md) for the scope of that acceptance. The deployment tools and environment-specific records stay with the operators. The planned release-candidate test will measure concurrent video processing and other application traffic.
