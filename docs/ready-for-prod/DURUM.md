@@ -1,20 +1,10 @@
 # Güncel durum — tek durum kaynağı
 
-Son güncelleme: **8 Ekim 2026, 12:28 TRT**.
+**21 Kasım 2026.** 01.1–01.6 işletim kabulleri bağımsız olarak incelendi. Ürün kaynağının PR ve ana dal doğrulamasına ilişkin bağlantılar 01.8 kapanış özetinde yer alır. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
 
-| Alan | Son durum |
-| --- | --- |
-| Aşama 01 v1 kapanışı | **KAPANDI — TANIMLI 01 V1 KAPSAMI**; teknik kabul ve kullanıcı görsel onayı tamam |
-| Asıl çalışma/kabul | [CALISMA](asamalar/01/CALISMA.md), [MANUEL_KABUL](asamalar/01/MANUEL_KABUL.md), [BAGIMSIZ_INCELEME](asamalar/01/BAGIMSIZ_INCELEME.md) |
-| Somut sonraki adım | 02 öncesi tam observability ve PC kapalıyken alarm için bağımsız izleme/barındırma/maliyet görüşmesi |
-| 02 durumu | [Görev hazır](asamalar/02/GOREV.md); branch geçişi ve ürün uygulaması görüşmeden önce yapılmayacak |
-| Yeni izleme/hizmet | Yeni stack, sürekli dış izleyici veya hizmet satın alma başlatılmadı |
-| Çalışan ortamın son gerçek kabulü | Beş servis healthy; asıl Android user0 admin oturumu korundu, geçici user10 kaldırıldı. Bu geçmiş kabul yeni oturumun anlık runtime durumu yerine geçmez |
-| Veri korunumu | Özgün 36 kullanıcı/540 inbox ve diğer korunan satırlar ID+hash eş; sahipli bir test hesabı/profil/rol bağı kaldı, toplam 37 kullanıcı |
+Kapasite kabulü açık. Kullanıcı bu ölçümü yayın öncesine erteledi. 01’in Git kapanışı doğrulandıktan sonra 02’ye geçilebilir. [02 görevi](asamalar/02/GOREV.md)
 
-Bu belgedeki **W/** üst `SoundConnect/` çalışma alanıdır.
-
-## Git yayın ve kapanış kanıtı
+## 8 Ekim 2026 v1 Git kapanışı
 
 | Alan | Frontend | Backend |
 | --- | --- | --- |
@@ -36,12 +26,12 @@ Git'ten taze okunur; eski kesim bugünün checkout'u diye varsayılmaz.
 Yayın kaynak doğrulaması, kabul manifestindeki **2234 backend / 1623 frontend**
 kaynak/test/ilgili yapılandırma girdisi üzerinden kaydedilir; tüm Git tree'sinin
 veya bütün büyük artefaktların aynı olduğu anlamına gelmez. Son karşılaştırma
-sonucu/kanıt: Kanonik Git kaynak sürekliliği PASS; PR ile ürün merge tree'leri eş, ürün diff'i yok. Checkout öncesi 2234 BE / 1623 FE ham hash eşliği kaydedildi. Checkout sonrası BE'de 2187 ham hash aynı, 37 dosyada yalnız LF/CRLF farkı kabul SHA'sı yeniden kurularak doğrulandı. Diğer 10 dosyanın eski ham satır sonu düzeni yeniden oluşturulamadı; bu 10 dosyanın kaynak bağı checkout öncesi temiz 7309c370/hash kaydı ve değişmeyen Git blob/tree zinciriyle doğrulandı. FE'de 1622 ham hash aynı, yalnız app_route_guard.dart CRLF→LF farkı kabul SHA'sıyla doğrulandı. Bütün ham baytlar eş veya 10 eski düzen yeniden kuruldu denmez. Kanıt: W/artifacts/ready-for-prod-01-20261008/publication/source-verification.json ve backend-source-provenance-proof.json. Belge/CI değişiklikleri ve test edilmiş ürün
+sonucu/kanıt: Kanonik Git kaynak sürekliliği PASS; PR ile ürün merge tree'leri eş, ürün diff'i yok. Checkout öncesi 2234 BE / 1623 FE ham hash eşliği kaydedildi. Checkout sonrası BE'de 2187 ham hash aynı, 37 dosyada yalnız LF/CRLF farkı kabul SHA'sı yeniden kurularak doğrulandı. Diğer 10 dosyanın eski ham satır sonu düzeni yeniden oluşturulamadı; bu 10 dosyanın kaynak bağı checkout öncesi temiz 7309c370/hash kaydı ve değişmeyen Git blob/tree zinciriyle doğrulandı. FE'de 1622 ham hash aynı, yalnız app_route_guard.dart CRLF→LF farkı kabul SHA'sıyla doğrulandı. Bütün ham baytlar eş veya 10 eski düzen yeniden kuruldu denmez. Belge/CI değişiklikleri ve test edilmiş ürün
 kaynağı kapsamı açıkça ayrılır. Git dışı özel veri/dump/token/anahtar ve büyük
 APK/JAR dosyaları yayın kapsamı değildir. Ana dal CI/uzak eşlik sonuçları
 doğrulanmadan aşama kapanışı veya 02 branch hazırlığı sonucu çıkarılmaz.
 
-## Doğrulanmış paket ve kabul
+## 8 Ekim v1 paket ve kabul kayıtları
 
 | Kimlik | Değer |
 | --- | --- |
@@ -49,7 +39,7 @@ doğrulanmadan aşama kapanışı veya 02 branch hazırlığı sonucu çıkarıl
 | Son API image | `sha256:249a4ddc6d7734fa7b84318bc78aaa18ca77e73337e10a2ad73408a97ebcf7b7` |
 | Son normal debug APK | `ready01-final03-debug.apk`, 225026836 bayt |
 | APK SHA-256 | `8122a81c10d8fc272a342faf1a61111eb806a9101dc8888abcbeef2bf0e67b34` |
-| Mobil kabul ortamı | `emulator-5554`, `tr.com.soundconnect.app`, `local`; kurulu paket SHA eşliği doğrulandı |
+| Mobil kabul ortamı | Android emülatöründe kurulu paketin SHA-256 değeri doğrulandı |
 
 Paketler kaynak başlangıç HEAD'lerine değil, çalışma sırasında alınan manifest
 ve paket hashlerine bağlıdır. Güncel yayın commit/merge kimlikleri yukarıdadır;
@@ -84,9 +74,9 @@ CI APK'sı ile yerel kabul APK'sı ayrıca eşliği doğrulanmadan aynı paket s
 - Backend PR ve her iki ana dal CI kapsamı/sonuçları yukarıdaki yayın tablosuna
   gerçek kanıt geldikçe yazılır; yerel test başarısından çıkarılmaz.
 
-## Sıradaki görüşme ve açık sınırlar
+## 8 Ekim v1 kapsamı ve o tarihteki sınırlar
 
-Kullanıcının son talimatı: “PC kapalıyken de gelsin de sen mevcut işini bitir de
+8 Ekim tarihli kullanıcı talimatı: “PC kapalıyken de gelsin de sen mevcut işini bitir de
 bu konuyu detaylı bir konuşalım 02den önce”. Önce 01 v1'in onaylı kapanışı;
 sonra kapsamlı izleme ve bağımsız dış alarmın kapsamı, barındırması, maliyeti ve
 kabulü konuşulur. 02 branch/ürün işi ve yeni izleme kurulumu kendiliğinden açılmaz.
@@ -97,18 +87,14 @@ exception araması/dosya-satır teşhisi ve dağıtık trace uygulanmadı. Süre
 host izleyicisi ve tüm bilgisayar/elektrik/ağ kesintisi kabulü yoktur. Yeni
 kurulum veya harici mesaj yetkisi önceki iki TEST mailinden türetilmez.
 
-8 Ekim mobil kabulünde kullanıcı emülatörü seçti; fiziksel Vivo kullanılmadı.
+8 Ekim mobil kabulünde kullanıcı emülatörü seçti.
 Bu oturum istisnası sonraki oturumlara kalıcı muafiyet değildir. iOS, üretim
 fleet/ingress/yük/SLA, canlı dağıtım ve Analytics kabulü yapılmadı. 06 hedef
 repo/hesapları ve 07 Apple/imza/cihaz erişimi ayrıca belirlenir.
 
 ## Korunan önceki işler ve kanıt erişimi
 
-Bildirim geliştirme/özel bildirim kabulü önceki kapsamıyla kapalıdır:
-[önceki yayın](../../../artifacts/notification-publication-20261008/DELIVERY.md),
-[özel bildirim kabulü](../../../artifacts/custom-notifications-final-acceptance-20261008/DELIVERY.md).
-Bu dosyalar aynı üst çalışma alanını gerektirir; GitHub'da veya tek repo
-kopyasında bulunmayabilir. Önceki PASS'ler yeni aşamanın sonuçlarına eklenmez.
+Bildirim geliştirme ve özel bildirim kabulü önceki kapsamıyla kapalıdır.
+Önceki sonuçlar yeni aşamanın test toplamına eklenmez.
 Dar P3 ileri cihaz saati/Dismissible silme-rollback kaydı önceki kapanışı
 engellemeyen kapsam dışı iştir; yeni uygulama kendiliğinden başlatılmaz.
-Eski `.bil007-ci` worktree'leri tarihsel kanıttır, aktif checkout sayılmaz.

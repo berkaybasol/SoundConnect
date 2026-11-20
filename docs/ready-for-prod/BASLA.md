@@ -1,28 +1,12 @@
 # SoundConnect — yeni oturum başlangıcı
 
-Son güncelleme: **8 Ekim 2026, 12:28 TRT**. Bu paket, onaylı sekiz
-aşamanın tek güncel girişidir. Geçmişi kullanıcıya yeniden anlattırma; güncel
-kanıt ve yetkiyi aşağıdaki kayıtlardan doğrula.
+**21 Kasım 2026.** Aşama 01’in işletim kabulleri bağımsız teknik incelemeden geçti. Ürün PR’ı ve ana dalın CI sonuçları 01.8 kapanış özetinden izlenebilir. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
 
-## Şimdi nerede kaldık?
+01.7 kapasite kabulü açık kalıyor. Kullanıcı, kapasite ölçümünü yayın öncesine bıraktı ve Grafana eğitimini ayrı yürütecek. 01’in Git kapanışı doğrulandığında 02’ye geçilebilir. [02 görevi](asamalar/02/GOREV.md)
 
-- **Aşama 01 v1 kapanış sonucu: KAPANDI — TANIMLI 01 V1 KAPSAMI.** Güvenlik ve sağlık/uyarı v1'in
-  teknik kabulleri ile final03 APK/gösterilen akışlar için insan onayı tamam.
-  İki reponun yayın/ana dal CI/ref sonuçları [DURUM](DURUM.md) içindedir.
-- Frontend ana dal `main`, ürün merge SHA `d94487ea47a16e5f2dd3882181182010bc7a48cf`; backend ana dal
-  `master`, ürün merge SHA `05d0e11e15d6d7523d4274e4c9caca4e4b0102f9`. Fiilî checkout/HEAD ve uzak eşliği
-  yeni oturumda salt okunur doğrula; önceki branch veya dirty durumu varsayma.
-- **Somut sonraki adım: 02'den önce kapsamlı observability ve bilgisayar
-  kapalıyken de alarm için bağımsız izleme/barındırma/maliyet görüşmesi.**
-  Kullanıcının son kararı budur. [02 görevi](asamalar/02/GOREV.md) hazırdır;
-  02 branch geçişi ve ürün geliştirmesi bu görüşmeden önce yapılmaz.
-- Yeni izleyici, hizmet satın alma veya monitoring stack kurulumu başlamadı.
-  Bu devir ve görüşme, bunları kendiliğinden uygulama yetkisi değildir.
+Aşağıdaki v1 sonuçları 8 Ekim’deki güvenlik ve sağlık kabulüne aittir. O tarihteki ürün sürümleri ile PR ve ana dal kontrolleri [DURUM](DURUM.md) belgesinde kayıtlıdır.
 
-Bu SHA'lar doğrulanmış ürün yayını kesimidir; sonradan yalnız kapanış belgeleri
-commit edilebilir. Güncel belge HEAD'i ve çalışma ağacı Git'ten ayrıca okunur.
-
-## Kabulün kapsamı
+## 8 Ekim 2026 v1 kabulü
 
 01; reset ve yönetici parola değişimi sonrası eski HTTP/WS oturumlarının
 reddi, Redis limiter kesintisinde güvenli hata, pasif admin sağlık görünümü,
@@ -33,7 +17,7 @@ Gerçek API/DB/realtime, mobil ve harici mail kanıtları
 Son normal APK SHA-256:
 `8122a81c10d8fc272a342faf1a61111eb806a9101dc8888abcbeef2bf0e67b34`.
 Bu oturumdaki açık kullanıcı tercihiyle mobil kabul Android Studio emülatöründe
-yapıldı; Vivo kullanılmadı. Bu istisna sonraki oturumlar için kalıcı fiziksel
+yapıldı. Bu istisna sonraki oturumlar için kalıcı fiziksel
 cihaz muafiyeti değildir. Kullanıcı final03 ve gösterilen sağlık/reset-yeniden
 giriş yollarını doğrudan onayladı; fiziksel veya üretim kabulü çıkarılmaz.
 
@@ -46,11 +30,11 @@ p95/p99, merkezi backend log araması ve dağıtık trace henüz uygulanmadı.
 
 1. Çalışma alanı ve ilgili reponun `AGENTS.md` dosyaları.
 2. [DURUM.md](DURUM.md): son yayın kimlikleri, kanıtlar, açık sınırlar ve sonraki adım.
-3. [PLAN.md](PLAN.md): sekiz aşama, Git kapanış yetkisi ve son 02 bekletme kararı.
+3. [PLAN.md](PLAN.md) sekiz aşamayı, Git kapanışını ve yayın öncesi test kararını açıklar.
 4. Gerekirse [01 çalışma kaydı](asamalar/01/CALISMA.md),
    [gerçek kabul](asamalar/01/MANUEL_KABUL.md) ve
    [bağımsız inceleme](asamalar/01/BAGIMSIZ_INCELEME.md).
-5. 02 kapsamı görüşülürken [hazır görev](asamalar/02/GOREV.md).
+5. Aşama geçişi için [02 görevi](asamalar/02/GOREV.md).
    Eski [kaynak incelemesi](INCELEME-20261008.md) tarihsel başlangıç bulgusudur;
    bugün açık kusur veya tamamlanmış kabul yerine kullanılmaz.
 
@@ -72,4 +56,4 @@ cihaz, insan onayı, CI ve üretim kabulü birbirinden türetilmez.
 
 > SoundConnect-Backend/docs/ready-for-prod/BASLA.md dosyasını oku. Güncel durumu
 > doğrula; son kullanıcı kararı ve burada kayıtlı somut sonraki adımdan devam et.
-> 02 ürün işini veya yeni izleme kurulumunu kendiliğinden başlatma.
+> 02 ürün çalışması kullanıcı devam talimatıyla başlar.

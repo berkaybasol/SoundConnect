@@ -1,10 +1,6 @@
 # Aşama 02 — admin panelinin işletim işlevleri
 
-Durum: **HAZIR; ÜRÜN UYGULAMASI BAŞLATILMADI.** Hazırlık tarihi: 8 Ekim 2026.
-Bu belge 01'in Git/CI kapanışı sırasında hazırlanabilir; 01'in kapandığı veya
-02 branch'inin açıldığı iddiası değildir. Güncel kayıt [DURUM](../../DURUM.md),
-onaylı sıra ve Git yetkisi [PLAN](../../PLAN.md). Hedef branch `ready-for-prod-02`.
-Ürün çalışması, 01 kapanışı doğrulanıp kullanıcı devam talimatı geldiğinde başlar.
+**21 Kasım 2026.** 02 görevi hazır. Ürün çalışması 01’in Git kapanışı doğrulandıktan ve kullanıcı devam talimatını verdikten sonra başlar. Kullanıcı 01.7 kapasite kabulünü yayın öncesine erteledi. Hedef dal `ready-for-prod-02`. [Güncel durum](../../DURUM.md) · [Aşama sırası](../../PLAN.md)
 
 ## Amaç ve kalite
 
@@ -76,7 +72,7 @@ ekleyerek çoğaltma. Her katmanda kaynak SHA, JAR/APK, ortam ve kanıt yolu ols
   yaptırımı, yetkisiz erişim, audit ve tekrar isteği doğrula. Yan etkili mail/
   bildirim gerekiyorsa kontrollü hedef kullan; provider kabulü teslim değildir.
 - Etkilenen normal mobil yönetici yolu ve yaptırımın kullanıcıya etkisini son
-  APK ile fiziksel Vivo'da doğrula; mevcut oturum/veri korunsun. **8 Ekim 01 için
+  APK ile belirlenen fiziksel Android telefonda doğrula; mevcut oturum/veri korunsun. **8 Ekim 01 için
   verilen “bu oturum” emülatör tercihi yeni 02 oturumuna kalıcı muafiyet değildir.**
   Yeni açık kullanıcı kararı varsa onu uygula ve ortamı doğru adlandır.
 - Otomatik test, gerçek API/DB, cihaz ve insan görsel onayını ayrı kaydet.
