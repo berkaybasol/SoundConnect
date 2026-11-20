@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jdk-jammy AS builder
+FROM eclipse-temurin:21-jdk-jammy@sha256:e0c60c487345d1dc9d0fc7b6f0496f3cc941e5132e09296cc17a6decc71b902b AS builder
 
 WORKDIR /workspace
 
@@ -7,22 +7,34 @@ COPY gradle ./gradle
 RUN chmod +x gradlew
 
 COPY src ./src
-RUN ./gradlew bootJar mediaWorkerBootJar --no-daemon -x test
+RUN ./gradlew bootJar mediaWorkerBootJar --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx2g -XX:MaxMetaspaceSize=512m" -x test
 
-FROM eclipse-temurin:21-jre-jammy AS runtime-base
+FROM eclipse-temurin:21-jre-alpine-3.24@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555 AS runtime-base
 
-RUN groupadd --system soundconnect \
-    && useradd --system --gid soundconnect --home-dir /app --shell /usr/sbin/nologin soundconnect
+RUN apk upgrade --no-cache \
+    && grep -qx 'ping:x:999:' /etc/group \
+    && delgroup ping \
+    && addgroup -S -g 999 soundconnect \
+    && adduser -S -D -H -u 999 -G soundconnect -h /app -s /sbin/nologin soundconnect
 
 WORKDIR /app
+
+# The official signed source is compiled here; no third-party FFmpeg binary or
+# cross-distribution/edge package is copied into the runtime image.
+FROM runtime-base AS ffmpeg-builder
+RUN apk add --no-cache build-base pkgconf nasm curl gnupg tar xz patch \
+    x264-dev dav1d-dev libwebp-dev zlib-dev
+COPY docker/ffmpeg/build-ffmpeg.sh docker/ffmpeg/ffmpeg-release-key.asc \
+    docker/ffmpeg/0001-encryption-info-iterative-free.patch \
+    docker/ffmpeg/0002-encryption-info-linear-append.patch /build/
+RUN /bin/sh /build/build-ffmpeg.sh
 
 # This is the only image target containing native decoders. It has no HTTP port
 # and starts the explicit allow-listed, no-web Spring context.
 FROM runtime-base AS media-worker
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache x264-libs dav1d libwebp libwebpdemux libwebpmux zlib
+COPY --from=ffmpeg-builder /native/usr/local/ /usr/local/
 
 COPY docker/media-worker/healthcheck.sh /usr/local/bin/media-worker-healthcheck
 RUN chmod 0555 /usr/local/bin/media-worker-healthcheck
@@ -42,9 +54,7 @@ ENTRYPOINT ["java", "-Duser.timezone=UTC", "-XX:MaxRAMPercentage=75.0", "-XX:+Ex
 # The API target intentionally does not contain FFmpeg/FFprobe.
 FROM runtime-base AS api
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache curl
 
 COPY --from=builder --chown=soundconnect:soundconnect /workspace/build/libs/soundconnect-api.jar /app/soundconnect-api.jar
 

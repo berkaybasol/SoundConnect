@@ -1,6 +1,7 @@
 package com.berkayb.soundconnectworker;
 
 import com.berkayb.soundconnect.modules.media.image.FfmpegImageThumbnailProcessor;
+import com.berkayb.soundconnect.modules.admin.health.WorkerDatabaseHealthConfiguration;
 import com.berkayb.soundconnect.modules.media.image.ImageThumbnailService;
 import com.berkayb.soundconnect.modules.media.image.ImageVariantBackfillFinalizer;
 import com.berkayb.soundconnect.modules.media.image.ImageVariantBackfillScheduler;
@@ -10,6 +11,7 @@ import com.berkayb.soundconnect.modules.media.image.ImageVariantWorkerConfigurat
 import com.berkayb.soundconnect.modules.media.image.MediaImageVariantProperties;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicyImpl;
 import com.berkayb.soundconnect.modules.media.storage.S3StorageClient;
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
 import com.berkayb.soundconnect.modules.media.transcode.MediaAssetStatusUpdater;
 import com.berkayb.soundconnect.modules.media.transcode.MediaHlsWorkExecutor;
 import com.berkayb.soundconnect.modules.media.transcode.MediaRabbitListenerConfiguration;
@@ -24,12 +26,18 @@ import com.berkayb.soundconnect.modules.media.transcode.upload.HlsUploader;
 import com.berkayb.soundconnect.modules.media.transcode.validation.TranscodeDiskSpaceInspector;
 import com.berkayb.soundconnect.modules.media.transcode.validation.TranscodeTempBudgetManager;
 import com.berkayb.soundconnect.modules.media.transcode.validation.VideoTranscodeResourceValidator;
+import com.berkayb.soundconnect.shared.telemetry.TelemetryMetricsConfiguration;
+import com.berkayb.soundconnect.shared.telemetry.tracing.SafeTelemetryConfiguration;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 /** Explicit allow-list for the worker's application capabilities. */
 @Configuration(proxyBeanMethods = false)
 @Import({
+		TelemetryMetricsConfiguration.class,
+		WorkerDatabaseHealthConfiguration.class,
+		SafeTelemetryConfiguration.class,
+		MediaWorkerMetrics.class,
 		MediaWorkerExecutionConfiguration.class,
 		MediaWorkerRabbitConnectionConfiguration.class,
 		MediaWorkerSafetyValidator.class,

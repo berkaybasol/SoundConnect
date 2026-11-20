@@ -10,6 +10,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.*;
 import org.springframework.transaction.support.TransactionTemplate;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 /** Application transaction owns enqueue. Only dispatcher claim/outcome use independent short transactions. */
@@ -147,14 +148,26 @@ public class ApplicationMailIntentStore {
                     next_attempt_at,lease_token,lease_until,created_at,published_at,last_error,status
                 FROM tbl_application_mail_intent WHERE false
                 """, Map.of());
-        return jdbc.queryForMap("""
+        // Age follows unfinished publication, including retry backoff and an active publisher lease.
+        // Broker-accepted and manual-review rows have separate counts/contracts, not a pending age.
+        return jdbc.queryForObject("""
                 SELECT count(*) FILTER (WHERE status='PENDING') AS pending,
                     count(*) FILTER (WHERE status='PENDING' AND attempt_count>0) AS retry,
                     count(*) FILTER (WHERE status='PUBLISHING') AS publishing,
                     count(*) FILTER (WHERE status='NEEDS_REVIEW') AS review,
-                    count(*) FILTER (WHERE status IN ('PENDING','PUBLISHING') AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes') AS stale
+                    count(*) FILTER (WHERE status IN ('PENDING','PUBLISHING') AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes') AS stale,
+                    min(created_at) FILTER (WHERE status IN ('PENDING','PUBLISHING')) AS oldest_pending_at
                 FROM tbl_application_mail_intent WHERE status<>'PUBLISHED'
-                """, Map.of());
+                """, Map.of(), (row, index) -> {
+            Map<String, Object> counts = new LinkedHashMap<>();
+            for (String key : List.of("pending", "retry", "publishing", "review", "stale"))
+                counts.put(key, row.getLong(key));
+            var oldest = row.getObject("oldest_pending_at", OffsetDateTime.class);
+            // PostgreSQL infinity is not a measured age; empty active sets likewise remain absent.
+            if (oldest != null && !oldest.equals(OffsetDateTime.MIN) && !oldest.equals(OffsetDateTime.MAX))
+                counts.put("oldestPendingAt", oldest.toInstant());
+            return counts;
+        });
     }
     private static Map<String,Object> identity(Claim claim) { return Map.of("id",claim.id(),"token",claim.token()); }
     // Never log this record: payload contains private application content.

@@ -88,6 +88,26 @@ class MediaDeletionWorkerTest {
 		verify(storageClient).invalidatePublicAsset(assetId);
 		verify(stateService).finish(assetId);
 		verify(stateService, never()).defer(assetId);
+		var order = org.mockito.Mockito.inOrder(storageClient, stateService);
+		order.verify(storageClient).purgeAssetVersions(assetId);
+		order.verify(storageClient).invalidatePublicAsset(assetId);
+		order.verify(stateService).finish(assetId);
+	}
+
+	@Test
+	void retainedVersionFailureDoesNotFinishOrInvalidate() {
+		UUID id = UUID.randomUUID();
+		var old = LocalDateTime.now(ZoneOffset.UTC).minusHours(14);
+		when(stateService.getPendingTarget(id)).thenReturn(Optional.of(
+				new MediaDeletionStateService.DeletionTarget(id, "media/" + id + "/source.jpg",
+						MediaKind.IMAGE, MediaVisibility.PUBLIC, old, old, old)));
+		when(presignedUploadWriteWindow.isSafeToDelete(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+		doThrow(new IllegalStateException("Version purge incomplete")).when(storageClient).purgeAssetVersions(id);
+		new MediaDeletionWorker(stateService, storageClient, mediaPolicy,
+				presignedUploadWriteWindow, mediaAssetReferenceGuard).delete(id);
+		verify(stateService).defer(id);
+		verify(stateService, never()).finish(id);
+		verify(storageClient, never()).invalidatePublicAsset(id);
 	}
 
 	@Test

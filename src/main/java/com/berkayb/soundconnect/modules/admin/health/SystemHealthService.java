@@ -8,6 +8,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,10 +44,7 @@ public class SystemHealthService implements AutoCloseable {
     private boolean started;
     private boolean closed;
     private final AtomicBoolean refreshing = new AtomicBoolean();
-    private final ThreadPoolExecutor workers = new ThreadPoolExecutor(4, 4, 0, TimeUnit.MILLISECONDS,
-            new ArrayBlockingQueue<>(32), task -> {
-                Thread thread = new Thread(task, "system-health-probe"); thread.setDaemon(true); return thread;
-            }, new ThreadPoolExecutor.AbortPolicy());
+    private final ThreadPoolExecutor workers;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "system-health-refresh"); thread.setDaemon(true); return thread;
     });
@@ -60,10 +59,27 @@ public class SystemHealthService implements AutoCloseable {
         if (probes.size() > 32) throw new IllegalArgumentException("Health source limit exceeded");
         this.slots = probes.stream().map(probe -> new Slot(probe, new AtomicInteger())).toList();
         this.properties = properties; this.clock = clock; this.backgroundEnabled = backgroundEnabled;
+        int parallelism = Math.max(1, Math.min(4, probes.size()));
+        workers = new ThreadPoolExecutor(parallelism, parallelism, 0, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(32), task -> {
+                    Thread thread = new Thread(task, "system-health-probe"); thread.setDaemon(true); return thread;
+                }, new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    /** Reuse the same cache/deadline/busy-slot machinery without the API's health graph. */
+    public static SystemHealthService workerDatabase(DataSource dataSource, SystemHealthProperties properties,
+                                                   Environment environment) {
+        if (properties.isPostgresStatementsEnabled())
+            throw new IllegalArgumentException("Worker statement observations are not supported");
+        Clock clock = Clock.systemUTC();
+        var postgres = new PostgresHealthObservation(dataSource, properties, clock);
+        return new SystemHealthService(List.of(postgres.sessionsProbe()), properties, clock,
+                !environment.acceptsProfiles(Profiles.of("test")));
     }
 
     @EventListener(ApplicationReadyEvent.class)
     synchronized void start() {
+        if (com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.isHeld()) return;
         // Probes resolve lazy Spring singletons. Never race singleton construction
         // from @PostConstruct, including when application startup is slow.
         if (!backgroundEnabled || started || closed) return;

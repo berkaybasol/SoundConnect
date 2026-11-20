@@ -24,6 +24,7 @@ public class VenueSuggestionDispatcher {
     @Scheduled(fixedDelayString = "${app.venue-suggestions.poll-delay-ms:10000}",
             initialDelayString = "${app.venue-suggestions.initial-delay-ms:15000}")
     public void poll() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         if (!scheduled.compareAndSet(false, true)) return;
         try {
             executor.execute(() -> {
@@ -34,6 +35,7 @@ public class VenueSuggestionDispatcher {
         } catch (RuntimeException rejected) { scheduled.set(false); warnUnavailable(rejected); }
     }
     void dispatchBatch() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         for (var delivery : store.claimPublishBatch(properties.getDispatchBatchSize())) {
             try { producer.send(delivery.queueRequest()); }
             catch (RuntimeException failure) { store.publishFailed(delivery); continue; }

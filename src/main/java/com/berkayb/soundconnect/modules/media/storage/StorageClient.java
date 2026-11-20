@@ -89,6 +89,14 @@ public interface StorageClient {
 	void deleteFolderExceptPrefix(String prefix, String retainedPrefix);
 
 	/**
+	 * Completes an authorized permanent asset deletion, including retained versions.
+	 * Caller must first fence uploads/producers and check all business references.
+	 */
+	default void purgeAssetVersions(UUID assetId) {
+		throw new UnsupportedOperationException("Permanent asset version purge is unavailable");
+	}
+
+	/**
 	 * Purges every public CDN representation for exactly one media asset. The
 	 * implementation must scope the request to the configured media root and
 	 * asset UUID; callers cannot supply arbitrary invalidation paths. A deployment

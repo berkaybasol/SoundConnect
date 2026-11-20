@@ -32,6 +32,7 @@ public class MediaDeletionWorker {
 	private final MediaAssetReferenceGuard mediaAssetReferenceGuard;
 
 	public void delete(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		stateService.getPendingTarget(assetId).ifPresent(this::deleteTarget);
 	}
 
@@ -113,6 +114,14 @@ public class MediaDeletionWorker {
                         ? StorageObjectKeys.protectedKey(prefix) : prefix);
 			} catch (RuntimeException failure) {
 				deletionFailure = combine(deletionFailure, failure);
+			}
+		}
+		if (deletionFailure == null) {
+			try {
+				// Keep the durable pending row until retained versions/markers are gone.
+				storageClient.purgeAssetVersions(target.assetId());
+			} catch (RuntimeException failure) {
+				deletionFailure = failure;
 			}
 		}
 		if (deletionFailure == null && target.visibility() == MediaVisibility.PUBLIC) {

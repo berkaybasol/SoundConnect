@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 /** Small explicit SQL transactions also fence sender state before/after external side effects. */
@@ -165,12 +166,23 @@ public class VenueSuggestionStore {
                 """, params));
     }
     public Map<String, Object> healthCounts() {
-        return jdbc.queryForMap("""
+        // Same active set as pending: PENDING/PUBLISHING/QUEUED/SENDING, including retry backoff.
+        // SENT and manual-review rows do not acquire a pending age; stale retains its existing scope.
+        return jdbc.queryForObject("""
                 SELECT count(*) FILTER (WHERE status='NEEDS_REVIEW') AS review,
                        count(*) FILTER (WHERE status NOT IN ('SENT','NEEDS_REVIEW')) AS pending,
-                       count(*) FILTER (WHERE status<>'SENT' AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes') AS stale
+                       count(*) FILTER (WHERE status<>'SENT' AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes') AS stale,
+                       min(created_at) FILTER (WHERE status NOT IN ('SENT','NEEDS_REVIEW')) AS oldest_pending_at
                 FROM tbl_venue_suggestion_mail WHERE status<>'SENT'
-                """, Map.of());
+                """, Map.of(), (row, index) -> {
+            Map<String, Object> counts = new LinkedHashMap<>();
+            for (String key : List.of("review", "pending", "stale")) counts.put(key, row.getLong(key));
+            var oldest = row.getObject("oldest_pending_at", OffsetDateTime.class);
+            // PostgreSQL infinity and an empty active set must not turn into healthy zero ages.
+            if (oldest != null && !oldest.equals(OffsetDateTime.MIN) && !oldest.equals(OffsetDateTime.MAX))
+                counts.put("oldestPendingAt", oldest.toInstant());
+            return counts;
+        });
     }
     private static Map<String, Object> identity(Delivery delivery) { return Map.of("id", delivery.id(), "token", delivery.token()); }
 

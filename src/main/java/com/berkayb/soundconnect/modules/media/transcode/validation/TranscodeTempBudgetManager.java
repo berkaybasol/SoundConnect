@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode.validation;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,11 @@ public class TranscodeTempBudgetManager {
 	private final long perJobReservationBytes;
 	private final long acquireTimeoutNanos;
 	private long reservedBytes;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) {
+		this.telemetry = telemetry;
+		telemetry.bindTempBudget(this::reservedBytes, totalBudgetBytes);
+	}
 
 	public TranscodeTempBudgetManager(TranscodeProperties properties) {
 		this.totalBudgetBytes = properties.getGlobalTempBudgetBytes();
@@ -34,20 +41,31 @@ public class TranscodeTempBudgetManager {
 
 	public Reservation reserveMaxWorkBudget()
 			throws InterruptedException, TranscodeCapacityUnavailableException {
-		long deadline = System.nanoTime() + acquireTimeoutNanos;
-		synchronized (monitor) {
-			while (wouldExceedBudget()) {
-				long remainingNanos = deadline - System.nanoTime();
-				if (remainingNanos <= 0) {
-					throw new TranscodeCapacityUnavailableException(
-							"timed out waiting for temporary transcode capacity");
+		long started = System.nanoTime();
+		long deadline = started + acquireTimeoutNanos;
+		MediaWorkerMetrics.TempOutcome outcome = null;
+		try {
+			synchronized (monitor) {
+				while (wouldExceedBudget()) {
+					long remainingNanos = deadline - System.nanoTime();
+					if (remainingNanos <= 0) {
+						outcome = MediaWorkerMetrics.TempOutcome.TIMEOUT;
+						throw new TranscodeCapacityUnavailableException(
+								"timed out waiting for temporary transcode capacity");
+					}
+					TimeUnit.NANOSECONDS.timedWait(monitor, remainingNanos);
 				}
-				TimeUnit.NANOSECONDS.timedWait(monitor, remainingNanos);
+				reservedBytes = Math.addExact(reservedBytes, perJobReservationBytes);
+				log.debug("[transcode-budget] admitted reservedBytes={} totalBytes={}",
+						reservedBytes, totalBudgetBytes);
+				outcome = MediaWorkerMetrics.TempOutcome.ACQUIRED;
+				return new Reservation(this, perJobReservationBytes);
 			}
-			reservedBytes = Math.addExact(reservedBytes, perJobReservationBytes);
-			log.debug("[transcode-budget] admitted reservedBytes={} totalBytes={}",
-					reservedBytes, totalBudgetBytes);
-			return new Reservation(this, perJobReservationBytes);
+		} catch (InterruptedException interrupted) {
+			outcome = MediaWorkerMetrics.TempOutcome.INTERRUPTED;
+			throw interrupted;
+		} finally {
+			if (outcome != null) telemetry.tempWait(outcome, started);
 		}
 	}
 

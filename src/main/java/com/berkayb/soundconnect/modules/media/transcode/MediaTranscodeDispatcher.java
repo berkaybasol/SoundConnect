@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
@@ -55,6 +57,8 @@ public class MediaTranscodeDispatcher {
 	private final MediaTranscodeLeaseProperties leaseProperties;
 	private final TaskExecutor dispatchExecutor;
 	private final Set<UUID> dispatchInFlight = ConcurrentHashMap.newKeySet();
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	public MediaTranscodeDispatcher(
 			MediaAssetRepository mediaAssetRepository,
@@ -85,6 +89,7 @@ public class MediaTranscodeDispatcher {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void onQueued(MediaTranscodeQueuedEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (event != null && event.assetId() != null) {
 			submit(event.assetId());
 		}
@@ -95,6 +100,7 @@ public class MediaTranscodeDispatcher {
 			fixedDelayString = "${media.transcode.dispatch.fixed-delay-ms:30000}"
 	)
 	public void recoverQueuedJobs() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		int safeBatchSize = Math.max(1, Math.min(batchSize, 500));
 		mediaAssetRepository.findByKindAndVisibilityAndStatusOrderByCreatedAtAsc(
 				MediaKind.VIDEO,
@@ -110,6 +116,7 @@ public class MediaTranscodeDispatcher {
 	)
 	@Transactional
 	public void recoverStaleSentJobs() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		int safeBatchSize = Math.max(1, Math.min(batchSize, 500));
 		Duration safeRecoveryDelay = sentRecoveryDelay == null
 				? Duration.ofMinutes(5)
@@ -137,6 +144,7 @@ public class MediaTranscodeDispatcher {
 					cutoff
 			);
 		}
+		telemetry.recovered(MediaWorkerMetrics.Recovery.STALE_SENT, requeued);
 		if (requeued > 0) {
 			log.warn("[media-transcode] requeued {} stale broker-confirmed job(s); cutoff={}",
 					requeued, cutoff);
@@ -149,6 +157,7 @@ public class MediaTranscodeDispatcher {
 	)
 	@Transactional
 	public void recoverExpiredProcessingJobs() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
 		int retryCleanup = mediaAssetRepository.recoverExpiredTranscodesForRetry(
 				MediaKind.VIDEO,
@@ -166,6 +175,8 @@ public class MediaTranscodeDispatcher {
 				now,
 				leaseProperties.getMaxAttempts()
 		);
+		telemetry.recovered(MediaWorkerMetrics.Recovery.RETRY_CLEANUP, retryCleanup);
+		telemetry.recovered(MediaWorkerMetrics.Recovery.TERMINAL_CLEANUP, terminalCleanup);
 		if (retryCleanup + terminalCleanup > 0) {
 			log.warn("[media-transcode] expired lease recovery retryCleanup={} terminalCleanup={} now={}",
 					retryCleanup, terminalCleanup, now);
@@ -177,6 +188,7 @@ public class MediaTranscodeDispatcher {
 			fixedDelayString = "${media.transcode.hls-cleanup-check-ms:60000}"
 	)
 	public void recoverHlsCleanupJobs() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		int safeBatchSize = Math.max(1, Math.min(batchSize, 500));
 		long safeQuietPeriodHours = Math.max(1, hlsCleanupQuietPeriodHours);
 		LocalDateTime cutoff = LocalDateTime.now(ZoneOffset.UTC).minusHours(safeQuietPeriodHours);
@@ -194,6 +206,7 @@ public class MediaTranscodeDispatcher {
 
 	/** @return false only when the bounded executor cannot accept more work. */
 	boolean submit(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) return true;
 		if (!dispatchInFlight.add(assetId)) return true;
 		try {
@@ -216,6 +229,7 @@ public class MediaTranscodeDispatcher {
 	}
 
 	private void dispatchOne(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		MediaAsset asset = mediaAssetRepository.findById(assetId).orElse(null);
 		if (asset == null
 				|| asset.getKind() != MediaKind.VIDEO

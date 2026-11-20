@@ -1,6 +1,11 @@
 # Container entrypoints and health checks are executed by POSIX shells.
 # Force LF even when contributors use Git with core.autocrlf=true on Windows.
 *.sh text eol=lf
+gradlew text eol=lf
+
+# Vendor inputs have reviewed byte hashes; Windows checkout must preserve LF.
+docker/ffmpeg/*.patch text eol=lf
+docker/ffmpeg/*.asc text eol=lf
 
 # Keep native Windows launchers in their platform line-ending convention.
 *.bat text eol=crlf

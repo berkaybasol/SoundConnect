@@ -29,6 +29,7 @@ public class CampaignWorker {
 
     @Transactional(timeout = 20)
     public void process(UUID id, Instant now) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         var claimed = store.jdbc().query(
                 "select * from tbl_notification_campaign where id=:id and status='SCHEDULED' for update skip locked",
                 Map.of("id", id), store.rowMapper());

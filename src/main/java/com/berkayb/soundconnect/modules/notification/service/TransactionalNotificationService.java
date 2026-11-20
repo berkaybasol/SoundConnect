@@ -41,6 +41,7 @@ public class TransactionalNotificationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void persistInCurrentTransaction(NotificationInboundEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         Objects.requireNonNull(event, "event is required");
         Objects.requireNonNull(event.eventId(), "event.eventId is required");
         Objects.requireNonNull(event.recipientId(), "event.recipientId is required");

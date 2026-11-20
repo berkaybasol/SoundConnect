@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.image;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
 import com.berkayb.soundconnect.modules.media.storage.StorageObjectKeys;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,8 @@ public class ImageThumbnailService {
 	private final StorageClient storageClient;
 	private final ImageThumbnailProcessor thumbnailProcessor;
 	private final MediaImageVariantProperties properties;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	/** Images keep the short storage-operation deadline; large video uses the
 	 * transcode-specific download deadline through the two-argument method. */
@@ -40,12 +44,15 @@ public class ImageThumbnailService {
 	 */
 	public ImageThumbnailResult generateAndStoreDetached(UUID assetId, String sourceStorageKey)
 			throws IOException, InterruptedException {
-		boolean protectedImage = StorageObjectKeys.isPrivateVerified(sourceStorageKey);
-		String thumbnailKey = protectedImage
-				? protectedThumbnailKeyFor(sourceStorageKey) : thumbnailKeyFor(sourceStorageKey);
-		String thumbnailUrl = protectedImage ? null : storageClient.publicUrl(thumbnailKey);
-		Path workDirectory = Files.createTempDirectory("soundconnect-image-" + assetId + "-");
+		var sample = telemetry.startJob(MediaWorkerMetrics.Job.IMAGE_THUMBNAIL);
+		var outcome = MediaWorkerMetrics.JobOutcome.FAILURE;
+		Path workDirectory = null;
 		try {
+			boolean protectedImage = StorageObjectKeys.isPrivateVerified(sourceStorageKey);
+			String thumbnailKey = protectedImage
+					? protectedThumbnailKeyFor(sourceStorageKey) : thumbnailKeyFor(sourceStorageKey);
+			String thumbnailUrl = protectedImage ? null : storageClient.publicUrl(thumbnailKey);
+			workDirectory = Files.createTempDirectory("soundconnect-image-" + assetId + "-");
 			Path source = workDirectory.resolve("source");
 			Path thumbnail = workDirectory.resolve("thumbnail.jpg");
 			storageClient.downloadToFile(sourceStorageKey, source, sourceDownloadTimeout);
@@ -59,15 +66,25 @@ public class ImageThumbnailService {
 					assetId,
 					processed.sourceWidth(), processed.sourceHeight(),
 					processed.thumbnailWidth(), processed.thumbnailHeight());
-			return new ImageThumbnailResult(
+			var result = new ImageThumbnailResult(
 					thumbnailKey,
 					thumbnailUrl,
 					processed.sourceWidth(),
 					processed.sourceHeight(),
 					processed.thumbnailWidth(),
 					processed.thumbnailHeight());
+			outcome = MediaWorkerMetrics.JobOutcome.SUCCESS;
+			return result;
+		} catch (InterruptedException interrupted) {
+			outcome = MediaWorkerMetrics.JobOutcome.INTERRUPTED;
+			throw interrupted;
 		} finally {
-			deleteTreeBestEffort(workDirectory);
+			try { if (workDirectory != null) deleteTreeBestEffort(workDirectory); }
+			catch (RuntimeException cleanupFailure) {
+				outcome = MediaWorkerMetrics.JobOutcome.FAILURE;
+				throw cleanupFailure;
+			}
+			finally { sample.finish(outcome); }
 		}
 	}
 

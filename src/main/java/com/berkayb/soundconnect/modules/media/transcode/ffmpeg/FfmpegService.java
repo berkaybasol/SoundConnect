@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode.ffmpeg;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeProperties;
 import com.berkayb.soundconnect.modules.media.transcode.config.TranscodeVariant;
 import com.berkayb.soundconnect.modules.media.transcode.enums.Container;
@@ -35,6 +37,8 @@ import java.util.concurrent.TimeUnit;
 public class FfmpegService {
 
 	private final TranscodeProperties props;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
     /** One normalized MP4 for protected playback, using the existing process and disk budgets. */
     public void generateProgressive(Path input, Path output) throws IOException, InterruptedException {
@@ -333,11 +337,13 @@ public class FfmpegService {
 		stdoutReader.start();
 		stderrReader.start();
 
+		try (var cpu = telemetry.startFfmpeg(process)) {
 		boolean completed = false;
 		long timeoutNanos = TimeUnit.SECONDS.toNanos(props.getProcessTimeoutSec());
 		long deadline = System.nanoTime() + timeoutNanos;
 		try {
 			while (!(completed = process.waitFor(1, TimeUnit.SECONDS))) {
+				cpu.poll();
 				// Kill a runaway child while it is writing, not only after it exits.
 				assertOutputBudgets(workspace, generatedRoots);
 				if (System.nanoTime() - deadline >= 0) break;
@@ -371,6 +377,7 @@ public class FfmpegService {
 		}
 		log.debug("[ffmpeg] command succeeded command={} stderrTail={}",
 				String.join(" ", command), safeTail(stderr, 2000));
+		}
 	}
 
 	private void terminateProcess(Process process) {

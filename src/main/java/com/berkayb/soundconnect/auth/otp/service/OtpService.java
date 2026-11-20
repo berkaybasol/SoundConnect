@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.auth.otp.service;
 
 import com.berkayb.soundconnect.shared.util.EmailUtils;
+import com.berkayb.soundconnect.shared.recovery.RecoveryRuntime;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -157,6 +158,7 @@ public class OtpService {
 	}
 
 	private boolean verifyOtp(String email, String code, OtpPurpose purpose) {
+		RecoveryRuntime.requireOperational();
 		validateConfiguration();
 		String otpKey = buildOtpKey(normalize(email), purpose, false);
 		Long result = redisTemplate.execute(
@@ -222,6 +224,7 @@ public class OtpService {
 	 * an already queued asynchronous delivery is never cancelled.
 	 */
 	public boolean cancelPasswordResetOtpIssue(String email, String generationId) {
+		RecoveryRuntime.requireOperational();
 		validateConfiguration();
 		if (!validGeneration(generationId)) return false;
 		String normalizedEmail = normalize(email);
@@ -240,6 +243,7 @@ public class OtpService {
 	}
 
 	public boolean authorizePasswordResetMail(String recipient, String generationId, long expiresAtEpochMillis) {
+		RecoveryRuntime.requireOperational();
 		validateConfiguration();
 		if (recipient == null || recipient.isBlank() || !validGeneration(generationId)
 				|| expiresAtEpochMillis <= 0) return false;
@@ -262,6 +266,7 @@ public class OtpService {
 			OtpPurpose purpose,
 			boolean decoy
 	) {
+		RecoveryRuntime.requireOperational();
 		validateConfiguration();
 		String normalizedEmail = normalize(email);
 		String otpCode = generateRandomOtpCode();

@@ -1,11 +1,14 @@
 package com.berkayb.soundconnect.shared.config;
 
 import com.berkayb.soundconnect.shared.realtime.WebSocketSecurityInterceptor;
+import com.berkayb.soundconnect.shared.realtime.ReceiptAwareStompTcpClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.messaging.simp.stomp.StompReactorNettyCodec;
+import org.springframework.messaging.tcp.reactor.ReactorNettyTcpClient;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -39,6 +42,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 	public void configureMessageBroker(MessageBrokerRegistry config) {
 		if (brokerRelayEnabled) {
 			config.enableStompBrokerRelay("/topic")
+					.setTcpClient(new ReceiptAwareStompTcpClient(new ReactorNettyTcpClient<>(
+							brokerRelayHost, brokerRelayPort, new StompReactorNettyCodec())))
 					.setRelayHost(brokerRelayHost)
 					.setRelayPort(brokerRelayPort)
 					.setClientLogin(brokerRelayLogin)
@@ -64,11 +69,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void configureClientInboundChannel(ChannelRegistration registration) {
-		registration.interceptors(webSocketSecurityInterceptor);
+		registration.interceptors(new com.berkayb.soundconnect.shared.recovery.RecoveryChannelInterceptor(), webSocketSecurityInterceptor);
 	}
 
 	@Override
 	public void configureClientOutboundChannel(ChannelRegistration registration) {
-		registration.interceptors(webSocketSecurityInterceptor);
+		registration.interceptors(new com.berkayb.soundconnect.shared.recovery.RecoveryChannelInterceptor(), webSocketSecurityInterceptor);
 	}
 }

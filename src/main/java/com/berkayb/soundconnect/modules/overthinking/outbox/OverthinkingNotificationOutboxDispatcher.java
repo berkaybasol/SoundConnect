@@ -17,6 +17,7 @@ public class OverthinkingNotificationOutboxDispatcher {
 	private final String nodeId = UUID.randomUUID().toString();
 
 	public void dispatch(UUID eventId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		String leaseOwner = nodeId + ":" + UUID.randomUUID();
 		Optional<OverthinkingNotificationOutboxClaim> optionalClaim =
 				outboxService.claim(eventId, leaseOwner);

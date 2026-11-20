@@ -43,6 +43,10 @@ spring:
         auto-startup: true
 
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
   endpoints:
     enabled-by-default: false
     web:
@@ -55,6 +59,28 @@ management:
     health:
       enabled: false
       show-details: never
+
+# This entry point deliberately loads only this YAML, not application.yml.
+app:
+  system-health:
+    postgres-sessions-enabled: ${SOUNDCONNECT_POSTGRES_SESSIONS_TELEMETRY_ENABLED:false}
+    # The worker never invokes the API-only statement-summary wrapper.
+    postgres-statements-enabled: false
+  observability:
+    http-telemetry:
+      enabled: false
+      sample-probability: ${SOUNDCONNECT_HTTP_TELEMETRY_SAMPLE_PROBABILITY:0.1}
+      collector-endpoint: ${SOUNDCONNECT_HTTP_TELEMETRY_COLLECTOR_ENDPOINT:http://127.0.0.1:4318}
+    dependency-telemetry:
+      enabled: ${SOUNDCONNECT_DEPENDENCY_TELEMETRY_ENABLED:false}
+  telemetry:
+    metrics:
+      enabled: ${SOUNDCONNECT_TELEMETRY_METRICS_ENABLED:false}
+      endpoint: ${SOUNDCONNECT_TELEMETRY_METRICS_ENDPOINT:}
+      service-name: ${SOUNDCONNECT_TELEMETRY_SERVICE_NAME:}
+      environment: ${SOUNDCONNECT_TELEMETRY_ENVIRONMENT:}
+      step: ${SOUNDCONNECT_TELEMETRY_METRICS_STEP:30s}
+      max-series: ${SOUNDCONNECT_TELEMETRY_METRICS_MAX_SERIES:1024}
 
 soundconnect:
   runtime-role: ${SOUNDCONNECT_RUNTIME_ROLE:media-worker}

@@ -13,6 +13,8 @@ import com.berkayb.soundconnect.modules.notification.push.BandPushPresentation;
 import com.berkayb.soundconnect.modules.notification.push.TablePushPresentation;
 import com.berkayb.soundconnect.modules.notification.push.CollabPushPresentation;
 import com.berkayb.soundconnect.modules.notification.push.OverthinkingPushPresentation;
+import com.berkayb.soundconnect.shared.telemetry.tracing.SafeDependencyTelemetry;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.net.URI;
@@ -55,6 +57,10 @@ public final class FcmHttpV1Transport implements PushTransport {
     private final Duration totalTimeout;
     private final URI endpoint;
     private final Clock clock;
+    private SafeDependencyTelemetry telemetry = SafeDependencyTelemetry.NOOP;
+
+    @Autowired(required = false)
+    public void setDependencyTelemetry(SafeDependencyTelemetry telemetry) { this.telemetry = telemetry; }
 
     FcmHttpV1Transport(GoogleCredentials credentials, DeadlineHttpTransport http, ObjectMapper mapper,
                        ExecutorService executor, FcmPushProperties properties, Clock clock) {
@@ -70,12 +76,14 @@ public final class FcmHttpV1Transport implements PushTransport {
 
     @Override
     public PushSendResult send(PushEnvelope envelope) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
+        SafeDependencyTelemetry.Parent parent = telemetry.captureRequestParent();
         Future<PushSendResult> task;
         try {
             task = executor.submit(() -> {
                 http.begin(totalTimeout);
                 try {
-                    return sendOnce(envelope);
+                    return sendOnce(envelope, parent);
                 } finally {
                     http.end();
                 }
@@ -98,7 +106,7 @@ public final class FcmHttpV1Transport implements PushTransport {
         }
     }
 
-    private PushSendResult sendOnce(PushEnvelope envelope) {
+    private PushSendResult sendOnce(PushEnvelope envelope, SafeDependencyTelemetry.Parent parent) {
         if (!valid(envelope)) {
             return failure(PERMANENT_FAILURE, "INVALID_ENVELOPE", null);
         }
@@ -126,7 +134,11 @@ public final class FcmHttpV1Transport implements PushTransport {
             }
             // Recompute platform TTL after potentially slow credential refresh.
             request.POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(payload(envelope))));
-            return classify(http.send(request));
+            try (var call = telemetry.start(SafeDependencyTelemetry.Operation.FCM_SEND, parent)) {
+                PushSendResult result = classify(http.send(request));
+                if (result.outcome() == ACCEPTED) call.succeeded();
+                return result;
+            }
         } catch (HttpTimeoutException timeout) {
             return failure(RETRYABLE_FAILURE, "SEND_TIMEOUT", null);
         } catch (IOException unavailable) {

@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.shared.mail.enums.MailKind;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import com.berkayb.soundconnect.shared.mail.producer.MailProducerImpl;
 import com.berkayb.soundconnect.shared.mail.producer.MailRetryPublisher;
+import com.berkayb.soundconnect.shared.config.MailRetryTopology;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
@@ -42,7 +43,7 @@ class MailDeliveryConcurrencyRabbitRedisTest {
     @Container static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
             .withLabel("soundconnect.fixture", "notification-fix-mail").withExposedPorts(6379);
     @Container static final RabbitMQContainer BROKER = new RabbitMQContainer(
-            DockerImageName.parse("soundconnect-rabbitmq:3.13.7").asCompatibleSubstituteFor("rabbitmq"))
+            DockerImageName.parse("rabbitmq:4.3.6-management").asCompatibleSubstituteFor("rabbitmq"))
             .withLabel("soundconnect.fixture", "notification-fix-mail").withReuse(false);
 
     LettuceConnectionFactory redisFactory;
@@ -57,9 +58,12 @@ class MailDeliveryConcurrencyRabbitRedisTest {
     MailProducerImpl producer;
     MailJobConsumer consumer;
     OtpService otp;
-    String queue, direct, delayed;
+    String queue, direct, dlq;
+    final List<String> ownedQueues = new ArrayList<>();
     AtomicInteger calls = new AtomicInteger(), acks = new AtomicInteger(), rejects = new AtomicInteger();
     AtomicInteger nextStatus = new AtomicInteger(202);
+    java.util.concurrent.atomic.AtomicBoolean holdNextResponse = new java.util.concurrent.atomic.AtomicBoolean();
+    CountDownLatch acceptedHeldRequest = new CountDownLatch(1), releaseHeldResponse = new CountDownLatch(1);
     ObjectMapper json = new ObjectMapper();
 
     @BeforeEach void prepare() throws Exception {
@@ -76,28 +80,44 @@ class MailDeliveryConcurrencyRabbitRedisTest {
         connection = rabbitFactory.getRabbitConnectionFactory().newConnection();
         first = connection.createChannel(); second = connection.createChannel();
         String suffix = UUID.randomUUID().toString();
-        queue="fix.mail."+suffix; direct="fix.direct."+suffix; delayed="fix.delayed."+suffix;
+        queue="fix.mail."+suffix; direct="fix.direct."+suffix; dlq=queue+".dlq";
         first.exchangeDeclare(direct,"direct",true);
-        first.exchangeDeclare(delayed,"x-delayed-message",true,false,Map.of("x-delayed-type","direct"));
-        first.queueDeclare(queue,true,false,false,Map.of());
-        first.queueBind(queue,direct,"mail.send"); first.queueBind(queue,delayed,"mail.send");
+        first.queueDeclare(queue,true,false,false,Map.of("x-queue-type","quorum",
+                "x-dead-letter-exchange",direct,"x-dead-letter-routing-key","mail.failed",
+                "x-dead-letter-strategy","at-least-once","x-overflow","reject-publish","x-delivery-limit",-1));
+        first.queueDeclare(dlq,true,false,false,Map.of("x-queue-type","quorum"));
+        first.queueBind(dlq,direct,"mail.failed");
+        ownedQueues.add(queue); ownedQueues.add(dlq);
+        first.queueBind(queue,direct,"mail.send");
+        for (long delay : MailRetryTopology.delays()) {
+            var retryQueue = MailRetryTopology.queue(queue, delay, direct, "mail.send");
+            first.queueDeclare(retryQueue.getName(), true, false, false, retryQueue.getArguments());
+            ownedQueues.add(retryQueue.getName());
+        }
         producer = new MailProducerImpl(rabbit,helper);
         field(producer,"mailExchange",direct); field(producer,"mailRoutingKey","mail.send");
         field(producer,"confirmTimeoutSec",3L);
         MailRetryPublisher retry = new MailRetryPublisher(rabbit);
-        field(retry,"mailQueueName",queue); field(retry,"delayedExchange",delayed);
-        field(retry,"routingKey","mail.send"); field(retry,"confirmTimeoutSec",3L);
+        field(retry,"mailQueueName",queue);
+        field(retry,"confirmTimeoutSec",3L);
         var init = MailRetryPublisher.class.getDeclaredMethod("validateConfiguration");
         init.setAccessible(true); init.invoke(retry);
         sink = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
-        sinkWorker=Executors.newSingleThreadExecutor(); sink.setExecutor(sinkWorker);
+        sinkWorker=Executors.newFixedThreadPool(2); sink.setExecutor(sinkWorker);
         sink.createContext("/mail",exchange -> {
             // Read full wire content, but persist only safe counts, never the reset code.
             byte[] payload=exchange.getRequestBody().readAllBytes();
             if (!"POST".equals(exchange.getRequestMethod()) || payload.length==0) {
                 exchange.sendResponseHeaders(400,-1);
             } else {
-                calls.incrementAndGet(); exchange.sendResponseHeaders(nextStatus.getAndSet(202),-1);
+                calls.incrementAndGet();
+                if (holdNextResponse.compareAndSet(true, false)) {
+                    acceptedHeldRequest.countDown();
+                    try { releaseHeldResponse.await(8, TimeUnit.SECONDS); }
+                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                }
+                try { exchange.sendResponseHeaders(nextStatus.getAndSet(202),-1); }
+                catch (java.io.IOException clientAlreadyTimedOut) { /* Expected for unknown-outcome fixture. */ }
             }
             exchange.close();
         });
@@ -117,12 +137,97 @@ class MailDeliveryConcurrencyRabbitRedisTest {
     }
 
     @AfterEach void close() {
+        releaseHeldResponse.countDown();
         if (helper!=null) helper.resume.countDown();
+        if (connection!=null && connection.isOpen()) {
+            try (Channel cleanup=connection.createChannel()) {
+                for (String name:ownedQueues) cleanup.queueDelete(name);
+                if(direct!=null) cleanup.exchangeDelete(direct);
+            } catch(Exception failure) { throw new AssertionError("Owned mail fixture cleanup failed",failure); }
+        }
         if (connection!=null) connection.abort();
         if (rabbitFactory!=null) rabbitFactory.destroy();
         if (redisFactory!=null) redisFactory.destroy();
         if (sink!=null) sink.stop(0);
         if (sinkWorker!=null) sinkWorker.shutdownNow();
+    }
+
+    @Test void recoveryLosesSentMarkerAndAllowsSameGenericMailAgain() throws Exception {
+        MailSendRequest job=request();
+        producer.send(job); deliver(receive(first), first);
+        String sent="mail:sent:"+helper.buildIdemKey(job);
+        assertThat(helper.isAlreadySent(sent)).isTrue();
+        producer.send(job); deliver(receive(second), second);
+        assertThat(calls).hasValue(1);
+        assertThat(redis.getExpire(sent)).isGreaterThan(800L);
+        flushOwnedRedis();
+        assertThat(helper.isAlreadySent(sent)).isFalse();
+        producer.send(job); deliver(receive(first), first);
+        assertThat(calls).hasValue(2); assertThat(acks).hasValue(3);
+        assertNoUnackedRedelivery();
+        recoveryEvidence("generic-sent-loss", Map.of("logicalJobs",1,"loopbackRequests",2,
+                "acks",3,"duplicateBeforeLossSuppressed",true,"automaticRecoverySafe",false));
+    }
+
+    @Test void recoveryLosesLiveLockWhileFirstLocalHttpSendIsInFlight() throws Exception {
+        MailSendRequest job=request(); producer.send(job); producer.send(job);
+        Delivery a=receive(first), b=receive(second);
+        holdNextResponse.set(true);
+        ExecutorService worker=Executors.newSingleThreadExecutor();
+        try {
+            Future<?> inFlight=worker.submit(() -> deliver(a, first));
+            assertThat(acceptedHeldRequest.await(5,TimeUnit.SECONDS)).isTrue();
+            assertThat(inFlight.isDone()).isFalse();
+            String lock="mail:lock:"+helper.buildIdemKey(job);
+            assertThat(redis.getExpire(lock)).isGreaterThan(250L);
+            assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isFalse();
+            flushOwnedRedis();
+            deliver(b, second);
+            assertThat(calls).hasValue(2);
+            assertThat(inFlight.isDone()).isFalse();
+            releaseHeldResponse.countDown(); inFlight.get(5,TimeUnit.SECONDS);
+            assertThat(acks).hasValue(2); assertThat(rejects).hasValue(0);
+            assertNoUnackedRedelivery();
+            recoveryEvidence("generic-lock-loss", Map.of("logicalJobs",1,"loopbackRequests",2,
+                    "acks",2,"firstSendStillInFlightAtSecondAcceptance",true,"automaticRecoverySafe",false));
+        } finally { releaseHeldResponse.countDown(); worker.shutdownNow(); }
+    }
+
+    @Test void recoveryUnknownGenericHttpOutcomeRetriesAfterRedisLoss() throws Exception {
+        MailSendRequest job=request(); producer.send(job);
+        holdNextResponse.set(true);
+        deliver(receive(first), first); // Local sink accepted the body; client times out without a response.
+        assertThat(acceptedHeldRequest.getCount()).isZero();
+        assertThat(calls).hasValue(1); assertThat(acks).hasValue(1);
+        assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isFalse();
+        releaseHeldResponse.countDown();
+        flushOwnedRedis();
+        Delivery retry=receive(second);
+        assertThat(((Number)retry.headers().get(MailJobHelper.RETRY_ATTEMPT_HEADER)).intValue()).isEqualTo(1);
+        deliver(retry, second);
+        assertThat(calls).hasValue(2); assertThat(acks).hasValue(2);
+        assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isTrue();
+        assertNoUnackedRedelivery();
+        recoveryEvidence("generic-unknown-outcome", Map.of("logicalJobs",1,"loopbackAcceptedBodies",2,
+                "firstResponseUnknownToConsumer",true,"retryAttempt",1,"automaticRecoverySafe",false));
+    }
+
+    private void flushOwnedRedis() {
+        assertThat(REDIS.getContainerInfo().getConfig().getLabels()).containsEntry("soundconnect.fixture", "notification-fix-mail");
+        assertThat(redisFactory.getHostName()).isEqualTo(REDIS.getHost());
+        assertThat(redisFactory.getPort()).isEqualTo(REDIS.getMappedPort(6379));
+        assertThat(redisFactory.getDatabase()).isZero();
+        try (var connection=redisFactory.getConnection()) {
+            connection.serverCommands().flushDb();
+            assertThat(connection.serverCommands().dbSize()).isZero();
+        }
+    }
+
+    private void recoveryEvidence(String scenario, Map<String,Object> observations) throws Exception {
+        var record=new LinkedHashMap<String,Object>(observations);
+        record.put("redisContainer",REDIS.getContainerId()); record.put("rabbitContainer",BROKER.getContainerId());
+        record.put("loopbackPort",sink.getAddress().getPort());
+        com.berkayb.soundconnect.support.RecoveryCacheMailEvidence.write(scenario,record);
     }
 
     @Test void concurrentBrokerCopiesSendOnceAndAcknowledgeBoth() throws Exception {
@@ -190,6 +295,41 @@ class MailDeliveryConcurrencyRabbitRedisTest {
         assertThat(otp.verifyPasswordResetOtp(recipient,current.code())).isTrue();
         assertNoUnackedRedelivery();
         System.out.println("ACCEPTANCE reset: staleProvider=0 currentProvider=1 ack=2 currentCodeVerified=true");
+    }
+
+    @Test void retryLimitReachedUsesRealDlqWithoutCreatingAnotherRetry() throws Exception {
+        MailSendRequest job=request(); nextStatus.set(503);
+        rabbit.convertAndSend(direct,"mail.send",job,message -> {
+            message.getMessageProperties().setHeader(MailJobHelper.RETRY_ATTEMPT_HEADER,3);
+            return message;
+        });
+        deliver(receive(first),first);
+        await().atMost(Duration.ofSeconds(10)).until(() -> first.queueDeclarePassive(dlq).getMessageCount()==1);
+        var failed=first.basicGet(dlq,true);
+        assertThat(failed.getProps().getHeaders()).containsEntry(MailJobHelper.RETRY_ATTEMPT_HEADER,3);
+        assertThat(calls).hasValue(1); assertThat(acks).hasValue(0); assertThat(rejects).hasValue(1);
+        assertThat(first.queueDeclarePassive(queue).getMessageCount()).isZero();
+        for(long delay:MailRetryTopology.delays()) {
+            assertThat(first.queueDeclarePassive(MailRetryTopology.queueName(queue,delay)).getMessageCount()).isZero();
+        }
+        System.out.println("ACCEPTANCE exhausted: loopbackProvider503=1 terminalDlq=1 retryAttempt=3 newRetry=0");
+    }
+
+    @Test void missingRetryLaneKeepsOriginalUnacknowledgedAndRecoverable() throws Exception {
+        String retryName=MailRetryTopology.queueName(queue,100);
+        first.queueDelete(retryName);
+        MailSendRequest job=request(); nextStatus.set(503); producer.send(job);
+        deliver(receive(first),first);
+        assertThat(calls).hasValue(1); assertThat(acks).hasValue(0); assertThat(rejects).hasValue(1);
+        var retryDefinition=MailRetryTopology.queue(queue,100,direct,"mail.send");
+        first.queueDeclare(retryName,true,false,false,retryDefinition.getArguments());
+        Delivery original=receive(second);
+        assertThat(original.request()).isEqualTo(job);
+        assertThat(original.headers()).doesNotContainKey(MailJobHelper.RETRY_ATTEMPT_HEADER);
+        deliver(original,second);
+        assertThat(calls).hasValue(2); assertThat(acks).hasValue(1);
+        assertThat(helper.isAlreadySent("mail:sent:"+helper.buildIdemKey(job))).isTrue();
+        System.out.println("ACCEPTANCE retryRouteFailure: originalAckBeforeRecovery=0 requeue=1 originalRecovered=true");
     }
 
     private MailSendRequest request() { return new MailSendRequest("fixture@example.invalid","Fixture","html","text",MailKind.GENERIC,Map.of("requestId",UUID.randomUUID().toString())); }

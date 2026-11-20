@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.auth.ratelimit;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,10 @@ public class AuthRateLimiter {
 	private final StringRedisTemplate redisTemplate;
 	private final AuthRateLimitProperties properties;
 	private final AtomicLong lastRedisWarningAt = new AtomicLong(0L);
+	private AuthRateLimiterTelemetry telemetry;
+
+	@Autowired(required = false)
+	void setTelemetry(AuthRateLimiterTelemetry telemetry) { this.telemetry = telemetry; }
 
 	public Decision check(String bucket, String clientAddress, AuthRateLimitProperties.Policy policy) {
 		return checkHashedIdentity(bucket, "ip", hashIdentity(clientAddress), policy);
@@ -53,7 +58,25 @@ public class AuthRateLimiter {
 			String identityDigest,
 			AuthRateLimitProperties.Policy policy
 	) {
-		if (!properties.isEnabled()) {
+		long started = System.nanoTime();
+		boolean enabled = properties.isEnabled();
+        Decision decision = decideHashedIdentity(bucket, dimension, identityDigest, policy, enabled);
+		if (telemetry != null) {
+			try {
+				var outcome = enabled ? AuthRateLimiterTelemetry.Outcome.valueOf(decision.status().name())
+						: AuthRateLimiterTelemetry.Outcome.DISABLED;
+				telemetry.record("account".equals(dimension) ? AuthRateLimiterTelemetry.Dimension.ACCOUNT
+						: AuthRateLimiterTelemetry.Dimension.IP, outcome, System.nanoTime() - started);
+			} catch (RuntimeException ignored) {
+				// Observability must never alter the already-computed fail-closed decision.
+			}
+		}
+		return decision;
+	}
+
+	private Decision decideHashedIdentity(String bucket, String dimension, String identityDigest,
+            AuthRateLimitProperties.Policy policy, boolean enabled) {
+        if (!enabled) {
 			return Decision.permit();
 		}
 

@@ -39,6 +39,15 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-amqp'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Private, opt-in telemetry export; public Actuator exposure stays health-only.
+    implementation 'io.micrometer:micrometer-registry-otlp'
+    // Same proto already used at runtime by Micrometer 1.14.4; also needed by the bounded sender.
+    implementation 'io.opentelemetry.proto:opentelemetry-proto:1.3.2-alpha'
+    implementation 'io.opentelemetry:opentelemetry-sdk'
+    implementation('io.opentelemetry:opentelemetry-exporter-otlp') {
+        exclude group: 'io.opentelemetry', module: 'opentelemetry-exporter-sender-okhttp'
+    }
+    implementation 'io.opentelemetry:opentelemetry-exporter-sender-jdk'
     implementation 'com.mailersend:java-sdk:1.4.1'
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
@@ -192,6 +201,17 @@ tasks.register('mediaWorkerBootJar', BootJar) {
     description = 'Builds the isolated no-web native media worker artifact.'
     archiveFileName = 'soundconnect-media-worker.jar'
     mainClass = 'com.berkayb.soundconnectworker.MediaWorkerApplication'
+    classpath = sourceSets.main.runtimeClasspath
+    targetJavaVersion = JavaVersion.VERSION_21
+}
+
+// Explicit recovery artifact: standard JarLauncher only, no PropertiesLauncher
+// or loader.path. The contract selects the existing API/worker source in HOLD.
+tasks.register('recoveryBootJar', BootJar) {
+    group = 'build'
+    description = 'Builds the exact-target, mandatory HOLD recovery launcher.'
+    archiveFileName = 'soundconnect-recovery.jar'
+    mainClass = 'com.berkayb.soundconnect.shared.recovery.RecoveryTargetLauncher'
     classpath = sourceSets.main.runtimeClasspath
     targetJavaVersion = JavaVersion.VERSION_21
 }

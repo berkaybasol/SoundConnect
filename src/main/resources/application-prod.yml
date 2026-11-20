@@ -6,6 +6,11 @@ server:
     include-stacktrace: never
 
 spring:
+  config:
+    activate:
+      # API production settings must not override the dedicated worker profile,
+      # even when Boot prepends that additional profile before prod.
+      on-profile: "prod & !media-worker"
   jpa:
     hibernate:
       ddl-auto: validate
@@ -27,6 +32,10 @@ springdoc:
     enabled: false
 
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
   endpoints:
     web:
       exposure:

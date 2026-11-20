@@ -56,6 +56,15 @@ public class MediaWorkerHealthFile {
 			fixedDelayString = "${soundconnect.media-worker.health-interval:PT15S}"
 	)
 	public void refresh() {
+		if (com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.isHeld()) {
+			try {
+				Files.deleteIfExists(marker);
+				if (Files.exists(marker)) throw new IOException("Recovery readiness marker remains");
+			} catch (IOException failure) {
+				throw new IllegalStateException("RECOVERY_HOLD_READINESS_MARKER", failure);
+			}
+			return;
+		}
 		try {
 			if (Status.UP.equals(dependencyHealth.health().getStatus())) {
 				writeMarker();

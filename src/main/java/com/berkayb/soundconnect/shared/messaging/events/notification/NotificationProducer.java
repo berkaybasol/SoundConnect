@@ -59,6 +59,7 @@ public class NotificationProducer {
 	// NotificationInboundEvent mesajini RabbitMQ'ya publish eder.
 	
 	public void publish(NotificationInboundEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		Objects.requireNonNull(event, "event is required");
 		// Assign once at the publishing boundary, never at consumption. Broker
 		// redelivery then carries the same identity after inbox content is deleted.
@@ -84,6 +85,7 @@ public class NotificationProducer {
 	 * so a durable caller can retain/retry its work item.
 	 */
 	public void publishConfirmed(NotificationInboundEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		Objects.requireNonNull(event, "event is required");
 		UUID eventId = Objects.requireNonNull(event.eventId(), "event.eventId is required");
 		CorrelationData correlationData = new CorrelationData(eventId.toString());

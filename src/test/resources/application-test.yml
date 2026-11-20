@@ -1,3 +1,9 @@
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+
 spring:
   datasource:
     # Her test için random H2 (PostgreSQL uyum modu)

@@ -60,6 +60,7 @@ public class MailProducerImpl implements MailProducer {
 	
 	@Override
 	public void send(MailSendRequest request) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		final String correlationId = UUID.randomUUID().toString();
 		final CorrelationData cd = new CorrelationData(correlationId);
 		try {

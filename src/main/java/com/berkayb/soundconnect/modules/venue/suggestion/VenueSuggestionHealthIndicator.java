@@ -13,9 +13,12 @@ public class VenueSuggestionHealthIndicator implements HealthIndicator {
             var counts = store.healthCounts();
             long review = ((Number) counts.get("review")).longValue();
             long stale = ((Number) counts.get("stale")).longValue();
-            return Health.status(review > 0 || stale > 0 ? "DEGRADED" : "UP")
+            var health = Health.status(review > 0 || stale > 0 ? "DEGRADED" : "UP")
                     .withDetail("review", review).withDetail("stale", stale)
-                    .withDetail("pending", ((Number) counts.get("pending")).longValue()).build();
+                    .withDetail("pending", ((Number) counts.get("pending")).longValue());
+            if (counts.get("oldestPendingAt") instanceof java.time.Instant oldest)
+                health.withDetail("oldestPendingAt", oldest);
+            return health.build();
         } catch (RuntimeException unavailable) {
             return Health.unknown().withDetail("reason", "storage_or_migration_unavailable").build();
         }

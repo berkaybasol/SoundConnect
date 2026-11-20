@@ -5,6 +5,9 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component("pushDeliveryHealth")
 @RequiredArgsConstructor
@@ -15,7 +18,12 @@ public class PushHealthIndicator implements HealthIndicator {
         if(service==null) return Health.up().withDetail("state","DISABLED").build();
         try {
             var summary=service.summary();
-            return Health.status(summary.degraded()?"DEGRADED":"UP").withDetail("counts",summary.counts())
+            // A successful GROUP BY omits zero-count states. Normalize only this
+            // health view; absent/failed measurements must still remain unknown.
+            var counts=new HashMap<>(Map.copyOf(summary.counts()));
+            for (String state:List.of("PENDING","IN_FLIGHT","DEAD_LETTER","SUPPRESSED","ACCEPTED"))
+                counts.putIfAbsent(state,0L);
+            return Health.status(summary.degraded()?"DEGRADED":"UP").withDetail("counts",Map.copyOf(counts))
                     .withDetail("oldestPendingAt",summary.oldestPendingAt()==null?"none":summary.oldestPendingAt()).build();
         } catch(Exception failure) { return Health.unknown().withDetail("reason","PUSH_STORE_UNAVAILABLE").build(); }
     }

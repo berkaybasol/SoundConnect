@@ -63,6 +63,82 @@ class VenueSuggestionStorePostgresTest {
         assertThat(jdbc.queryForList("SELECT recipient FROM tbl_venue_suggestion_mail", Map.of(), String.class))
                 .containsExactlyInAnyOrderElementsOf(recipients);
     }
+
+    @Test void recoveryRedisLossKeepsDurableSentAndUnknownOutcomeFences() throws Exception {
+        assertDisposable();
+        String owner = "ready01-cache-mail-venue";
+        try (var ownedRedis = new org.testcontainers.containers.GenericContainer<>("redis:7.2.5-alpine")
+                .withExposedPorts(6379).withLabel("soundconnect.fixture", owner).withReuse(false);
+             var sink = new okhttp3.mockwebserver.MockWebServer()) {
+            ownedRedis.start();
+            sink.start(java.net.InetAddress.getByName("127.0.0.1"), 0);
+            var redisFactory = new org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory(
+                    ownedRedis.getHost(), ownedRedis.getMappedPort(6379));
+            redisFactory.afterPropertiesSet();
+            try {
+                var redis = new org.springframework.data.redis.core.StringRedisTemplate(redisFactory);
+                var helper = new com.berkayb.soundconnect.shared.mail.helper.MailJobHelper(redis);
+                var sender = new com.berkayb.soundconnect.shared.mail.adapter.MailSenderClientImpl(helper,
+                        org.springframework.web.reactive.function.client.WebClient.builder().baseUrl(sink.url("/mail").toString()).build());
+                org.springframework.test.util.ReflectionTestUtils.setField(sender,"fromEmail","fixture@example.invalid");
+                org.springframework.test.util.ReflectionTestUtils.setField(sender,"fromName","Fixture");
+                org.springframework.test.util.ReflectionTestUtils.setField(sender,"readTimeoutSec",1);
+                var retries = org.mockito.Mockito.mock(com.berkayb.soundconnect.shared.mail.producer.MailRetryPublisher.class);
+                var channel = org.mockito.Mockito.mock(com.rabbitmq.client.Channel.class);
+                var handler = new VenueSuggestionMailDelivery(store,sender,helper,retries);
+                store.accept(request(UUID.randomUUID()),"Recovery fixture",hash,dedupe,List.of("fixture@example.invalid"));
+                var sent = store.claimPublishBatch(1).getFirst(); store.published(sent);
+                sink.enqueue(new okhttp3.mockwebserver.MockResponse().setResponseCode(202));
+                handler.consume(sent.queueRequest(),1,Map.of(),channel);
+                assertThat(state(sent.id())).isEqualTo("SENT");
+                assertThat(sink.takeRequest(2,TimeUnit.SECONDS)).isNotNull();
+                assertThat(sink.getRequestCount()).isEqualTo(1);
+                // Positive Redis state is lost while the authoritative current DB is preserved.
+                helper.markSent("fixture:sent",java.time.Duration.ofMinutes(15));
+                assertThat(helper.acquireLock("fixture:lock",java.time.Duration.ofMinutes(5))).isTrue();
+                flushRecoveryRedis(ownedRedis,redisFactory,owner);
+                handler.consume(sent.queueRequest(),2,Map.of(),channel);
+                assertThat(sink.getRequestCount()).isEqualTo(1);
+                assertThat(state(sent.id())).isEqualTo("SENT");
+
+                store.accept(request(UUID.randomUUID()),"Unknown fixture",hash,"c".repeat(64),List.of("fixture@example.invalid"));
+                var unknown = store.claimPublishBatch(1).getFirst(); store.published(unknown);
+                sink.enqueue(new okhttp3.mockwebserver.MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE));
+                handler.consume(unknown.queueRequest(),3,Map.of(),channel);
+                assertThat(sink.takeRequest(2,TimeUnit.SECONDS)).isNotNull();
+                assertThat(sink.getRequestCount()).isEqualTo(2);
+                assertThat(state(unknown.id())).isEqualTo("NEEDS_REVIEW");
+                assertThat(jdbc.queryForObject("SELECT last_error FROM tbl_venue_suggestion_mail WHERE id=:id",
+                        Map.of("id",unknown.id()),String.class)).isEqualTo("send_outcome_unknown");
+                flushRecoveryRedis(ownedRedis,redisFactory,owner);
+                handler.consume(unknown.queueRequest(),4,Map.of(),channel);
+                assertThat(store.claimPublishBatch(20)).isEmpty();
+                assertThat(sink.getRequestCount()).isEqualTo(2);
+                assertThat(state(unknown.id())).isEqualTo("NEEDS_REVIEW");
+                assertThat(jdbc.queryForList("SELECT send_attempts FROM tbl_venue_suggestion_mail ORDER BY id",
+                        Map.of(),Integer.class)).containsExactly(1,1);
+                org.mockito.Mockito.verifyNoInteractions(retries);
+                org.mockito.Mockito.verify(channel,org.mockito.Mockito.times(4)).basicAck(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.eq(false));
+                com.berkayb.soundconnect.support.RecoveryCacheMailEvidence.write("venue-durable-fences",Map.of(
+                        "postgresContainer",POSTGRES.getContainerId(),"redisContainer",ownedRedis.getContainerId(),
+                        "loopbackPort",sink.getPort(),"loopbackAcceptedBodies",2,"sameJobResendCount",0,
+                        "durableStates",List.of("SENT","NEEDS_REVIEW"),"sendAttemptsPerJob",List.of(1,1),
+                        "brokerAckIsTestDouble",true,"currentDatabasePreserved",true,"stalePitrAccepted",false));
+            } finally { redisFactory.destroy(); }
+        }
+    }
+
+    private static void flushRecoveryRedis(org.testcontainers.containers.GenericContainer<?> container,
+            org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory factory,String owner) {
+        assertThat(container.getContainerInfo().getConfig().getLabels()).containsEntry("soundconnect.fixture",owner);
+        assertThat(factory.getHostName()).isEqualTo(container.getHost());
+        assertThat(factory.getPort()).isEqualTo(container.getMappedPort(6379));
+        assertThat(factory.getDatabase()).isZero();
+        try (var connection=factory.getConnection()) {
+            connection.serverCommands().flushDb();
+            assertThat(connection.serverCommands().dbSize()).isZero();
+        }
+    }
     @Test void differentRequestIdsCannotRaceAroundDailyVenueDeduplication() throws Exception {
         parallel(8, ignored -> store.accept(request(UUID.randomUUID()), "Mekan", hash, dedupe, recipients));
         assertThat(count("tbl_venue_suggestion_request")).isEqualTo(8);
@@ -171,6 +247,37 @@ class VenueSuggestionStorePostgresTest {
         for (var publication : store.claimPublishBatch(20)) store.sent(store.claimSend(publication.id()).orElseThrow());
         assertThat(store.healthCounts()).containsOnlyKeys("review", "pending", "stale");
         assertThat(store.healthCounts().values()).allSatisfy(value -> assertThat(((Number) value).longValue()).isZero());
+    }
+    @Test void healthAgeCoversEveryActiveDeliveryStateAndDoesNotResetForRetryOrLease() {
+        accept(request(UUID.randomUUID()));
+        var ids=jdbc.queryForList("SELECT id FROM tbl_venue_suggestion_mail ORDER BY id",Map.of(),UUID.class);
+        jdbc.update("UPDATE tbl_venue_suggestion_mail SET status='NEEDS_REVIEW',created_at='2020-01-01T00:00:00Z' WHERE id=:id",Map.of("id",ids.get(0)));
+        for (String state:List.of("PENDING","PUBLISHING","QUEUED","SENDING")) {
+            jdbc.update("UPDATE tbl_venue_suggestion_mail SET status=:state,created_at='2020-01-02T00:00:00Z',"
+                    +"next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '1 day',lease_until=CURRENT_TIMESTAMP+INTERVAL '1 day' WHERE id=:id",
+                    Map.of("id",ids.get(1),"state",state));
+            var before=jdbc.queryForList("SELECT id,status,created_at,next_attempt_at,lease_until,publish_attempts,send_attempts FROM tbl_venue_suggestion_mail ORDER BY id",Map.of());
+            var counts=store.healthCounts();
+            assertThat(counts).as(state).containsOnlyKeys("pending","review","stale","oldestPendingAt")
+                    .containsEntry("pending",1L).containsEntry("review",1L).containsEntry("stale",2L)
+                    .containsEntry("oldestPendingAt",java.time.Instant.parse("2020-01-02T00:00:00Z"));
+            assertThat(new VenueSuggestionHealthIndicator(store).health().getDetails()).isEqualTo(counts);
+            assertThat(jdbc.queryForList("SELECT id,status,created_at,next_attempt_at,lease_until,publish_attempts,send_attempts FROM tbl_venue_suggestion_mail ORDER BY id",Map.of())).isEqualTo(before);
+        }
+        jdbc.update("UPDATE tbl_venue_suggestion_mail SET status='SENT' WHERE id=:id",Map.of("id",ids.get(1)));
+        assertThat(new VenueSuggestionHealthIndicator(store).health().getDetails())
+                .containsEntry("pending",0L).containsEntry("review",1L).doesNotContainKey("oldestPendingAt");
+    }
+    @Test void healthAgeIsAbsentForEmptyOrInfiniteTimestampAndPreservesFutureTimestamp() {
+        assertThat(store.healthCounts()).doesNotContainKey("oldestPendingAt");
+        accept(request(UUID.randomUUID()));
+        for (String timestamp:List.of("infinity","-infinity")) {
+            jdbc.update("UPDATE tbl_venue_suggestion_mail SET created_at=CAST(:timestamp AS timestamptz)",Map.of("timestamp",timestamp));
+            assertThat(store.healthCounts()).as(timestamp).containsEntry("pending",2L).doesNotContainKey("oldestPendingAt");
+        }
+        jdbc.getJdbcTemplate().execute("UPDATE tbl_venue_suggestion_mail SET created_at='9999-01-01T00:00:00Z'");
+        assertThat(new VenueSuggestionHealthIndicator(store).health().getDetails())
+                .containsEntry("oldestPendingAt",java.time.Instant.parse("9999-01-01T00:00:00Z"));
     }
     private void accept(VenueSuggestionRequest request) { store.accept(request, "Mekan", hash, dedupe, recipients); }
     private VenueSuggestionRequest request(UUID id) { return new VenueSuggestionRequest(id, "Mekan", city, district, VenueSuggestionRequest.LiveMusic.YES); }

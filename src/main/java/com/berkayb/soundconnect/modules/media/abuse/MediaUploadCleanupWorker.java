@@ -26,12 +26,14 @@ public class MediaUploadCleanupWorker {
 	private final Set<UUID> protectedRecoveryInFlight = ConcurrentHashMap.newKeySet();
 
 	public void claim(UUID assetId, LocalDateTime cutoff) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (stateService.claim(assetId, cutoff)) {
 			abuseGuard.release(assetId);
 		}
 	}
 
 	public void clean(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		// This runs only on the bounded cleanup executor. Releasing here guarantees
 		// both the immediate and scheduled recovery paths eventually free the slot.
 		abuseGuard.release(assetId);
@@ -104,6 +106,7 @@ public class MediaUploadCleanupWorker {
 	public void cleanProtectedMutableSource(
 			MediaProtectedUploadRecoveryRepository.RecoveryTarget target
 	) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (!protectedRecoveryInFlight.add(target.assetId())) return;
 		try {
 			if (!isUploadWriteWindowClosed(

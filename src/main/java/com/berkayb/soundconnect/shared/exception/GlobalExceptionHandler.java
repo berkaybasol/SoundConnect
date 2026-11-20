@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.shared.exception;
 
+import com.berkayb.soundconnect.shared.telemetry.tracing.SafeHttpObservationHandler;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -38,6 +39,7 @@ public class GlobalExceptionHandler {
 			RateLimitedException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		ResponseEntity<ErrorResponse> contract = response(exception.getErrorType(), request);
 		return ResponseEntity.status(contract.getStatusCode())
 				.header("Retry-After", Long.toString(exception.getRetryAfterSeconds()))
@@ -49,6 +51,7 @@ public class GlobalExceptionHandler {
 			ServiceUnavailableRetryException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		ResponseEntity<ErrorResponse> contract = response(exception.getErrorType(), request);
 		return ResponseEntity.status(contract.getStatusCode())
 				.header("Retry-After", Long.toString(exception.getRetryAfterSeconds()))
@@ -60,6 +63,7 @@ public class GlobalExceptionHandler {
 			SoundConnectException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		ErrorType errorType = exception.getErrorType();
 		if (exception.getDetails() != null && !exception.getDetails().isEmpty()) {
 			log.debug("Custom domain details suppressed. path={}, errorCode={}, detailCount={}",
@@ -73,6 +77,7 @@ public class GlobalExceptionHandler {
 			EmailVerificationRequiredException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		// Typed login recovery metadata, never arbitrary exception details. Login
 		// proves the password before disclosing this existing OTP destination.
 		return response(ErrorType.EMAIL_VERIFICATION_REQUIRED, request, List.of(exception.getEmail()));
@@ -83,6 +88,7 @@ public class GlobalExceptionHandler {
 			HttpMessageNotReadableException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		log.debug("Unreadable HTTP message. path={}, exceptionType={}",
 				request.getRequestURI(), exception.getClass().getSimpleName());
 		return response(ErrorType.MALFORMED_REQUEST, request);
@@ -93,6 +99,7 @@ public class GlobalExceptionHandler {
 			MethodArgumentTypeMismatchException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		String detail = "Parameter '" + exception.getName() + "' has an invalid value.";
 		return response(ErrorType.TYPE_MISMATCH, request, List.of(detail));
 	}
@@ -102,6 +109,7 @@ public class GlobalExceptionHandler {
 			MethodArgumentNotValidException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		return response(ErrorType.VALIDATION_ERROR, request, validationDetails(exception.getBindingResult()));
 	}
 
@@ -110,6 +118,7 @@ public class GlobalExceptionHandler {
 			BindException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		return response(ErrorType.VALIDATION_ERROR, request, validationDetails(exception.getBindingResult()));
 	}
 
@@ -118,6 +127,7 @@ public class GlobalExceptionHandler {
 			HandlerMethodValidationException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		List<String> details = exception.getAllErrors().stream()
 				.map(GlobalExceptionHandler::resolveMessage)
 				.distinct()
@@ -131,6 +141,7 @@ public class GlobalExceptionHandler {
 			ConstraintViolationException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		List<String> details = exception.getConstraintViolations().stream()
 				.map(GlobalExceptionHandler::constraintDetail)
 				.distinct()
@@ -144,6 +155,7 @@ public class GlobalExceptionHandler {
 			MissingServletRequestParameterException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		String detail = "Required parameter '" + exception.getParameterName() + "' is missing.";
 		return response(ErrorType.MISSING_REQUEST_PARAMETER, request, List.of(detail));
 	}
@@ -153,6 +165,7 @@ public class GlobalExceptionHandler {
 			Exception exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		return response(ErrorType.ENDPOINT_NOT_FOUND, request);
 	}
 
@@ -161,6 +174,7 @@ public class GlobalExceptionHandler {
 			HttpRequestMethodNotSupportedException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		ResponseEntity<ErrorResponse> base = response(ErrorType.METHOD_NOT_ALLOWED, request);
 		var supportedMethods = exception.getSupportedHttpMethods();
 		if (supportedMethods == null || supportedMethods.isEmpty()) {
@@ -176,6 +190,7 @@ public class GlobalExceptionHandler {
 			HttpMediaTypeNotSupportedException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		return response(ErrorType.UNSUPPORTED_MEDIA_TYPE, request);
 	}
 
@@ -184,6 +199,7 @@ public class GlobalExceptionHandler {
 			DataIntegrityViolationException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
 			if (cause instanceof org.hibernate.exception.ConstraintViolationException violation
 					&& "ck_account_erased".equals(violation.getConstraintName())) {
@@ -201,6 +217,7 @@ public class GlobalExceptionHandler {
 			AuthenticationException exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		log.debug("Authentication rejected. path={}, exceptionType={}",
 				request.getRequestURI(), exception.getClass().getSimpleName());
 		return response(ErrorType.UNAUTHORIZED, request);
@@ -211,6 +228,7 @@ public class GlobalExceptionHandler {
 			Exception exception,
 			HttpServletRequest request
 	) {
+		SafeHttpObservationHandler.recordException(request, exception);
 		log.warn("Access denied. path={}, exceptionType={}",
 				request.getRequestURI(), exception.getClass().getSimpleName());
 		return response(ErrorType.FORBIDDEN_ACCESS, request);
@@ -221,8 +239,9 @@ public class GlobalExceptionHandler {
 			Exception exception,
 			HttpServletRequest request
 	) {
-		log.error("Unexpected server error. path={}, exceptionType={}",
-				request.getRequestURI(), exception.getClass().getName(), exception);
+		SafeHttpObservationHandler.recordException(request, exception);
+		log.error("Unexpected server error. route={}, exception={}",
+				SafeHttpObservationHandler.safeRoute(request), SafeHttpObservationHandler.exceptionSummary(exception));
 		return response(ErrorType.INTERNAL_ERROR, request);
 	}
 

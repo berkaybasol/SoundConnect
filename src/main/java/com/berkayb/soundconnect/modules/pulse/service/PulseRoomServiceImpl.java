@@ -82,6 +82,8 @@ public class PulseRoomServiceImpl implements PulseRoomService {
 	
 	@PostConstruct
 	public void initRoomsOnStartup() {
+		// Pulse is outside recovery scope; quarantine must not recreate its Redis rooms.
+		if (com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.isHeld()) return;
 		// uygulama ayaga kalkinca registry bossa odalari olustur.
 		if (!pulseRoomRegistry.isEmpty()) {
 			log.info("[PulseRoom] Registry already has rooms, skipping init.");

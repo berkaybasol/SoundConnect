@@ -23,6 +23,10 @@ public class SystemHealthProperties {
     @Min(1) @Max(1000000) private int queueReadyThreshold = 1000;
     /** Optional read-only mount of the existing media worker readiness marker. */
     private String mediaWorkerHealthFile = "";
+    /** Aggregate-only PostgreSQL observations use the existing application pool. */
+    private boolean postgresSessionsEnabled = false;
+    /** Requires the separately approved fixed numeric wrapper; never enabled in the worker. */
+    private boolean postgresStatementsEnabled = false;
 
     @AssertTrue(message = "Health staleness must exceed refresh interval")
     public boolean isTimingValid() { return staleAfterSeconds > refreshIntervalSeconds; }

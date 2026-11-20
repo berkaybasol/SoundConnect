@@ -29,6 +29,7 @@ public class MediaUploadCleanupDispatcher {
 
 	/** @return false only when bounded capacity is exhausted. */
 	public boolean submit(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) return true;
 		if (!inFlight.add(assetId)) return true;
 		try {

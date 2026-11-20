@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static com.berkayb.soundconnect.modules.admin.health.SystemHealthProbe.Reading;
 import static com.berkayb.soundconnect.modules.admin.health.SystemHealthSnapshot.*;
@@ -47,7 +48,9 @@ public class SystemHealthSources {
     private final Clock clock = Clock.systemUTC();
     private final ApiHealthObservation api;
     private final RabbitQueueHealthSources queues;
+    private final PostgresHealthObservation postgres;
     @Autowired private StorageHealthObservation storage;
+    private RedisHealthMetrics redisMetrics;
     private final ObjectProvider<MobileDiagnosticsStore> mobileDiagnostics;
 
     public SystemHealthSources(HealthContributorRegistry registry, ObjectProvider<NotificationDlqOperations> dlq,
@@ -64,13 +67,19 @@ public class SystemHealthSources {
         transaction.setReadOnly(true);
         transaction.setTimeout(Math.max(1, (properties.getProbeTimeoutMillis() + 999) / 1000));
         api = new ApiHealthObservation(metrics, properties, clock);
+        postgres = new PostgresHealthObservation(dataSource, properties, clock);
     }
+
+    @Autowired(required = false)
+    void setRedisMetrics(RedisHealthMetrics redisMetrics) { this.redisMetrics = redisMetrics; }
 
     List<SystemHealthProbe> probes() {
         List<SystemHealthProbe> sources = new ArrayList<>();
         sources.add(new SystemHealthProbe("api", "API yanıtları", "İstek gecikmeleri ve sunucu hataları; yalnız bu API örneğinin ölçüm aralığı.", api::read));
         indicator(sources, "database", "Veritabanı", "Hesap ve ürün verilerine erişim etkilenebilir.", "db", false);
-        indicator(sources, "redis", "Redis", "Giriş koruması ve geçici veriye erişim etkilenebilir.", "redis", false);
+        sources.add(postgres.sessionsProbe());
+        sources.add(postgres.statementsProbe());
+        sources.add(new SystemHealthProbe("redis", "Redis", "Giriş koruması ve geçici veriye erişim etkilenebilir.", this::redis));
         indicator(sources, "rabbit", "Mesaj aracısı", "Arka plan işleri ve mesaj iletimi gecikebilir.", "rabbit", false);
         indicator(sources, "realtime", "Canlı bağlantı", "Açık ekranlara anlık güncellemeler ulaşmayabilir; istemci teslimi ayrıca doğrulanır.", "webSocketBrokerRelayHealth", false);
         indicator(sources, "push", "Push dağıtımı", "Bildirim gönderimleri gecikebilir. Sağlayıcı kabulü gerçek cihaz teslimini kanıtlamaz.", "pushDeliveryHealth", true);
@@ -100,6 +109,22 @@ public class SystemHealthSources {
         list.add(new SystemHealthProbe(id, label, impact, () -> databaseRead
                 ? transaction.execute(status -> readContributor(registry.getContributor(name), 0))
                 : readContributor(registry.getContributor(name), 0)));
+    }
+
+    private Reading redis() {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, properties.getProbeTimeoutMillis() - 25));
+        Reading health = readContributor(registry.getContributor("redis"), 0);
+        if (redisMetrics == null || (health.status() != Status.UP && health.status() != Status.DEGRADED)) return health;
+        Map<String, Double> metrics;
+        try {
+            metrics = redisMetrics.read(deadline - System.nanoTime());
+        } catch (RuntimeException unavailable) {
+            return health;
+        }
+        if (metrics.isEmpty()) return health;
+        var combined = new LinkedHashMap<>(health.metrics());
+        combined.putAll(metrics);
+        return new Reading(health.status(), health.reasonCode(), health.measuredAt(), combined);
     }
 
     private Reading readContributor(HealthContributor contributor, int depth) {

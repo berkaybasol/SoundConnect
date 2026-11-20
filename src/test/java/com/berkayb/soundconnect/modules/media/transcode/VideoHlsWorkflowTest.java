@@ -13,6 +13,9 @@ import com.berkayb.soundconnect.modules.media.transcode.validation.VideoTranscod
 import com.berkayb.soundconnect.modules.media.transcode.validation.TranscodeTempBudgetManager;
 import com.berkayb.soundconnect.modules.media.transcode.validation.TranscodeCapacityUnavailableException;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -49,6 +53,7 @@ class VideoHlsWorkflowTest {
 	@Mock TranscodeProperties transcodeProperties;
 
 	VideoHlsWorkflow workflow;
+	SimpleMeterRegistry metrics;
 
 	@BeforeEach
 	void setup() {
@@ -56,7 +61,11 @@ class VideoHlsWorkflowTest {
 		workflow = new VideoHlsWorkflow(
 				storage, ffmpeg, uploader, statusUpdater, ffprobe, mediaPolicy,
 				heartbeat, tempBudgetManager, transcodeProperties);
+		metrics = new SimpleMeterRegistry();
+		workflow.setTelemetry(new MediaWorkerMetrics(metrics));
 	}
+
+	@AfterEach void closeMetrics() { metrics.close(); }
 
 	@Test
 	void privatePlatformVideoUsesProtectedMp4AndThumbnailWithoutPublicUploaderOrUrls() throws Exception {
@@ -83,6 +92,7 @@ class VideoHlsWorkflowTest {
         verifyNoInteractions(uploader);
         verify(tempReservation).close();
         verify(lease).close();
+        assertOutcome("success");
     }
 
     @Test
@@ -115,6 +125,7 @@ class VideoHlsWorkflowTest {
 				id, token, "https://cdn/master.m3u8", "https://cdn/thumb.jpg", 124, 1920, 1080);
 		verify(lease, times(7)).checkpoint();
 		verify(lease).close();
+		assertOutcome("success");
 	}
 
 	@Test
@@ -133,6 +144,7 @@ class VideoHlsWorkflowTest {
 		verifyNoInteractions(ffmpeg, uploader);
 		verify(statusUpdater).markHlsCleanupPending(id, token, 1, false);
 		verify(lease).close();
+		assertOutcome("failure");
 	}
 
 	@Test
@@ -150,6 +162,7 @@ class VideoHlsWorkflowTest {
 
 		verify(statusUpdater).markHlsCleanupPending(id, token, 2, true);
 		verifyNoInteractions(ffprobe, ffmpeg, uploader);
+		assertOutcome("failure");
 	}
 
 	@Test
@@ -181,6 +194,7 @@ class VideoHlsWorkflowTest {
 
 		verifyNoInteractions(storage, ffprobe, ffmpeg, uploader);
 		verify(statusUpdater, never()).markHlsCleanupPending(any(), any(), anyInt(), anyBoolean());
+		assertOutcome("lease_lost");
 	}
 
 	@Test
@@ -210,6 +224,7 @@ class VideoHlsWorkflowTest {
 
 		verify(storage, never()).deleteFolder(anyString());
 		verify(statusUpdater, never()).markHlsCleanupPending(any(), any(), anyInt(), anyBoolean());
+		assertOutcome("fenced");
 	}
 
 	@Test
@@ -217,6 +232,11 @@ class VideoHlsWorkflowTest {
 		assertThatThrownBy(() -> workflow.process(new VideoHlsRequest("", "k", "p", "t", 1)))
 				.isInstanceOf(SoundConnectException.class);
 		verifyNoInteractions(statusUpdater, heartbeat, storage, ffprobe, ffmpeg, uploader, mediaPolicy);
+	}
+
+	private void assertOutcome(String outcome) {
+		assertThat(metrics.get("soundconnect.worker.job.duration").tags("workflow", "hls", "outcome", outcome).timer().count()).isEqualTo(1);
+		assertThat(metrics.get("soundconnect.worker.job.active").tag("workflow", "hls").gauge().value()).isZero();
 	}
 
 	private void stubClaim(UUID id, UUID token, int attempt) throws Exception {

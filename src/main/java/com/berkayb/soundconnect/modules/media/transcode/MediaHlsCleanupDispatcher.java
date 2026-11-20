@@ -45,6 +45,7 @@ public class MediaHlsCleanupDispatcher {
 
 	/** @return false only when the bounded executor is saturated. */
 	public boolean submit(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) return true;
 		if (!inFlight.add(assetId)) return true;
 		try {
@@ -61,6 +62,7 @@ public class MediaHlsCleanupDispatcher {
 	}
 
 	private void clean(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		try {
 			var cleanupTarget = statusUpdater.getHlsCleanupTarget(assetId);
 			if (cleanupTarget.isEmpty()) {

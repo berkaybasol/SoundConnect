@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
 import com.berkayb.soundconnect.modules.media.transcode.config.MediaTranscodeLeaseProperties;
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -25,6 +29,7 @@ class MediaTranscodeLeaseHeartbeatTest {
 	@Mock TaskScheduler scheduler;
 	@Mock ScheduledFuture<?> future;
 	MediaTranscodeLeaseHeartbeat heartbeat;
+	SimpleMeterRegistry metrics;
 
 	@BeforeEach
 	void setUp() {
@@ -34,7 +39,11 @@ class MediaTranscodeLeaseHeartbeatTest {
 		doReturn(future).when(scheduler).scheduleWithFixedDelay(
 				any(Runnable.class), any(Instant.class), eq(Duration.ofMinutes(1)));
 		heartbeat = new MediaTranscodeLeaseHeartbeat(statusUpdater, properties, scheduler);
+		metrics = new SimpleMeterRegistry();
+		heartbeat.setTelemetry(new MediaWorkerMetrics(metrics));
 	}
+
+	@AfterEach void closeMetrics() { metrics.close(); }
 
 	@Test
 	void scheduledHeartbeatAndCheckpointRenewExactAttempt() {
@@ -52,6 +61,8 @@ class MediaTranscodeLeaseHeartbeatTest {
 
 		verify(statusUpdater, times(2)).renewTranscodeLease(id, token);
 		verify(future).cancel(false);
+		assertThat(metrics.get("soundconnect.worker.lease").tag("outcome", "renewed").counter().count()).isEqualTo(2);
+		assertThat(metrics.get("soundconnect.worker.lease").tag("outcome", "lost").counter().count()).isZero();
 	}
 
 	@Test
@@ -67,5 +78,17 @@ class MediaTranscodeLeaseHeartbeatTest {
 				.isInstanceOf(TranscodeLeaseLostException.class);
 
 		verify(statusUpdater, times(1)).renewTranscodeLease(id, token);
+		assertThat(metrics.get("soundconnect.worker.lease").tag("outcome", "lost").counter().count()).isEqualTo(1);
+	}
+
+	@Test void renewalExceptionIsCountedOnceWithoutWeakeningLeaseFence() {
+		UUID id = UUID.randomUUID(), token = UUID.randomUUID();
+		when(statusUpdater.renewTranscodeLease(id, token)).thenThrow(new IllegalStateException("DB unavailable"));
+		var lease = heartbeat.start(id, token);
+		assertThatThrownBy(lease::checkpoint).isInstanceOf(TranscodeLeaseLostException.class);
+		assertThatThrownBy(lease::checkpoint).isInstanceOf(TranscodeLeaseLostException.class);
+		assertThat(metrics.get("soundconnect.worker.lease").tag("outcome", "lost").counter().count()).isEqualTo(1);
+		assertThat(metrics.get("soundconnect.worker.lease").tag("outcome", "renewed").counter().count()).isZero();
+		lease.close();
 	}
 }

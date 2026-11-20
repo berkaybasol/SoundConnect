@@ -70,8 +70,10 @@ public class NotificationDlqOperations {
                 config.isReplayEnabled(), config.getWindow());
     }
 
-    public Result inspect(UUID actor) { return execute(actor, null); }
+    public Result inspect(UUID actor) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational(); return execute(actor, null); }
     public Result replay(UUID actor, Selection selection) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         Objects.requireNonNull(selection); Objects.requireNonNull(selection.eventId);
         if (selection.fingerprint == null || !selection.fingerprint.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid selection");
         return execute(actor, selection);

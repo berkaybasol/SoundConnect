@@ -7,6 +7,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.otlp.OtlpMetricsExportAutoConfiguration;
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
 import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
 import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration;
@@ -35,6 +36,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootConfiguration
 @EnableAutoConfiguration(exclude = {
+		OtlpMetricsExportAutoConfiguration.class,
 		RabbitAutoConfiguration.class,
 		SecurityAutoConfiguration.class,
 		UserDetailsServiceAutoConfiguration.class,
