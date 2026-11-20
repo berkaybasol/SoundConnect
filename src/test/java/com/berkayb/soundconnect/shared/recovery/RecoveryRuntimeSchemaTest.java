@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 
 /** Real Hibernate/H2 startup: hostile native DDL cannot mutate or bypass validate. */
+@IsolatedRecoveryTest
 class RecoveryRuntimeSchemaTest {
     @Entity @Table(name="recovery_sentinel")
     public static class Sentinel { @Id public Long id; public String preserved; }

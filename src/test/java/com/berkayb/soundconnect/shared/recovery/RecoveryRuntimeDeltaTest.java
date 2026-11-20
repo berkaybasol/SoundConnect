@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 
+@IsolatedRecoveryTest
 class RecoveryRuntimeDeltaTest {
     @BeforeAll static void hold() { RecoveryRuntime.quarantine(); }
     @Test void automaticExportersAndMailDlqMonitorDisabledBeforeBeanConditions() {

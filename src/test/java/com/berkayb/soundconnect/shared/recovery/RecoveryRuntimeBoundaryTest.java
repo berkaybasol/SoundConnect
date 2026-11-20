@@ -26,6 +26,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 /** New quarantine boundaries only; no closed restore acceptance suite is rerun. */
+@IsolatedRecoveryTest
 class RecoveryRuntimeBoundaryTest {
     @BeforeAll static void hold() { RecoveryRuntime.quarantine(); }
 
