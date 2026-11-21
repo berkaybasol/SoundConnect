@@ -44,12 +44,10 @@ class MailRetryPublisherTest {
 	@BeforeEach
 	void setUp() {
 		publisher = new MailRetryPublisher(new RabbitTemplate(mock(ConnectionFactory.class)));
-		setField("delayedExchange", "mail.delayed");
-		setField("routingKey", "mail.send");
 		setField("mailQueueName", "mail.queue");
 		setField("confirmTimeoutSec", 1L);
 		publisher.validateConfiguration();
-		setField("delayedRabbitTemplate", rabbitTemplate);
+		setField("retryRabbitTemplate", rabbitTemplate);
 	}
 
 	@Test
@@ -64,21 +62,21 @@ class MailRetryPublisherTest {
 			correlationData.getFuture().complete(new CorrelationData.Confirm(true, null));
 			return null;
 		}).when(rabbitTemplate).convertAndSend(
-				eq("mail.delayed"),
-				eq("mail.send"),
+				eq(""),
+				eq("mail.queue.retry.v2.1000"),
 				any(MailSendRequest.class),
 				any(MessagePostProcessor.class),
 				any(CorrelationData.class));
 
-		publisher.publishWithDelay(request(), 1_000L, 3, "attempt=3");
+		publisher.publishWithDelay(request(), 1_000L, 3, "SYNTHETIC_SECRET_NOTE");
 
 		MessageProperties properties = publishedMessage.get().getMessageProperties();
 		assertThat(properties.<Integer>getHeader(MailJobHelper.RETRY_ATTEMPT_HEADER)).isEqualTo(3);
 		assertThat(properties.<Boolean>getHeader(MailJobHelper.RETRY_MARKER_HEADER)).isTrue();
 		assertThat(properties.getDeliveryMode()).isEqualTo(MessageDeliveryMode.PERSISTENT);
 		assertThat(properties.getCorrelationId()).isNotBlank();
-		assertThat(((Number) properties.getHeader("x-delay")).longValue())
-				.isBetween(1_000L, 1_100L);
+		assertThat(properties.getHeaders()).doesNotContainKeys("x-delay", "sc-retry-note");
+		assertThat(properties.getExpiration()).isNull();
 	}
 
 	@Test

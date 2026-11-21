@@ -37,7 +37,7 @@ class MailQueueConfigTest {
 	}
 	
 	@Test
-	@DisplayName("Mail queue/exchange/binding ve DLQ topolojisi doğru kuruluyor")
+	@DisplayName("Mail queue/exchange/binding ve DLQ topolojisi doÄŸru kuruluyor")
 	void topology_ok() {
 		MailQueueConfig cfg = new MailQueueConfig();
 		
@@ -54,7 +54,7 @@ class MailQueueConfigTest {
 		Map<String,Object> args = q.getArguments();
 		assertThat(args).containsEntry("x-dead-letter-exchange", "mail.dlx");
 		assertThat(args).containsEntry("x-dead-letter-routing-key", "mail.queue.dlq");
-		// TTL tip güvenli kontrol
+		// TTL tip gÃ¼venli kontrol
 		assertThat(args).containsKey("x-message-ttl");
 		assertThat(((Number) args.get("x-message-ttl")).longValue()).isEqualTo(120_000L);
 		
@@ -84,32 +84,53 @@ class MailQueueConfigTest {
 		assertThat(dlqBind.getDestinationType()).isEqualTo(Binding.DestinationType.QUEUE);
 	}
 	
-	@Test
-	@DisplayName("Delayed exchange ve binding doğru (x-delayed-message + x-delayed-type=direct)")
-	void delayed_exchange_ok() {
-		MailQueueConfig cfg = new MailQueueConfig();
-		
-		set(cfg, "mailQueueName", "mail.queue");
-		set(cfg, "mailExchangeName", "mail.exchange");
-		set(cfg, "mailRoutingKey", "mail.send");
-		set(cfg, "mailDelayedExchangeName", "mail.delayed");
-		
-		Queue q = cfg.mailQueue(); // name önemli değil; args burada kontrol etmiyoruz
-		CustomExchange delayed = cfg.mailDelayedExchange();
-		
-		assertThat(delayed.getName()).isEqualTo("mail.delayed");
-		assertThat(delayed.getType()).isEqualTo("x-delayed-message");
-		assertThat(delayed.isDurable()).isTrue();
-		assertThat(delayed.isAutoDelete()).isFalse();
-		assertThat(delayed.getArguments()).containsEntry("x-delayed-type", "direct");
-		
-		Binding delayedBinding = cfg.mailDelayedBinding(q, delayed);
-		assertThat(delayedBinding.getExchange()).isEqualTo("mail.delayed");
-		assertThat(delayedBinding.getRoutingKey()).isEqualTo("mail.send");
-		assertThat(delayedBinding.getDestination()).isEqualTo("mail.queue");
-		assertThat(delayedBinding.getDestinationType()).isEqualTo(Binding.DestinationType.QUEUE);
-	}
-	
+    @Test
+    void boundedQuorumRetryQueuesRetainExpiredMessagesUntilTargetConfirms() {
+        MailQueueConfig cfg = new MailQueueConfig();
+        set(cfg, "mailQueueName", "mail.queue");
+        set(cfg, "mailExchangeName", "mail.exchange");
+        set(cfg, "mailRoutingKey", "mail.send");
+        var queues = cfg.mailRetryQueues().getDeclarablesByType(Queue.class);
+        assertThat(queues).hasSize(11);
+        assertThat(queues).allSatisfy(queue -> {
+            assertThat(queue.isDurable()).isTrue();
+            assertThat(queue.getArguments()).containsEntry("x-queue-type", "quorum")
+                    .containsEntry("x-dead-letter-strategy", "at-least-once")
+                    .containsEntry("x-overflow", "reject-publish")
+                    .containsEntry("x-dead-letter-exchange", "mail.exchange")
+                    .containsEntry("x-dead-letter-routing-key", "mail.send")
+                    .containsEntry("x-max-length", 1000)
+                    .containsEntry("x-max-length-bytes", 4194304L);
+        });
+        assertThat(queues.stream().map(Queue::getName)).doesNotHaveDuplicates();
+        assertThat(MailRetryTopology.bucketDelayMs(3_000)).isEqualTo(3_000);
+        assertThat(MailRetryTopology.bucketDelayMs(10_001)).isEqualTo(30_000);
+        assertThat(MailRetryTopology.bucketDelayMs(7_200_001)).isEqualTo(21_600_000);
+        assertThat(MailRetryTopology.bucketDelayMs(86_400_000)).isEqualTo(86_400_000);
+        for (long invalid : new long[] {-1, 0, 86_400_001}) {
+            assertThatThrownBy(() -> MailRetryTopology.bucketDelayMs(invalid)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void freshQuorumMainAndDlqKeepApplicationRetryLimitAndSafeTerminalTransfer() {
+        MailQueueConfig cfg = new MailQueueConfig();
+        set(cfg, "mailQueueName", "mail.staging.v2.queue");
+        set(cfg, "mailQueueType", "quorum");
+        set(cfg, "mailDlxExchangeName", "mail.staging.v2.dlx");
+        set(cfg, "mailDlqName", "mail.staging.v2.dlq");
+        set(cfg, "mailMessageTtlMs", 120_000L);
+        cfg.validateQueueType();
+        assertThat(cfg.mailQueue().getArguments()).containsEntry("x-queue-type", "quorum")
+                .containsEntry("x-dead-letter-strategy", "at-least-once")
+                .containsEntry("x-overflow", "reject-publish")
+                .containsEntry("x-delivery-limit", -1).containsEntry("x-message-ttl", 120_000L);
+        assertThat(cfg.mailDlqQueue().getArguments()).containsEntry("x-queue-type", "quorum")
+                .containsEntry("x-overflow", "reject-publish").doesNotContainKey("x-message-ttl");
+        set(cfg, "mailQueueType", "other");
+        assertThatThrownBy(cfg::validateQueueType).isInstanceOf(IllegalStateException.class);
+    }
+
 	@Test
 	@DisplayName("Listener factory: MANUAL ack, prefetch & concurrency 'min-max' parse ediliyor (reflection ile)")
 	void listener_factory_ok() {
@@ -118,12 +139,12 @@ class MailQueueConfigTest {
 		set(cfg, "listenerPrefetch", 10);
 		set(cfg, "listenerConcurrency", "2-7");
 		
-		CachingConnectionFactory ccf = new CachingConnectionFactory("localhost"); // sadece konfig için
+		CachingConnectionFactory ccf = new CachingConnectionFactory("localhost"); // sadece konfig iÃ§in
 		Jackson2JsonMessageConverter conv = new Jackson2JsonMessageConverter();
 		
 		SimpleRabbitListenerContainerFactory f = cfg.rabbitListenerContainerFactory(ccf, conv);
 		
-		// Alanlar üst sınıfta olabilir; deepGet ile oku
+		// Alanlar Ã¼st sÄ±nÄ±fta olabilir; deepGet ile oku
 		Object ack = deepGet(f, "acknowledgeMode");          // AcknowledgeMode
 		Object prefetch = deepGet(f, "prefetchCount");       // Integer
 		Object conc = deepGet(f, "concurrentConsumers");     // Integer
@@ -140,7 +161,7 @@ class MailQueueConfigTest {
 	}
 	
 	
-	// Yardımcı: herhangi bir no-arg method bul (MethodRabbitListenerEndpoint istiyor)
+	// YardÄ±mcÄ±: herhangi bir no-arg method bul (MethodRabbitListenerEndpoint istiyor)
 	private static java.lang.reflect.Method findAnyNoArgMethod(Class<?> clazz) {
 		try {
 			return Object.class.getDeclaredMethod("toString");
@@ -148,7 +169,7 @@ class MailQueueConfigTest {
 			throw new RuntimeException(e);
 		}
 	}
-	// --- yardımcılar (sınıfın en üstüne ekle) ---
+	// --- yardÄ±mcÄ±lar (sÄ±nÄ±fÄ±n en Ã¼stÃ¼ne ekle) ---
 	private static Object deepGet(Object target, String field) {
 		Class<?> c = target.getClass();
 		while (c != null) {

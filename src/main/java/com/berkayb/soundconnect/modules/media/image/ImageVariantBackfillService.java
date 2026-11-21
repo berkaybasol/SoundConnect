@@ -19,6 +19,7 @@ public class ImageVariantBackfillService {
 	private final ImageVariantBackfillFinalizer finalizer;
 
 	public boolean backfillOne(UUID assetId) throws IOException, InterruptedException {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		// Spring Data closes this read transaction before any storage/process I/O.
 		MediaAsset snapshot = mediaAssetRepository.findById(assetId).orElse(null);
 		if (!ImageVariantBackfillFinalizer.isEligible(snapshot)) {

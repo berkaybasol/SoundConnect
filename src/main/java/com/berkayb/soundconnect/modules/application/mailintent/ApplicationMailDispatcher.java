@@ -23,6 +23,7 @@ public class ApplicationMailDispatcher {
     }
     @Scheduled(fixedDelayString="${app.application-mail.poll-delay-ms:1000}", initialDelayString="${app.application-mail.initial-delay-ms:15000}")
     public void poll() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         if (!scheduled.compareAndSet(false,true)) return;
         try {
             executor.execute(() -> {
@@ -33,6 +34,7 @@ public class ApplicationMailDispatcher {
         } catch (RuntimeException rejected) { scheduled.set(false); warnUnavailable(rejected); }
     }
     public void dispatchBatch() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         for (int i=0; i<properties.getBatchSize(); i++) {
             var next = store.claim();
             if (next.isEmpty()) return;

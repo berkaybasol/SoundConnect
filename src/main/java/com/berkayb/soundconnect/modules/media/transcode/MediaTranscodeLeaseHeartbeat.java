@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.transcode.config.MediaTranscodeLeaseProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -19,6 +21,8 @@ public class MediaTranscodeLeaseHeartbeat {
 	private final MediaAssetStatusUpdater statusUpdater;
 	private final MediaTranscodeLeaseProperties properties;
 	private final TaskScheduler scheduler;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	public MediaTranscodeLeaseHeartbeat(
 			MediaAssetStatusUpdater statusUpdater,
@@ -79,12 +83,15 @@ public class MediaTranscodeLeaseHeartbeat {
 			try {
 				if (!statusUpdater.renewTranscodeLease(assetId, attemptToken)) {
 					owned.set(false);
+					telemetry.lease(MediaWorkerMetrics.LeaseOutcome.LOST);
 					throw new TranscodeLeaseLostException();
 				}
+				telemetry.lease(MediaWorkerMetrics.LeaseOutcome.RENEWED);
 			} catch (TranscodeLeaseLostException lost) {
 				throw lost;
 			} catch (RuntimeException renewalFailure) {
 				owned.set(false);
+				telemetry.lease(MediaWorkerMetrics.LeaseOutcome.LOST);
 				throw new TranscodeLeaseLostException(renewalFailure);
 			}
 		}

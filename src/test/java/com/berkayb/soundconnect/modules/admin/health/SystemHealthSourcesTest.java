@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthContributorRegistry;
+import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -23,6 +24,13 @@ import static org.mockito.Mockito.*;
 
 class SystemHealthSourcesTest {
     @TempDir Path directory;
+
+    @Test void postgresSourcesDefaultDisabledIndependentlyOfExistingDatabaseHealth() {
+        var fixture = fixture(new SystemHealthProperties());
+        assertThat(read(fixture.sources, PostgresHealthMetrics.SESSIONS).status()).isEqualTo(Status.DISABLED);
+        assertThat(read(fixture.sources, PostgresHealthMetrics.STATEMENTS).status()).isEqualTo(Status.DISABLED);
+        assertThat(read(fixture.sources, "database").reasonCode()).isEqualTo(ReasonCode.NOT_CONFIGURED);
+    }
 
     @Test void whitelistDropsExceptionsAndAllPrivateDynamicDetails() {
         Instant now = Instant.now();
@@ -59,6 +67,22 @@ class SystemHealthSourcesTest {
         assertThat(freshDeletion.metrics()).containsEntry("pending", 1d).containsEntry("oldestPendingAgeSeconds", 0d);
     }
 
+    @Test void pendingTimestampBecomesOnlyNumericAgeAndMissingFutureOrWrongTypeRemainsUnmeasured() {
+        var now=Instant.parse("2026-10-12T00:00:00Z");
+        assertThat(SystemHealthSources.sanitize(Health.up().withDetail("pending",1L)
+                .withDetail("oldestPendingAt",now.minusSeconds(3600)).build(),now).metrics())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("pending",1d,"oldestPendingAgeSeconds",3600d));
+        assertThat(SystemHealthSources.sanitize(Health.up().withDetail("oldestPendingAt",now).build(),now).metrics())
+                .containsEntry("oldestPendingAgeSeconds",0d);
+        for (Object invalid:java.util.List.of(now.plusSeconds(1),"none",Double.NaN,Double.POSITIVE_INFINITY,-1d)) {
+            assertThat(SystemHealthSources.sanitize(Health.up().withDetail("pending",1L)
+                    .withDetail("oldestPendingAt",invalid).build(),now).metrics())
+                    .containsExactlyEntriesOf(Map.of("pending",1d));
+        }
+        assertThat(SystemHealthSources.sanitize(Health.up().withDetail("pending",0L).build(),now).metrics())
+                .containsExactlyEntriesOf(Map.of("pending",0d));
+    }
+
     @Test void workerRequiresExistingValidFreshReadOnlyMarkerAndKeepsItsOwnMeasurementTime() throws Exception {
         var properties = new SystemHealthProperties();
         var fixture = fixture(properties);
@@ -90,16 +114,60 @@ class SystemHealthSourcesTest {
         verify(fixture.operations).summary(); verifyNoMoreInteractions(fixture.operations);
     }
 
-    private record Fixture(SystemHealthSources sources, JdbcTemplate jdbc, NotificationDlqOperations operations) { }
+    @Test void redisInfoAddsOnlyOptionalMeasurementsWhilePreservingContributorHealth() {
+        var fixture = fixture(new SystemHealthProperties());
+        when(fixture.registry.getContributor("redis")).thenReturn((HealthIndicator) () -> Health.up().build());
+        var telemetry = mock(RedisHealthMetrics.class); fixture.sources.setRedisMetrics(telemetry);
+        when(telemetry.read(anyLong())).thenReturn(Map.of("redisUsedMemoryBytes", 1024d, "redisInfoLatencyMillis", 2d));
+
+        var result = read(fixture.sources, "redis");
+
+        assertThat(result.status()).isEqualTo(Status.UP);
+        assertThat(result.reasonCode()).isEqualTo(ReasonCode.HEALTHY); assertThat(result.measuredAt()).isNotNull();
+        assertThat(result.metrics()).containsExactlyInAnyOrderEntriesOf(Map.of("redisUsedMemoryBytes", 1024d, "redisInfoLatencyMillis", 2d));
+        verify(telemetry).read(longThat(remaining -> remaining > 0 && remaining <= 1_975_000_000L));
+    }
+
+    @Test void redisInfoUnavailableOrAdapterFailureCannotReplaceExistingHealthWithUnknown() {
+        var fixture = fixture(new SystemHealthProperties());
+        when(fixture.registry.getContributor("redis")).thenReturn((HealthIndicator) () -> Health.up().build());
+        var telemetry = mock(RedisHealthMetrics.class); fixture.sources.setRedisMetrics(telemetry);
+        when(telemetry.read(anyLong())).thenReturn(Map.of()).thenThrow(new IllegalStateException("private-connection-88"));
+        for (int i = 0; i < 2; i++) {
+            var result = read(fixture.sources, "redis");
+            assertThat(result.status()).isEqualTo(Status.UP); assertThat(result.metrics()).isEmpty();
+            assertThat(result.toString()).doesNotContain("private-connection-88");
+        }
+    }
+
+    @Test void redisUnknownOrDownDoesNotTriggerAnotherRedisObservation() {
+        var fixture = fixture(new SystemHealthProperties());
+        var telemetry = mock(RedisHealthMetrics.class); fixture.sources.setRedisMetrics(telemetry);
+        assertThat(read(fixture.sources, "redis").status()).isEqualTo(Status.UNKNOWN);
+        when(fixture.registry.getContributor("redis")).thenReturn((HealthIndicator) () -> Health.down().build());
+        assertThat(read(fixture.sources, "redis").status()).isEqualTo(Status.DOWN);
+        verifyNoInteractions(telemetry);
+    }
+
+    @Test void redisContributorStillWorksWithoutOptionalTelemetryBean() {
+        var fixture = fixture(new SystemHealthProperties());
+        when(fixture.registry.getContributor("redis")).thenReturn((HealthIndicator) () -> Health.up().build());
+        var result = read(fixture.sources, "redis");
+        assertThat(result.status()).isEqualTo(Status.UP); assertThat(result.metrics()).isEmpty();
+    }
+
+    private record Fixture(SystemHealthSources sources, JdbcTemplate jdbc, NotificationDlqOperations operations,
+                           HealthContributorRegistry registry) { }
     @SuppressWarnings("unchecked")
     private Fixture fixture(SystemHealthProperties properties) {
         var dataSource = new DriverManagerDataSource("jdbc:h2:mem:health-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1;INIT=SET TIME ZONE 'UTC'", "sa", "");
         ObjectProvider<NotificationDlqOperations> provider = mock(ObjectProvider.class);
         var operations = mock(NotificationDlqOperations.class); when(provider.getIfAvailable()).thenReturn(operations);
         var queues = mock(RabbitQueueHealthSources.class); when(queues.probes()).thenReturn(java.util.List.of());
-        var sources = new SystemHealthSources(mock(HealthContributorRegistry.class), provider, dataSource,
+        var registry = mock(HealthContributorRegistry.class);
+        var sources = new SystemHealthSources(registry, provider, dataSource,
                 new DataSourceTransactionManager(dataSource), new SimpleMeterRegistry(), properties, queues, mock(ObjectProvider.class));
-        return new Fixture(sources, new JdbcTemplate(dataSource), operations);
+        return new Fixture(sources, new JdbcTemplate(dataSource), operations, registry);
     }
     private static SystemHealthProbe.Reading read(SystemHealthSources sources, String id) {
         return sources.probes().stream().filter(probe -> probe.id().equals(id)).findFirst().orElseThrow().read().get();

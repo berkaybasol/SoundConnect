@@ -21,8 +21,9 @@ public class AfterCommitDeliveryExecutor {
         executor.initialize();
     }
     public void submit(Runnable work) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         try { executor.execute(() -> {
-            try { work.run(); }
+            try { com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational(); work.run(); }
             catch(RuntimeException failed) { log.warn("Committed notification projection skipped. exceptionType={}", failed.getClass().getSimpleName()); }
         }); }
         catch(TaskRejectedException full) { log.warn("Committed notification projection queue full or stopping; inbox remains authoritative"); }

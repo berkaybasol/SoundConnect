@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +21,8 @@ public class MediaHlsWorkExecutor {
 	private final VideoHlsWorkflow workflow;
 	private final TaskExecutor executor;
 	private final Semaphore admission;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	public MediaHlsWorkExecutor(
 			VideoHlsWorkflow workflow,
@@ -35,7 +39,10 @@ public class MediaHlsWorkExecutor {
 	}
 
 	public boolean tryReserve() {
-		return admission.tryAcquire();
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
+		boolean reserved = admission.tryAcquire();
+		telemetry.admission(MediaWorkerMetrics.Job.HLS, reserved ? MediaWorkerMetrics.Admission.ACCEPTED : MediaWorkerMetrics.Admission.SATURATED);
+		return reserved;
 	}
 
 	public void releaseReservation() {
@@ -47,6 +54,7 @@ public class MediaHlsWorkExecutor {
 	 * the exact claim into durable retry cleanup before acknowledging Rabbit.
 	 */
 	public boolean submitReserved(VideoHlsWorkflow.ClaimedVideoHlsWork work) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		try {
 			executor.execute(() -> {
 				try {
@@ -62,10 +70,12 @@ public class MediaHlsWorkExecutor {
 			return true;
 		} catch (TaskRejectedException rejected) {
 			admission.release();
+			telemetry.admission(MediaWorkerMetrics.Job.HLS, MediaWorkerMetrics.Admission.REJECTED);
 			log.warn("[media-transcode] reserved HLS worker rejected handoff; caller must return claim");
 			return false;
 		} catch (RuntimeException submissionFailure) {
 			admission.release();
+			telemetry.admission(MediaWorkerMetrics.Job.HLS, MediaWorkerMetrics.Admission.REJECTED);
 			throw submissionFailure;
 		}
 	}

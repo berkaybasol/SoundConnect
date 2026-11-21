@@ -14,7 +14,7 @@ spring:
   config:
     # Lets IntelliJ/Gradle load ignored local secrets without storing them in a run configuration.
     # The file is absent from container images; Compose injects the same values as environment variables.
-    import: optional:file:.env.local[.properties]
+    import: ${SOUNDCONNECT_CONFIG_IMPORT:optional:file:.env.local[.properties]}
   profiles:
     default: local
   lifecycle:
@@ -104,6 +104,10 @@ springdoc:
     path: /swagger-ui.html
 
 management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
   endpoints:
     web:
       exposure:
@@ -121,8 +125,25 @@ management:
           degraded: 200
 
 app:
+  observability:
+    http-telemetry:
+      enabled: ${SOUNDCONNECT_HTTP_TELEMETRY_ENABLED:false}
+      sample-probability: ${SOUNDCONNECT_HTTP_TELEMETRY_SAMPLE_PROBABILITY:0.1}
+      collector-endpoint: ${SOUNDCONNECT_HTTP_TELEMETRY_COLLECTOR_ENDPOINT:http://127.0.0.1:4318}
+    dependency-telemetry:
+      enabled: ${SOUNDCONNECT_DEPENDENCY_TELEMETRY_ENABLED:false}
+  telemetry:
+    metrics:
+      enabled: ${SOUNDCONNECT_TELEMETRY_METRICS_ENABLED:false}
+      endpoint: ${SOUNDCONNECT_TELEMETRY_METRICS_ENDPOINT:}
+      service-name: ${SOUNDCONNECT_TELEMETRY_SERVICE_NAME:}
+      environment: ${SOUNDCONNECT_TELEMETRY_ENVIRONMENT:}
+      step: ${SOUNDCONNECT_TELEMETRY_METRICS_STEP:30s}
+      max-series: ${SOUNDCONNECT_TELEMETRY_METRICS_MAX_SERIES:1024}
   system-health:
     media-worker-health-file: ${APP_SYSTEM_HEALTH_MEDIA_WORKER_HEALTH_FILE:}
+    postgres-sessions-enabled: ${SOUNDCONNECT_POSTGRES_SESSIONS_TELEMETRY_ENABLED:false}
+    postgres-statements-enabled: ${SOUNDCONNECT_POSTGRES_STATEMENTS_TELEMETRY_ENABLED:false}
   diagnostics:
     mobile:
       environment: ${SOUNDCONNECT_ENVIRONMENT:local}
@@ -381,6 +402,7 @@ mail:
   exchange: ${SOUNDCONNECT_MAIL_EXCHANGE:mail.exchange}
   routingKey: ${SOUNDCONNECT_MAIL_ROUTING_KEY:mail.send}
   queueName: ${SOUNDCONNECT_MAIL_QUEUE:mail.queue}
+  queueType: ${SOUNDCONNECT_MAIL_QUEUE_TYPE:classic}
   dlx: ${SOUNDCONNECT_MAIL_DLX:mail.dlx}
   dlq: ${SOUNDCONNECT_MAIL_DLQ:mail.queue.dlq}
   ttlMs: ${SOUNDCONNECT_MAIL_TTL_MS:120000}
@@ -392,8 +414,6 @@ mail:
   producer:
     confirmTimeoutSec: ${SOUNDCONNECT_MAIL_CONFIRM_TIMEOUT_SECONDS:5}
   maxRedeliveries: ${SOUNDCONNECT_MAIL_MAX_REDELIVERIES:5}
-  delayed:
-    exchange: ${SOUNDCONNECT_MAIL_DELAYED_EXCHANGE:mail.delayed}
   retry:
     delaysMs: ${SOUNDCONNECT_MAIL_RETRY_DELAYS_MS:3000,10000,30000}
     useRetryAfter: ${SOUNDCONNECT_MAIL_USE_RETRY_AFTER:true}

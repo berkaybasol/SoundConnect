@@ -9,9 +9,7 @@ import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.amqp.core.CustomExchange;
-
-import java.util.Map;
+import jakarta.annotation.PostConstruct;
 
 // ------------------- DİKKAT: TERİMLERDE TAKILIRSAN 'DOCS/RABBITMQ.MD' DOSYASINA GİT! -------------------
 
@@ -51,8 +49,17 @@ public class MailQueueConfig {
 	@Value("${mail.dlx:" + MAIL_DLQ_EXCHANGE_DEFAULT + "}")
 	private String mailDlxExchangeName;
 
-	@Value("${mail.delayed.exchange:mail.delayed}")
-	private String mailDelayedExchangeName;
+	// Existing classic queues cannot change type in place. New staging names opt in.
+	@Value("${mail.queueType:classic}")
+	private String mailQueueType = "classic";
+
+	@PostConstruct
+	void validateQueueType() {
+		if (!"classic".equals(mailQueueType) && !"quorum".equals(mailQueueType)) {
+			throw new IllegalStateException("mail.queueType must be classic or quorum");
+		}
+		MailRetryTopology.validateMainQueue(mailQueueName);
+	}
 	
 	@Value("${mail.ttlMs:120000}")
 	private long mailMessageTtlMs;
@@ -82,11 +89,21 @@ public class MailQueueConfig {
 	// Main mail queue'u olusturur (DLX + TTL bagli)
 	@Bean
 	public Queue mailQueue() {
-		return QueueBuilder.durable(mailQueueName) // kuyrugu restart'tan etkilenmeyecek sekilde olustur.
+		QueueBuilder builder = QueueBuilder.durable(mailQueueName)
 				.withArgument("x-dead-letter-exchange", mailDlxExchangeName) // hatali mesaji DLQ exchange'e yonlendir.
 				.withArgument("x-dead-letter-routing-key", mailDlqName) // DLQ exchange'de hangi queue'ya dusmesini belirleyen routingKey
-				.withArgument("x-message-ttl", mailMessageTtlMs) // time to live
-				.build();
+				.withArgument("x-message-ttl", mailMessageTtlMs);
+		if ("quorum".equals(mailQueueType)) {
+			builder.withArgument("x-queue-type", "quorum")
+					.withArgument("x-dead-letter-strategy", "at-least-once")
+					.withArgument("x-overflow", "reject-publish")
+					// Application sc-retry-attempt is authoritative; a busy-lock requeue
+					// must not silently consume Rabbit 4.x's default delivery limit.
+					.withArgument("x-delivery-limit", -1)
+					.withArgument("x-max-length", 10_000)
+					.withArgument("x-max-length-bytes", 16_777_216L);
+		}
+		return builder.build();
 	}
 	
 	// Main mail exhange( Direct - Routing key ile tam eslesme)
@@ -112,6 +129,13 @@ public class MailQueueConfig {
 	// DLQ queue (dead-letter hedefi)
 	@Bean
 	public Queue mailDlqQueue() {
+		if ("quorum".equals(mailQueueType)) {
+			return QueueBuilder.durable(mailDlqName).withArgument("x-queue-type", "quorum")
+					.withArgument("x-overflow", "reject-publish")
+					.withArgument("x-delivery-limit", -1)
+					.withArgument("x-max-length", 10_000)
+					.withArgument("x-max-length-bytes", 16_777_216L).build();
+		}
 		return new Queue(mailDlqName, true); // Durable: restart sonrası kaybolmaz
 	}
 	
@@ -165,25 +189,10 @@ public class MailQueueConfig {
 	}
 	
 	@Bean
-	public CustomExchange mailDelayedExchange() {
-		// x-delayed-message, internal type: direct
-		return new CustomExchange(
-				mailDelayedExchangeName,
-				"x-delayed-message",
-				true,
-				false,
-				Map.of("x-delayed-type", "direct")
-		);
-	}
-	
-	// Delayed exchange -> main mail queue (ayni routing key)
-	@Bean
-	public Binding mailDelayedBinding(Queue mailQueue, CustomExchange mailDelayedExchange) {
-		return BindingBuilder
-				.bind(mailQueue)
-				.to(mailDelayedExchange)
-				.with(mailRoutingKey)   // aynı routing key
-				.noargs();
+	public Declarables mailRetryQueues() {
+		return new Declarables(MailRetryTopology.delays().stream()
+				.map(delay -> MailRetryTopology.queue(mailQueueName, delay, mailExchangeName, mailRoutingKey))
+				.toList());
 	}
 	
 	/**

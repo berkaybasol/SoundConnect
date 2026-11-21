@@ -16,6 +16,9 @@ import java.util.*;
 @Slf4j
 @ConditionalOnProperty(name = "app.notification.campaigns.enabled", havingValue = "true")
 public class CampaignScheduler implements ApplicationRunner {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics executionMetrics = com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.noop();
+
     private final CampaignStore store;
     private final CampaignWorker worker;
     private UUID after;
@@ -32,6 +35,10 @@ public class CampaignScheduler implements ApplicationRunner {
             fixedDelayString = "${app.notification.campaigns.poll-delay-ms:1000}",
             initialDelayString = "${app.notification.campaigns.initial-delay-ms:30000}")
     public synchronized void tick() {
+        executionMetrics.observe(com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.Schedule.campaigns, this::tickObserved);
+    }
+
+    private void tickObserved() {
         var args = new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
                 .addValue("after", after)
                 .addValue("now", Timestamp.from(Instant.now()));

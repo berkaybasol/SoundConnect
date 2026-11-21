@@ -30,6 +30,7 @@ public class MediaDeletionDispatcher {
 
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void onRequested(MediaDeletionRequestedEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (event != null && event.assetId() != null && !submit(event.assetId())) {
 			log.warn("[media-delete] queue saturated; durable retry retained assetId={}", event.assetId());
 		}
@@ -37,6 +38,7 @@ public class MediaDeletionDispatcher {
 
 	/** True means queued/already running; false leaves durable recovery responsible. */
 	public boolean submit(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) return false;
 		if (!inFlight.add(assetId)) return true;
 		try {
@@ -49,6 +51,7 @@ public class MediaDeletionDispatcher {
 	}
 
 	private void process(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		try {
 			worker.delete(assetId);
 		} catch (RuntimeException failure) {

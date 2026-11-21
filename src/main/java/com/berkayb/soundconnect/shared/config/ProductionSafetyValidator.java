@@ -80,8 +80,11 @@ public class ProductionSafetyValidator {
 		List<String> violations = new ArrayList<>();
 		for (RequiredSetting setting : REQUIRED_SETTINGS) {
 			String actual = environment.getProperty(setting.key());
-			if (actual == null || !setting.requiredValue().equalsIgnoreCase(actual.trim())) {
-				violations.add(setting.key() + " must be " + setting.requiredValue());
+			String required = setting.requiredValue();
+			if (com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.isHeld()
+					&& setting.key().equals("app.websocket.broker-relay.enabled")) required = "false";
+			if (actual == null || !required.equalsIgnoreCase(actual.trim())) {
+				violations.add(setting.key() + " must be " + required);
 			}
 		}
 

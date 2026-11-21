@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.shared.mail.adapter;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
+import com.berkayb.soundconnect.shared.telemetry.tracing.SafeDependencyTelemetry;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +30,10 @@ public class MailSenderClientImpl implements MailSenderClient {
 	
 	private final MailJobHelper helper;
 	private final WebClient mailerSendWebClient;
+	private SafeDependencyTelemetry telemetry = SafeDependencyTelemetry.NOOP;
+
+	@Autowired(required = false)
+	public void setDependencyTelemetry(SafeDependencyTelemetry telemetry) { this.telemetry = telemetry; }
 	
 	public MailSenderClientImpl(
 			MailJobHelper helper,
@@ -48,6 +54,7 @@ public class MailSenderClientImpl implements MailSenderClient {
 	
 	@Override
 	public void send(String to, String subject, String textBody, String htmlBody) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (to == null || to.isBlank()) {
 			throw new IllegalArgumentException("mail 'to' is required");
 		}
@@ -65,7 +72,7 @@ public class MailSenderClientImpl implements MailSenderClient {
 		if (textBody != null && !textBody.isBlank()) body.put("text", textBody);
 		if (htmlBody != null && !htmlBody.isBlank()) body.put("html", htmlBody);
 		
-		try {
+		try (var call = telemetry.start(SafeDependencyTelemetry.Operation.MAIL_SEND)) {
 			mailerSendWebClient.post()
 			                   .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
 			                   .bodyValue(body)
@@ -75,6 +82,7 @@ public class MailSenderClientImpl implements MailSenderClient {
 			                   .onStatus(status -> status.value() != HttpStatus.ACCEPTED.value(), ClientResponse::createException)
 			                   .toBodilessEntity()
 			                   .block(Duration.ofSeconds(readTimeoutSec + 2L));
+			call.succeeded();
 			
 			log.debug("Mail sent via MailerSend -> to={}", helper.maskEmail(to));
 			

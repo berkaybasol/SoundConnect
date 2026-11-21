@@ -1,6 +1,8 @@
 package com.berkayb.soundconnectworker;
 
 import com.berkayb.soundconnect.auth.service.AuthService;
+import com.berkayb.soundconnect.modules.admin.health.SystemHealthService;
+import com.berkayb.soundconnect.modules.admin.health.SystemHealthSources;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.image.FfmpegImageThumbnailProcessor;
 import com.berkayb.soundconnect.modules.media.image.ImageVariantBackfillScheduler;
@@ -51,6 +53,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 				"SOUNDCONNECT_MEDIA_WORKER_AWS_REGION=eu-central-1",
 				"SOUNDCONNECT_MEDIA_WORKER_CDN_BASE_URL=https://cdn.test.invalid",
 				"soundconnect.media-worker.health-file-enabled=false",
+				"app.system-health.postgres-sessions-enabled=true",
+				"app.system-health.postgres-statements-enabled=false",
 				"media.image-variants.backfill.initial-delay=PT1H"
 		}
 )
@@ -68,6 +72,9 @@ class MediaWorkerContextBoundaryTest {
 		assertThat(context.getBeansOfType(MediaWorkerAssetRepository.class)).hasSize(1);
 		assertThat(context.getBeansOfType(MediaAssetRepository.class)).hasSize(1);
 		assertThat(context.getBeansOfType(MediaWorkerDependencyHealthIndicator.class)).hasSize(1);
+		assertThat(context.getBeansOfType(SystemHealthService.class)).hasSize(1);
+		assertThat(context.getBean(SystemHealthService.class).snapshot().components())
+				.extracting(component -> component.id()).containsExactly("databaseSessions");
 
 		Set<Class<?>> managedEntities = entityManagerFactory.getMetamodel().getEntities().stream()
 				.map(type -> type.getJavaType())
@@ -86,5 +93,6 @@ class MediaWorkerContextBoundaryTest {
 		assertThat(context.getBeansOfType(RedisConnectionFactory.class)).isEmpty();
 		assertThat(context.getBeansOfType(RabbitTemplate.class)).isEmpty();
 		assertThat(context.getBeansOfType(MediaAssetReferenceRepository.class)).isEmpty();
+		assertThat(context.getBeansOfType(SystemHealthSources.class)).isEmpty();
 	}
 }

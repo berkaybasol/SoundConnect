@@ -22,6 +22,7 @@ public class VenueSuggestionMailDelivery {
     private final MailRetryPublisher retryPublisher;
 
     public void consume(MailSendRequest untrustedQueueMessage, long tag, Map<String, Object> headers, Channel channel) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         final UUID id;
         try {
             var raw = untrustedQueueMessage.params() == null ? null

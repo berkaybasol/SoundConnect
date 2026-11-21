@@ -9,6 +9,9 @@ import java.util.UUID;
 @Component
 @Slf4j
 public class CollabNotificationOutboxScheduler {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics executionMetrics = com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.noop();
+
     private final CollabNotificationOutboxService outboxService;
     private final CollabNotificationOutboxDispatcher dispatcher;
     private final CollabNotificationDispatchCoordinator dispatchCoordinator;
@@ -31,6 +34,10 @@ public class CollabNotificationOutboxScheduler {
             initialDelayString = "${app.notification.collab-outbox.initial-delay-ms:5000}"
     )
     public void dispatchDue() {
+        executionMetrics.observe(com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.Schedule.collab_outbox, this::dispatchDueObserved);
+    }
+
+    private void dispatchDueObserved() {
         int batchSize = properties.getBatchSize();
         int candidateLimit = candidateLimit(batchSize, dispatchCoordinator.scheduledCount());
         int newlyScheduled = 0;

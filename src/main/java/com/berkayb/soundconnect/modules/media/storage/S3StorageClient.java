@@ -2,6 +2,8 @@ package com.berkayb.soundconnect.modules.media.storage;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import com.berkayb.soundconnect.shared.telemetry.tracing.SafeDependencyTelemetry;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import static com.berkayb.soundconnect.shared.telemetry.tracing.SafeDependencyTelemetry.Operation.*;
+
 /**
  * StorageClient'in S3 uyarlamasi.
  * Presigned PUT ile istemci dosyayi dogrudan S3'e yukler
@@ -52,9 +56,14 @@ import java.util.regex.Pattern;
 @Component
 @Slf4j
 public class S3StorageClient implements StorageClient{
+    private SafeDependencyTelemetry telemetry = SafeDependencyTelemetry.NOOP;
+
+    @Autowired(required = false)
+    public void setDependencyTelemetry(SafeDependencyTelemetry telemetry) { this.telemetry = telemetry; }
 
     @Override
     public ReadAccess probeReadAccess(Duration timeout) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         if (s3 == null || timeout == null || timeout.toMillis() < 100 || timeout.toMillis() > 5000) {
             return ReadAccess.UNVERIFIED;
         }
@@ -63,7 +72,8 @@ public class S3StorageClient implements StorageClient{
                 .apiCallTimeout(perBucket).apiCallAttemptTimeout(perBucket).build();
         try {
             for (String target : List.of(bucket, privateBucket)) {
-                s3.headBucket(HeadBucketRequest.builder().bucket(target).overrideConfiguration(limits).build());
+                telemetry.observe(S3_HEAD_BUCKET, () -> s3.headBucket(
+                        HeadBucketRequest.builder().bucket(target).overrideConfiguration(limits).build()));
             }
             return ReadAccess.AVAILABLE;
         } catch (S3Exception exception) {
@@ -127,6 +137,10 @@ public class S3StorageClient implements StorageClient{
 
 	@Value("${media.paths.root:media}")
 	private String mediaRoot = "media";
+
+	// Enable together with the separately reviewed bucket/IAM versioning package.
+	@Value("${cloud.storage.version-purge.enabled:false}")
+	private boolean versionPurgeEnabled;
 
 	@Value("${cloud.storage.cache.publicMaxAgeSeconds:300}")
 	private int publicCacheMaxAgeSeconds = 300;
@@ -274,6 +288,7 @@ public class S3StorageClient implements StorageClient{
 	// PRESIGNED PUT: istemcinin dogrudan S3'e yuklemesi icin imzali URL
 	@Override
 	public String createPresignedPutUrl(String objectKey, String mimeType, long sizeBytes) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (sizeBytes <= 0) {
 			throw new IllegalArgumentException("sizeBytes must be greater than zero");
 		}
@@ -308,6 +323,7 @@ public class S3StorageClient implements StorageClient{
 
 	@Override
 	public StorageAccessUrl createPresignedGetUrl(String objectKey) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(objectKey);
 		if (!location.protectedObject()) {
 			throw new IllegalArgumentException("Presigned GET is reserved for protected media objects");
@@ -327,12 +343,13 @@ public class S3StorageClient implements StorageClient{
 
 	@Override
 	public Optional<StorageObjectMetadata> getObjectMetadata(String objectKey) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(objectKey);
 		try {
-			HeadObjectResponse response = s3.headObject(HeadObjectRequest.builder()
+			HeadObjectResponse response = telemetry.observe(S3_HEAD_OBJECT, () -> s3.headObject(HeadObjectRequest.builder()
 					.bucket(location.bucket())
 					.key(location.key())
-					.build());
+					.build()));
 			return Optional.of(new StorageObjectMetadata(
 					response.contentLength(), response.contentType(), response.eTag()));
 		} catch (S3Exception exception) {
@@ -349,6 +366,7 @@ public class S3StorageClient implements StorageClient{
 			String immutableObjectKey,
 			String expectedETag
 	) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (!StorageObjectKeys.isImmutableSnapshotForUpload(uploadObjectKey, immutableObjectKey)
 				|| !StringUtils.hasText(expectedETag)) {
 			throw new IllegalArgumentException("Invalid immutable upload snapshot request");
@@ -367,7 +385,7 @@ public class S3StorageClient implements StorageClient{
 		CopyObjectRequest copyRequest = baseCopyRequest(source, target)
 				.copySourceIfMatch(expectedETag)
 				.build();
-		s3.copyObject(copyRequest);
+		telemetry.observe(S3_COPY_OBJECT, () -> s3.copyObject(copyRequest));
 		log.info("[storage] snapshotted upload into immutable private object sourceKey={} targetKey={}",
 				uploadObjectKey, immutableObjectKey);
 	}
@@ -380,6 +398,7 @@ public class S3StorageClient implements StorageClient{
 			String cacheControl,
 			String expectedVerifiedETag
 	) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		String expectedPublicKey = StorageObjectKeys.publicKeyForVerified(verifiedObjectKey);
 		if (!expectedPublicKey.equals(publicObjectKey)
 				|| StorageObjectKeys.isPrivateOrigin(publicObjectKey)
@@ -407,7 +426,7 @@ public class S3StorageClient implements StorageClient{
 		if (aclPublicReadOnPut) {
 			copyRequest.acl(ObjectCannedACL.PUBLIC_READ);
 		}
-		s3.copyObject(copyRequest.build());
+		telemetry.observe(S3_COPY_OBJECT, () -> s3.copyObject(copyRequest.build()));
 		log.info("[storage] promoted verified object sourceKey={} targetKey={}",
 				verifiedObjectKey, publicObjectKey);
 	}
@@ -426,6 +445,7 @@ public class S3StorageClient implements StorageClient{
 	// PUBLIC URL: Playback/thumnail gosterimi icin erisim adresi
 	@Override
 	public String publicUrl(String objectKey) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(objectKey);
 		if (location.privateOrigin()) {
 			throw new IllegalArgumentException("Private-origin media objects do not have a public URL");
@@ -446,27 +466,31 @@ public class S3StorageClient implements StorageClient{
 	// tek obje silme
 	@Override
 	public void deleteObject(String objectKey) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(objectKey);
-		s3.deleteObject(DeleteObjectRequest.builder()
+		telemetry.observe(S3_DELETE_OBJECT, () -> s3.deleteObject(DeleteObjectRequest.builder()
 				                .bucket(location.bucket())
 				                .key(location.key())
-				                .build());
+				                .build()));
 		log.info("[storage] deleted object key={}", objectKey);
 	}
 	
 	// prefix altindaki tum objeleri silme (orn HLS klasoru)
 	@Override
 	public void deleteFolder(String prefix) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		deleteFolderInternal(prefix, null, false);
 	}
 
 	@Override
 	public void deleteFolderExcept(String prefix, String retainedObjectKey) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		deleteFolderInternal(prefix, retainedObjectKey, false);
 	}
 
 	@Override
 	public void deleteFolderExceptPrefix(String prefix, String retainedPrefix) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		deleteFolderInternal(prefix, retainedPrefix, true);
 	}
 
@@ -499,7 +523,7 @@ public class S3StorageClient implements StorageClient{
 					.continuationToken(continuation)
 					.build();
 			
-			var listRes = s3.listObjectsV2(listReq);
+			var listRes = telemetry.observe(S3_LIST_OBJECTS, () -> s3.listObjectsV2(listReq));
 			
 			if (listRes.hasContents()) {
 				String retainedKey = retainedPhysicalKey;
@@ -511,14 +535,17 @@ public class S3StorageClient implements StorageClient{
 						.map(object -> ObjectIdentifier.builder().key(object.key()).build())
 						.toList();
 				if (!objects.isEmpty()) {
-					DeleteObjectsResponse deleted = s3.deleteObjects(DeleteObjectsRequest.builder()
-							.bucket(location.bucket())
-							.delete(Delete.builder().objects(objects).quiet(true).build())
-							.build());
-					if (deleted.hasErrors()) {
-						throw new IllegalStateException(
-								"S3 prefix batch deletion failed for "
-										+ deleted.errors().size() + " object(s)");
+					try (var call = telemetry.start(S3_DELETE_OBJECTS)) {
+						DeleteObjectsResponse deleted = s3.deleteObjects(DeleteObjectsRequest.builder()
+								.bucket(location.bucket())
+								.delete(Delete.builder().objects(objects).quiet(true).build())
+								.build());
+						if (deleted.hasErrors()) {
+							throw new IllegalStateException(
+									"S3 prefix batch deletion failed for "
+											+ deleted.errors().size() + " object(s)");
+						}
+						call.succeeded();
 					}
 				}
 			}
@@ -529,7 +556,17 @@ public class S3StorageClient implements StorageClient{
 	}
 
 	@Override
+	public void purgeAssetVersions(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
+		if (assetId == null) throw new IllegalArgumentException("assetId is required");
+		if (!versionPurgeEnabled) return; // Existing unversioned deployment contract.
+		new S3AssetVersionPurger(s3, telemetry, bucket, privateBucket, mediaRoot)
+				.purge(assetId);
+	}
+
+	@Override
 	public void invalidatePublicAsset(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) {
 			throw new IllegalArgumentException("assetId is required for CDN invalidation");
 		}
@@ -546,15 +583,16 @@ public class S3StorageClient implements StorageClient{
 				.paths(paths)
 				.callerReference("media-delete-" + assetId + "-" + UUID.randomUUID())
 				.build();
-		cloudFront.createInvalidation(CreateInvalidationRequest.builder()
+		telemetry.observe(CLOUDFRONT_INVALIDATE, () -> cloudFront.createInvalidation(CreateInvalidationRequest.builder()
 				.distributionId(cloudFrontDistributionId)
 				.invalidationBatch(batch)
-				.build());
+				.build()));
 		log.info("[storage] CloudFront invalidation submitted assetId={} path={}", assetId, path);
 	}
 	
 	@Override
 	public void putFile(Path local, String key, String contentType, String cacheControl) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(key);
 		try {
 			long size = Files.size(local);
@@ -566,7 +604,7 @@ public class S3StorageClient implements StorageClient{
 					.cacheControl(effectiveCacheControl)
 					.contentLength(size)
 					.build();
-			s3.putObject(put, local);
+			telemetry.observe(S3_PUT_OBJECT, () -> s3.putObject(put, local));
 			log.debug("[storage] putFile key={} size={} ct={} cache={}",
 					key, size, contentType, effectiveCacheControl);
 		} catch (Exception e) {
@@ -576,6 +614,7 @@ public class S3StorageClient implements StorageClient{
 	
 	@Override
 	public void putBytes(byte[] data, String key, String contentType, String cacheControl) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(key);
 		try {
 			String effectiveCacheControl = cacheControlFor(location, cacheControl);
@@ -587,7 +626,7 @@ public class S3StorageClient implements StorageClient{
 					.contentLength((long) data.length)
 					.build();
 			
-			s3.putObject(put, RequestBody.fromBytes(data));
+			telemetry.observe(S3_PUT_OBJECT, () -> s3.putObject(put, RequestBody.fromBytes(data)));
 			log.debug("[storage] putBytes key={} size={} ct={} cache={}",
 					key, data.length, contentType, effectiveCacheControl);
 		} catch (Exception e) {
@@ -597,6 +636,7 @@ public class S3StorageClient implements StorageClient{
 	
 	@Override
 	public InputStream getObjectStream(String key) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		StorageLocation location = locate(key);
 		var get = GetObjectRequest.builder()
 				.bucket(location.bucket())
@@ -604,7 +644,7 @@ public class S3StorageClient implements StorageClient{
 				.build();
 		try {
 			// ResponseInputStream<GetObjectResponse> doner - InputStream olarak kullanilabilir,
-			return s3.getObject(get);
+			return telemetry.observe(S3_OPEN_OBJECT, () -> s3.getObject(get));
 		} catch (S3Exception e) {
 			throw new RuntimeException("S3 getObjectStream failed for key=" + key + " : " + e.awsErrorDetails().errorMessage(), e);
 		} catch (Exception e) {
@@ -614,11 +654,13 @@ public class S3StorageClient implements StorageClient{
 	
 	@Override
 	public void downloadToFile(String key, Path target) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		downloadToFile(key, target, storageCallTimeout);
 	}
 
 	@Override
 	public void downloadToFile(String key, Path target, Duration timeout) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (timeout == null || timeout.isZero() || timeout.isNegative()) {
 			throw new IllegalArgumentException("download timeout must be positive");
 		}
@@ -634,7 +676,7 @@ public class S3StorageClient implements StorageClient{
 		                          .build();
 		try {
 			Files.createDirectories(target.getParent());
-			s3.getObject(get, ResponseTransformer.toFile(target));
+			telemetry.observe(S3_DOWNLOAD_OBJECT, () -> s3.getObject(get, ResponseTransformer.toFile(target)));
 			log.debug("[storage] downloaded key={} -> {}", key, target);
 		} catch (Exception e) {
 			throw new RuntimeException("S3 downloadToFile failed for key=" + key + " : " + e.getMessage(), e);

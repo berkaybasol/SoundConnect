@@ -73,6 +73,7 @@ public class TranscodePublisherImpl implements TranscodePublisher {
 	// Dışarıdan assetId, sourceKey ve hlsPrefix alıp kuyruğa publish eder
 	@Override
 	public void publishVideoHls(UUID assetId, String sourceKey, String hlsPrefix) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		// Parametre kontrolü
 		if (assetId == null || !StringUtils.hasText(sourceKey) || !StringUtils.hasText(hlsPrefix)) {
 			throw new SoundConnectException(ErrorType.INTERNAL_ERROR);

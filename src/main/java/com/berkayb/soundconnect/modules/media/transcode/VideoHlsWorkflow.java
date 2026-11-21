@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.transcode;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.berkayb.soundconnect.modules.media.dto.request.VideoHlsRequest;
 import com.berkayb.soundconnect.modules.media.dto.response.HlsUploadResult;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
@@ -42,12 +44,15 @@ public class VideoHlsWorkflow {
 	private final MediaTranscodeLeaseHeartbeat leaseHeartbeat;
 	private final TranscodeTempBudgetManager tempBudgetManager;
 	private final TranscodeProperties transcodeProperties;
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	/**
 	 * Commits durable ownership before the Rabbit delivery is acknowledged. An
 	 * empty result is a live duplicate, terminal row, or exhausted attempt budget.
 	 */
 	public Optional<ClaimedVideoHlsWork> claim(VideoHlsRequest req) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		validateRequest(req);
 		UUID assetId = UUID.fromString(req.assetId());
 		return statusUpdater.tryClaimQueuedTranscode(assetId)
@@ -64,12 +69,14 @@ public class VideoHlsWorkflow {
 
 	/** Leaves an unclaimed SENT signal in the durable QUEUED dispatcher state. */
 	public boolean deferSignal(VideoHlsRequest req) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		validateRequest(req);
 		return statusUpdater.requeueUnclaimedTranscodeSignal(UUID.fromString(req.assetId()));
 	}
 
 	/** Returns a durable claim that could not be handed to a native worker. */
 	public boolean abandonClaimForRetry(ClaimedVideoHlsWork work) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (work == null) return false;
 		return statusUpdater.abandonClaimForRetry(
 				work.assetId(), work.attemptToken(), work.attemptNumber());
@@ -77,6 +84,7 @@ public class VideoHlsWorkflow {
 
 	/** Compatibility entry point used outside the manual-ACK listener. */
 	public void process(VideoHlsRequest req) throws Exception {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		Optional<ClaimedVideoHlsWork> claimed = claim(req);
 		if (claimed.isEmpty()) {
 			log.info("[workflow] duplicate, terminal, or exhausted delivery ignored assetId={}",
@@ -88,7 +96,10 @@ public class VideoHlsWorkflow {
 
 	/** Executes work whose durable claim has already committed. */
 	public void processClaimed(ClaimedVideoHlsWork work) throws Exception {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		UUID assetId = work.assetId();
+		var sample = telemetry.startJob(MediaWorkerMetrics.Job.HLS);
+		var outcome = MediaWorkerMetrics.JobOutcome.FAILURE;
 		Path workdir = null;
 		TranscodeTempBudgetManager.Reservation tempReservation = null;
 		try (TranscodeLease lease = leaseHeartbeat.start(assetId, work.attemptToken())) {
@@ -120,7 +131,8 @@ public class VideoHlsWorkflow {
 			lease.checkpoint();
 
             if (StorageObjectKeys.isPrivateVerified(work.sourceKey())) {
-                processPrivateVideo(work, lease, srcFile, outDir, thumb, duration);
+                outcome = processPrivateVideo(work, lease, srcFile, outDir, thumb, duration)
+                        ? MediaWorkerMetrics.JobOutcome.SUCCESS : MediaWorkerMetrics.JobOutcome.FENCED;
                 return;
             }
 			ffmpeg.generateHlsLadder(srcFile, outDir);
@@ -141,18 +153,23 @@ public class VideoHlsWorkflow {
 					height
 			);
 			if (!finalized) {
+				outcome = MediaWorkerMetrics.JobOutcome.FENCED;
 				log.info("[workflow] late attempt fenced after upload assetId={} attempt={} prefix={}",
 						assetId, work.attemptNumber(), work.hlsPrefix());
 				return;
 			}
+			outcome = MediaWorkerMetrics.JobOutcome.SUCCESS;
 			log.info("[workflow] OK assetId={} attempt={} objects={} playback={}",
 					assetId, work.attemptNumber(), upload.objectCount(), upload.playbackUrl());
 		} catch (TranscodeLeaseLostException lost) {
+			outcome = MediaWorkerMetrics.JobOutcome.LEASE_LOST;
 			// The expired-attempt recovery state owns deterministic prefix cleanup and
 			// retry. Returning is intentional: the Rabbit signal was already ACKed.
 			log.warn("[workflow] lease lost; durable recovery owns assetId={} attempt={}",
 					assetId, work.attemptNumber());
 		} catch (Exception failure) {
+			outcome = failure instanceof InterruptedException
+					? MediaWorkerMetrics.JobOutcome.INTERRUPTED : MediaWorkerMetrics.JobOutcome.FAILURE;
 			try {
 				statusUpdater.markHlsCleanupPending(
 						assetId,
@@ -169,21 +186,28 @@ public class VideoHlsWorkflow {
 					assetId, work.attemptNumber(), failure.getMessage(), failure);
 			throw failure;
 		} finally {
-			if (workdir != null) {
-				try {
-					deleteRecursive(workdir);
-				} catch (Exception cleanupFailure) {
-					log.warn("[workflow] temp cleanup failed dir={} err={}",
-							workdir, cleanupFailure.getMessage());
+			try {
+				if (workdir != null) {
+					try {
+						deleteRecursive(workdir);
+					} catch (Exception cleanupFailure) {
+						log.warn("[workflow] temp cleanup failed dir={} err={}",
+								workdir, cleanupFailure.getMessage());
+					}
 				}
-			}
-			if (tempReservation != null) {
-				tempReservation.close();
+				if (tempReservation != null) {
+					tempReservation.close();
+				}
+			} catch (RuntimeException cleanupFailure) {
+				outcome = MediaWorkerMetrics.JobOutcome.FAILURE;
+				throw cleanupFailure;
+			} finally {
+				sample.finish(outcome);
 			}
 		}
 	}
 
-    private void processPrivateVideo(ClaimedVideoHlsWork work, TranscodeLease lease, Path source,
+    private boolean processPrivateVideo(ClaimedVideoHlsWork work, TranscodeLease lease, Path source,
                                      Path outDir, Path thumbnail, Integer duration) throws Exception {
         // Rebuild the canonical protected key; a broker message cannot select a public destination.
         String prefix = StorageObjectKeys.protectedKey(mediaPolicy.buildHlsPrefix(work.assetId()));
@@ -201,6 +225,7 @@ public class VideoHlsWorkflow {
                 duration, normalized.width(), normalized.height());
         log.info("[workflow] private MP4 completed assetId={} attempt={} finalized={}",
                 work.assetId(), work.attemptNumber(), finalized);
+        return finalized;
     }
 
 	private static boolean hasCause(Throwable error, Class<? extends Throwable> type) {

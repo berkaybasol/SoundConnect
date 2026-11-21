@@ -16,6 +16,7 @@ public class FollowNotificationOutboxDispatcher {
     private final String nodeId = UUID.randomUUID().toString();
 
     public void dispatch(UUID eventId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         String leaseOwner = nodeId + ":" + UUID.randomUUID();
         Optional<FollowNotificationOutboxClaim> optionalClaim = outboxService.claim(eventId, leaseOwner);
         if (optionalClaim.isEmpty()) {

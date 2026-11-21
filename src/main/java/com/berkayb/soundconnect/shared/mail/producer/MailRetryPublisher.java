@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.shared.mail.producer;
 
 import com.berkayb.soundconnect.shared.mail.dto.MailSendRequest;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
+import com.berkayb.soundconnect.shared.config.MailRetryTopology;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +16,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -24,17 +24,11 @@ import java.util.concurrent.TimeUnit;
 public class MailRetryPublisher {
 	
 	private final RabbitTemplate rabbitTemplate;
-	private RabbitTemplate delayedRabbitTemplate;
+	private RabbitTemplate retryRabbitTemplate;
 
 	@Value("${mail.queueName:mail.queue}")
 	private String mailQueueName;
 	
-	@Value("${mail.delayed.exchange:mail.delayed}")
-	private String delayedExchange;
-	
-	@Value("${mail.routingKey:mail.send}")
-	private String routingKey;
-
 	@Value("${mail.producer.confirmTimeoutSec:5}")
 	private long confirmTimeoutSec;
 
@@ -43,15 +37,12 @@ public class MailRetryPublisher {
 		if (confirmTimeoutSec < 1 || confirmTimeoutSec > 30) {
 			throw new IllegalStateException("mail.producer.confirmTimeoutSec must be between 1 and 30");
 		}
-		if (mailQueueName == null || mailQueueName.isBlank()) {
-			throw new IllegalStateException("mail.queueName must not be blank");
-		}
-		// x-delayed-message reports NO_ROUTE for mandatory delayed publishes even
-		// when it stored the message. Keep normal publishers' mandatory routing
-		// checks intact: only this private template uses storage confirmation.
-		delayedRabbitTemplate = new RabbitTemplate(rabbitTemplate.getConnectionFactory());
-		delayedRabbitTemplate.setMessageConverter(rabbitTemplate.getMessageConverter());
-		delayedRabbitTemplate.setMandatory(false);
+		MailRetryTopology.validateMainQueue(mailQueueName);
+		// Keep shared callbacks/settings untouched. Native exact-queue routing
+		// supports mandatory returns, unlike the removed delayed-exchange plugin.
+		retryRabbitTemplate = new RabbitTemplate(rabbitTemplate.getConnectionFactory());
+		retryRabbitTemplate.setMessageConverter(rabbitTemplate.getMessageConverter());
+		retryRabbitTemplate.setMandatory(true);
 	}
 	
 	/**
@@ -59,34 +50,29 @@ public class MailRetryPublisher {
 	 * attemptInfo: log için küçük metin ("attempt=2", "attempt=2,429" vs)
 	 */
 	public void publishWithDelay(MailSendRequest request, long delayMs, int retryAttempt, String attemptInfo) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (retryAttempt < 1 || retryAttempt > 20) {
 			throw new IllegalArgumentException("retryAttempt must be between 1 and 20");
 		}
-		if (delayMs < 1 || delayMs > 86_400_000L) {
-			throw new IllegalArgumentException("delayMs must be between 1ms and 24h");
-		}
-		long jitter = ThreadLocalRandom.current().nextLong(0, Math.max(1, delayMs) / 10 + 1); // %0–10 jitter
-		long finalDelay = delayMs + jitter;
+		long finalDelay = MailRetryTopology.bucketDelayMs(delayMs);
+		String retryQueue = MailRetryTopology.queueName(mailQueueName, finalDelay);
 		String correlationId = UUID.randomUUID().toString();
 		CorrelationData correlationData = new CorrelationData(correlationId);
 		
 		MessagePostProcessor mpp = message -> {
 			message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
 			message.getMessageProperties().setCorrelationId(correlationId);
-			message.getMessageProperties().setHeader("x-delay", finalDelay);
 			// İzlenebilirlik için küçük etiketler:
 			message.getMessageProperties().setHeader(MailJobHelper.RETRY_MARKER_HEADER, true);
 			message.getMessageProperties().setHeader(MailJobHelper.RETRY_ATTEMPT_HEADER, retryAttempt);
-			message.getMessageProperties().setHeader("sc-retry-note", attemptInfo);
 			return message;
 		};
 		
 		try {
-			// Fail before storing delayed work when the configured destination is
-			// absent. MailQueueConfig owns its durable binding. Passive existence
-			// cannot guarantee that binding survives until the future routing time.
-			delayedRabbitTemplate.execute(channel -> channel.queueDeclarePassive(mailQueueName));
-			delayedRabbitTemplate.convertAndSend(delayedExchange, routingKey, request, mpp, correlationData);
+			// Quorum delay queues retain expired messages until the future target
+			// confirms. A missing delay queue is returned now, before source ACK.
+			retryRabbitTemplate.execute(channel -> channel.queueDeclarePassive(mailQueueName));
+			retryRabbitTemplate.convertAndSend("", retryQueue, request, mpp, correlationData);
 			CorrelationData.Confirm confirm = correlationData.getFuture()
 					.get(confirmTimeoutSec, TimeUnit.SECONDS);
 			ReturnedMessage returned = correlationData.getReturned();
@@ -102,11 +88,8 @@ public class MailRetryPublisher {
 			throw new AmqpException("Retry publish confirmation failed", exception);
 		}
 		
-		log.info("Mail retry scheduled -> attempt={}, delay={}ms, note={}, to={}",
-		         retryAttempt,
-		         finalDelay,
-		         attemptInfo,
-		         maskForLog(request.to()));
+		// Arbitrary caller notes and message/recipient content never enter headers/logs.
+		log.info("Mail retry scheduled -> attempt={}, delay={}ms", retryAttempt, finalDelay);
 	}
 	
 	private String maskForLog(String email) {

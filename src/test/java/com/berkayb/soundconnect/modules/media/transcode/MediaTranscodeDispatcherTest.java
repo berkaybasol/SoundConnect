@@ -8,6 +8,9 @@ import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.MediaPolicy;
 import com.berkayb.soundconnect.modules.media.transcode.config.MediaTranscodeLeaseProperties;
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -43,6 +47,7 @@ class MediaTranscodeDispatcherTest {
 	private MediaTranscodeLeaseProperties leaseProperties;
 
 	private MediaTranscodeDispatcher dispatcher;
+	private SimpleMeterRegistry metrics;
 
 	@BeforeEach
 	void setUp() {
@@ -53,7 +58,11 @@ class MediaTranscodeDispatcherTest {
 		ReflectionTestUtils.setField(dispatcher, "batchSize", 50);
 		ReflectionTestUtils.setField(dispatcher, "sentRecoveryDelay", Duration.ofMinutes(5));
 		ReflectionTestUtils.setField(dispatcher, "hlsCleanupQuietPeriodHours", 1L);
+		metrics = new SimpleMeterRegistry();
+		dispatcher.setTelemetry(new MediaWorkerMetrics(metrics));
 	}
+
+	@AfterEach void closeMetrics() { metrics.close(); }
 
 	@Test
 	void afterCommitEvent_dispatchesOnlyDurablyQueuedAsset() {
@@ -122,6 +131,7 @@ class MediaTranscodeDispatcherTest {
 				.thenReturn(1);
 
 		dispatcher.recoverStaleSentJobs();
+		assertThat(metrics.get("soundconnect.worker.recovery").tag("outcome", "stale_sent").counter().count()).isEqualTo(1);
 
 		verify(mediaAssetRepository).requeueStaleSentTranscode(
 				eq(asset.getId()),
@@ -142,6 +152,8 @@ class MediaTranscodeDispatcherTest {
 				eq(MediaStatus.HLS_CLEANUP), any(), eq(3))).thenReturn(1);
 
 		dispatcher.recoverExpiredProcessingJobs();
+		assertThat(metrics.get("soundconnect.worker.recovery").tag("outcome", "retry_cleanup").counter().count()).isEqualTo(1);
+		assertThat(metrics.get("soundconnect.worker.recovery").tag("outcome", "terminal_cleanup").counter().count()).isEqualTo(1);
 
 		verify(mediaAssetRepository).recoverExpiredTranscodesForRetry(
 				eq(MediaKind.VIDEO), eq(MediaVisibility.PUBLIC), eq(MediaStatus.PROCESSING),

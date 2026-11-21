@@ -176,6 +176,40 @@ class ApplicationMailIntentPostgresTest {
             assertThat(count("fixture_business")).isZero();
         } finally { jdbc.getJdbcTemplate().execute("ALTER TABLE fixture_preserved_intents RENAME TO tbl_application_mail_intent"); }
     }
+    @Test void healthAgeSharesCountSnapshotAndKeepsOriginalAgeThroughRetryAndPublishing() {
+        for (int i=0;i<4;i++) accept();
+        var ids=jdbc.queryForList("SELECT id FROM tbl_application_mail_intent ORDER BY id",Map.of(),UUID.class);
+        update(ids.get(0),"status='NEEDS_REVIEW',created_at='2020-01-01T00:00:00Z'");
+        update(ids.get(1),"status='PUBLISHED',created_at='2020-01-02T00:00:00Z'");
+        update(ids.get(2),"status='PUBLISHING',created_at='2020-01-03T00:00:00Z',lease_token='00000000-0000-0000-0000-000000000001',lease_until=CURRENT_TIMESTAMP+INTERVAL '1 day'");
+        update(ids.get(3),"status='PENDING',created_at='2020-01-04T00:00:00Z',attempt_count=1,next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '1 day'");
+        var before=jdbc.queryForList("SELECT id,status,created_at,next_attempt_at,lease_until,attempt_count FROM tbl_application_mail_intent ORDER BY id",Map.of());
+        var counts=store.healthCounts();
+        assertThat(counts).containsOnlyKeys("pending","retry","publishing","review","stale","oldestPendingAt")
+                .containsEntry("pending",1L).containsEntry("retry",1L).containsEntry("publishing",1L)
+                .containsEntry("review",1L).containsEntry("stale",2L)
+                .containsEntry("oldestPendingAt",java.time.Instant.parse("2020-01-03T00:00:00Z"));
+        assertThat(new ApplicationMailHealthIndicator(store).health().getDetails()).isEqualTo(counts);
+        assertThat(jdbc.queryForList("SELECT id,status,created_at,next_attempt_at,lease_until,attempt_count FROM tbl_application_mail_intent ORDER BY id",Map.of())).isEqualTo(before);
+        verifyNoInteractions(producer);
+    }
+    @Test void healthAgeIsAbsentForEmptyCompletedReviewOrInfiniteTimestampAndPreservesFutureTimestamp() {
+        assertThat(store.healthCounts()).doesNotContainKey("oldestPendingAt");
+        accept(); var id=jdbc.queryForObject("SELECT id FROM tbl_application_mail_intent",Map.of(),UUID.class);
+        for (String state:List.of("PUBLISHED","NEEDS_REVIEW")) {
+            update(id,"status='"+state+"',created_at='2020-01-01T00:00:00Z'");
+            assertThat(store.healthCounts()).as(state).doesNotContainKey("oldestPendingAt");
+        }
+        for (String timestamp:List.of("infinity","-infinity")) {
+            update(id,"status='PENDING',created_at='"+timestamp+"'");
+            assertThat(store.healthCounts()).as(timestamp).containsEntry("pending",1L).doesNotContainKey("oldestPendingAt");
+        }
+        update(id,"created_at='9999-01-01T00:00:00Z'");
+        // The common sanitizer rejects future timestamps; storage must not clamp this to zero.
+        assertThat(new ApplicationMailHealthIndicator(store).health().getDetails())
+                .containsEntry("oldestPendingAt",java.time.Instant.parse("9999-01-01T00:00:00Z"));
+        verifyNoInteractions(producer);
+    }
     void business(UUID id) { jdbc.update("INSERT INTO fixture_business VALUES (:id)",Map.of("id",id)); }
     void accept() { tx.executeWithoutResult(s->enqueue(UUID.randomUUID(),MailKind.VENUE_APPLICATION_ADMIN,"one@example.test")); }
     void enqueue(UUID id,MailKind kind,String to) { store.enqueue(id,kind==MailKind.STUDIO_APPLICATION_DECISION?"APPROVED":"CREATED",request(id,kind,to)); }

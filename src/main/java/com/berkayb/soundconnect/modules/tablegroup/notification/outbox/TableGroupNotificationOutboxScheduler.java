@@ -10,6 +10,9 @@ import java.util.UUID;
 @Component
 @Slf4j
 public class TableGroupNotificationOutboxScheduler {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics executionMetrics = com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.noop();
+
 	private final TableGroupNotificationOutboxService outboxService;
 	private final TableGroupNotificationOutboxDispatcher dispatcher;
 	private final TableGroupNotificationDispatchCoordinator coordinator;
@@ -33,6 +36,10 @@ public class TableGroupNotificationOutboxScheduler {
 			scheduler = TableGroupSchedulingConfiguration.OUTBOX_SCHEDULER
 	)
 	public void dispatchDue() {
+        executionMetrics.observe(com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.Schedule.table_outbox, this::dispatchDueObserved);
+    }
+
+    private void dispatchDueObserved() {
 		int batchSize = properties.getBatchSize();
 		int scheduledCount = coordinator.scheduledCount();
 		int candidateLimit = scheduledCount > Integer.MAX_VALUE - batchSize

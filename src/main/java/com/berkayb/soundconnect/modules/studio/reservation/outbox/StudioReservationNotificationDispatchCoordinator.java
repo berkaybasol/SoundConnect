@@ -35,6 +35,7 @@ public class StudioReservationNotificationDispatchCoordinator {
      * is removed before the exception is propagated
      */
     public boolean trySchedule(UUID eventId, Runnable task) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(task, "task");
         if (!scheduledEventIds.add(eventId)) {
@@ -44,6 +45,7 @@ public class StudioReservationNotificationDispatchCoordinator {
         try {
             executor.execute(() -> {
                 try {
+                    com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
                     task.run();
                 } finally {
                     scheduledEventIds.remove(eventId);

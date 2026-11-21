@@ -258,6 +258,10 @@ class ProtectedImageLifecyclePostgresTest extends MediaJpaPostgresFixture {
             String directory = prefix.endsWith("/") ? prefix : prefix + "/";
             for (String key : List.copyOf(objects.keySet())) if (key.startsWith(directory)) deleteObject(key);
         }
+        @Override public void purgeAssetVersions(UUID assetId) {
+            // This in-process store has one current value per key and no retained versions.
+            Objects.requireNonNull(assetId);
+        }
         @Override public String publicUrl(String key) { throw new AssertionError("Private image reached public delivery"); }
         @Override public String createPresignedPutUrl(String key, String mime, long size) { throw new UnsupportedOperationException(); }
         @Override public StorageAccessUrl createPresignedGetUrl(String key) { throw new UnsupportedOperationException(); }

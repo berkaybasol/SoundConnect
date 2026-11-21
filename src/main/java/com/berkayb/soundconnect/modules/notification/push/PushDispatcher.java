@@ -37,6 +37,7 @@ public class PushDispatcher {
 
     @Scheduled(fixedDelayString="${app.notification.push.poll-delay-ms:1000}",initialDelayString="${app.notification.push.initial-delay-ms:10000}")
     public void poll() {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
         if (clock.millis()<providerPauseUntil.get()) return;
         for(int i=0;i<properties.getWorkerThreads() && slots.tryAcquire();i++) {
             try { executor.execute(this::drain); }

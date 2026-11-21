@@ -41,6 +41,7 @@ public class VideoHlsListener {
 			containerFactory = "mediaVideoHlsListenerFactory"
 	)
 	public void onMessage(Message message, Channel channel) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		// headerlardan useful seyleri cek (diagnostic/log)
 		String corrId = message.getMessageProperties().getCorrelationId();
 		String routingKey = message.getMessageProperties().getReceivedRoutingKey();

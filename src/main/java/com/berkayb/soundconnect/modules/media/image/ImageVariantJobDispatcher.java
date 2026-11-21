@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.media.image;
 
+import com.berkayb.soundconnect.modules.media.telemetry.MediaWorkerMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
@@ -20,6 +22,8 @@ public class ImageVariantJobDispatcher {
 	private final ImageVariantBackfillService backfillService;
 	private final TaskExecutor executor;
 	private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
+	private MediaWorkerMetrics telemetry = MediaWorkerMetrics.noop();
+	@Autowired void setTelemetry(MediaWorkerMetrics telemetry) { this.telemetry = telemetry; }
 
 	public ImageVariantJobDispatcher(
 			ImageVariantBackfillService backfillService,
@@ -34,18 +38,22 @@ public class ImageVariantJobDispatcher {
 	 * bounded queue is saturated and the durable scan must retry it later.
 	 */
 	public boolean submit(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (assetId == null) return false;
 		if (!inFlight.add(assetId)) return true;
 		try {
 			executor.execute(() -> process(assetId));
+			telemetry.admission(MediaWorkerMetrics.Job.IMAGE_THUMBNAIL, MediaWorkerMetrics.Admission.ACCEPTED);
 			return true;
 		} catch (TaskRejectedException saturated) {
 			inFlight.remove(assetId);
+			telemetry.admission(MediaWorkerMetrics.Job.IMAGE_THUMBNAIL, MediaWorkerMetrics.Admission.SATURATED);
 			return false;
 		}
 	}
 
 	private void process(UUID assetId) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		try {
 			backfillService.backfillOne(assetId);
 		} catch (InterruptedException interrupted) {

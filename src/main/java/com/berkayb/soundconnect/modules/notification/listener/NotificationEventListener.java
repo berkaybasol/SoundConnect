@@ -39,6 +39,9 @@ import java.time.Instant;
 @Service
 @RequiredArgsConstructor
 public class NotificationEventListener {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics executionMetrics = com.berkayb.soundconnect.shared.telemetry.BackgroundExecutionMetrics.noop();
+
 	private static final int MAX_TITLE_LENGTH = 160;
 	private static final int MAX_MESSAGE_LENGTH = 1000;
 
@@ -57,6 +60,7 @@ public class NotificationEventListener {
 	@Transactional
 	@RabbitListener(queues = "${app.messaging.notification.queue:notification.queue}", containerFactory = "notificationListenerFactory")
 	public void handle (NotificationInboundEvent event) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		final boolean eligible;
 		try {
 			validate(event);
@@ -68,6 +72,7 @@ public class NotificationEventListener {
 		}
 		if (receiptRepository.claim(event.eventId(), event.recipientId()) == 0 ||
 				notificationRepository.existsBySourceEventId(event.eventId())) {
+            executionMetrics.duplicateNotificationAttempt();
 			log.debug(
 					"Duplicate NotificationInboundEvent skipped. eventId={}, type={}",
 					event.eventId(), event.type()

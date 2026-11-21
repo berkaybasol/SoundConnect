@@ -63,6 +63,7 @@ public class MobileDiagnosticsStore implements AutoCloseable {
 
     @EventListener(ApplicationReadyEvent.class)
     synchronized void start() {
+        if (com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.isHeld()) return;
         if (!backgroundEnabled || started || closed) return;
         started = true;
         retention.scheduleWithFixedDelay(() -> {

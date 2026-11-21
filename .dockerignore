@@ -1,15 +1,27 @@
-.git
-.github
-.gradle
-.idea
-.vscode
-build
-out
-bin
-*.iml
-*.log
-.env
-.env.*
-!.env.example
-docs
-HELP.md
+# Root API/worker context is an allowlist. Gitignored credentials, fixtures,
+# evidence, local releases and unrelated source never reach the builder.
+**
+!Dockerfile
+!gradlew
+!settings.gradle
+!build.gradle
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!src/main/**
+!docker/media-worker/healthcheck.sh
+!docker/ffmpeg/build-ffmpeg.sh
+!docker/ffmpeg/ffmpeg-release-key.asc
+!docker/ffmpeg/0001-encryption-info-iterative-free.patch
+!docker/ffmpeg/0002-encryption-info-linear-append.patch
+
+# Runtime credentials are separate mounts even if misplaced under src/main.
+**/.env
+**/.env.*
+**/.secrets
+**/.secrets/**
+**/*firebase-adminsdk*.json
+**/*.p8
+**/*.p12
+**/*.jks
+**/*.pem
+**/*.key

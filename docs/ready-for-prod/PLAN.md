@@ -1,6 +1,6 @@
 # Onaylı üretime hazırlık planı
 
-Tarih: **8 Ekim 2026**. Kaynak: bu çalışma alanındaki doğrudan kullanıcı
+İlk onay **8 Ekim 2026**, son geçiş kararı **21 Kasım 2026**. Kaynak: bu çalışma alanındaki doğrudan kullanıcı
 konuşması; kaynak incelemesi sonrası planın açıklanması, “harikasın ... başlayalım”
 onayı ve ardından bu oturumun yalnız hazırlıkla sınırlandırılması.
 
@@ -8,7 +8,7 @@ onayı ve ardından bu oturumun yalnız hazırlıkla sınırlandırılması.
 
 | No | Kapsam | Aşama çıktısı | Branch |
 | --- | --- | --- | --- |
-| 01 | İki P1 hesap güvenliği konusu + sağlık/uyarı temeli; admin içinde dar sağlık görünümü | Eski oturumların iptali, güvenli auth limiter kesintisi, sistem/mobil hata görünürlüğü ve doğrulanmış alarm zinciri | `ready-for-prod-01` |
+| 01 | Hesap güvenliği, sağlık görünümü ve staging işletimi | Oturumların iptali, güvenli hız sınırı, kurulum ve geri alma, izleme, dış alarm ve kurtarma. Kapasite kabulü yayın öncesine ertelendi. | `ready-for-prod-01` |
 | 02 | Admin panelinin işletim işlevleri | Başvuru, kullanıcı, şikâyet, backline ve gerekli operasyon yönetimi; yetki ve kalıcı yönetici işlem izi | `ready-for-prod-02` |
 | 03 | Hesap yaşam döngüsü ve ortak kullanıcı güvenliği | Dört profil için silme, kullanıcı engelleme, kalan ortak hesap işlemleri; 02'de yapılan yaptırım/audit tekrar yazılmaz | `ready-for-prod-03` |
 | 04 | Google Analytics | Ölçüm planı, güvenli kimlik/tercih yönetimi, test/canlı ayrımı, gerçek cihaz olay doğrulaması | `ready-for-prod-04` |
@@ -51,17 +51,15 @@ Her büyük aşama tek branch numarası taşır; oturum bölünmesi yeni aşama 
 Olağan hatayı yeni developer oturumu açma gerekçesi yapma (K-18). Kullanıcı
 özellikle yeni oturum istediğinde bağlamı bu paketle aktar.
 
-## 8 Ekim aynı oturumdaki ek sıra kararı
+## 01 kapanışı ve 02’ye geçiş
 
-Kullanıcı kapsamlı observability ve PC kapalıyken de alarm konusunu sordu;
-ardından “PC kapalıyken de gelsin de sen mevcut işini bitir de bu konuyu detaylı
-bir konuşalım 02den önce” dedi. Önce mevcut 01 v1'in onaylı Git/CI kapanışı
-tamamlanır. Sonra 02 ürün çalışmasına geçmeden önce genişletilmiş observability,
-bağımsız dış izleme, barındırma ve maliyet konuşulur. Bu konuşma yeni hizmet
-satın alma veya yeni monitoring stack kurma yetkisi değildir. 02 görevi taslak
-olarak hazırlanabilir; görüşmeye kadar yeni 02 branch geçişi de bekletilir.
-Önceki final03/gösterilen akışlar onayı geri alınmadı; kapsamı tam observability
-veya sürekli dış alarm kabulüne genişletilmez.
+21 Kasım 2026’da kullanıcı kapasite kabulünü açık bırakarak 01’in kapanışını tamamlama kararı aldı. Grafana eğitimini ayrıca yürütecek. 01’in PR, CI, birleştirme ve ana dal doğrulaması tamamlandığında 02’ye geçilebilir. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
+
+## Herkese açık yayından önce kapalı test
+
+Android ve iOS yayın adayları hazır olduğunda 05’in modül listesi sürümdeki özelliklerle karşılaştırılacak. Davetli ekip her özelliği ilgili kullanıcı rolleriyle gerçek cihazlarda deneyecek. Android için Google Play kapalı test, iPhone için TestFlight kullanılacak. Yetki, mahremiyet, veri kaybı ve birden fazla özelliği birleştiren akışlar ayrıntılı sınanacak. Sonuçlar, bulunan sorunlar ve denenemeyen durumlar kaydedilecek.
+
+Test ortamında seçilmiş işlemler birlikte çalıştırılarak yanıt süreleri, hatalar ve video işleme kuyruğu ölçülecek. Hedef yük, süre, durdurma koşulları ve bütçe koşudan önce belirlenecek. Kullanıcı yük testi için dış firmayı değerlendiriyor. Test ekibi ve bütçe henüz açık. Her iki çalışmanın sonucu 08’deki yayın kararına girdi sağlayacak.
 
 ## 06'nın sınırları
 

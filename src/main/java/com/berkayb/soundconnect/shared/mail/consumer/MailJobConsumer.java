@@ -79,6 +79,7 @@ public class MailJobConsumer {
 	                           @Header(AmqpHeaders.DELIVERY_TAG) long tag,
 	                           @Headers Map<String, Object> headers,
 	                           Channel channel) {
+        com.berkayb.soundconnect.shared.recovery.RecoveryRuntime.requireOperational();
 		if (request != null && request.kind() == com.berkayb.soundconnect.shared.mail.enums.MailKind.VENUE_SUGGESTION_ADMIN) {
 			if (venueSuggestionDelivery != null) {
 				venueSuggestionDelivery.consume(request, tag, headers, channel);
