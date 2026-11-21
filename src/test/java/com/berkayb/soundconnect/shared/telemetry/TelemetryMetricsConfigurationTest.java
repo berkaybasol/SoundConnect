@@ -12,6 +12,8 @@ import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.Simp
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TelemetryMetricsConfigurationTest {
@@ -57,10 +59,14 @@ class TelemetryMetricsConfigurationTest {
             var exporter = result.getBean(OtlpMeterRegistry.class);
             exporter.stop();
             var health = exporter.getMeters().stream().filter(meter -> meter.getId().getName().startsWith("soundconnect.health.")).toList();
-            assertThat(health).hasSize(16).allSatisfy(meter ->
+            // Six statuses, observed and measurement age, eight role metrics, four database continuity metrics.
+            assertThat(health).hasSize(20).allSatisfy(meter ->
                     assertThat(meter.getId().getTag("component")).isEqualTo("databaseSessions"));
             assertThat(exporter.get("soundconnect.health.observed").gauge().value()).isZero();
-            assertThat(exporter.get("soundconnect.health.postgres.sessions").gauge().value()).isNaN();
+            for (String metric : List.of("sessions", "database.deadlocks", "database.stats.reset.known",
+                    "database.stats.reset.epoch", "database.postmaster.start.epoch")) {
+                assertThat(exporter.get("soundconnect.health.postgres." + metric).gauge().value()).as(metric).isNaN();
+            }
         });
     }
 }

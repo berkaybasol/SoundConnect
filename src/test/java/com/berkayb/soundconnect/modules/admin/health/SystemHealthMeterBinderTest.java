@@ -54,7 +54,7 @@ class SystemHealthMeterBinderTest {
             new SystemHealthMeterBinder(() -> { reads.incrementAndGet(); return snapshot(Status.UP, Map.of()); }).bindTo(registry);
             registry.getMeters().stream().map(Gauge.class::cast).forEach(Gauge::value);
             assertThat(reads).hasValue(1);
-            assertThat(registry.getMeters()).hasSize(341); // Existing 308 + two fixed PostgreSQL components (33).
+            assertThat(registry.getMeters()).hasSize(345); // 308 existing + 20 session gauges + 17 statement gauges.
         } finally {
             registry.close();
         }

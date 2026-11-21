@@ -25,6 +25,9 @@ repositories {
     mavenCentral()
 }
 
+// Align the test modules and their core Docker client with current Docker Engines.
+ext['testcontainers.version'] = '1.21.4'
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -70,8 +73,8 @@ dependencies {
 
     // Spring Security test (WithMockUser, MockMvc ile güvenlik)
     testImplementation 'org.springframework.security:spring-security-test'
-    testImplementation 'org.testcontainers:junit-jupiter:1.21.3'
-    testImplementation 'org.testcontainers:postgresql:1.21.3'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
 
 
 
@@ -91,7 +94,7 @@ dependencies {
     testImplementation 'com.h2database:h2'
 
     // test rabbitmq
-    testImplementation 'org.testcontainers:rabbitmq:1.21.3'
+    testImplementation 'org.testcontainers:rabbitmq'
 
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
