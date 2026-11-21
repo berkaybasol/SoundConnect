@@ -2,7 +2,6 @@ package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
-import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.security.SecurityErrorResponseWriter;
@@ -116,7 +115,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 				return;
 			}
-			if (canAuthenticate(userDetails, request)) {
+			if (isAccountUsable(userDetails) && !hasNoRoles(userDetails)) {
 				setAuthentication(request, userDetails);
 			} else {
 				SecurityContextHolder.clearContext();
@@ -193,16 +192,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		SecurityContextHolder.clearContext();
 	}
 
-	private boolean canAuthenticate(UserDetails userDetails, HttpServletRequest request) {
-		if (!isAccountUsable(userDetails)) {
-			return false;
-		}
-		if (!hasNoRoles(userDetails)) {
-			return true;
-		}
-		return isRolelessGooglePrincipal(userDetails) && isGoogleProfileCompletionRequest(request);
-	}
-
 	private void setAuthentication(HttpServletRequest request, UserDetails userDetails) {
 		UsernamePasswordAuthenticationToken authToken =
 				new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
@@ -220,16 +209,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private boolean hasNoRoles(UserDetails userDetails) {
 		return userDetails instanceof UserDetailsImpl principal
 				&& (principal.getUser().getRoles() == null || principal.getUser().getRoles().isEmpty());
-	}
-
-	private boolean isRolelessGooglePrincipal(UserDetails userDetails) {
-		return userDetails instanceof UserDetailsImpl principal
-				&& principal.getUser().getProvider() == AuthProvider.GOOGLE;
-	}
-
-	private boolean isGoogleProfileCompletionRequest(HttpServletRequest request) {
-		return "POST".equalsIgnoreCase(request.getMethod())
-				&& "/api/v1/auth/complete-google-profile".equals(request.getRequestURI());
 	}
 
 }

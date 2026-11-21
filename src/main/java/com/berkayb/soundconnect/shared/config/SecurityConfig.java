@@ -77,7 +77,6 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-						.requestMatchers(HttpMethod.POST, BASE + COMPLETE_GOOGLE_PROFILE).authenticated()
 						.requestMatchers(
 								HttpMethod.POST,
 								BASE + LOGIN,
@@ -85,6 +84,7 @@ public class SecurityConfig {
 								BASE + VERIFY_CODE,
 								BASE + RESEND_CODE,
 								BASE + GOOGLE_SIGN_IN,
+								BASE + COMPLETE_GOOGLE_PROFILE,
 								BASE + USERNAME_AVAILABILITY,
 								BASE + PASSWORD_RESET_ACCOUNT,
 								BASE + FORGOT_PASSWORD,

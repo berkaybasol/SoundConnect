@@ -19,11 +19,14 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +67,7 @@ class StudioApplicationServiceImplTest {
 	@Mock StudioApplicationAdminMailService studioApplicationAdminMailService;
 	@Mock StudioApplicationTimeProvider timeProvider;
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
+	@Mock EntityManager entityManager;
 	@InjectMocks StudioApplicationServiceImpl service;
 
 	private UUID applicantId;
@@ -92,6 +96,7 @@ class StudioApplicationServiceImplTest {
 				.build();
 		now = LocalDateTime.of(2026, 8, 3, 9, 15);
 		lenient().when(timeProvider.nowUtc()).thenReturn(now);
+		lenient().when(userRepository.findByIdForUpdate(applicantId)).thenReturn(Optional.of(applicant));
 		lenient().when(personalProfileTypePolicy.lockAndAssertCanAcquire(
 				applicantId, RoleEnum.ROLE_STUDIO)).thenReturn(applicant);
 	}
@@ -270,8 +275,6 @@ class StudioApplicationServiceImplTest {
 				.applicationDate(LocalDateTime.now())
 				.build();
 		when(applicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
-		when(personalProfileTypePolicy.lockAndAssertCanAcquire(
-				applicantId, RoleEnum.ROLE_STUDIO)).thenReturn(applicant);
 		when(roleRepository.findByName(RoleEnum.ROLE_STUDIO.name())).thenReturn(Optional.of(studioRole));
 		when(userEntityFinder.getUser(adminId)).thenReturn(admin);
 		when(applicationRepository.save(application)).thenReturn(application);
@@ -285,8 +288,8 @@ class StudioApplicationServiceImplTest {
 		assertThat(application.getReviewedBy()).isSameAs(admin);
 		assertThat(application.getDecisionDate()).isNotNull();
 		assertThat(application.getDecisionDate()).isEqualTo(now);
-		verify(personalProfileTypePolicy).lockAndAssertCanAcquire(
-				applicantId, RoleEnum.ROLE_STUDIO);
+		verify(entityManager).refresh(applicant, LockModeType.PESSIMISTIC_WRITE);
+		verify(personalProfileTypePolicy).assertCanAcquire(applicant, RoleEnum.ROLE_STUDIO);
 		verify(studioProfileRepository).existsByUserId(applicantId);
 		ArgumentCaptor<StudioProfileProvisioningCommand> command =
 				ArgumentCaptor.forClass(StudioProfileProvisioningCommand.class);
@@ -383,6 +386,46 @@ class StudioApplicationServiceImplTest {
 		assertThat(applicant.getStatus()).isEqualTo(UserStatus.ACTIVE);
 		verify(userRepository, never()).save(applicant);
 		verify(studioApplicationAdminMailService).sendApplicantDecisionMail(application);
+	}
+
+	@Test
+	void inactiveApplicantCannotBeReactivatedByAnOldStudioApplication() {
+		applicant.setStatus(UserStatus.INACTIVE);
+		assertDisallowedDecision(ErrorType.INVALID_APPLICATION_STATUS);
+	}
+
+	@Test
+	void erasedApplicantCannotReceiveAStudioDecision() {
+		applicant.setErasedAt(now);
+		assertDisallowedDecision(ErrorType.ACCOUNT_DELETED);
+	}
+
+	@Test
+	void googleApplicantMustStillHaveAVerifiedEmail() {
+		applicant.setProvider(AuthProvider.GOOGLE);
+		applicant.setEmailVerified(false);
+		assertDisallowedDecision(ErrorType.INVALID_APPLICATION_STATUS);
+	}
+
+	@Test
+	void pendingApplicantWithAnAssignedRoleCannotReceiveAStudioDecision() {
+		applicant.getRoles().add(Role.builder().name(RoleEnum.ROLE_ADMIN.name()).build());
+		assertDisallowedDecision(ErrorType.INVALID_APPLICATION_STATUS);
+	}
+
+	private void assertDisallowedDecision(ErrorType expected) {
+		UUID id = UUID.randomUUID();
+		StudioApplication pending = StudioApplication.builder().id(id).applicant(applicant)
+				.status(ApplicationStatus.PENDING).build();
+		when(applicationRepository.findByIdForUpdate(id)).thenReturn(Optional.of(pending));
+		assertThatThrownBy(() -> service.approveApplication(id, adminId))
+				.isInstanceOfSatisfying(SoundConnectException.class, e -> assertThat(e.getErrorType()).isEqualTo(expected));
+		assertThatThrownBy(() -> service.rejectApplication(id, adminId, "Gerekçe"))
+				.isInstanceOfSatisfying(SoundConnectException.class, e -> assertThat(e.getErrorType()).isEqualTo(expected));
+		assertThat(pending.getStatus()).isEqualTo(ApplicationStatus.PENDING);
+		verify(applicationRepository, never()).save(any());
+		verify(userRepository, never()).save(any());
+		verify(studioProfileService, never()).createApprovedProfile(any());
 	}
 
 	@Test

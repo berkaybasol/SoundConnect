@@ -19,6 +19,9 @@ public enum ErrorType {
 	ACCOUNT_DELETED(1008, "Account was permanently deleted", HttpStatus.GONE, "Bu hesap kalıcı olarak silinmiş."),
 
 	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.UNAUTHORIZED, "Kullanıcı adı veya şifre hatalı."),
+	GOOGLE_LOCAL_ACCOUNT_USE_PASSWORD(1116, "Use password sign-in for this account", HttpStatus.CONFLICT, "Bu e-posta için mevcut SoundConnect hesabına kullanıcı adı ve şifrenle giriş yap."),
+	GOOGLE_SIGN_IN_UNAVAILABLE(1117, "Google sign-in temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Google ile giriş şu anda kullanılamıyor. Lütfen tekrar dene."),
+	GOOGLE_EMAIL_OWNERSHIP_REQUIRED(1118, "Independent email verification required", HttpStatus.FORBIDDEN, "Bu adresin sahipliği ayrıca doğrulanmalı. Yeni hesap için e-postayla kayıt yolunu kullan."),
 	UNAUTHORIZED(1101, "You are not authorized", HttpStatus.UNAUTHORIZED, "Bu işlemi yapmak için giriş yapmalısınız."),
 	FORBIDDEN_ACCESS(1102, "You don't have permission to access this resource", HttpStatus.FORBIDDEN, "Bu kaynağa erişim izniniz yok."),
 	TOKEN_EXPIRED(1103, "JWT token has expired", HttpStatus.UNAUTHORIZED, "Oturum süresi dolmuş. Lütfen tekrar giriş yapın."),

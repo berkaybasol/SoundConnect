@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -191,6 +192,18 @@ class PasswordResetServiceTest {
 				.isEqualTo(ErrorType.PASSWORD_RESET_PROVIDER_UNSUPPORTED);
 		verify(accountRateLimitGuard).checkPasswordResetRequest(RATE_LIMIT_KEY);
 		verifyNoInteractions(otpService, mailService);
+	}
+
+	@Test
+	void googleAccountCannotResetAPasswordUsingItsThirdPartyContactAddress() {
+		User google = localUser();
+		google.setProvider(AuthProvider.GOOGLE);
+		when(userRepository.findByEmail(google.getEmail())).thenReturn(Optional.of(google));
+		var request = new ResetPasswordRequestDto(google.getEmail(), "123456", "newPassword", "newPassword");
+		SoundConnectException failure = catchThrowableOfType(() -> service.resetPassword(request), SoundConnectException.class);
+		assertThat(failure.getErrorType()).isEqualTo(ErrorType.PASSWORD_RESET_PROVIDER_UNSUPPORTED);
+		verifyNoInteractions(otpService, mailService, passwordEncoder);
+		verify(userRepository, never()).resetPasswordAndRevokeSessions(any(), any());
 	}
 
 	@Test

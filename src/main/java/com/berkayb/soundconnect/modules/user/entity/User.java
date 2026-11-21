@@ -113,6 +113,12 @@ public class User extends BaseEntity {
 	@Column(name = "provider_subject", length = 255)
 	@JsonIgnore
 	private String providerSubject;
+
+	@JsonIgnore
+	public boolean isGoogleProfileIncomplete() {
+		return provider == AuthProvider.GOOGLE && (roles == null || roles.isEmpty()
+				|| (roles.size() == 1 && roles.stream().anyMatch(role -> "ROLE_USER".equals(role.getName()))));
+	}
 	
 	@Builder.Default
 	@Column(name = "email_verified", nullable = false)

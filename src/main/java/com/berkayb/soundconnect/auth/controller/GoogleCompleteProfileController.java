@@ -2,50 +2,29 @@ package com.berkayb.soundconnect.auth.controller;
 
 import com.berkayb.soundconnect.auth.dto.request.GoogleCompleteProfileRequestDto;
 import com.berkayb.soundconnect.auth.dto.response.LoginResponse;
-import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.auth.service.GoogleCompleteProfileService;
+import com.berkayb.soundconnect.auth.service.GoogleAuthService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
-
-import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.*;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.BASE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.COMPLETE_GOOGLE_PROFILE;
 
 @RestController
 @RequestMapping(BASE)
 @RequiredArgsConstructor
-@Tag(name = "FOR USERS / Google Complete Profile", description = "Google ile giren kullanıcılar için profil tamamlama endpointleri")
-@Slf4j
 public class GoogleCompleteProfileController {
-	
-	private final GoogleCompleteProfileService googleCompleteProfileService;
-	
-	/**
-	 * Google ile giriş yapan kullanıcıya profil tamamlama imkanı sunar.
-	 * Sadece eksik profil durumu varsa rol atanır ve ilgili profil açılır.
-	 */
-	
+	private final GoogleAuthService googleAuthService;
+
 	@PostMapping(COMPLETE_GOOGLE_PROFILE)
-	@PreAuthorize("isAuthenticated()")
-	public ResponseEntity<BaseResponse<LoginResponse>> completeProfileWithRole(
-			@AuthenticationPrincipal UserDetailsImpl principal,
-			@RequestBody @Valid GoogleCompleteProfileRequestDto dto
-	) {
-		UUID userId = principal.getId();
-		log.info("Profil tamamlama isteği geldi. UserId: {}, Role: {}", userId, dto.role());
-		LoginResponse session = googleCompleteProfileService.completeProfileWithRole(userId, dto);
-		
-		return ResponseEntity.ok(BaseResponse.<LoginResponse>builder()
-		                                     .success(true)
-		                                     .data(session)
-		                                     .message("Profil başarıyla tamamlandı.")
-		                                     .build());
+	public BaseResponse<LoginResponse> completeProfile(@Valid @RequestBody GoogleCompleteProfileRequestDto request) {
+		LoginResponse result = googleAuthService.completeProfile(request);
+		return BaseResponse.<LoginResponse>builder()
+				.success(true).code(200).message(result.applicationId() == null ? "Profil tamamlandı." : "Başvuru durumu alındı.")
+				.data(result).build();
 	}
 }

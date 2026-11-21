@@ -52,10 +52,11 @@ public class PersonalProfileTypePolicy {
 	}
 
 	/**
-	 * Variant for callers that already hold the user-row write lock.
+	 * Variant for callers that already hold the user-row write lock. Returns true
+	 * if the existing personal role or profile aggregate already establishes this type.
 	 */
 	@Transactional(propagation = Propagation.MANDATORY)
-	public void assertCanAcquire(User lockedUser, RoleEnum targetRole) {
+	public boolean assertCanAcquire(User lockedUser, RoleEnum targetRole) {
 		if (lockedUser == null || lockedUser.getId() == null) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
@@ -68,6 +69,7 @@ public class PersonalProfileTypePolicy {
 				&& !(existingTypes.size() == 1 && existingTypes.contains(targetRole))) {
 			throw new SoundConnectException(ErrorType.PROFILE_TYPE_IMMUTABLE);
 		}
+		return existingTypes.contains(targetRole);
 	}
 
 	/**

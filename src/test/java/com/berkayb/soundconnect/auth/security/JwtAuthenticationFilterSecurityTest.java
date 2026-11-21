@@ -57,25 +57,21 @@ class JwtAuthenticationFilterSecurityTest {
 	}
 
 	@Test
-	void rolelessGoogleOnboardingTokenOnlyAuthenticatesCompletionRequest() throws Exception {
+	void legacyGoogleOnboardingTokenDoesNotAuthenticateCompletionRequest() throws Exception {
 		UUID userId = UUID.randomUUID();
 		UserDetailsImpl principal = rolelessGooglePrincipal(userId);
 		stubValidToken(userId, principal);
-		when(request.getMethod()).thenReturn("POST");
-		when(request.getRequestURI()).thenReturn("/api/v1/auth/complete-google-profile");
 
 		filter.doFilterInternal(request, response, filterChain);
 
 		verify(filterChain).doFilter(request, response);
-		assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal())
-				.isSameAs(principal);
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
 	}
 
 	@Test
 	void rolelessGoogleOnboardingTokenDelegatesOtherRoutesAsUnauthenticated() throws Exception {
 		UUID userId = UUID.randomUUID();
 		stubValidToken(userId, rolelessGooglePrincipal(userId));
-		when(request.getMethod()).thenReturn("GET");
 
 		filter.doFilterInternal(request, response, filterChain);
 

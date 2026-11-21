@@ -128,9 +128,6 @@ public class AuthService {
 			return BaseResponse.<LoginResponse>builder().success(true).code(200)
 					.message("Başvuru oturumu açıldı.").data(session).build();
 		}
-		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
-			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
-		}
 		if (user.getStatus() == UserStatus.REJECTED_STUDIO_REQUEST) {
 			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_REJECTED);
 		}
@@ -138,6 +135,9 @@ public class AuthService {
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw new EmailVerificationRequiredException(user.getEmail());
+		}
+		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
+			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
 		}
 		
 		if (user.getStatus() != UserStatus.ACTIVE) {
