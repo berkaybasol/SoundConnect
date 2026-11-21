@@ -34,9 +34,11 @@ import com.berkayb.soundconnect.shared.mail.producer.MailProducer;
 import com.berkayb.soundconnect.shared.messaging.events.notification.*;
 import com.berkayb.soundconnect.shared.security.*;
 import com.berkayb.soundconnect.shared.util.JwtUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.*;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -63,6 +66,7 @@ import org.testcontainers.junit.jupiter.Container;
 import javax.sql.DataSource;
 import java.net.URI;
 import java.net.http.*;
+import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -235,10 +239,21 @@ class NotificationOutboxAuthenticatedHttpPostgresRabbitIT {
     /** An owned queue purge models loss of a confirmed broker payload. It is not
      * a staging outage, full broker disk-loss rehearsal, or production replay tool.
      * The exact test-side replay is deliberately separate from normal dispatch. */
-    @Test void recoveryFindsLostPublishedIntentAndPreservesDeletedReceiptAcrossActualDumpRestore() throws Exception {
-        java.nio.file.Path evidence = java.nio.file.Path.of(System.getProperty("sc.recovery.evidenceDir",
-                "build/recovery-runtime-verification/standalone-" + UUID.randomUUID()));
-        assertThat(java.nio.file.Files.isRegularFile(evidence.resolve("inventory-queries.json"))).isTrue();
+    @Test void recoveryFindsLostPublishedIntentAndPreservesDeletedReceiptAcrossActualDumpRestore(@TempDir Path temporaryEvidence) throws Exception {
+        String configured = System.getProperty("sc.recovery.evidenceDir");
+        Path evidence = configured == null ? temporaryEvidence : Path.of(configured);
+        assertThat(evidence).isDirectory().isWritable();
+        var reader = json.readerFor(new TypeReference<List<String>>() {}).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        List<String> queries;
+        try (var source = new ClassPathResource("recovery/inventory-queries.json").getInputStream()) {
+            queries = reader.readValue(source);
+        }
+        assertThat(queries).hasSize(4);
+        if (configured != null) {
+            // The recovery runner prepares its own inventory. Check it before touching the fixture.
+            List<String> prepared = reader.readValue(evidence.resolve("inventory-queries.json").toFile());
+            assertThat(prepared).as("prepared recovery inventory SQL").isEqualTo(queries);
+        }
         Fixture.dataSourceIdentityGuard();
         assertThat(RABBIT.getContainerInfo().getConfig().getLabels()).containsEntry("soundconnect.fixture", OWNER);
         consumers.stop();
@@ -270,7 +285,7 @@ class NotificationOutboxAuthenticatedHttpPostgresRabbitIT {
         assertThat(jdbc.queryForObject("select to_jsonb(o)::text from tbl_event_performer_notification_outbox o where event_id=?", String.class, eventId)).isEqualTo(intentBefore);
         assertThat(jdbc.queryForObject("select count(*) from tbl_notification", Integer.class)).isZero();
         jdbc.execute("CREATE ROLE recovery_reader NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS");
-        inventory(evidence, "lost", POSTGRES.getJdbcUrl(), "bil004_http", actors.musician, eventId);
+        inventory(evidence, queries, "lost", POSTGRES.getJdbcUrl(), "bil004_http", actors.musician, eventId);
 
         // Local operator rehearsal: reconstruct the exact event from durable intent,
         // recheck real domain eligibility, and publish only that ID. No bulk status reset.
@@ -292,7 +307,7 @@ class NotificationOutboxAuthenticatedHttpPostgresRabbitIT {
         request("GET", inboxPath, actors.musicianToken, null, 200);
         request("DELETE", inboxPath, actors.musicianToken, null, 200);
         assertThat(jdbc.queryForObject("select count(*) from tbl_notification", Integer.class)).isZero();
-        inventory(evidence, "deleted", POSTGRES.getJdbcUrl(), "bil004_http", actors.musician, eventId);
+        inventory(evidence, queries, "deleted", POSTGRES.getJdbcUrl(), "bil004_http", actors.musician, eventId);
         producer.publishConfirmed(recovered);
         verify(listener, timeout(10000).times(2)).handle(any());
         consumers.stop();
@@ -313,7 +328,7 @@ class NotificationOutboxAuthenticatedHttpPostgresRabbitIT {
         assertThat(restoredJdbc.queryForObject("select current_database()", String.class)).isEqualTo("recovery_receipt_restored");
         assertThat(restoredJdbc.queryForObject("select count(*) from tbl_notification", Integer.class)).isZero();
         assertThat(restoredJdbc.queryForObject("select recipient_id from tbl_notification_receipt where source_event_id=?", UUID.class, eventId)).isEqualTo(actors.musician);
-        inventory(evidence, "restored", restoredUrl, "recovery_receipt_restored", actors.musician, eventId);
+        inventory(evidence, queries, "restored", restoredUrl, "recovery_receipt_restored", actors.musician, eventId);
         var proof = new LinkedHashMap<String, Object>();
         proof.put("scope", "synthetic-owned-local-broker-loss"); proof.put("observedAt", observedAt.toString());
         proof.put("eventId", eventId); proof.put("recipientId", actors.musician);
@@ -337,15 +352,12 @@ class NotificationOutboxAuthenticatedHttpPostgresRabbitIT {
         assertThat(result.getExitCode()).as("owned fixture %s", command[0]).isZero();
     }
 
-    void inventory(java.nio.file.Path evidence, String phase, String url, String database, UUID userId, UUID eventId) throws Exception {
+    void inventory(Path evidence, List<String> queries, String phase, String url, String database, UUID userId, UUID eventId) throws Exception {
         Fixture.dataSourceIdentityGuard();
         var ds = new DriverManagerDataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword());
         var owned = new JdbcTemplate(ds);
         assertThat(owned.queryForObject("select current_database()", String.class)).isEqualTo(database);
         owned.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO recovery_reader");
-        var queries = json.readValue(java.nio.file.Files.readString(evidence.resolve("inventory-queries.json")),
-                new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
-        assertThat(queries).hasSize(4);
         var rows = new ArrayList<JsonNode>();
         try (var connection = ds.getConnection()) {
             connection.setAutoCommit(false); connection.setReadOnly(true);
