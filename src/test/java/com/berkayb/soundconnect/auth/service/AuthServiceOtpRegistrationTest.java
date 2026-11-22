@@ -187,7 +187,7 @@ class AuthServiceOtpRegistrationTest {
 				new StudioApplicationResponseDto(
 						applicationId, userId, "studio-owner", "Devo Studio", "Moda Caddesi",
 						"05551234567", cityId, "Istanbul", districtId, "Kadikoy",
-						neighborhoodId, "Moda", ApplicationStatus.PENDING, null, null, null, null
+						neighborhoodId, "Moda", ApplicationStatus.PENDING, null, null, null, null, null
 				)
 		);
 

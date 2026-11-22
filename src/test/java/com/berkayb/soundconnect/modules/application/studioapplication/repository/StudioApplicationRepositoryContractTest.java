@@ -14,15 +14,14 @@ class StudioApplicationRepositoryContractTest {
 	@Test
 	void pagedListQueriesFetchEveryMapperRelationWithoutNPlusOne() throws Exception {
 		assertMapperGraph(StudioApplicationRepository.class.getMethod(
-				"findAllByApplicant", User.class, Pageable.class));
+				"findAllByApplicant", User.class, Pageable.class), "applicant", "city", "district", "neighborhood");
 		assertMapperGraph(StudioApplicationRepository.class.getMethod(
-				"findAllByStatus", ApplicationStatus.class, Pageable.class));
+				"findAllByStatus", ApplicationStatus.class, Pageable.class), "applicant", "city", "district", "neighborhood", "reviewedBy");
 	}
 
-	private void assertMapperGraph(Method method) {
+	private void assertMapperGraph(Method method, String... relations) {
 		EntityGraph graph = method.getAnnotation(EntityGraph.class);
 		assertThat(graph).isNotNull();
-		assertThat(graph.attributePaths()).containsExactlyInAnyOrder(
-				"applicant", "city", "district", "neighborhood", "reviewedBy");
+		assertThat(graph.attributePaths()).containsExactlyInAnyOrder(relations);
 	}
 }

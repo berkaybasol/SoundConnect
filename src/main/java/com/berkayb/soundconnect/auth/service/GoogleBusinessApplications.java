@@ -58,7 +58,7 @@ public class GoogleBusinessApplications {
 			case PENDING_VENUE_REQUEST -> venueSession(user, venueSessions.findSessionApplication(user)
 					.orElseThrow(() -> new SoundConnectException(ErrorType.PENDING_VENUE_APPROVAL)));
 			case PENDING_STUDIO_REQUEST -> LoginResponse.pendingStudio(user, studios.getPendingApplicationByUser(user.getId()).id());
-			case REJECTED_STUDIO_REQUEST -> throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_REJECTED);
+			case REJECTED_STUDIO_REQUEST -> throw studios.rejectionForApplicant(user.getId());
 			default -> throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
 		};
 	}

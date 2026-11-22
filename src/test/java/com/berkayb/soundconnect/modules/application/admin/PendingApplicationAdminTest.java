@@ -105,15 +105,32 @@ class PendingApplicationAdminTest {
                 .andExpect(jsonPath("$.data.totalElements").value(1)).andExpect(jsonPath("$.data.content").isEmpty());
     }
 
-    @Test void onlySameTypePendingDetailsExposeTheAddress() throws Exception {
+    @Test void onlySameTypePendingDetailsExposeTheAddressAndPhone() throws Exception {
         var admin = reviewer(PANEL, VENUE_PERMISSION, STUDIO_PERMISSION);
         mvc.perform(get(VENUES + ID_PREFIX + "1").with(admin)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.address").value("Adres")).andExpect(jsonPath("$.data.phone").doesNotHaveJsonPath());
+                .andExpect(jsonPath("$.data.address").value("Adres")).andExpect(jsonPath("$.data.phone").value("05551112233"));
         mvc.perform(get(STUDIOS + ID_PREFIX + "4").with(admin)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.address").value("Stüdyo adresi")).andExpect(jsonPath("$.data.email").doesNotHaveJsonPath());
         mvc.perform(get(VENUES + ID_PREFIX + "3").with(admin)).andExpect(status().isNotFound());
         mvc.perform(get(STUDIOS + ID_PREFIX + "5").with(admin)).andExpect(status().isNotFound());
         mvc.perform(get(VENUES + ID_PREFIX + "4").with(admin)).andExpect(status().isNotFound());
+    }
+
+    @Test void reviewReadsBothCurrentAndLegacyDecisionsWithoutInventingMissingDetails() throws Exception {
+        var admin = reviewer(PANEL, VENUE_PERMISSION, STUDIO_PERMISSION);
+        String venue = VENUES.replace("/pending", "/review");
+        String studio = STUDIOS.replace("/pending", "/review");
+        mvc.perform(get(venue + ID_PREFIX + "1").with(admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value("05551112233")).andExpect(jsonPath("$.data.decisionDate").doesNotExist());
+        mvc.perform(get(studio + ID_PREFIX + "5").with(admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.rejectionReason").value("Adres eksik"))
+                .andExpect(jsonPath("$.data.decisionDate").value("2026-11-21T14:00:00Z"))
+                .andExpect(jsonPath("$.data.reviewedByUsername").doesNotExist());
+        mvc.perform(get(venue + ID_PREFIX + "3").with(admin)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(jsonPath("$.data.phone").doesNotExist()).andExpect(jsonPath("$.data.reviewedByUsername").doesNotExist());
+        mvc.perform(get(studio + ID_PREFIX + "5").with(reviewer(PANEL, VENUE_PERMISSION))).andExpect(status().isForbidden());
     }
 
     @Test void boundsAreValidated() throws Exception {

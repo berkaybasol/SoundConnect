@@ -1,5 +1,7 @@
 # Aşama 02 — admin panelinin işletim işlevleri
 
+**23 Kasım 2026.** Yetkili yönetici mekân ve stüdyo başvurularında telefonu görebiliyor, başvuruyu onaylayabiliyor veya gerekçeyle reddedebiliyor. Karar kaydında kararı veren yönetici ve zaman tutuluyor. Android’de v4’ten v5’e güncelleme doğrulandı ve kullanıcı yeni panelin görünümünü Vivo telefonunda onayladı. Mobilde 7.185, backend’de 6.576 test geçti. Backend’de iki test atlandı. Sonraki işler kullanıcı yönetimi, şikâyet geçmişi ve backline kategori talepleri. [Karar kaydı için SQL](../../../../scripts/db/2026-11-22-application-reviews.sql) · [PostgreSQL karar testleri](../../../../src/test/java/com/berkayb/soundconnect/auth/controller/GoogleRegistrationHttpPostgresTest.java)
+
 **21 Kasım 2026.** 02 görevi hazır. Ürün çalışması 01’in Git kapanışı doğrulandıktan ve kullanıcı devam talimatını verdikten sonra başlar. Kullanıcı 01.7 kapasite kabulünü yayın öncesine erteledi. Hedef dal `ready-for-prod-02`. [Güncel durum](../../DURUM.md) · [Aşama sırası](../../PLAN.md)
 
 ## Amaç ve kalite

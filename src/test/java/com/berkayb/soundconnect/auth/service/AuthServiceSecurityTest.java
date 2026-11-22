@@ -312,14 +312,16 @@ class AuthServiceSecurityTest {
 	@ParameterizedTest
 	@ValueSource(booleans = {false, true})
 	void rejectedStudioGetsAStableDecisionErrorOnlyAfterPasswordVerification(boolean emailVerified) {
-		User rejectedStudio = User.builder()
+		User rejectedStudio = User.builder().id(UUID.randomUUID())
 				.username("rejected-studio")
 				.email("studio@example.com")
 				.password("encoded")
 				.emailVerified(emailVerified)
 				.status(UserStatus.REJECTED_STUDIO_REQUEST)
 				.build();
-		when(userRepository.findByUsername("rejected-studio"))
+		when(studioApplicationService.rejectionForApplicant(rejectedStudio.getId()))
+                .thenReturn(new com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException("Studio", "Eksik adres"));
+        when(userRepository.findByUsername("rejected-studio"))
 				.thenReturn(Optional.of(rejectedStudio));
 		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
 
@@ -329,6 +331,8 @@ class AuthServiceSecurityTest {
 		);
 
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.STUDIO_APPLICATION_REJECTED);
+        assertThat(((com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException) exception).getRejectionReason())
+                .isEqualTo("Eksik adres");
 		verifyNoInteractions(jwtTokenProvider);
 	}
 

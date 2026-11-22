@@ -79,6 +79,7 @@ class VenueApplicationAdminControllerTest {
 	
 	@Autowired MockMvc mockMvc;
 	
+    @Autowired com.berkayb.soundconnect.modules.role.repository.PermissionRepository permissions;
 	@Autowired RoleRepository roleRepository;
 	@Autowired UserRepository userRepository;
 	@Autowired VenueRepository venueRepository;
@@ -137,8 +138,13 @@ class VenueApplicationAdminControllerTest {
 		district = districtRepository.save(District.builder().name("AdminDistrict").city(city).build());
 		neighborhood = neighborhoodRepository.save(Neighborhood.builder().name("AdminNeighborhood").district(district).build());
 		
+        var grants = new java.util.HashSet<com.berkayb.soundconnect.modules.role.entity.Permission>();
+        for (var name : List.of("MANAGE_VENUE_APPLICATIONS", "ADMIN_PANEL_ACCESS")) {
+            grants.add(permissions.findByName(name).orElseGet(() -> permissions.save(
+                    com.berkayb.soundconnect.modules.role.entity.Permission.builder().name(name).build())));
+        }
 		// --- seed admin ---
-		admin = userRepository.save(User.builder()
+		admin = userRepository.save(User.builder().status(UserStatus.ACTIVE).permissions(grants)
 		                                .username("admin_" + UUID.randomUUID().toString().substring(0, 12))
 		                                .email("admin_" + UUID.randomUUID() + "@test.local")
 		                                .password("x")
@@ -163,7 +169,7 @@ class VenueApplicationAdminControllerTest {
 	
 	private UsernamePasswordAuthenticationToken adminAuth() {
 		return new UsernamePasswordAuthenticationToken(
-				adminDetails, "x", List.of(new SimpleGrantedAuthority("MANAGE_VENUE_APPLICATIONS"))
+				adminDetails, "x", List.of(new SimpleGrantedAuthority("MANAGE_VENUE_APPLICATIONS"), new SimpleGrantedAuthority("ADMIN_PANEL_ACCESS"))
 		);
 	}
 	
@@ -238,6 +244,28 @@ class VenueApplicationAdminControllerTest {
 		       .andExpect(jsonPath("$.message", containsString("Invalid")));
 	}
 	
+    @Test
+    void revokingPanelGrantAfterAuthenticationBlocksBothDecisions() throws Exception {
+        var app = seedApp(seedApplicant(), ApplicationStatus.PENDING);
+        var stored = userRepository.findById(admin.getId()).orElseThrow();
+        stored.getPermissions().removeIf(p -> "ADMIN_PANEL_ACCESS".equals(p.getName()));
+        userRepository.saveAndFlush(stored);
+        mockMvc.perform(get(BASE + "/{id}", app.getId()).with(authentication(adminAuth())))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(BASE + "/by-status").param("status", "PENDING").with(authentication(adminAuth())))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post(BASE + "/approve/{id}", app.getId()).with(authentication(adminAuth())))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post(BASE + "/reject/{id}", app.getId()).contentType("application/json")
+                        .content("{\"reason\":\"Adres eksik\"}").with(authentication(adminAuth())))
+                .andExpect(status().isForbidden());
+        var unchanged = venueApplicationRepository.findById(app.getId()).orElseThrow();
+        assertThat(unchanged.getStatus()).isEqualTo(ApplicationStatus.PENDING);
+        assertThat(unchanged.getReviewedById()).isNull();
+        assertThat(unchanged.getRejectionReason()).isNull();
+        Mockito.verifyNoInteractions(decisionNotifications);
+    }
+
 	@Test
 	void reject_ok() throws Exception {
 		var applicant = seedApplicant();

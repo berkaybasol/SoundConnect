@@ -129,7 +129,7 @@ public class AuthService {
 					.message("Başvuru oturumu açıldı.").data(session).build();
 		}
 		if (user.getStatus() == UserStatus.REJECTED_STUDIO_REQUEST) {
-			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_REJECTED);
+			throw studioApplicationService.rejectionForApplicant(user.getId());
 		}
 		
 		// email dogrulanmis mi kontrol et

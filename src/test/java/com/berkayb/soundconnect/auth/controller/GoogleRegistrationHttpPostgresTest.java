@@ -116,7 +116,8 @@ class GoogleRegistrationHttpPostgresTest {
                     assertThat(connection.getMetaData().getURL()).isEqualTo(POSTGRES.getJdbcUrl());
                 }
                 for (String migration : List.of("2026-09-28-media-notification-identity.sql",
-                        "2026-09-29-band-notification-identity.sql", "2026-10-06-application-mail-intents.sql")) {
+                        "2026-09-29-band-notification-identity.sql", "2026-10-06-application-mail-intents.sql",
+                        "2026-11-22-application-reviews.sql")) {
                     jdbc.execute(Files.readString(Path.of("scripts/db", migration)));
                 }
             };
@@ -167,6 +168,11 @@ class GoogleRegistrationHttpPostgresTest {
                     .roles(new HashSet<>(Set.of(adminRole))).build();
             em.persist(reviewer);
             reviewerId = reviewer.getId();
+            for (String username : List.of("second-reviewer", "revoked-reviewer")) {
+                em.persist(User.builder().username(username).email(username + "@example.invalid")
+                        .password(passwords.encode(PASSWORD)).status(UserStatus.ACTIVE).emailVerified(true)
+                        .roles(new HashSet<>(Set.of(adminRole))).build());
+            }
         });
     }
 
@@ -222,7 +228,29 @@ class GoogleRegistrationHttpPostgresTest {
             assertThat(decisionDetail(id, scoped).get("status").asText()).isEqualTo("PENDING");
             request("GET", ownerPath(role), scoped, null, 403);
         }
+        var base = "/api/v1/admin/" + role.toLowerCase(Locale.ROOT) + "-applications";
+        String adminToken = passwordLogin(REVIEWER, 200).at("/data/token").asText();
+        var listed = request("GET", base + "/pending?size=100", adminToken, null, 200).at("/data/content");
+        assertThat(listed.findValuesAsText("id")).contains(id.toString());
+        assertThat(listed.findValues("phone")).isEmpty();
+        assertThat(listed.findValues("rejectionReason")).isEmpty();
+        var detail = request("GET", base + "/review/" + id, adminToken, null, 200).required("data");
+        assertThat(detail.required("phone").asText()).isEqualTo("05550001122");
+        assertThat(detail.required("status").asText()).isEqualTo("PENDING");
+        request("POST", base + "/reject/" + id, adminToken, Map.of("reason", "   "), 400);
         JsonNode reviewed = review(role, decision, id);
+        var receipt = request("GET", base + "/review/" + id, adminToken, null, 200).required("data");
+        assertThat(receipt.required("status").asText()).isEqualTo(decision);
+        assertThat(receipt.required("reviewedByUsername").asText()).isEqualTo(REVIEWER);
+        assertThat(UUID.fromString(receipt.required("decisionId").asText())).isNotNull();
+        assertThat(receipt.required("decisionDate").asText()).endsWith("Z");
+        assertThat(receipt.hasNonNull("rejectionReason")).isEqualTo(decision.equals("REJECTED"));
+        request("POST", base + "/reject/" + id, adminToken, Map.of("reason", "Second decision"), 409);
+        assertThat(request("GET", base + "/review/" + id, adminToken, null, 200).required("data")).isEqualTo(receipt);
+        if (!venue && decision.equals("APPROVED")) {
+            assertThat(jdbc.queryForObject("select count(*) from tbl_studio_applications a join tbl_studio_profile p "
+                    + "on p.id=a.approved_studio_profile_id where a.id=? and p.user_id=?", Integer.class, id, applicant)).isOne();
+        }
         assertThat(reviewed.path("status").asText()).isEqualTo(decision);
         assertThat(reviewed.hasNonNull("decisionDate")).isTrue();
         if (!venue) {
@@ -243,11 +271,17 @@ class GoogleRegistrationHttpPostgresTest {
             JsonNode rejected = signIn(account, 200).path("data");
             assertThat(rejected.path("sessionScope").asText()).isEqualTo("VENUE_APPLICATION");
             assertThat(rejected.get("applicationId")).isEqualTo(pending.get("applicationId"));
-            assertThat(decisionDetail(id, rejected.get("token").asText()).get("status").asText()).isEqualTo("REJECTED");
+            var ownDecision = decisionDetail(id, rejected.get("token").asText());
+            assertThat(ownDecision.required("status").asText()).isEqualTo("REJECTED");
+            assertThat(ownDecision.required("rejectionReason").asText()).isEqualTo("missing details");
+            assertThat(ownDecision.has("reviewedByUsername")).isFalse();
             assertThat(profileCount(role, applicant)).isZero();
         } else {
             assertThat(reviewed.path("rejectionReason").asText()).isEqualTo("missing details");
-            assertThat(signIn(account, 403).required("code").asInt()).isEqualTo(1112);
+            var outcome = signIn(account, 403);
+            assertThat(outcome.required("code").asInt()).isEqualTo(1112);
+            assertThat(outcome.required("rejectionReason").asText()).isEqualTo("missing details");
+            assertThat(outcome.required("businessName").asText()).isEqualTo("fixture " + account);
             assertThat(profileCount(role, applicant)).isZero();
         }
         verifyNoInteractions(otpMail);
@@ -317,6 +351,143 @@ class GoogleRegistrationHttpPostgresTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(strings = {"VENUE", "STUDIO"})
+    void concurrentOppositeDecisionsPersistOnlyTheWinningReviewerAndEffects(String role) throws Exception {
+        String account = "race-" + role.toLowerCase(Locale.ROOT);
+        stubIdentity(account);
+        var registration = complete(form(account, role), 200).required("data");
+        UUID applicant = UUID.fromString(registration.required("userId").asText());
+        UUID id = UUID.fromString(registration.required("applicationId").asText());
+        String base = "/api/v1/admin/" + role.toLowerCase(Locale.ROOT) + "-applications";
+        String token = passwordLogin(REVIEWER, 200).at("/data/token").asText();
+        String otherToken = passwordLogin("second-reviewer", 200).at("/data/token").asText();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var approved = executor.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return request("POST", base + "/approve/" + id, token, null, 200, 409).path("code").asInt();
+            });
+            var rejected = executor.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return request("POST", base + "/reject/" + id, otherToken, Map.of("reason", "Adres eksik."), 200, 409).path("code").asInt();
+            });
+            int approvalCode = approved.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            int rejectionCode = rejected.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(List.of(approvalCode, rejectionCode)).containsExactlyInAnyOrder(200, 1602);
+            var finalRow = request("GET", base + "/review/" + id, token, null, 200).required("data");
+            assertThat(finalRow.required("status").asText()).isEqualTo(approvalCode == 200 ? "APPROVED" : "REJECTED");
+            assertThat(finalRow.required("reviewedByUsername").asText()).isEqualTo(approvalCode == 200 ? REVIEWER : "second-reviewer");
+            assertThat(finalRow.hasNonNull("rejectionReason")).isEqualTo(rejectionCode == 200);
+            assertThat(profileCount(role, applicant)).isEqualTo(approvalCode == 200 ? 1 : 0);
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"VENUE", "STUDIO"})
+    void failedDecisionPersistenceRollsBackProfileRoleAndReceipt(String role) throws Exception {
+        String account = "failed-review-" + role.toLowerCase(Locale.ROOT);
+        stubIdentity(account);
+        var registration = complete(form(account, role), 200).required("data");
+        UUID applicant = UUID.fromString(registration.required("userId").asText());
+        UUID id = UUID.fromString(registration.required("applicationId").asText());
+        boolean venue = role.equals("VENUE");
+        String table = venue ? "tbl_venue_applications" : "tbl_studio_applications";
+        String base = "/api/v1/admin/" + role.toLowerCase(Locale.ROOT) + "-applications";
+        String token = passwordLogin(REVIEWER, 200).at("/data/token").asText();
+        // Isolated Testcontainers database. Only this fixture row rejects a decision write.
+        jdbc.execute("alter table " + table + " add constraint fixture_fail_review check "
+                + "(id <> '" + id + "' or status='PENDING')");
+        try {
+            request("POST", base + "/approve/" + id, token, null, 409);
+        } finally {
+            jdbc.execute("alter table " + table + " drop constraint fixture_fail_review");
+        }
+        var row = request("GET", base + "/review/" + id, token, null, 200).required("data");
+        assertThat(row.required("status").asText()).isEqualTo("PENDING");
+        assertThat(row.hasNonNull("reviewedByUsername") || row.hasNonNull("decisionDate")).isFalse();
+        assertThat(profileCount(role, applicant)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id=?", Integer.class, applicant)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from tbl_application_mail_intent where application_id=? "
+                + "and decision <> 'CREATED'", Integer.class, id)).isZero();
+    }
+
+    @Test
+    void blockedReviewCannotUseASessionRevokedWhileWaitingForTheActorLock() throws Exception {
+        String applicant = "blocked-review-test";
+        stubIdentity(applicant);
+        var data = complete(form(applicant, "VENUE"), 200).required("data");
+        UUID id = UUID.fromString(data.required("applicationId").asText());
+        String reviewer = "revoked-reviewer";
+        String token = passwordLogin(reviewer, 200).at("/data/token").asText();
+        try (var blocker = POSTGRES.createConnection(""); var sql = blocker.createStatement();
+             var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            blocker.setAutoCommit(false);
+            int pid;
+            try (var rows = sql.executeQuery("select pg_backend_pid() from tbl_user where user_name='revoked-reviewer' for update")) {
+                assertThat(rows.next()).isTrue();
+                pid = rows.getInt(1);
+            }
+            var result = executor.submit(() -> request("POST", "/api/v1/admin/venue-applications/approve/" + id, token, null, 403));
+            try {
+                org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(12)).until(() -> Boolean.TRUE.equals(
+                        jdbc.queryForObject("select exists (select 1 from pg_stat_activity a where ?=any(pg_blocking_pids(a.pid)))",
+                                Boolean.class, pid)));
+                assertThat(sql.executeUpdate("update tbl_user set session_version=session_version+1 where user_name='revoked-reviewer'")).isOne();
+                blocker.commit();
+            } finally {
+                blocker.rollback();
+            }
+            assertThat(result.get(25, java.util.concurrent.TimeUnit.SECONDS).path("code").asInt()).isPositive();
+            assertThat(jdbc.queryForObject("select status from tbl_venue_applications where id=?", String.class, id)).isEqualTo("PENDING");
+            assertThat(jdbc.queryForObject("select decision_id is null from tbl_venue_applications where id=?", Boolean.class, id)).isTrue();
+        }
+    }
+
+    @Test
+    void reviewMigrationReplaysOverExistingRowsWithoutReconstructingHistory() throws Exception {
+        String migration = Files.readString(Path.of("scripts/db/2026-11-22-application-reviews.sql"));
+        // A separate legacy schema on the disposable container, independent of the ORM-created current schema.
+        try (var connection = POSTGRES.createConnection(""); var sql = connection.createStatement()) {
+            sql.execute("create schema legacy_application_reviews");
+            sql.execute("set search_path to legacy_application_reviews");
+            sql.execute("create table tbl_venue_applications (id uuid primary key, status varchar, phone varchar(15), decision_date timestamp)");
+            sql.execute("create table tbl_studio_applications (id uuid primary key, applicant_id uuid, status varchar, decision_date timestamp,"
+                    + " reviewed_by_id uuid, rejection_reason varchar(500))");
+            UUID oldVenue = UUID.randomUUID(), oldStudio = UUID.randomUUID(), oldReviewer = UUID.randomUUID();
+            try (var venue = connection.prepareStatement("insert into tbl_venue_applications values (?, 'APPROVED', null, timestamp '2026-11-01 10:00:00')");
+                 var studio = connection.prepareStatement("insert into tbl_studio_applications values (?, ?, 'REJECTED', timestamp '2026-11-02 14:00:00', ?, 'Eski gerekçe')")) {
+                venue.setObject(1, oldVenue);
+                venue.executeUpdate();
+                studio.setObject(1, oldStudio);
+                studio.setObject(2, UUID.randomUUID());
+                studio.setObject(3, oldReviewer);
+                studio.executeUpdate();
+            }
+            sql.execute(migration);
+            sql.execute(migration);
+            try (var rows = sql.executeQuery("select * from tbl_venue_applications")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getObject("id")).isEqualTo(oldVenue);
+                assertThat(rows.getString("status")).isEqualTo("APPROVED");
+                assertThat(rows.getTimestamp("decision_date").toLocalDateTime()).isEqualTo("2026-11-01T10:00:00");
+                assertThat(rows.getObject("decision_id")).isNull();
+                assertThat(rows.getObject("reviewed_by_id")).isNull();
+                assertThat(rows.getString("rejection_reason")).isNull();
+                assertThat(rows.getString("phone")).isNull();
+                assertThat(rows.next()).isFalse();
+            }
+            try (var rows = sql.executeQuery("select * from tbl_studio_applications")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getObject("id")).isEqualTo(oldStudio);
+                assertThat(rows.getString("status")).isEqualTo("REJECTED");
+                assertThat(rows.getObject("reviewed_by_id")).isEqualTo(oldReviewer);
+                assertThat(rows.getString("rejection_reason")).isEqualTo("Eski gerekçe");
+                assertThat(rows.getObject("approved_studio_profile_id")).isNull();
+                assertThat(rows.getObject("decision_id")).isNull();
+                assertThat(rows.next()).isFalse();
+            }
+        }
+    }
+
     private void assertApplicationFields(String role, UUID userId, UUID applicationId, String account) {
         boolean venue = role.equals("VENUE");
         String fields = venue ? "venue_name as name, venue_address as address, user_id as applicant from tbl_venue_applications" :
@@ -337,8 +508,7 @@ class GoogleRegistrationHttpPostgresTest {
         String operation = decision.equals("APPROVED") ? "approve" : "reject";
         String path = "/api/v1/admin/" + role.toLowerCase(Locale.ROOT) + "-applications/" + operation + "/" + application;
         boolean reject = decision.equals("REJECTED");
-        if (reject && role.equals("VENUE")) path += "?reason=missing%20details";
-        Object body = reject && role.equals("STUDIO") ? Map.of("reason", "missing details") : null;
+        Object body = reject ? Map.of("reason", "missing details") : null;
         return request("POST", path, adminToken, body, 200).path("data");
     }
     private static String decisionPath(UUID id) { return "/api/v1/venue-application-session/applications/" + id; }
@@ -396,7 +566,7 @@ class GoogleRegistrationHttpPostgresTest {
     private JsonNode passwordLogin(String username, int status) throws Exception {
         return request("POST", AUTH + "login", null, Map.of("username", username, "password", PASSWORD), status);
     }
-    private JsonNode request(String method, String path, String bearer, Object body, int status) throws Exception {
+    private JsonNode request(String method, String path, String bearer, Object body, int... expectedStatuses) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                 .timeout(Duration.ofSeconds(20)).header("Content-Type", "application/json");
         if (bearer != null) request.header("Authorization", "Bearer " + bearer);
@@ -404,7 +574,13 @@ class GoogleRegistrationHttpPostgresTest {
                 HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         var result = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
         JsonNode envelope = json.readTree(result.body());
-        assertThat(result.statusCode()).as("%s %s (app code %s)", method, path, envelope.path("code")).isEqualTo(status);
+        assertThat(result.statusCode()).as("%s %s (app code %s)", method, path, envelope.path("code")).isIn(java.util.Arrays.stream(expectedStatuses).boxed().toList());
+        if (method.equals("POST") && path.startsWith("/api/v1/admin/") && result.statusCode() == 200) {
+            var requestId = UUID.fromString(result.headers().firstValue("X-Decision-Id").orElseThrow());
+            var id = UUID.fromString(path.substring(path.lastIndexOf('/') + 1));
+            String table = path.startsWith("/api/v1/admin/venue-applications/") ? "tbl_venue_applications" : "tbl_studio_applications";
+            assertThat(jdbc.queryForObject("select decision_id from " + table + " where id=?", UUID.class, id)).isEqualTo(requestId);
+        }
         return envelope;
     }
 }

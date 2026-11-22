@@ -89,6 +89,8 @@ class GoogleBusinessApplicationsTest {
 		assertThat(initial.permissions()).isEmpty();
 		assertThat(initial.requiresGoogleProfileCompletion()).isFalse();
 		user.setStatus(UserStatus.REJECTED_STUDIO_REQUEST);
+        when(studios.rejectionForApplicant(user.getId())).thenReturn(
+                new com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException("Studio name", "Adres eksik."));
 		assertThatThrownBy(() -> service().resume(user)).isInstanceOfSatisfying(SoundConnectException.class,
 				failure -> assertThat(failure.getErrorType()).isEqualTo(ErrorType.STUDIO_APPLICATION_REJECTED));
 		verifyNoInteractions(venues, venueSessions, tokens);

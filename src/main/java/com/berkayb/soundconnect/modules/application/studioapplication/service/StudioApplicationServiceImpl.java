@@ -23,6 +23,7 @@ import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.PageResponse;
@@ -110,7 +111,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		StudioApplication saved = applicationRepository.save(application);
 		studioApplicationAdminMailService.sendNewApplicationMail(saved);
 		log.info("Studio application created applicantId={} applicationId={}", applicantUserId, saved.getId());
-		return applicationMapper.toResponseDto(saved);
+		return applicationMapper.toApplicantDto(saved);
 	}
 
 	@Override
@@ -124,7 +125,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		User applicant = userEntityFinder.getUser(applicantUserId);
 		return PageResponse.from(
 				applicationRepository.findAllByApplicant(applicant, pageable)
-						.map(applicationMapper::toResponseDto));
+						.map(applicationMapper::toApplicantDto));
 	}
 
 	@Override
@@ -132,7 +133,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	public StudioApplicationResponseDto getPendingApplicationByUser(UUID applicantUserId) {
 		User applicant = userEntityFinder.getUser(applicantUserId);
 		return applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING)
-				.map(applicationMapper::toResponseDto)
+				.map(applicationMapper::toApplicantDto)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_APPLICATION_NOT_FOUND));
 	}
 
@@ -156,6 +157,15 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_APPLICATION_NOT_FOUND)));
 	}
 
+    @Override
+    @Transactional(readOnly = true)
+    public StudioApplicationRejectedException rejectionForApplicant(UUID applicantUserId) {
+        return applicationRepository
+                .findFirstByApplicantIdAndStatusOrderByDecisionDateDescIdDesc(applicantUserId, ApplicationStatus.REJECTED)
+                .map(application -> new StudioApplicationRejectedException(application.getStudioName(), application.getRejectionReason()))
+                .orElseGet(() -> new StudioApplicationRejectedException(null, null));
+    }
+
 	@Override
 	@Transactional
 	public StudioApplicationResponseDto approveApplication(UUID applicationId, UUID adminId) {
@@ -175,13 +185,15 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 				: UserStatus.INACTIVE);
 		userRepository.save(applicant);
 
-		studioProfileService.createApprovedProfile(new StudioProfileProvisioningCommand(
+		var profile = studioProfileService.createApprovedProfile(new StudioProfileProvisioningCommand(
 				applicant.getId(), application.getStudioName(), application.getStudioAddress(),
 				application.getPhone(), application.getCity().getId(), application.getDistrict().getId(),
 				application.getNeighborhood().getId()
 		));
 
+		application.setApprovedStudioProfileId(profile.id());
 		application.setStatus(ApplicationStatus.APPROVED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(timeProvider.nowUtc());
 		application.setReviewedBy(resolveAdmin(adminId));
 		application.setRejectionReason(null);
@@ -201,6 +213,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, "reason can be at most 500 characters");
 		}
 		application.setStatus(ApplicationStatus.REJECTED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(timeProvider.nowUtc());
 		application.setReviewedBy(resolveAdmin(adminId));
 		application.setRejectionReason(normalizedReason);

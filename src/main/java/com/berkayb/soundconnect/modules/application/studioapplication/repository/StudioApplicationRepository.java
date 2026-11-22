@@ -22,11 +22,13 @@ public interface StudioApplicationRepository extends JpaRepository<StudioApplica
 
 	Optional<StudioApplication> findByApplicantAndStatus(User applicant, ApplicationStatus status);
 
-	@EntityGraph(attributePaths = {"applicant", "city", "district", "neighborhood", "reviewedBy"})
+	@EntityGraph(attributePaths = {"applicant", "city", "district", "neighborhood"})
 	Page<StudioApplication> findAllByApplicant(User applicant, Pageable pageable);
 
 	@EntityGraph(attributePaths = {"applicant", "city", "district", "neighborhood", "reviewedBy"})
 	Page<StudioApplication> findAllByStatus(ApplicationStatus status, Pageable pageable);
+
+    Optional<StudioApplication> findFirstByApplicantIdAndStatusOrderByDecisionDateDescIdDesc(UUID applicantId, ApplicationStatus status);
 
 	long countByStatus(ApplicationStatus status);
 }

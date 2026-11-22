@@ -6,8 +6,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.UUID;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record PendingApplicationRow(UUID id, String businessName, String applicantUsername,
                                     String cityName, String districtName, String neighborhoodName,
                                     Instant applicationDate, ApplicationStatus status,
-                                    @JsonInclude(JsonInclude.Include.NON_NULL) String address) {
+                                    String address, String phone, Instant decisionDate,
+                                    String reviewedByUsername, String rejectionReason, UUID decisionId) {
 }

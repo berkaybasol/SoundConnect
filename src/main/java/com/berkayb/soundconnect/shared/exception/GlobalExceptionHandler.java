@@ -58,6 +58,17 @@ public class GlobalExceptionHandler {
 				.body(contract.getBody());
 	}
 
+    @ExceptionHandler(StudioApplicationRejectedException.class)
+    public ResponseEntity<ErrorResponse> handleStudioRejection(
+            StudioApplicationRejectedException exception, HttpServletRequest request) {
+        SafeHttpObservationHandler.recordException(request, exception);
+        var contract = response(ErrorType.STUDIO_APPLICATION_REJECTED, request);
+        var body = java.util.Objects.requireNonNull(contract.getBody());
+        body.setBusinessName(exception.getBusinessName());
+        body.setRejectionReason(exception.getRejectionReason());
+        return ResponseEntity.status(contract.getStatusCode()).cacheControl(org.springframework.http.CacheControl.noStore()).body(body);
+    }
+
 	@ExceptionHandler(SoundConnectException.class)
 	public ResponseEntity<ErrorResponse> handleSoundConnectException(
 			SoundConnectException exception,

@@ -1,9 +1,9 @@
-package com.berkayb.soundconnect.modules.application.studioapplication.dto.request;
+package com.berkayb.soundconnect.modules.application.admin;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record StudioApplicationRejectRequestDto(
+public record ApplicationRejectionRequest(
 		@NotBlank(message = "Ret gerekcesi zorunludur")
 		@Size(max = 500, message = "Ret gerekcesi en fazla 500 karakter olabilir")
 		String reason

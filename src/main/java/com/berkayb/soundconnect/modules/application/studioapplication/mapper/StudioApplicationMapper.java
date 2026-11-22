@@ -22,6 +22,11 @@ public interface StudioApplicationMapper {
 	@Mapping(target = "reviewedById", source = "reviewedBy.id")
 	StudioApplicationResponseDto toResponseDto(StudioApplication application);
 
+    @org.mapstruct.InheritConfiguration(name = "toResponseDto")
+    @Mapping(target = "reviewedById", ignore = true)
+    @Mapping(target = "decisionId", ignore = true)
+    StudioApplicationResponseDto toApplicantDto(StudioApplication application);
+
 	default Instant toUtcInstant(LocalDateTime value) {
 		return value == null ? null : value.toInstant(ZoneOffset.UTC);
 	}

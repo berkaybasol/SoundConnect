@@ -35,3 +35,18 @@ insert into tbl_venue_applications values
 insert into tbl_studio_applications values
     ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000020','Studio 1','Stüdyo adresi','PENDING',1,1,1,'2026-11-21 12:00:00'),
     ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000020','Rejected','Adres','REJECTED',1,1,1,'2026-11-21 13:00:00');
+
+alter table tbl_venue_applications add decision_id uuid;
+alter table tbl_studio_applications add decision_id uuid;
+alter table tbl_venue_applications add phone varchar(15);
+alter table tbl_venue_applications add reviewed_by_id uuid;
+alter table tbl_venue_applications add rejection_reason varchar(500);
+alter table tbl_venue_applications add decision_date timestamp;
+alter table tbl_studio_applications add phone varchar(15);
+alter table tbl_studio_applications add reviewed_by_id uuid;
+alter table tbl_studio_applications add rejection_reason varchar(500);
+alter table tbl_studio_applications add decision_date timestamp;
+update tbl_venue_applications set phone='05551112233' where venue_name='Venue 1';
+update tbl_studio_applications set phone='05552223344' where studio_name='Studio 1';
+update tbl_studio_applications set decision_date=timestamp '2026-11-21 14:00:00', rejection_reason='Adres eksik'
+where status='REJECTED';

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.application.studioapplication.dto.request;
 
+import com.berkayb.soundconnect.modules.application.admin.ApplicationRejectionRequest;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.AfterAll;
@@ -25,12 +26,12 @@ class StudioApplicationRejectRequestValidationTest {
 
 	@Test
 	void reasonIsRequiredAndBoundedForJsonRequestBody() {
-		assertThat(validator.validate(new StudioApplicationRejectRequestDto("Uygun bulunmadı")))
+		assertThat(validator.validate(new ApplicationRejectionRequest("Uygun bulunmadı")))
 				.isEmpty();
-		assertThat(validator.validate(new StudioApplicationRejectRequestDto(" ")))
+		assertThat(validator.validate(new ApplicationRejectionRequest(" ")))
 				.extracting(violation -> violation.getPropertyPath().toString())
 				.contains("reason");
-		assertThat(validator.validate(new StudioApplicationRejectRequestDto("r".repeat(501))))
+		assertThat(validator.validate(new ApplicationRejectionRequest("r".repeat(501))))
 				.extracting(violation -> violation.getPropertyPath().toString())
 				.contains("reason");
 	}

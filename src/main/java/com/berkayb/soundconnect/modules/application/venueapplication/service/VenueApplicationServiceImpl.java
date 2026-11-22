@@ -115,8 +115,10 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 		
 		venueProfileService.createProfile(venue.getId(), new VenueProfileSaveRequestDto(null, null, null, null, null));
 		
+		application.setReviewedById(requireReviewer(adminId));
 		application.setApprovedVenue(venue);
 		application.setStatus(ApplicationStatus.APPROVED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
 		venueApplicationRepository.saveAndFlush(application);
 		decisionNotifications.decided(application);
@@ -139,7 +141,14 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
                 .orElseThrow(()->new SoundConnectException(ErrorType.USER_NOT_FOUND));
         entityManager.refresh(applicant, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireDecisionApplicant(applicant);
+		String explanation = reason == null ? "" : reason.strip();
+		if (explanation.isBlank() || explanation.length() > 500) {
+			throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+		}
+		application.setReviewedById(requireReviewer(adminId));
+		application.setRejectionReason(explanation);
 		application.setStatus(ApplicationStatus.REJECTED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
 		venueApplicationRepository.saveAndFlush(application);
 		decisionNotifications.decided(application);
@@ -234,6 +243,11 @@ public class VenueApplicationServiceImpl implements VenueApplicationService {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
 		return venueApplicationMapper.toResponseDto(application);
 	}
+
+    private static UUID requireReviewer(UUID adminId) {
+        if (adminId == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+        return adminId;
+    }
 
     private static void requireDecisionApplicant(User applicant) {
         if(applicant.getErasedAt()!=null) throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);

@@ -109,7 +109,7 @@ class StudioApplicationServiceImplTest {
 		stubLocationLookup();
 		when(applicationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		StudioApplicationResponseDto expected = response(ApplicationStatus.PENDING);
-		when(applicationMapper.toResponseDto(any())).thenReturn(expected);
+		when(applicationMapper.toApplicantDto(any())).thenReturn(expected);
 
 		StudioApplicationResponseDto result = service.createApplication(applicantId, request);
 
@@ -280,9 +280,14 @@ class StudioApplicationServiceImplTest {
 		when(applicationRepository.save(application)).thenReturn(application);
 		when(applicationMapper.toResponseDto(application)).thenReturn(response(ApplicationStatus.APPROVED));
 
+        UUID profileId = UUID.randomUUID();
+        var profile = org.mockito.Mockito.mock(com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.StudioProfileResponseDto.class);
+        when(profile.id()).thenReturn(profileId);
+        when(studioProfileService.createApprovedProfile(any())).thenReturn(profile);
 		StudioApplicationResponseDto result = service.approveApplication(applicationId, adminId);
 
 		assertThat(result.status()).isEqualTo(ApplicationStatus.APPROVED);
+        assertThat(application.getApprovedStudioProfileId()).isEqualTo(profileId);
 		assertThat(applicant.getStatus()).isEqualTo(UserStatus.ACTIVE);
 		assertThat(applicant.getRoles()).contains(studioRole);
 		assertThat(application.getReviewedBy()).isSameAs(admin);
@@ -468,7 +473,7 @@ class StudioApplicationServiceImplTest {
 				UUID.randomUUID(), applicantId, applicant.getUsername(), "Devo Studio", "Moda Caddesi",
 				"05551234567", city.getId(), city.getName(), district.getId(), district.getName(),
 				neighborhood.getId(), neighborhood.getName(), status,
-				LocalDateTime.now().toInstant(ZoneOffset.UTC), null, null, null
+				LocalDateTime.now().toInstant(ZoneOffset.UTC), null, null, null, null
 		);
 	}
 }

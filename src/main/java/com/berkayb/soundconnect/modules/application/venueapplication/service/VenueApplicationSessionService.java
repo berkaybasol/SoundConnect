@@ -43,7 +43,8 @@ public class VenueApplicationSessionService {
         return new VenueApplicationDecisionDto(app.getId(), userId, app.getStatus(), app.getVenueName(),
                 app.getApplicationDate().toInstant(ZoneOffset.UTC),
                 app.getDecisionDate()==null?null:app.getDecisionDate().toInstant(ZoneOffset.UTC),
-                app.getApprovedVenue()==null?null:app.getApprovedVenue().getId());
+                app.getApprovedVenue()==null?null:app.getApprovedVenue().getId(),
+                app.getStatus() == ApplicationStatus.REJECTED ? app.getRejectionReason() : null);
     }
 
     public LoginResponse promote(UUID userId, UUID applicationId, long authenticatedSessionVersion) {

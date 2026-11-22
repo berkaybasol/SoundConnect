@@ -59,6 +59,20 @@ public class PendingApplicationAdminController {
         return response(applications.detail(actor, STUDIO, id));
     }
 
+    @GetMapping(EndPoints.VenueApplication.ADMIN_BASE + "/review/{id}")
+    @PreAuthorize(READ_VENUE)
+    public ResponseEntity<BaseResponse<PendingApplicationRow>> reviewVenue(
+            @AuthenticationPrincipal UserDetailsImpl actor, @PathVariable UUID id) {
+        return response(applications.review(actor, VENUE, id));
+    }
+
+    @GetMapping(EndPoints.StudioApplication.ADMIN_BASE + "/review/{id}")
+    @PreAuthorize(READ_STUDIO)
+    public ResponseEntity<BaseResponse<PendingApplicationRow>> reviewStudio(
+            @AuthenticationPrincipal UserDetailsImpl actor, @PathVariable UUID id) {
+        return response(applications.review(actor, STUDIO, id));
+    }
+
     private static <T> ResponseEntity<BaseResponse<T>> response(T data) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
                 BaseResponse.<T>builder().success(true).code(200).data(data).build());

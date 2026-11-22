@@ -20,6 +20,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StudioApplicationMapperTest {
 	private final StudioApplicationMapper mapper = Mappers.getMapper(StudioApplicationMapper.class);
 
+    @Test
+    void applicantCanReadTheExplanationWithoutReviewerIdentityOrInternalReceipt() throws Exception {
+        var reviewer = User.builder().id(UUID.randomUUID()).username("reviewer").build();
+        var application = StudioApplication.builder().reviewedBy(reviewer).decisionId(UUID.randomUUID())
+                .status(ApplicationStatus.REJECTED).rejectionReason("Adres eksik.").build();
+        var json = new ObjectMapper();
+        var own = json.valueToTree(mapper.toApplicantDto(application));
+        assertThat(own.path("rejectionReason").asText()).isEqualTo("Adres eksik.");
+        assertThat(own.has("reviewedById")).isFalse();
+        assertThat(own.has("decisionId")).isFalse();
+        var admin = mapper.toResponseDto(application);
+        assertThat(admin.reviewedById()).isEqualTo(reviewer.getId());
+        assertThat(admin.decisionId()).isEqualTo(application.getDecisionId());
+    }
+
 	@Test
 	void exposesUtcWallClockAsAnOffsetBearingInstant() throws Exception {
 		City city = City.builder().id(UUID.randomUUID()).name("Istanbul").build();

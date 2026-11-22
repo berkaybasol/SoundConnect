@@ -21,6 +21,7 @@ public record StudioApplicationResponseDto(
 		ApplicationStatus status,
 		Instant applicationDate,
 		Instant decisionDate,
-		UUID reviewedById,
-		String rejectionReason
+		@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) UUID reviewedById,
+		String rejectionReason,
+        @com.fasterxml.jackson.annotation.JsonIgnore UUID decisionId
 ) {}

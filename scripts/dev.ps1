@@ -97,6 +97,7 @@ $LocalSchemaMigrations = @(
     @{ Name = "Band notification identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-29-band-notification-identity.sql"; Marker = "2026-09-29-band-notification-identity" }
     @{ Name = "Application mail intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-06-application-mail-intents.sql" }
     @{ Name = "Account session version"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-08-account-session-version.sql" }
+    @{ Name = "Application review receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-22-application-reviews.sql" }
     @{ Name = "Mobile diagnostics"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-08-mobile-diagnostics.sql" }
 )
 
