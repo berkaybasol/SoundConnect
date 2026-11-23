@@ -215,7 +215,8 @@ public class EndPoints {
 
 	public static class CollabAdmin {
 		public static final String BASE = API + VERSION + "/admin/collab/reports";
-		public static final String REVIEW = "/{reportId}/review";
+		public static final String DETAIL = "/{reportId}";
+		public static final String REVIEW = DETAIL + "/review";
 	}
 	
 	public static class Comment {

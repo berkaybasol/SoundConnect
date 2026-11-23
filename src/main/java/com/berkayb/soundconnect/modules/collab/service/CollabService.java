@@ -609,7 +609,8 @@ public class CollabService {
         CollabReport value = CollabReport.builder().listing(listing).reporterUser(reporterUser)
                 .clientRequestId(request.clientRequestId()).requestPayloadHash(payloadHash)
                 .reason(request.reason()).details(details).reportedAt(now)
-                .listingEvidence(CollabReportListingEvidence.capture(listing)).build();
+                .listingEvidence(CollabReportListingEvidence.capture(listing))
+                .evidenceCapturedAtReport(true).build();
         reportRepository.saveAndFlush(value);
         return mapReport(value);
     }

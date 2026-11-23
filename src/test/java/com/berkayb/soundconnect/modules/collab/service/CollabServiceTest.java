@@ -1065,6 +1065,7 @@ class CollabServiceTest {
         verify(reportRepository).saveAndFlush(captor.capture());
         verify(listingRepository).findByIdForUpdate(listing.getId());
         CollabReportListingEvidence evidence = captor.getValue().getListingEvidence();
+        assertThat(captor.getValue().isEvidenceCapturedAtReport()).isTrue();
         listing.setTitle("Sonradan degistirilen baslik");
         listing.setDescription("Sonradan degistirilen ve rapor kanitini etkilememesi gereken aciklama.");
         listing.getPublisherActor().setDisplayName("Degisen yayinci");

@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -57,6 +58,10 @@ public class CollabReport extends BaseEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "listing_evidence", nullable = false, updatable = false, columnDefinition = "jsonb")
     private CollabReportListingEvidence listingEvidence;
+
+    @Column(name = "evidence_captured_at_report", nullable = false, updatable = false)
+    @ColumnDefault("false")
+    private boolean evidenceCapturedAtReport;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)

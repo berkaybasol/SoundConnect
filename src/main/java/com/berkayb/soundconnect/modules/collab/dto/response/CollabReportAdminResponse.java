@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/** hasListingEvidence certifies a report-time snapshot. Legacy content has unverified capture time. */
 public record CollabReportAdminResponse(
         UUID id,
         long version,
@@ -20,6 +21,7 @@ public record CollabReportAdminResponse(
         String details,
         Instant reportedAt,
         UUID listingId,
+        boolean hasListingEvidence,
         String listingTitle,
         String listingDescription,
         CollabListingStatus listingStatus,
@@ -37,8 +39,10 @@ public record CollabReportAdminResponse(
         Long feeAmountMinor,
         String currency,
         UUID reporterUserId,
+        String reporterUsername,
         CollabReportDecision reviewDecision,
         UUID reviewedByUserId,
+        String reviewedByUsername,
         Instant reviewedAt,
         String resolutionNote
 ) {
