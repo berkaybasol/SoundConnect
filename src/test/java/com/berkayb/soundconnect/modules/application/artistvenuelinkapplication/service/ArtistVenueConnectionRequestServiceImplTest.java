@@ -19,6 +19,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianP
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -59,6 +60,7 @@ class ArtistVenueConnectionRequestServiceImplTest {
 	@Mock VenueProfileRepository venueProfileRepo;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock TransactionalNotificationService notificationProducer;
+	@Mock AccountDeliveryFence contact;
 	
 	@InjectMocks
 	ArtistVenueConnectionRequestServiceImpl service;

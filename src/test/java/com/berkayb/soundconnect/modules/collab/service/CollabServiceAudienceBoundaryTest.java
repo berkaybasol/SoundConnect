@@ -26,8 +26,8 @@ class CollabServiceAudienceBoundaryTest {
                 .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                 .filter(method -> Modifier.isPublic(method.getModifiers()) && method.getParameterCount() > 0
                         && method.getParameterTypes()[0] == UUID.class).toList();
-        // 23 user actions, 2 actor entry points, 3 moderation entry points.
-        assertThat(operations).hasSize(28);
+        // 24 user actions, 2 actor entry points, 3 moderation entry points.
+        assertThat(operations).hasSize(29);
         return operations.stream().flatMap(method -> Stream.of("LISTENER", "MIXED_ROLES", "RETAINED_PROFILE")
                 .map(identity -> Arguments.of(method, identity)));
     }
