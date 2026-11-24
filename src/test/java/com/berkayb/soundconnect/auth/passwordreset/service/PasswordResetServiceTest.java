@@ -269,6 +269,23 @@ class PasswordResetServiceTest {
 	}
 
 	@Test
+	void suspensionCommittedBeforeThePasswordResetLockPreservesCredentials() {
+		User beforeDecision = localUser();
+		User afterDecision = localUser();
+		afterDecision.setAccessSuspended(true);
+		when(userRepository.findByUsername("berkay")).thenReturn(Optional.of(beforeDecision));
+		when(otpService.verifyPasswordResetOtp("user@example.com", "123456")).thenReturn(true);
+		when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(afterDecision));
+
+		var failure = catchThrowableOfType(() -> service.resetPassword(resetRequest("berkay")), SoundConnectException.class);
+
+		assertThat(failure.getErrorType()).isEqualTo(ErrorType.ACCOUNT_SUSPENDED);
+		verify(entityManager).refresh(afterDecision);
+		verifyNoInteractions(passwordEncoder);
+		verify(userRepository, never()).resetPasswordAndRevokeSessions(any(), any());
+	}
+
+	@Test
 	void validUsernameAndCodeLockByUuidAndStoreBcryptHash() {
 		User user = localUser();
 		ResetPasswordRequestDto request = resetRequest(" BeRKay ");

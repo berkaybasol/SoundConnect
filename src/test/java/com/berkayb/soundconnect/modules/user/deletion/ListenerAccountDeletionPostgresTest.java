@@ -113,7 +113,8 @@ class ListenerAccountDeletionPostgresTest {
                     "2026-09-10-overthinking-inbox-seen.sql", "2026-09-10-overthinking-profile-shares.sql",
                     "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
                     "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql",
-                    "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql")) {
+                    "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql",
+                    "2026-11-24-user-blocks.sql")) {
                 statement.execute(Files.readString(Path.of("scripts/db", migration)));
             }
         }
@@ -468,7 +469,7 @@ class ListenerAccountDeletionPostgresTest {
                     try {
                         return tx(() -> {
                             if (decision) revealParticipants.lockRequesterForDecision(peer,target);
-                            else revealParticipants.lockPostAuthor(target);
+                            else revealParticipants.lockPostAuthor(peer, target);
                             return jdbc.queryForList("select id from "+targetTable+" where id=? for update",UUID.class,target).isEmpty();
                         });
                     } catch (SoundConnectException failure) {

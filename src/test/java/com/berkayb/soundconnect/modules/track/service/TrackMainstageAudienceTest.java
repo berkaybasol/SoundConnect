@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.track.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.track.entity.Track;
@@ -28,6 +29,8 @@ import static org.mockito.Mockito.*;
 class TrackMainstageAudienceTest {
     @Mock TrackRepository tracks;
     @Mock MediaAssetService media;
+
+    @Mock ProfileBlockVisibility profileBlocks;
     @InjectMocks TrackServiceImpl service;
     final UUID owner = UUID.randomUUID(), musicId = UUID.randomUUID(), changedId = UUID.randomUUID();
 

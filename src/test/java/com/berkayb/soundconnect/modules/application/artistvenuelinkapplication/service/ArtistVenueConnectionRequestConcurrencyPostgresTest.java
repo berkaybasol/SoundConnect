@@ -59,7 +59,8 @@ import static org.mockito.Mockito.*;
 /** Runs only against its disposable container; never the developer's live database. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({ArtistVenueConnectionRequestServiceImpl.class, BandServiceImpl.class})
+@Import({ArtistVenueConnectionRequestServiceImpl.class, BandServiceImpl.class,
+        com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class})
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -596,6 +597,21 @@ class ArtistVenueConnectionRequestConcurrencyPostgresTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(interrupted);
         }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void personalConnectionRespectsEitherDirectionOfTheBlock(boolean ownerBlocks) {
+        Fixture f = fixture();
+        tx().executeWithoutResult(status -> em.createNativeQuery(
+                "insert into tbl_user_block(blocker_id, blocked_id) values (:a,:b)")
+                .setParameter("a", ownerBlocks ? f.owner() : f.actor())
+                .setParameter("b", ownerBlocks ? f.actor() : f.owner()).executeUpdate());
+        for (boolean fromVenue : List.of(false, true)) {
+            assertThatThrownBy(() -> create(f, false, fromVenue)).isInstanceOfSatisfying(
+                    SoundConnectException.class, e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        }
+        assertThat(statuses(f)).isEmpty();
+        verifyNoInteractions(notifications);
     }
 
     private TransactionTemplate tx() { return new TransactionTemplate(transactionManager); }

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.search.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
@@ -56,6 +57,8 @@ class ProfileSearchServiceImplTest {
 	@Mock VenueRepository venueRepository;
 	@Mock MediaAssetService mediaAssetService;
 	@Mock ListenerVisibilityPolicy listenerVisibilityPolicy;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	@InjectMocks ProfileSearchServiceImpl service;
 
 	@BeforeEach
@@ -83,6 +86,15 @@ class ProfileSearchServiceImplTest {
 				mediaAssetService,
 				listenerVisibilityPolicy
 		);
+	}
+
+	@Test
+	void hiddenAccountIsOmittedFromGlobalDiscovery() {
+		var user = User.builder().id(UUID.randomUUID()).username("mavi").build();
+		var profile = MusicianProfile.builder().id(UUID.randomUUID()).user(user).build();
+		when(musicianProfileRepository.searchByStageNameOrUsername(anyString(), anyString(), any())).thenReturn(List.of(profile));
+		when(profileBlocks.hiddenOwners(List.of(user.getId()))).thenReturn(Set.of(user.getId()));
+		assertThat(service.searchProfiles("mavi", 10)).isEmpty();
 	}
 
 	@Test

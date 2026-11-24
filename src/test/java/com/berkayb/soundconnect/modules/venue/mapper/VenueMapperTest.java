@@ -14,6 +14,8 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.Spy;
 
 import java.util.List;
+import java.util.Set;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,7 +148,7 @@ class VenueMapperTest {
 		                   .build();
 		
 		// when
-		VenueResponseDto res = venueMapper.toResponse(venue);
+		VenueResponseDto res = venueMapper.toResponse(venue, Set.of());
 		
 		// then (düz alanlar)
 		assertThat(res.id()).isEqualTo(venue.getId());
@@ -171,6 +173,17 @@ class VenueMapperTest {
 	}
 	
 	@Test
+	void directoryAndDetailsFilterNamesByProfileIdentity() {
+		var hidden = MusicianProfile.builder().id(UUID.randomUUID()).stageName("Gizli").build();
+		var visible = MusicianProfile.builder().id(UUID.randomUUID()).stageName("Görünür").build();
+		var venue = Venue.builder().activeMusicians(Set.of(hidden, visible)).build();
+		var hiddenIds = Set.of(hidden.getId());
+		assertThat(venueMapper.toResponse(venue, hiddenIds).activeMusicians()).containsExactly("Görünür");
+		assertThat(venueMapper.toResponseList(List.of(venue), hiddenIds).getFirst().activeMusicians())
+				.containsExactly("Görünür");
+	}
+
+	@Test
 	void toResponseList_should_map_list_elements() {
 		// given
 		City city = City.builder().id(UUID.randomUUID()).name("Ankara").build();
@@ -193,7 +206,7 @@ class VenueMapperTest {
 		                .build();
 		
 		// when
-		List<VenueResponseDto> list = venueMapper.toResponseList(List.of(v1, v2));
+		List<VenueResponseDto> list = venueMapper.toResponseList(List.of(v1, v2), Set.of());
 		
 		// then
 		assertThat(list).hasSize(2);

@@ -17,6 +17,7 @@ import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import org.junit.jupiter.api.*;
@@ -56,6 +57,7 @@ class CollabServiceTest {
     @Mock CollabPublisherOwnershipGuard publisherOwnershipGuard;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock CollabAccessGuard access;
+    @Mock UserBlockService userBlocks;
 
     @InjectMocks CollabService service;
 
@@ -166,6 +168,27 @@ class CollabServiceTest {
                 .isInstanceOfSatisfying(SoundConnectException.class,
                         error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.COLLAB_INVALID_ACTOR));
         verify(applicationRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void blockedApplicantCreatesNeitherApplicationNorNotification() {
+        User applicant = user(UUID.randomUUID().toString());
+        User owner = user(UUID.randomUUID().toString());
+        Collab listing = listing(owner, CollabListingStatus.OPEN);
+        CollabActor actor = actor(UUID.randomUUID().toString(), ProfileType.BAND);
+        listing.setWantedType(CollabWantedType.BAND);
+        when(userRepository.findByIdForUpdate(applicant.getId())).thenReturn(Optional.of(applicant));
+        when(listingRepository.findByIdForUpdate(listing.getId())).thenReturn(Optional.of(listing));
+        when(actorService.requireOwned(applicant.getId(), actor.getId())).thenReturn(actor);
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE))
+                .when(userBlocks).requireInteractionAllowed(applicant.getId(), owner.getId());
+
+        var request = new CollabApplicationCreateRequest(UUID.randomUUID(), actor.getId(), "+90 532 111 22 33", "Prova");
+        assertThatThrownBy(() -> service.apply(applicant.getId(), listing.getId(), request))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        verify(applicationRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -806,6 +829,52 @@ class CollabServiceTest {
     }
 
     @Test
+    void eitherBlockedParticipantCanCancelAnActiveJobWithAnOutstandingConfirmation() {
+        for (boolean ownerCancels : List.of(true, false)) {
+            User owner = user(UUID.randomUUID().toString()), applicant = user(UUID.randomUUID().toString());
+            CollabJob job = CollabJob.builder().listing(listing(owner, CollabListingStatus.CLOSED))
+                    .publisherUser(owner).applicantUser(applicant).publisherConfirmedAt(NOW).version(2L).build();
+            job.setId(UUID.randomUUID());
+            UUID viewer = ownerCancels ? owner.getId() : applicant.getId();
+            UUID peer = ownerCancels ? applicant.getId() : owner.getId();
+            when(jobRepository.findByIdForUpdate(job.getId())).thenReturn(Optional.of(job));
+            when(userBlocks.blockedAmong(eq(viewer), any())).thenReturn(Set.of(peer));
+            assertThatThrownBy(() -> service.cancelJob(UUID.randomUUID(), job.getId(), new ExpectedVersionRequest(2L)))
+                    .isInstanceOfSatisfying(SoundConnectException.class,
+                            error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.COLLAB_FORBIDDEN));
+            assertThatThrownBy(() -> service.cancelJob(viewer, job.getId(), new ExpectedVersionRequest(1L)))
+                    .isInstanceOfSatisfying(SoundConnectException.class,
+                            error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.COLLAB_STALE_UPDATE));
+            service.cancelJob(viewer, job.getId(), new ExpectedVersionRequest(2L));
+            service.cancelJob(viewer, job.getId(), new ExpectedVersionRequest(1L));
+            assertThat(job.getStatus()).isEqualTo(CollabJobStatus.CANCELLED);
+            assertThat(job.getPublisherConfirmedAt()).isEqualTo(NOW);
+            assertThat(job.getCompletedAt()).isNull();
+            assertThatThrownBy(() -> service.confirmCompletion(owner.getId(), job.getId(), new ExpectedVersionRequest(2L)))
+                    .isInstanceOfSatisfying(SoundConnectException.class,
+                            error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.COLLAB_JOB_STATUS_INVALID));
+        }
+        verify(jobRepository, times(2)).flush();
+        verify(userBlocks, never()).requireInteractionAllowed(any(), any());
+        verifyNoInteractions(actorRepository, eventPublisher);
+    }
+
+    @Test
+    void completedJobCannotBeCancelled() {
+        User owner = user(UUID.randomUUID().toString()), applicant = user(UUID.randomUUID().toString());
+        CollabJob job = CollabJob.builder().publisherUser(owner).applicantUser(applicant)
+                .status(CollabJobStatus.COMPLETED).completedAt(NOW).build();
+        job.setId(UUID.randomUUID());
+        when(jobRepository.findByIdForUpdate(job.getId())).thenReturn(Optional.of(job));
+        assertThatThrownBy(() -> service.cancelJob(owner.getId(), job.getId(), new ExpectedVersionRequest(0L)))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.COLLAB_JOB_STATUS_INVALID));
+        assertThat(job.getStatus()).isEqualTo(CollabJobStatus.COMPLETED);
+        assertThat(job.getCompletedAt()).isEqualTo(NOW);
+        verify(jobRepository, never()).flush();
+    }
+
+    @Test
     void secondCompletionConfirmationCompletesJobAndIncrementsBothActorsOnce() {
         User publisher = user("00000000-0000-0000-0000-000000000051");
         User applicant = user("00000000-0000-0000-0000-000000000052");
@@ -829,6 +898,45 @@ class CollabServiceTest {
         assertThat(publisherActor.getCompletedJobCount()).isOne();
         assertThat(applicantActor.getCompletedJobCount()).isOne();
         verify(jobRepository).flush();
+    }
+
+    @Test
+    void blockKeepsPendingApplicationWithoutMatchingANewJob() {
+        User owner = user(UUID.randomUUID().toString()), applicant = user(UUID.randomUUID().toString());
+        Collab listing = listing(owner, CollabListingStatus.OPEN);
+        var pending = application(listing, applicant, actor(UUID.randomUUID().toString(), ProfileType.MUSICIAN),
+                UUID.randomUUID().toString());
+        when(applicationRepository.findListingId(pending.getId())).thenReturn(Optional.of(listing.getId()));
+        when(listingRepository.findByIdForUpdate(listing.getId())).thenReturn(Optional.of(listing));
+        when(applicationRepository.findByIdForUpdate(pending.getId())).thenReturn(Optional.of(pending));
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE))
+                .when(userBlocks).requireInteractionAllowed(owner.getId(), applicant.getId());
+
+        assertThatThrownBy(() -> service.accept(owner.getId(), pending.getId(), new ExpectedVersionRequest(0L)))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        assertThat(pending.getStatus()).isEqualTo(CollabApplicationStatus.PENDING);
+        verifyNoInteractions(jobRepository, eventPublisher);
+    }
+
+    @Test
+    void blockKeepsCompletedJobWithoutWritingANewReview() {
+        User owner = user(UUID.randomUUID().toString()), applicant = user(UUID.randomUUID().toString());
+        Collab listing = listing(owner, CollabListingStatus.CLOSED);
+        CollabJob job = CollabJob.builder().listing(listing).publisherUser(owner).applicantUser(applicant)
+                .publisherActor(listing.getPublisherActor()).applicantActor(actor(UUID.randomUUID().toString(), ProfileType.MUSICIAN))
+                .status(CollabJobStatus.COMPLETED).build();
+        job.setId(UUID.randomUUID());
+        when(userRepository.findByIdForUpdate(owner.getId())).thenReturn(Optional.of(owner));
+        when(jobRepository.findByIdForUpdate(job.getId())).thenReturn(Optional.of(job));
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE))
+                .when(userBlocks).requireInteractionAllowed(owner.getId(), applicant.getId());
+
+        assertThatThrownBy(() -> service.review(owner.getId(), job.getId(), new CollabReviewCreateRequest(UUID.randomUUID(), 4, "İyi")))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        verify(reviewRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(actorRepository, eventPublisher);
     }
 
     @Test

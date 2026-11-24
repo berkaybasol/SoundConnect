@@ -116,6 +116,9 @@ public class AuthService {
 		if (user.getErasedAt() != null) {
 			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		}
+		if (user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
+		}
 
 		// Password verification precedes every account-state response. This
 		// credential only opens the applicant's own status/notification routes.
@@ -374,6 +377,9 @@ public class AuthService {
 		User user = userRepository.findByEmailForUpdate(email).orElse(null);
 		if (!valid || user == null || Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw invalidOtp();
+		}
+		if (user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
 		}
 		
 		// kullanici dogrula

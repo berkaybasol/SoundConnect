@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -40,6 +41,8 @@ class MusicianProfileServiceImplTest {
 	@Mock MediaAssetService mediaAssetService;
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Mock EntityManager entityManager;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;

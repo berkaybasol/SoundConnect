@@ -47,6 +47,10 @@ public class OverthinkingRevealInboxService {
                            select 1 from tbl_overthinking_reveal_request request
                            join tbl_overthinking_post post on post.id = request.post_id
                            where request.author_id = ?
+                             and not request.delivery_suppressed
+                             and not exists (select 1 from tbl_user_block b where b.unblocked_at is null
+                               and ((b.blocker_id=request.author_id and b.blocked_id=request.requester_id)
+                                 or (b.blocked_id=request.author_id and b.blocker_id=request.requester_id)))
                              and request.inbox_revision > coalesce(inbox.seen_revision, 0)
                        ) as has_unread
                 from (select 1) singleton

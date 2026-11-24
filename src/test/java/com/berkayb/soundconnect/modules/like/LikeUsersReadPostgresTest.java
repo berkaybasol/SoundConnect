@@ -63,16 +63,33 @@ class LikeUsersReadPostgresTest {
         }
         like(sql, UUID.randomUUID(), userIds.getFirst(), "EVENT", target, now.plusDays(1));
         like(sql, UUID.randomUUID(), userIds.getFirst(), "EVENT_POST", other, now.plusDays(1));
-        var first = reader.page(EngagementTargetType.EVENT_POST, target, null, 2);
+        var first = reader.page(UUID.randomUUID(), EngagementTargetType.EVENT_POST, target, null, 2);
         assertThat(first).extracting(LikeUsersReadRepository.Row::id).containsExactly(likeIds.get(4), likeIds.get(3));
         var last = first.getLast();
         String cursor = new LikeUsersCursor(last.createdAt(), last.id()).encode(EngagementTargetType.EVENT_POST, target);
         sql.update("delete from tbl_like where id=?", last.id());
         like(sql, UUID.randomUUID(), account(sql, "new_liker"), "EVENT_POST", target, now.plusSeconds(1));
 
-        var next = reader.page(EngagementTargetType.EVENT_POST, target,
+        var next = reader.page(UUID.randomUUID(), EngagementTargetType.EVENT_POST, target,
                 LikeUsersCursor.decode(cursor, EngagementTargetType.EVENT_POST, target), 10);
         assertThat(next).extracting(LikeUsersReadRepository.Row::id).containsExactly(likeIds.get(2), likeIds.get(1), likeIds.get(0));
+    }
+
+    @Test void blockInEitherDirectionFiltersBeforeTheKeysetLimit() {
+        var sql = new JdbcTemplate(dataSource);
+        var viewer = account(sql, "viewer");
+        var a = account(sql, "a");
+        var b = account(sql, "b");
+        var c = account(sql, "c");
+        var target = UUID.randomUUID();
+        like(sql, UUID.randomUUID(), a, "MEDIA", target, now.plusSeconds(2));
+        like(sql, UUID.randomUUID(), b, "MEDIA", target, now.plusSeconds(1));
+        like(sql, UUID.randomUUID(), c, "MEDIA", target, now);
+        sql.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?),(?,?)", viewer,a,b,viewer);
+        assertThat(reader().page(viewer, EngagementTargetType.MEDIA, target, null, 1))
+                .extracting(LikeUsersReadRepository.Row::userId).containsExactly(c);
+        assertThat(reader().page(c, EngagementTargetType.MEDIA, target, null, 4))
+                .extracting(LikeUsersReadRepository.Row::userId).containsExactly(a,b,c);
     }
 
     @Test void deletedInactiveAndUnverifiedUsersAreExcludedAndLegacyNullTimestampsCanBePaged() {
@@ -88,11 +105,11 @@ class LikeUsersReadPostgresTest {
         sql.update("update tbl_user set erased_at=? where id=?", Timestamp.valueOf(now), erased);
         for (UUID id : List.of(inactive, unverified, erased)) like(sql, UUID.randomUUID(), id, "MEDIA", target, now.plusDays(1));
 
-        var first = reader().page(EngagementTargetType.MEDIA, target, null, 1);
+        var first = reader().page(UUID.randomUUID(), EngagementTargetType.MEDIA, target, null, 1);
         assertThat(first.getFirst().id()).isEqualTo(nullTwo);
-        var afterNull = reader().page(EngagementTargetType.MEDIA, target, new LikeUsersCursor(null, nullTwo), 10);
+        var afterNull = reader().page(UUID.randomUUID(), EngagementTargetType.MEDIA, target, new LikeUsersCursor(null, nullTwo), 10);
         assertThat(afterNull).extracting(LikeUsersReadRepository.Row::id).containsExactly(nullOne, dated);
-        assertThat(reader().page(EngagementTargetType.MEDIA, target, new LikeUsersCursor(now, dated), 10)).isEmpty();
+        assertThat(reader().page(UUID.randomUUID(), EngagementTargetType.MEDIA, target, new LikeUsersCursor(now, dated), 10)).isEmpty();
     }
 
     @Test void realBatchedIdentityKeepsMusicianUsernameAndMasksPendingOrGhostAlternateProfiles() {
@@ -122,7 +139,7 @@ class LikeUsersReadPostgresTest {
         assertThat(users.get(pending).visibilityMode()).isEqualTo(ListenerVisibilityMode.GHOST);
         assertThat(users.get(pending).avatarUrl()).isNull();
         assertThat(page.hasMore()).isFalse();
-        verify(validator).validateExists(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target);
+        verify(validator).validateExists(viewer, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target);
         verifyNoInteractions(media);
     }
 

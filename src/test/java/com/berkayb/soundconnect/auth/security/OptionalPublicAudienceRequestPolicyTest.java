@@ -11,6 +11,7 @@ class OptionalPublicAudienceRequestPolicyTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "/api/v1/public/search/profiles", "/api/v1/profiles/MUSICIAN/profile-id/media",
+            "/api/v1/venues/get-all", "/api/v1/venues/search", "/api/v1/venues/get-by-id/venue-id",
             "/api/v1/public/media/owner/BAND/band-id", "/api/v1/public/media/owner/USER/id/kind/AUDIO",
             "/api/v1/public/musician-profiles/profile-id", "/api/v1/public/musician-profiles/search",
             "/api/v1/public/bands/band-id", "/api/v1/public/venue-profiles/venue-id",

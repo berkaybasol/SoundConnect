@@ -208,6 +208,7 @@ public class EndPoints {
 		public static final String WITHDRAW = "/applications/{applicationId}/withdraw";
 		public static final String ME_JOBS = "/me/jobs";
 		public static final String CONFIRM_COMPLETION = "/jobs/{jobId}/confirm-completion";
+		public static final String CANCEL_JOB = "/jobs/{jobId}/cancel";
 		public static final String JOB_REVIEWS = "/jobs/{jobId}/reviews";
 		public static final String ACTOR_REVIEWS = "/actors/{actorId}/reviews";
 		public static final String REPORTS = "/{listingId}/reports";

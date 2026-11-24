@@ -1,6 +1,6 @@
 create table tbl_user (
     id uuid primary key, user_name varchar(64), status varchar(32),
-    email_verified boolean, erased_at timestamp, session_version bigint
+    email_verified boolean, erased_at timestamp, session_version bigint, access_suspended boolean not null default false
 );
 create table tbl_permissions (id integer primary key, name varchar unique);
 create table tbl_role (id integer primary key, name varchar unique);
@@ -26,8 +26,8 @@ insert into tbl_neighborhood values (1,'Moda');
 insert into tbl_permissions values (1,'ADMIN_PANEL_ACCESS'),(2,'MANAGE_VENUE_APPLICATIONS'),(3,'MANAGE_STUDIO_APPLICATIONS');
 insert into tbl_role values (1,'ROLE_ADMIN'),(2,'ROLE_LISTENER');
 insert into role_permissions values (1,1);
-insert into tbl_user values ('00000000-0000-0000-0000-000000000010','applicant','PENDING_VENUE_REQUEST',false,null,0);
-insert into tbl_user values ('00000000-0000-0000-0000-000000000020','studio','PENDING_STUDIO_REQUEST',true,null,0);
+insert into tbl_user values ('00000000-0000-0000-0000-000000000010','applicant','PENDING_VENUE_REQUEST',false,null,0,false);
+insert into tbl_user values ('00000000-0000-0000-0000-000000000020','studio','PENDING_STUDIO_REQUEST',true,null,0,false);
 insert into tbl_venue_applications values
     ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000010','Venue 1','Adres','PENDING',1,1,1,'2026-11-21 12:00:00'),
     ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000010','Venue 2','Adres','PENDING',1,1,1,'2026-11-21 12:00:00'),

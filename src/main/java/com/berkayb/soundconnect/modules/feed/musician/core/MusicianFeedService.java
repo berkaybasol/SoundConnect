@@ -427,7 +427,8 @@ public class MusicianFeedService {
                 || request.delivery().itemIds().contains(candidate.itemId())
                 || request.delivery().targetKeys().contains(
                 MusicianFeedDeliverySnapshot.targetKey(candidate.target().type(), candidate.target().id())));
-        var result = new CollectedCandidates(restrictions.filter(organic), restrictions.filter(promotions),
+        var result = new CollectedCandidates(restrictions.filter(request.viewerUserId(), organic),
+                restrictions.filter(request.viewerUserId(), promotions),
                 organicSourceUnavailable);
         metrics.candidates(result.organic());
         metrics.candidates(result.promotions());

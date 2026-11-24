@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.engagement.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.repository.CommentTargetAccessRepository;
 import com.berkayb.soundconnect.modules.comment.support.CommentTargetAccessGuard;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
@@ -91,6 +92,6 @@ class EngagementTargetValidatorMediaLockTest {
                         assertThat(exception.getErrorType()).isEqualTo(ErrorType.ENGAGEMENT_NOT_FOUND));
     }
     private EngagementTargetValidatorImpl validator() {
-        return new EngagementTargetValidatorImpl(new CommentTargetAccessGuard(repository, org.mockito.Mockito.mock(com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess.class)));
+        return new EngagementTargetValidatorImpl(new CommentTargetAccessGuard(repository, org.mockito.Mockito.mock(com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess.class), mock(ProfileBlockVisibility.class)));
     }
 }

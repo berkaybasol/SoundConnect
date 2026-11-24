@@ -57,7 +57,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 	}
 
 	@Override
-	public Page<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId, Pageable pageable) {
+	public Page<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId, Pageable pageable, UUID viewerId) {
 		conversationRepository.findById(conversationId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
 
@@ -67,7 +67,8 @@ public class DMMessageServiceImpl implements DMMessageService {
 		int size = pageable.isPaged() ? Math.min(100, pageable.getPageSize()) : 30;
 		return messageRepository.findByConversationId(conversationId,
 				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")))
-				.map(messageMapper::toResponseDto);
+				.map(message -> message.getRecipientId().equals(viewerId)
+						? messageMapper.toRecipientResponseDto(message) : messageMapper.toResponseDto(message));
 	}
 
 
@@ -81,6 +82,7 @@ public class DMMessageServiceImpl implements DMMessageService {
 				|| (requestDto.messageType() != null && !"text".equals(requestDto.messageType())))
 			throw new SoundConnectException(ErrorType.BAD_REQUEST);
 		accountDeliveryFence.requireActive(List.of(senderId, requestDto.recipientId()));
+		accountDeliveryFence.requireInteractionAllowed(senderId, requestDto.recipientId());
 		sendReceipts.lock(senderId, requestDto.clientMessageId());
 		// conversation mevcut mu?
 		DMConversation conversation = conversationRepository.findByIdForUpdate(requestDto.conversationId())
@@ -163,12 +165,12 @@ public class DMMessageServiceImpl implements DMMessageService {
 	@Transactional
 	public void markMessageAsRead(UUID messageId, UUID readerId) {
 		accountDeliveryFence.requireActive(List.of(readerId));
-		// Resolve only the immutable parent id before locking. Every DM mutation
-		// and delivery admission locks conversation before message, preventing a
-		// read/delete cycle while also fencing concurrent sends during moderation.
-		UUID conversationId = messageRepository.findConversationIdByMessageId(messageId)
+		var target = messageRepository.findReadTargetById(messageId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.MESSAGE_NOT_FOUND));
-		DMConversation conversation = conversationRepository.findByIdForUpdate(conversationId)
+		if (!target.recipientId().equals(readerId)) throw new SoundConnectException(ErrorType.NOT_AUTHORIZED);
+		// Match send and delivery lock order: contact pair, conversation, message.
+		boolean privateRead = accountDeliveryFence.interactionBlockedForUpdate(readerId, target.senderId());
+		DMConversation conversation = conversationRepository.findByIdForUpdate(target.conversationId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.CONVERSATION_NOT_FOUND));
 		DMMessage message = messageRepository.findByIdForUpdate(messageId)
 				.filter(value -> value.getDeletedAt() == null)
@@ -187,12 +189,15 @@ public class DMMessageServiceImpl implements DMMessageService {
 					new DmMessageReadEvent(message.getConversationId(), readerId));
 			return; // zaten okunmus
 		}
+		message.setReadReceiptHidden(privateRead);
 		message.setReadAt(LocalDateTime.now(ZoneOffset.UTC));
 		messageRepository.saveAndFlush(message);
 
 		// konusmanin "lastReadMessageId" guncellemesi (UI icin)
-		conversation.setLastReadMessageId(message.getId());
-		conversationRepository.save(conversation);
+		if (!privateRead) {
+			conversation.setLastReadMessageId(message.getId());
+			conversationRepository.save(conversation);
+		}
 
 		notificationService.markDmMessageAsRead(readerId, messageId);
 		dmMessageEventPublisher.publishMessageReadEvent(

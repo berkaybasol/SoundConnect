@@ -32,7 +32,7 @@ public interface CommentService {
 	// Caller-visible total: live root comments and replies after target access validation.
 	long countReadableComments(UUID viewerId, EngagementTargetType targetType, UUID targetId);
 	
-	Map<UUID, Long> countCommentsByTargets(EngagementTargetType targetType, Collection<UUID> targetIds);
+	Map<UUID, Long> countCommentsByTargets(UUID viewerId, EngagementTargetType targetType, Collection<UUID> targetIds);
 	
 	
 }

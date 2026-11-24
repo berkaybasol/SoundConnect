@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
@@ -29,6 +30,8 @@ class MediaAssetGhostVisibilityTest {
 
 	@Mock MediaAssetRepository mediaAssetRepository;
 	@Mock ListenerVisibilityPolicy listenerVisibilityPolicy;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	@InjectMocks MediaAssetServiceImpl service;
 
 	@Test

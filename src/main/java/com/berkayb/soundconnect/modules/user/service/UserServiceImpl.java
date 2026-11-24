@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +42,8 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
 	private static final int USERNAME_CHANGE_COOLDOWN_DAYS = 30;
+	private static final Set<UserStatus> BUSINESS_APPLICANT_STATUSES = EnumSet.of(
+			UserStatus.PENDING_VENUE_REQUEST, UserStatus.PENDING_STUDIO_REQUEST, UserStatus.REJECTED_STUDIO_REQUEST);
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final UserMapper userMapper;
@@ -173,12 +176,21 @@ public class UserServiceImpl implements UserService {
 		User user = lockedUsers.target();
 		assertCanMutateTarget(actor, user);
 		assertLastOwnerIsPreserved(user, null);
-		if (user.getErasedAt() != null || hasRole(user, "ROLE_LISTENER")
-				|| userRepository.findExistingPersonalProfileRoleNames(id).contains("ROLE_LISTENER")) {
+		// Applicants and legacy role holders may have no professional profile row yet.
+		if (user.getErasedAt() == null && hasProfessionalIdentity(user)) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE);
+		}
+		boolean useListenerErasure = user.getErasedAt() != null || hasRole(user, "ROLE_LISTENER");
+		Set<String> storedProfiles = useListenerErasure ? Set.of() : userRepository.findExistingPersonalProfileRoleNames(id);
+		if (useListenerErasure || storedProfiles.contains("ROLE_LISTENER")) {
 			listenerAccountDeletionService.deleteByAdministrator(id);
+		} else if (!storedProfiles.isEmpty()) {
+			// Studio, venue and artist records have their own lifecycle and can own shared history.
+			throw new SoundConnectException(ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE);
 		} else {
 			marketplaceMediaLifecycle.purgeAccount(id);
 			userRepository.delete(user);
+			userRepository.flush();
 		}
 		log.info("User deleted by administrator. actorId={} targetId={}", actingUserId, id);
 	}
@@ -311,6 +323,12 @@ public class UserServiceImpl implements UserService {
 				throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
 			}
 		}
+	}
+
+	private boolean hasProfessionalIdentity(User user) {
+		if (BUSINESS_APPLICANT_STATUSES.contains(user.getStatus())) return true;
+		return user.getRoles() != null && user.getRoles().stream().map(Role::getName)
+				.anyMatch(PersonalProfileTypePolicy::isProfessionalProfileRole);
 	}
 
 	private boolean hasRole(User user, String roleName) {

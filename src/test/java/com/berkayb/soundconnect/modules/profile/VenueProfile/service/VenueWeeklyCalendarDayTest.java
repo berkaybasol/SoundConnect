@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.repository.EventRepository;
 import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
@@ -41,7 +42,7 @@ class VenueWeeklyCalendarDayTest {
 
     @BeforeEach void setup() {
         service = new VenueProfileServiceImpl(profiles, venues, mapper, finder,
-                events, media, mediaRepository, clock);
+                events, media, mediaRepository, clock, mock(ProfileBlockVisibility.class));
     }
 
     @Test void publicCalendarRollsAtIstanbulMidnightAndKeepsTodayAfterEndTime() {

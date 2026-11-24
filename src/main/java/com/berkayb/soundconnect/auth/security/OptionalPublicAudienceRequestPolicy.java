@@ -7,6 +7,7 @@ import java.util.regex.Pattern;
 /** Guest reads remain public; an explicitly supplied session must not become a guest projection. */
 public final class OptionalPublicAudienceRequestPolicy {
     private static final Pattern PROFILE_MEDIA = Pattern.compile("^/api/v1/profiles/[^/]+/[^/]+/media$");
+    private static final Pattern VENUE_DETAIL = Pattern.compile("^/api/v1/venues/get-by-id/[^/]+$");
     private static final List<String> BASES = List.of(
             "/api/v1/public/media", "/api/v1/public/musician-profiles", "/api/v1/public/bands",
             "/api/v1/public/venue-profiles", "/api/v1/public/studio-profiles",
@@ -22,6 +23,8 @@ public final class OptionalPublicAudienceRequestPolicy {
         if (context != null && !context.isEmpty() && path.startsWith(context)) path = path.substring(context.length());
         final String applicationPath = path;
         boolean audienceAware = "/api/v1/public/search/profiles".equals(path) || PROFILE_MEDIA.matcher(path).matches()
+                || "/api/v1/venues/get-all".equals(path) || "/api/v1/venues/search".equals(path)
+                || VENUE_DETAIL.matcher(path).matches()
                 || BASES.stream().anyMatch(base -> applicationPath.equals(base) || applicationPath.startsWith(base + "/"));
         if (!audienceAware) return false;
         String authorization = request.getHeader("Authorization");

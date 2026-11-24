@@ -18,7 +18,6 @@ import com.berkayb.soundconnect.modules.event.repository.EventRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
@@ -26,6 +25,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandRepresentationPolicy;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -62,6 +62,7 @@ public class EventPerformerRequestServiceImpl implements EventPerformerRequestSe
 	private final VenueProfileRepository venueProfileRepository;
 	private final MediaAssetService mediaAssetService;
 	private final EventScheduleClock scheduleClock;
+	private final AccountDeliveryFence contact;
 
 	@Override
 	@Transactional
@@ -98,13 +99,21 @@ public class EventPerformerRequestServiceImpl implements EventPerformerRequestSe
 		}
 
 		List<UUID> recipients = pendingRecipientIds(musician, band);
+		if (band != null) {
+			recipients = recipients.stream().sorted()
+					.filter(id -> !contact.interactionBlockedForUpdate(venueOwnerUserId, id)).toList();
+		}
 		if (recipients.isEmpty()) {
+			if (band != null) throw new SoundConnectException(ErrorType.BAND_CONTACT_UNAVAILABLE);
 			// A pending request without an authorized decider can never establish
 			// consent. Fail the surrounding event transaction closed instead of
 			// leaving an unowned request and a permanently pending public snapshot.
 			throw new SoundConnectException(ErrorType.EVENT_PERFORMER_REQUEST_INVALID);
 		}
 
+		if (musician != null) {
+			contact.requireInteractionAllowed(venueOwnerUserId, musician.getUser().getId());
+		}
 		String performerName = pendingPerformerName(musician, band);
 		EventPerformerRequest request = EventPerformerRequest.builder()
 				.event(event)
@@ -223,6 +232,7 @@ public class EventPerformerRequestServiceImpl implements EventPerformerRequestSe
 			}
 			return toDto(request);
 		}
+		contact.requireInteractionAllowed(actorUserId, request.getRequestedByUserId());
 		if (request.getStatus() != (reconsider
 				? EventPerformerRequestStatus.REJECTED : EventPerformerRequestStatus.PENDING)) {
 			throw new SoundConnectException(ErrorType.EVENT_PERFORMER_REQUEST_FINALIZED);
@@ -507,20 +517,8 @@ public class EventPerformerRequestServiceImpl implements EventPerformerRequestSe
 		if (musician != null && musician.getUser() != null && musician.getUser().getId() != null) {
 			return List.of(musician.getUser().getId());
 		}
-		return activeBandMemberIds(band, true);
-	}
-
-	private List<UUID> activeBandMemberIds(Band band, boolean foundersOnly) {
 		if (band == null || band.getId() == null) return List.of();
-		return bandMemberRepository.findByBandId(band.getId()).stream()
-				.filter(member -> member.getStatus() == BandMemberShipStatus.ACTIVE)
-				.filter(member -> !foundersOnly || member.getBandRole() == BandRole.FOUNDER)
-				.map(BandMember::getUser)
-				.filter(Objects::nonNull)
-				.map(user -> user.getId())
-				.filter(Objects::nonNull)
-				.distinct()
-				.toList();
+		return bandMemberRepository.lockAvailableFounderIds(band.getId());
 	}
 
 	private List<NotificationInboundEvent> buildPerformerNotifications(

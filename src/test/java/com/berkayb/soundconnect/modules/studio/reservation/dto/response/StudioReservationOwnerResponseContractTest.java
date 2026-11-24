@@ -50,7 +50,7 @@ class StudioReservationOwnerResponseContractTest {
                 2_000L,
                 "TRY",
                 0L,
-                visibilityMode
+                visibilityMode, false
         );
     }
 }

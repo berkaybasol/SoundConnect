@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.notification.support.BandNotificationIde
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.notification.support.NotificationAudiencePolicy;
 import com.berkayb.soundconnect.modules.notification.support.MediaNotificationIdentity;
+import com.berkayb.soundconnect.modules.notification.support.NewRequestNotificationContact;
 import com.berkayb.soundconnect.modules.notification.support.OverthinkingNotificationIdentity;
 import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -35,9 +36,12 @@ public class NotificationDeliveryPolicy {
         if(media) MediaNotificationIdentity.actorId(event.payload()).ifPresent(referenced::add);
         else if(BandNotificationIdentity.applies(event.type())) BandNotificationIdentity.actorId(event.type(),event.payload()).ifPresent(referenced::add);
         else if(event.type()!=NotificationType.ADMIN_BROADCAST) collectIds(event.payload(),referenced,0);
-        if (OverthinkingNotificationIdentity.TYPES.contains(event.type()))
-            referenced.addAll(OverthinkingNotificationIdentity.participants(jdbc,event.payload()));
+        var revealParticipants = OverthinkingNotificationIdentity.TYPES.contains(event.type())
+                ? OverthinkingNotificationIdentity.participants(jdbc,event.payload()) : List.<UUID>of();
+        referenced.addAll(revealParticipants);
         if(!accounts.canDeliver(event.recipientId(),referenced)) return false;
+        if (event.type()==NotificationType.SOCIAL_NEW_FOLLOWER
+                && accounts.contactEventSuppressed(uuid(event.payload(),"followerId"), event.recipientId(), event.occurredAt())) return false;
         if(event.type()==NotificationType.ADMIN_BROADCAST) return campaigns!=null && campaigns.eligible(event);
         if(media && !referenced.isEmpty() && !Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from tbl_user where id=:actor and erased_at is null
@@ -47,6 +51,16 @@ public class NotificationDeliveryPolicy {
         // and through final dispatch. Re-read roles here, never a sender/JWT snapshot.
         if(NotificationAudiencePolicy.businessOnly(event.type()) && Boolean.TRUE.equals(jdbc.queryForObject(
                 NotificationAudiencePolicy.LISTENER_SQL, Map.of("recipient", event.recipientId()), Boolean.class))) return false;
+        if (media || event.type() == NotificationType.BAND_INVITE_RECEIVED) {
+            for (UUID actor : referenced) {
+                if (accounts.contactEventSuppressed(actor, event.recipientId(), event.occurredAt())) return false;
+            }
+        }
+        for (UUID participant : revealParticipants) {
+            if (accounts.contactEventSuppressed(participant, event.recipientId(), event.occurredAt())) return false;
+        }
+        if (!NewRequestNotificationContact.eligible(jdbc, accounts, event)) return false;
+        if (venueInvitationSuppressed(event)) return false;
         if(event.type()==NotificationType.DM_NEW_MESSAGE) return eligibleUnreadDm(event);
         if(com.berkayb.soundconnect.modules.notification.push.VenueApplicationPushPresentation.TYPES.contains(event.type()))
             return new com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationDecisionEligibility(jdbc).eligible(event);
@@ -54,10 +68,39 @@ public class NotificationDeliveryPolicy {
         return OverthinkingNotificationIdentity.eligible(jdbc,event);
     }
 
+    private boolean venueInvitationSuppressed(NotificationInboundEvent event) {
+        var type = event.type();
+        if (type != NotificationType.EVENT_PERFORMER_APPROVAL_REQUESTED
+                && type != NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST) return false;
+        var payload = event.payload();
+        if (payload == null) return true;
+        if (type == NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST && "BAND".equals(payload.get("requestByType"))) {
+            UUID actor = uuid(payload, "invitingRepresentativeId");
+            return actor == null || accounts.contactEventSuppressed(actor, event.recipientId(), event.occurredAt());
+        }
+        String lookup;
+        UUID source;
+        if (type == NotificationType.EVENT_PERFORMER_APPROVAL_REQUESTED || "VENUE".equals(payload.get("requestByType"))) {
+            lookup = "select owner_id from tbl_venues where id=:source";
+            source = uuid(event.payload(), "venueId");
+        } else if (event.type() == NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST
+                && "ARTIST".equals(event.payload().get("requestByType"))) {
+            lookup = "select user_id from tbl_musician_profile where id=:source";
+            source = uuid(event.payload(), "musicianProfileId");
+        } else {
+            return false;
+        }
+        if (source == null) return true;
+        var actors = jdbc.queryForList(lookup, Map.of("source", source), UUID.class);
+        return actors.isEmpty() || actors.getFirst() == null
+                || accounts.contactEventSuppressed(actors.getFirst(), event.recipientId(), event.occurredAt());
+    }
+
     private boolean eligibleUnreadDm(NotificationInboundEvent event) {
         UUID messageId=uuid(event.payload(),"messageId"), conversationId=uuid(event.payload(),"conversationId"),
                 senderId=uuid(event.payload(),"senderId"), recipientId=uuid(event.payload(),"recipientId");
         if(messageId==null || conversationId==null || senderId==null || !event.recipientId().equals(recipientId)) return false;
+        if(accounts.contactEventSuppressed(senderId, recipientId, event.occurredAt())) return false;
         // Serialize admission with whole-conversation moderation, and reject
         // orphaned/forged messages even when a legacy row survived deletion.
         if(jdbc.query("""

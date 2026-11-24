@@ -178,6 +178,13 @@ public class CollabController {
         return ok(service.confirmCompletion(userId(principal), jobId, request), "Tamamlama onayı kaydedildi.");
     }
 
+    @PostMapping(CANCEL_JOB)
+    public ResponseEntity<BaseResponse<CollabJobResponse>> cancelJob(
+            @AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID jobId,
+            @Valid @RequestBody ExpectedVersionRequest request) {
+        return ok(service.cancelJob(userId(principal), jobId, request), "İş iptal edildi.");
+    }
+
     @PostMapping(JOB_REVIEWS)
     public ResponseEntity<BaseResponse<CollabReviewResponse>> review(
             @AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID jobId,

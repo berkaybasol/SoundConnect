@@ -93,7 +93,8 @@ class DmSendReliabilityPostgresIT {
         // Execute the exact replayable migration in this disposable schema, twice.
         String migration = Files.readString(Path.of("scripts/db/2026-09-23-dm-send-reliability.sql"));
         jdbc.execute(migration); jdbc.execute(migration);
-        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
+        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp, access_suspended boolean not null default false)");
+        jdbc.execute(Files.readString(Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         notifications.deleteAll(); messages.deleteAll(); conversations.deleteAll();
         jdbc.update("delete from tbl_dm_send_receipt"); jdbc.update("delete from tbl_notification_receipt"); jdbc.update("delete from tbl_user");
         sender = UUID.randomUUID(); recipient = UUID.randomUUID(); key = UUID.randomUUID();
@@ -110,6 +111,17 @@ class DmSendReliabilityPostgresIT {
         assertThat(replay.messageId()).isEqualTo(first.messageId());
         assertCounts(1); verify(rateLimit, times(1)).check(sender, recipient);
         verify(events, times(1)).publishMessageSentEvent(any());
+    }
+
+    @Test void eitherParticipantCanPreventANewMessageAndAnOldSendReplay() {
+        service.sendMessage(request("original"), sender);
+        jdbc.update("insert into tbl_user_block (blocker_id,blocked_id) values (?,?)",recipient,sender);
+        assertThat(catchThrowableOfType(() -> service.sendMessage(request("original"), sender),
+                SoundConnectException.class).getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE);
+        var reverse = new DMMessageRequestDto(conversation, sender, "reply", "text", UUID.randomUUID());
+        assertThat(catchThrowableOfType(() -> service.sendMessage(reverse,recipient),
+                SoundConnectException.class).getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE);
+        assertCounts(1);
     }
 
     @Test void concurrentSameKeyAcrossTwoTransactionsHasOneDurableOutcome() throws Exception {

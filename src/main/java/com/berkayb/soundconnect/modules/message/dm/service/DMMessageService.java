@@ -13,7 +13,7 @@ public interface DMMessageService {
 	// belirli bir konusmanin (conversationId) tum mesajlarini sirayla doner
 	List<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId);
 
-	Page<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId, Pageable pageable);
+	Page<DMMessageResponseDto> getMessagesByConversationId(UUID conversationId, Pageable pageable, UUID viewerId);
 
 	// Yeni mesaj gonderir ve response doner
 	DMMessageResponseDto sendMessage(DMMessageRequestDto requestDto, UUID senderId);

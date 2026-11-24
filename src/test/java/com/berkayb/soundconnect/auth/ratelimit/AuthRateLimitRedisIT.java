@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.auth.ratelimit;
 
+import com.berkayb.soundconnect.support.RedisTestReadiness;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class AuthRateLimitRedisIT {
 				.shutdownTimeout(Duration.ofMillis(100)).build();
 		connection = new LettuceConnectionFactory(configuration, client);
 		connection.afterPropertiesSet();
+		RedisTestReadiness.awaitPing(connection);
 		redis = new StringRedisTemplate(connection);
 		properties = new AuthRateLimitProperties();
 		properties.setKeyPrefix("auth-limiter-it:" + UUID.randomUUID());

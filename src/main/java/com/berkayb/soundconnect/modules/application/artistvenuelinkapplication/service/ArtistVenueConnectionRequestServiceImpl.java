@@ -23,6 +23,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.Music
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.messaging.events.notification.NotificationInboundEvent;
@@ -61,6 +62,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 	private final VenueProfileRepository venueProfileRepository;
 	private final MediaAssetService mediaAssetService;
 	private final TransactionalNotificationService transactionalNotificationService;
+	private final AccountDeliveryFence contact;
 
 	@Override
 	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -258,7 +260,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		ArtistVenueConnectionRequest saved = repository.save(request);
 
 		log.info("Baglanti basvurusu olusturuldu. requestId={}", saved.getId());
-		publishRequestCreatedNotification(saved);
+		publishRequestCreatedNotification(saved, actorUserId);
 
 		return enrichBandFields(artistVenueConnectionRequestMapper.toResponseDto(saved));
 	}
@@ -420,6 +422,14 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 		if (!usable.contains(ownerId) || !usable.contains(actorUserId)
 				|| representatives.stream().noneMatch(usable::contains)) {
 			throw new SoundConnectException(ErrorType.REQUEST_PARTICIPANT_UNAVAILABLE);
+		}
+		if (!targetsBand(request)) {
+			contact.requireInteractionAllowed(ownerId, request.getMusicianProfile().getUser().getId());
+		} else if (!actorUserId.equals(ownerId)) {
+			contact.requireInteractionAllowed(ownerId, actorUserId);
+		} else if (representatives.stream().filter(usable::contains).sorted()
+				.allMatch(id -> contact.interactionBlockedForUpdate(ownerId, id))) {
+			throw new SoundConnectException(ErrorType.BAND_CONTACT_UNAVAILABLE);
 		}
 	}
 
@@ -617,7 +627,9 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 
 	private record AvatarUrls(Map<UUID, String> bands, Map<UUID, String> venues, Map<UUID, String> musicians) {}
 
-	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request) {
+	private void publishRequestCreatedNotification(ArtistVenueConnectionRequest request, UUID actorUserId) {
+		var payload = notificationPayload(request, "REQUEST_CREATED");
+		if (request.getRequestByType() == RequestByType.BAND) payload.put("invitingRepresentativeId", actorUserId.toString());
 		for (UUID recipientId : requestCreatedRecipientIds(request)) {
 			transactionalNotificationService.persistInCurrentTransaction(
 					NotificationInboundEvent.builder()
@@ -626,7 +638,7 @@ public class ArtistVenueConnectionRequestServiceImpl implements ArtistVenueConne
 					                        .type(NotificationType.ARTIST_VENUE_LINK_APPLICATION_REQUEST)
 					                        .title(notificationTitle(requestCreatedTitle(request)))
 					                        .message(safe(request.getMessage()))
-					                        .payload(notificationPayload(request, "REQUEST_CREATED"))
+					                        .payload(payload)
 					                        .emailForce(false)
 					                        .occurredAt(Instant.now())
 					                        .build()

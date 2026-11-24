@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.track.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.repository.*;
@@ -44,6 +45,8 @@ import static org.assertj.core.api.Assertions.*;
 @Import(TrackServiceImpl.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TrackDeletionTransactionTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
   @Autowired TrackServiceImpl service;
   @Autowired TrackRepository tracks;
   @Autowired MediaAssetRepository assets;

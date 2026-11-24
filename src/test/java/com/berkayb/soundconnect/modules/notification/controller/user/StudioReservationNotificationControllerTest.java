@@ -56,7 +56,7 @@ class StudioReservationNotificationControllerTest {
         when(targets.resolve(recipient,notification)).thenReturn(new StudioReservationNotificationTargetResponse(
                 notification,recipient,NotificationType.STUDIO_RESERVATION_APPROVED,reservation,UUID.randomUUID(),UUID.randomUUID(),
                 "Stüdyo","Oda",false,StudioReservationStatus.CANCELLED_BY_STUDIO,true,false,
-                start,start.plusSeconds(3600),"Europe/Istanbul",LocalDate.of(2026,9,25),LocalDate.of(2026,9,25),LocalTime.of(13,0),LocalTime.of(14,0)));
+                start,start.plusSeconds(3600),"Europe/Istanbul",LocalDate.of(2026,9,25),LocalDate.of(2026,9,25),LocalTime.of(13,0),LocalTime.of(14,0),false));
         mvc.perform(get(base+notification+"/studio-reservation").with(user(principal("ROLE_MUSICIAN")))
                         .param("recipientId",UUID.randomUUID().toString()).param("ownerMode","true"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true))

@@ -1,5 +1,7 @@
 # SoundConnect — yeni oturum başlangıcı
 
+**25 Kasım 2026.** Aşama 02 için seçilen yönetici paneli özelliklerinin ürün kabulü tamamlandı. Teknik kapanış ve iki ürün deposunun ana dal kontrolleri izleniyor. [Panel kapsamı ve yayın öncesi kontroller](asamalar/02/GOREV.md#25-kasım-2026--kabul-edilen-panel-kapsamı)
+
 **21 Kasım 2026.** Aşama 01’in işletim kabulleri bağımsız teknik incelemeden geçti. Ürün PR’ı ve ana dalın CI sonuçları 01.8 kapanış özetinden izlenebilir. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
 
 01.7 kapasite kabulü açık kalıyor. Kullanıcı, kapasite ölçümünü yayın öncesine bıraktı ve Grafana eğitimini ayrı yürütecek. 01’in Git kapanışı doğrulandığında 02’ye geçilebilir. [02 görevi](asamalar/02/GOREV.md)

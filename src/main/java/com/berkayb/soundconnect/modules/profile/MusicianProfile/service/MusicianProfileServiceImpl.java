@@ -22,6 +22,8 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.search.service.VisibleProfileSearch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import jakarta.persistence.EntityManager;
@@ -51,6 +53,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	private final MediaAssetService mediaAssetService;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	private final EntityManager entityManager;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	@Override
 	public List<MusicianProfileSearchItemDto> searchProfiles(String query) { //eklendi
@@ -58,13 +61,8 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		if (q.isEmpty()) return List.of(); //eklendi
 		ProfileInputValidation.text(q, 100, "query");
 		
-		return musicianProfileRepository.searchByStageNameOrUsername(
-				q,
-				UsernameUtils.normalize(q),
-				PageRequest.of(0, 10)
-		) //eklendi
-		                                .stream() //eklendi
-		                                .limit(10) //eklendi
+		return VisibleProfileSearch.collect(10, page -> musicianProfileRepository.searchByStageNameOrUsername(
+				q, UsernameUtils.normalize(q), page), profile -> profile.getUser().getId(), profileBlocks).stream()
 		                                .map(profile -> new MusicianProfileSearchItemDto( //eklendi
 		                                                                                  profile.getId(), //eklendi
 		                                                                                  profile.getUser().getId(), //eklendi
@@ -259,6 +257,7 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 			                                                   log.warn("Profil bulunamadi. profileId: {}", profileId); //degisti
 			                                                   return new SoundConnectException(ErrorType.PROFILE_NOT_FOUND); //degisti
 		                                                   }); //degisti
+		profileBlocks.requireVisible(profile.getUser().getId());
 		
 		var base = musicianProfileMapper.toDto(profile); //degisti
 		String profilePictureUrl = resolveProfilePictureUrl(profile.getProfilePictureMediaId()); //degisti

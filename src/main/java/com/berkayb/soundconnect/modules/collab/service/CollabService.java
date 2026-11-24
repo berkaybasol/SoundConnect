@@ -18,6 +18,7 @@ import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
@@ -56,6 +57,7 @@ public class CollabService {
     private final CollabPublisherOwnershipGuard publisherOwnershipGuard;
     private final ApplicationEventPublisher eventPublisher;
     private final CollabAccessGuard access;
+    private final UserBlockService userBlocks;
 
     @Transactional
     public List<CollabActorSummary> actorsMine(UUID userId) {
@@ -312,6 +314,7 @@ public class CollabService {
         if (!Objects.equals(applicantActor.getProfileType().name(), listing.getWantedType().name())) {
             throw new SoundConnectException(ErrorType.COLLAB_INVALID_ACTOR);
         }
+        userBlocks.requireInteractionAllowed(userId, listing.getOwner().getId());
         if (applicationRepository.existsByListingIdAndApplicantUserId(listingId, userId)
                 || applicationRepository.existsByListingIdAndApplicantActorId(listingId, applicantActor.getId())) {
             throw new SoundConnectException(ErrorType.COLLAB_APPLICATION_DUPLICATE);
@@ -342,8 +345,7 @@ public class CollabService {
         Page<CollabApplication> result = status == null
                 ? applicationRepository.findByListingId(listingId, pageable)
                 : applicationRepository.findByListingIdAndStatus(listingId, status, pageable);
-        CollabMapper.ListingContext context = listingContext(
-                result.getContent().stream().map(CollabApplication::getListing).toList(), userId);
+        CollabMapper.ListingContext context = applicationContext(result.getContent(), userId);
         return PageResponse.from(result.map(value -> mapper.application(value, userId, context)));
     }
 
@@ -356,8 +358,7 @@ public class CollabService {
         Page<CollabApplication> result = status == null
                 ? applicationRepository.findByApplicantUserId(userId, pageable)
                 : applicationRepository.findByApplicantUserIdAndStatus(userId, status, pageable);
-        CollabMapper.ListingContext context = listingContext(
-                result.getContent().stream().map(CollabApplication::getListing).toList(), userId);
+        CollabMapper.ListingContext context = applicationContext(result.getContent(), userId);
         return PageResponse.from(result.map(value -> mapper.application(value, userId, context)));
     }
 
@@ -380,6 +381,7 @@ public class CollabService {
             throw new SoundConnectException(ErrorType.COLLAB_APPLICATION_STATUS_INVALID);
         }
         assertVersion(application.getVersion(), request.expectedVersion());
+        userBlocks.requireInteractionAllowed(userId, application.getApplicantUser().getId());
         Instant now = timeProvider.now();
         List<CollabApplication> invalidated = pendingApplications(listingId).stream()
                 .filter(value -> !Objects.equals(value.getId(), applicationId)).toList();
@@ -470,26 +472,23 @@ public class CollabService {
                 : jobRepository.findMineByStatus(userId, status, pageable);
         Set<UUID> jobIds = result.getContent().stream().map(CollabJob::getId).collect(Collectors.toSet());
         Set<UUID> reviewed = jobIds.isEmpty() ? Set.of() : reviewRepository.findReviewedJobIds(userId, jobIds);
-        CollabMapper.ListingContext context = listingContext(
-                result.getContent().stream().map(CollabJob::getListing).toList(), userId);
+        CollabMapper.ListingContext context = jobContext(result.getContent(), userId);
         return PageResponse.from(result.map(value -> mapper.job(value, userId, reviewed.contains(value.getId()), context)));
     }
 
     @Transactional
     public CollabJobResponse confirmCompletion(UUID userId, UUID jobId, ExpectedVersionRequest request) {
         access.requireBackstage(userId);
-        CollabJob job = jobRepository.findByIdForUpdate(jobId)
-                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_JOB_NOT_FOUND));
+        CollabJob job = lockParticipantJob(userId, jobId);
         boolean publisherSide = Objects.equals(job.getPublisherUser().getId(), userId);
-        boolean applicantSide = Objects.equals(job.getApplicantUser().getId(), userId);
-        if (!publisherSide && !applicantSide) throw new SoundConnectException(ErrorType.COLLAB_FORBIDDEN);
-        if (job.getStatus() == CollabJobStatus.COMPLETED
-                || (publisherSide && job.getPublisherConfirmedAt() != null)
-                || (applicantSide && job.getApplicantConfirmedAt() != null)) {
+        if (job.getStatus() == CollabJobStatus.COMPLETED) {
             return mapJob(job, userId);
         }
         if (job.getStatus() != CollabJobStatus.ACTIVE) {
             throw new SoundConnectException(ErrorType.COLLAB_JOB_STATUS_INVALID);
+        }
+        if ((publisherSide ? job.getPublisherConfirmedAt() : job.getApplicantConfirmedAt()) != null) {
+            return mapJob(job, userId);
         }
         assertVersion(job.getVersion(), request.expectedVersion());
         Instant now = timeProvider.now();
@@ -526,6 +525,30 @@ public class CollabService {
     }
 
     @Transactional
+    public CollabJobResponse cancelJob(UUID userId, UUID jobId, ExpectedVersionRequest request) {
+        access.requireBackstage(userId);
+        CollabJob job = lockParticipantJob(userId, jobId);
+        if (job.getStatus() == CollabJobStatus.CANCELLED) return mapJob(job, userId);
+        if (job.getStatus() != CollabJobStatus.ACTIVE) {
+            throw new SoundConnectException(ErrorType.COLLAB_JOB_STATUS_INVALID);
+        }
+        assertVersion(job.getVersion(), request.expectedVersion());
+        job.setStatus(CollabJobStatus.CANCELLED);
+        jobRepository.flush();
+        return mapJob(job, userId);
+    }
+
+    private CollabJob lockParticipantJob(UUID userId, UUID jobId) {
+        CollabJob job = jobRepository.findByIdForUpdate(jobId)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_JOB_NOT_FOUND));
+        if (!Objects.equals(job.getPublisherUser().getId(), userId)
+                && !Objects.equals(job.getApplicantUser().getId(), userId)) {
+            throw new SoundConnectException(ErrorType.COLLAB_FORBIDDEN);
+        }
+        return job;
+    }
+
+    @Transactional
     public CollabReviewResponse review(UUID userId, UUID jobId, CollabReviewCreateRequest request) {
         access.requireBackstage(userId);
         User reviewerUser = lockUser(userId);
@@ -554,6 +577,7 @@ public class CollabService {
                     && Objects.equals(existing.get().getComment(), comment)) return mapper.review(existing.get());
             throw new SoundConnectException(ErrorType.COLLAB_REVIEW_DUPLICATE);
         }
+        userBlocks.requireInteractionAllowed(userId, targetUser.getId());
         CollabActor lockedTarget = actorRepository.findByIdForUpdate(targetActor.getId())
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
         lockedTarget.recordReview(request.rating());
@@ -766,16 +790,30 @@ public class CollabService {
     }
 
     private CollabApplicationResponse mapApplication(CollabApplication application, UUID viewerId) {
-        return mapper.application(application, viewerId,
-                listingContext(List.of(application.getListing()), viewerId));
+        return mapper.application(application, viewerId, applicationContext(List.of(application), viewerId));
     }
 
     private CollabJobResponse mapJob(CollabJob job, UUID viewerId) {
         boolean reviewed = reviewRepository.findReviewedJobIds(viewerId, Set.of(job.getId())).contains(job.getId());
-        return mapper.job(job, viewerId, reviewed, listingContext(List.of(job.getListing()), viewerId));
+        return mapper.job(job, viewerId, reviewed, jobContext(List.of(job), viewerId));
+    }
+
+    private CollabMapper.ListingContext applicationContext(List<CollabApplication> applications, UUID viewerId) {
+        return listingContext(applications.stream().map(CollabApplication::getListing).toList(), viewerId,
+                applications.stream().map(value -> value.getApplicantUser().getId()).toList());
+    }
+
+    private CollabMapper.ListingContext jobContext(List<CollabJob> jobs, UUID viewerId) {
+        return listingContext(jobs.stream().map(CollabJob::getListing).toList(), viewerId,
+                jobs.stream().map(value -> value.getApplicantUser().getId()).toList());
     }
 
     private CollabMapper.ListingContext listingContext(Collection<Collab> listings, UUID viewerId) {
+        return listingContext(listings, viewerId, List.of());
+    }
+
+    private CollabMapper.ListingContext listingContext(Collection<Collab> listings, UUID viewerId,
+                                                       Collection<UUID> applicants) {
         Set<UUID> ids = listings.stream().map(Collab::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         if (ids.isEmpty()) return CollabMapper.ListingContext.empty(viewerId);
         Set<UUID> applied = applicationRepository.findAppliedListingIds(viewerId, ids);
@@ -783,7 +821,9 @@ public class CollabService {
         Map<UUID, Long> counts = applicationRepository.countByListingIds(ids).stream()
                 .collect(Collectors.toMap(CollabListingApplicationCount::getListingId,
                         CollabListingApplicationCount::getApplicationCount));
-        return new CollabMapper.ListingContext(viewerId, applied, saved, counts);
+        Set<UUID> contacts = listings.stream().map(value -> value.getOwner().getId()).collect(Collectors.toSet());
+        contacts.addAll(applicants);
+        return new CollabMapper.ListingContext(viewerId, applied, saved, counts, userBlocks.blockedAmong(viewerId, contacts));
     }
 
     private CollabReportResponse mapReport(CollabReport value) {

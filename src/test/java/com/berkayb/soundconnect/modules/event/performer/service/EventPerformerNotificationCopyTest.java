@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.event.performer.service;
 
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
+
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus;
 import com.berkayb.soundconnect.modules.event.performer.entity.EventPerformerRequest;
@@ -10,9 +12,6 @@ import com.berkayb.soundconnect.modules.event.repository.EventRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.BandMember;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandMemberRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.BandRepository;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandRepresentationPolicy;
@@ -40,6 +39,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class EventPerformerNotificationCopyTest {
+    @Mock private AccountDeliveryFence contact;
 
 	@Mock private EventPerformerRequestRepository requestRepository;
 	@Mock private EventRepository eventRepository;
@@ -54,18 +54,15 @@ class EventPerformerNotificationCopyTest {
 	@Test
 	void bandApprovalNamesTheGroupAndOnlyAsksActiveFounders() {
 		Band band = band("Şahbaz");
-		BandMember founder = member(band, BandRole.FOUNDER, BandMemberShipStatus.ACTIVE);
-		BandMember activeMember = member(band, BandRole.MEMBER, BandMemberShipStatus.ACTIVE);
-		BandMember formerFounder = member(band, BandRole.FOUNDER, BandMemberShipStatus.LEFT);
-		when(bandMemberRepository.findByBandId(band.getId()))
-				.thenReturn(List.of(founder, activeMember, formerFounder));
+		UUID founder = UUID.randomUUID();
+		when(bandMemberRepository.lockAvailableFounderIds(band.getId())).thenReturn(List.of(founder));
 		stubRequestSave();
 
 		service.createPendingRequest(UUID.randomUUID(), event(), null, band);
 
 		List<NotificationInboundEvent> notifications = capturedNotifications(1).getFirst();
 		assertThat(notifications).singleElement().satisfies(notification -> {
-			assertThat(notification.recipientId()).isEqualTo(founder.getUser().getId());
+			assertThat(notification.recipientId()).isEqualTo(founder);
 			assertThat(notification.title()).isEqualTo("Grubunuz için etkinlik katılım onayı");
 			assertThat(notification.message()).isEqualTo(
 					"SoundConnect Ankara, “Gece Konseri” etkinliğine “Şahbaz” adlı grubunuzu eklemek istiyor."
@@ -83,11 +80,8 @@ class EventPerformerNotificationCopyTest {
 	@Test
 	void connectedBandAsksOnlyActiveFoundersForProfileVisibilityWithoutDuplicateRecipients() {
 		Band band = band("Şahbaz'ın \"Akustik\" Grubu");
-		BandMember founder = member(band, BandRole.FOUNDER, BandMemberShipStatus.ACTIVE);
-		BandMember activeMember = member(band, BandRole.MEMBER, BandMemberShipStatus.ACTIVE);
-		BandMember formerMember = member(band, BandRole.MEMBER, BandMemberShipStatus.LEFT);
-		when(bandMemberRepository.findByBandId(band.getId()))
-				.thenReturn(List.of(founder, founder, activeMember, activeMember, formerMember));
+		UUID founder = UUID.randomUUID();
+		when(bandMemberRepository.lockAvailableFounderIds(band.getId())).thenReturn(List.of(founder, founder));
 		stubRequestSave();
 		Event event = linkedEvent(null, band);
 
@@ -95,7 +89,7 @@ class EventPerformerNotificationCopyTest {
 
 		List<NotificationInboundEvent> notifications = capturedNotifications(1).getFirst();
 		assertThat(notifications).extracting(NotificationInboundEvent::recipientId)
-				.containsExactly(founder.getUser().getId());
+				.containsExactly(founder);
 		assertThat(notifications).allSatisfy(notification -> {
 			assertThat(notification.title()).isEqualTo("Grubunuzun profilinde gösterilsin mi?");
 			assertThat(notification.message()).isEqualTo(
@@ -149,8 +143,7 @@ class EventPerformerNotificationCopyTest {
 	@Test
 	void maximumLegalBandEventAndVenueNamesRemainPersistableWithoutTruncation() {
 		Band band = band("Ş".repeat(100));
-		BandMember founder = member(band, BandRole.FOUNDER, BandMemberShipStatus.ACTIVE);
-		when(bandMemberRepository.findByBandId(band.getId())).thenReturn(List.of(founder));
+		when(bandMemberRepository.lockAvailableFounderIds(band.getId())).thenReturn(List.of(UUID.randomUUID()));
 		stubRequestSave();
 		Event event = event();
 		event.setTitle("Ğ".repeat(255));
@@ -210,12 +203,6 @@ class EventPerformerNotificationCopyTest {
 		band.setId(UUID.randomUUID());
 		band.setName(name);
 		return band;
-	}
-
-	private BandMember member(Band band, BandRole role, BandMemberShipStatus status) {
-		User user = new User();
-		user.setId(UUID.randomUUID());
-		return BandMember.builder().band(band).user(user).bandRole(role).status(status).build();
 	}
 
 	private MusicianProfile musician() {

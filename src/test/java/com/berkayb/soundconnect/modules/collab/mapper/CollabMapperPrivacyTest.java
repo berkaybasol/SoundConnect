@@ -84,6 +84,15 @@ class CollabMapperPrivacyTest {
         assertThat(stranger.applicant().contactUsername()).isEqualTo("bass_player");
         assertThat(ownerView.phoneNumber()).isEqualTo("+905321112233");
         assertThat(ownerView.message()).isEqualTo("Akşam programı için uygunum.");
+        var blockedOwner = new CollabMapper.ListingContext(owner.getId(), java.util.Set.of(), java.util.Set.of(),
+                java.util.Map.of(), java.util.Set.of(applicant.getId()));
+        var blockedApplicant = new CollabMapper.ListingContext(applicant.getId(), java.util.Set.of(), java.util.Set.of(),
+                java.util.Map.of(), java.util.Set.of(owner.getId()));
+        assertThat(mapper.application(application, owner.getId(), blockedOwner).phoneNumber()).isNull();
+        assertThat(mapper.application(application, owner.getId(), blockedOwner).interactionBlocked()).isTrue();
+        assertThat(mapper.application(application, applicant.getId(), blockedApplicant).phoneNumber())
+                .isEqualTo(application.getPhoneSnapshot());
+        assertThat(mapper.listing(listing, blockedApplicant).interactionBlocked()).isTrue();
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.application.admin;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import static com.berkayb.soundconnect.modules.admin.security.AdminPanelReadAccess.PANEL;
 import com.berkayb.soundconnect.shared.constant.EndPoints;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import com.berkayb.soundconnect.shared.response.PageResponse;
@@ -22,7 +23,6 @@ import static com.berkayb.soundconnect.modules.application.admin.PendingApplicat
 @RestController
 @RequiredArgsConstructor
 public class PendingApplicationAdminController {
-    private static final String PANEL = "hasAuthority('ADMIN_PANEL_ACCESS') and !hasRole('LISTENER')";
     private static final String READ_VENUE = PANEL + " and hasAuthority('MANAGE_VENUE_APPLICATIONS')";
     private static final String READ_STUDIO = PANEL + " and hasAuthority('MANAGE_STUDIO_APPLICATIONS')";
     private static final String VENUES = EndPoints.VenueApplication.ADMIN_BASE + "/pending";

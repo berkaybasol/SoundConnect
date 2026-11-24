@@ -14,12 +14,12 @@ import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.MusicianProfileRepository;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.*;
-import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.*;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.repository.*;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandRepresentationPolicy;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueProfileRepository;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.enums.VenueStatus;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
@@ -57,6 +57,7 @@ public class EventPlanService {
     private final EventPerformerNotificationOutboxPublisher notifications;
     private final EventScheduleClock clock;
     private final ObjectMapper json;
+    private final AccountDeliveryFence contact;
 
     @Transactional(readOnly = true)
     public EventPlanPreview preview(UUID actor, EventPlanDefinition raw) {
@@ -195,8 +196,8 @@ public class EventPlanService {
         }
         if (!EventPlanRules.hasFuture(d, clock.instant())) throw invalid();
         EventPlanDefinition previous = definition(plan);
-        String name = validateTarget(d.template(), true);
         boolean reset = effectiveStatus(plan) == EventPlanStatus.COMPLETED || EventPlanRules.consentScopeChanged(previous, d);
+        String name = validateTarget(d.template(), reset);
         plan.setStatus(EventPlanStatus.ACTIVE);
         applyDefinition(plan, d, name);
         if (reset) resetConsent(plan);
@@ -272,11 +273,11 @@ public class EventPlanService {
         if (o.getEventId() == null) throw notFound();
         Event event = events.findByIdForUpdate(o.getEventId()).orElseThrow(this::notFound);
         if (!beforeStart(event) || !EventPlanRules.startsAt(request.eventDate(), template.startTime()).isAfter(clock.instant())) throw finalized();
-        String name = validateTarget(template, true);
         boolean reset = !event.getEventDate().equals(request.eventDate())
                 || EventPlanRules.performerOrScheduleChanged(occurrenceTemplate(plan, event, o), template)
                 || (o.getStatus()==EventPlanOccurrenceStatus.GENERATED
                     && plan.getConsentStatus()!=EventPlanConsentStatus.ACCEPTED && plan.getConsentStatus()!=EventPlanConsentStatus.NOT_REQUIRED);
+        String name = validateTarget(template, reset);
         if (reset) { resetPublications(event); requests.deleteForEvent(event.getId()); events.flush(); }
         applyContent(event, template, request.eventDate());
         if (reset) applySingleConsent(actor, event, template, name);
@@ -308,6 +309,7 @@ public class EventPlanService {
         if (request.decision() == EventPlanDecision.WITHDRAW) {
             if (!withdrawAllowed(plan)) throw finalized();
         } else if (!decisionAllowed(plan)) throw finalized();
+        if (desired == EventPlanConsentStatus.ACCEPTED) contact.requireInteractionAllowed(actor, plan.getOrganizerUserId());
         plan.setConsentStatus(desired); plan.setDecidedByUserId(actor);
         plan.setShowOnProfile(desired == EventPlanConsentStatus.ACCEPTED && request.showOnProfile());
         if (desired == EventPlanConsentStatus.ACCEPTED) plan.setAcceptedPublication(request.showOnProfile());
@@ -557,7 +559,8 @@ public class EventPlanService {
     private String validateTarget(EventPlanTemplate t, boolean requiresDecider) {
         if (t.bandId() != null) {
             Band band = bands.findById(t.bandId()).orElseThrow(this::notFound);
-            if (requiresDecider && founderIds(band.getId()).isEmpty()) throw invalid();
+            if (requiresDecider && members.lockAvailableFounderIds(band.getId()).isEmpty())
+                throw new SoundConnectException(ErrorType.BAND_CONTACT_UNAVAILABLE);
             return snapshot(band.getName());
         }
         if (t.musicianProfileId() != null) {
@@ -580,14 +583,6 @@ public class EventPlanService {
     private String snapshot(String name) {
         if (name == null || name.isBlank() || name.trim().length() > 100) throw invalid();
         return name.trim();
-    }
-
-    private List<UUID> founderIds(UUID id) {
-        return members.findByBandId(id).stream()
-                .filter(m -> m.getStatus() == BandMemberShipStatus.ACTIVE && m.getBandRole() == BandRole.FOUNDER)
-                .map(BandMember::getUser).filter(Objects::nonNull)
-                .filter(u -> u.getStatus() == UserStatus.ACTIVE && Boolean.TRUE.equals(u.getEmailVerified()))
-                .map(u -> u.getId()).filter(Objects::nonNull).distinct().toList();
     }
 
     private void validatePoster(String ref, Venue venue) {
@@ -615,8 +610,15 @@ public class EventPlanService {
 
     private void requestConsent(EventPlan p) {
         if (p.getConsentStatus() != EventPlanConsentStatus.PENDING) return;
-        List<UUID> recipients = p.getBandId() != null ? founderIds(p.getBandId())
+        List<UUID> recipients = p.getBandId() != null ? members.lockAvailableFounderIds(p.getBandId())
                 : List.of(musicians.findById(p.getMusicianProfileId()).orElseThrow(this::notFound).getUser().getId());
+        if (p.getBandId() != null) {
+            recipients = recipients.stream().sorted()
+                    .filter(id -> !contact.interactionBlockedForUpdate(p.getOrganizerUserId(), id)).toList();
+            if (recipients.isEmpty()) throw new SoundConnectException(ErrorType.BAND_CONTACT_UNAVAILABLE);
+        } else {
+            contact.requireInteractionAllowed(p.getOrganizerUserId(), recipients.getFirst());
+        }
         notify(p, recipients, NotificationType.EVENT_PERFORMER_APPROVAL_REQUESTED, "REQUESTED", "Program katılım onayı",
                 "“" + p.getTitle() + "” programına katılımın için onayın bekleniyor.");
     }

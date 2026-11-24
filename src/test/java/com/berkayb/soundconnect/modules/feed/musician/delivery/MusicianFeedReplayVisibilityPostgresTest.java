@@ -7,6 +7,10 @@ import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedService;
 import com.berkayb.soundconnect.modules.feed.musician.feedback.MusicianFeedFeedbackSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.mixer.MusicianFeedMixer;
 import com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionRepository;
+import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.modules.feed.musician.personalization.MusicianFeedPersonalizationSnapshot;
 import com.berkayb.soundconnect.modules.feed.musician.provider.*;
 import com.berkayb.soundconnect.modules.overthinking.dto.response.OverthinkingPostResponseDto;
@@ -72,14 +76,17 @@ class MusicianFeedReplayVisibilityPostgresTest {
     private Person viewer;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws java.io.IOException {
         sql = new JdbcTemplate(dataSource);
         jdbc = new NamedParameterJdbcTemplate(dataSource);
+        sql.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-11-24-user-blocks.sql")));
+        var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class));
         posts = mock(OverthinkingPostService.class);
         guard = new MusicianFeedReplayVisibilityGuard(jdbc, mapper, posts,
                 new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard(
                         new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionRepository(jdbc),
-                        new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(mapper)));
+                        new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(mapper),
+                        new ProfileBlockVisibility(blocks, jdbc)));
         viewer = person("MUSICIAN");
     }
 
@@ -104,6 +111,36 @@ class MusicianFeedReplayVisibilityPostgresTest {
                 .isEqualTo("PUBLIC");
         restrictions.restore(report, NOW.plusSeconds(1));
         visible(saved);
+    }
+
+    @Test
+    void freshFeedCountsExcludeBlockedLikesCommentsAndRepliesUnderTheirRoots() {
+        var publisher = person("MUSICIAN");
+        var hidden = person("MUSICIAN");
+        var source = track(publisher);
+        var root = UUID.randomUUID();
+        var commentSql = """
+                insert into tbl_comment(id,user_id,target_type,target_id,text,is_deleted,parent_comment_id,created_at,updated_at)
+                values (?,?,'MEDIA',?,'Comment',false,?,?,?)
+                """;
+        sql.update(commentSql, root, hidden.user(), source.media(), null, stamp(), stamp());
+        sql.update(commentSql, UUID.randomUUID(), viewer.user(), source.media(), root, stamp(), stamp());
+        sql.update(commentSql, UUID.randomUUID(), publisher.user(), source.media(), null, stamp(), stamp());
+        for (var user : List.of(hidden.user(), viewer.user())) {
+            sql.update("insert into tbl_like(id,user_id,target_type,target_id,created_at,updated_at) values (?,?,'MEDIA',?,?,?)",
+                    UUID.randomUUID(), user, source.media(), stamp(), stamp());
+        }
+        var tracks = new MusicianFeedTrackCandidateProvider(jdbc);
+        var initial = from(tracks);
+        assertThat(initial.items().getFirst().engagement().likeCount()).isEqualTo(2);
+        assertThat(initial.items().getFirst().engagement().commentCount()).isEqualTo(3);
+        sql.update("insert into tbl_user_block(blocker_id,blocked_id,created_at) values (?,?,?)",
+                hidden.user(), viewer.user(), Timestamp.from(NOW.plusSeconds(1)));
+        revoked(initial);
+        var refreshed = from(tracks).items().getFirst().engagement();
+        assertThat(refreshed.likeCount()).isOne();
+        assertThat(refreshed.commentCount()).isOne();
+        assertThat(refreshed.likedByMe()).isTrue();
     }
 
     @Test
@@ -294,26 +331,36 @@ class MusicianFeedReplayVisibilityPostgresTest {
     @Test
     void overthinkingUsesCurrentViewerMaskingWhileIgnoringReactionCounters() {
         Person publisher = person("LISTENER");
+        Person sourceAuthor = person("MUSICIAN");
         UUID source = UUID.randomUUID();
         UUID share = UUID.randomUUID();
         sql.update("""
                 insert into tbl_overthinking_post(id,created_at,updated_at,author_id,title,content,visibility_type)
                 values (?,?,?,?,?,?,?)
-                """, source, stamp(), stamp(), publisher.user(), "Thought", "Body", "ANONYMOUS");
+                """, source, stamp(), stamp(), sourceAuthor.user(), "Thought", "Body", "ANONYMOUS");
         sql.update("""
                 insert into tbl_overthinking_profile_share(id,owner_user_id,listener_profile_id,source_post_id,note,published_at)
                 values (?,?,?,?,?,?)
                 """, share, publisher.user(), publisher.profile(), source, "Note", stamp());
         when(posts.getByIdsForViewer(eq(viewer.user()), anyList()))
-                .thenReturn(Map.of(source, thought(source, publisher.user(), true, 0)));
-        MusicianFeedPageResponse page = from(new MusicianFeedOverthinkingShareCandidateProvider(jdbc, posts));
+                .thenReturn(Map.of(source, thought(source, sourceAuthor.user(), true, 0)));
+        var shares = new MusicianFeedOverthinkingShareCandidateProvider(jdbc, posts);
+        MusicianFeedPageResponse page = from(shares);
         visible(page);
         when(posts.getByIdsForViewer(eq(viewer.user()), anyList()))
-                .thenReturn(Map.of(source, thought(source, publisher.user(), true, 99)));
+                .thenReturn(Map.of(source, thought(source, sourceAuthor.user(), true, 99)));
         visible(page);
         when(posts.getByIdsForViewer(eq(viewer.user()), anyList()))
-                .thenReturn(Map.of(source, thought(source, publisher.user(), false, 99)));
+                .thenReturn(Map.of(source, thought(source, sourceAuthor.user(), false, 99)));
         revoked(page);
+        var fresh = from(shares);
+        visible(fresh);
+        var masked = mapper.valueToTree(fresh.items().getFirst().payload()).path("source");
+        assertThat(masked.path("id").asText()).isEqualTo(source.toString());
+        assertThat(masked.path("authorId").isNull()).isTrue();
+        assertThat(masked.path("authorUsername").asText()).isEqualTo("Anonymous");
+        assertThat(masked.path("authorAvatarUrl").isNull()).isTrue();
+        assertThat(masked.path("canViewAuthor").asBoolean()).isFalse();
         when(posts.getByIdsForViewer(eq(viewer.user()), anyList())).thenReturn(Map.of());
         revoked(page);
     }
@@ -459,7 +506,18 @@ class MusicianFeedReplayVisibilityPostgresTest {
                 values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, listing, stamp(), stamp(), publisher.user(), actor, UUID.randomUUID(), "0".repeat(64),
                 "REGULAR", "MUSICIAN", "Join us", "We need a musician", city(), "OPEN", stamp(), 0L);
-        MusicianFeedPageResponse page = from(new MusicianFeedCollabCandidateProvider(jdbc));
+        var opportunities = new MusicianFeedCollabCandidateProvider(jdbc);
+        MusicianFeedPageResponse page = from(opportunities);
+        visible(page);
+        sql.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)", publisher.user(), viewer.user());
+        revoked(page);
+        var blocked = from(opportunities);
+        visible(blocked);
+        var card = mapper.valueToTree(blocked.items().getFirst().payload()).path("listing");
+        assertThat(card.path("title").asText()).isEqualTo("Join us");
+        assertThat(card.path("interactionBlocked").asBoolean()).isTrue();
+        sql.update("update tbl_user_block set unblocked_at=now() where blocker_id=?", publisher.user());
+        revoked(blocked);
         visible(page);
         sql.update("update tbl_collab set expires_at=? where id=?", Timestamp.from(NOW.minusSeconds(1)), listing);
         revoked(page);

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.StudioProfille.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.request.StudioProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.dto.response.StudioProfileResponseDto;
 import com.berkayb.soundconnect.modules.profile.StudioProfile.entity.StudioProfile;
@@ -43,6 +44,8 @@ class StudioProfileServiceImplTest {
 	@Mock private SpotifyService spotifyService;
 	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Spy private StudioProfileTransactionExecutor transactionExecutor = new StudioProfileTransactionExecutor();
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	
 	@InjectMocks
 	private StudioProfileServiceImpl service;
@@ -191,6 +194,7 @@ class StudioProfileServiceImplTest {
 	void publicResponseOmitsUnsafeLegacyContactValuesAndNormalizesBareHosts() {
 		UUID profileId = UUID.randomUUID();
 		StudioProfile profile = new StudioProfile();
+		profile.setUser(user);
 		profile.setId(profileId);
 		when(repository.findById(profileId)).thenReturn(Optional.of(profile));
 		when(mapper.toDto(profile)).thenReturn(new StudioProfileResponseDto(
@@ -211,6 +215,7 @@ class StudioProfileServiceImplTest {
 	void publicResponseUsesTheSameSafeTimeZoneFallbackAsStudioScheduling() {
 		UUID profileId = UUID.randomUUID();
 		StudioProfile profile = new StudioProfile();
+		profile.setUser(user);
 		profile.setId(profileId);
 		profile.setTimeZone("Mars/Olympus");
 		when(repository.findById(profileId)).thenReturn(Optional.of(profile));

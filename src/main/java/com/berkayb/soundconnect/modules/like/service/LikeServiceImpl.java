@@ -51,12 +51,12 @@ public class LikeServiceImpl implements LikeService{
 	
 	@Override
 	@Transactional(readOnly = true)
-	public Map<UUID, Long> countLikesByTargets(EngagementTargetType targetType, Collection<UUID> targetIds) {
+	public Map<UUID, Long> countLikesByTargets(UUID viewerId, EngagementTargetType targetType, Collection<UUID> targetIds) {
 		if (targetIds == null || targetIds.isEmpty()) {
 			return Collections.emptyMap();
 		}
 		
-		return likeRepository.countByTargetTypeAndTargetIdIn(targetType, targetIds)
+		return likeRepository.countVisibleByTargets(viewerId, targetType, targetIds)
 		                     .stream()
 		                     .collect(Collectors.toMap(
 				                     LikeRepository.TargetCountProjection::getTargetId,
@@ -113,7 +113,7 @@ public class LikeServiceImpl implements LikeService{
     @Transactional
     public long countLikes(UUID viewerId, EngagementTargetType targetType, UUID targetId) {
         validateRead(viewerId, targetType, targetId);
-        return likeRepository.countByTargetTypeAndTargetId(targetType, targetId);
+        return likeRepository.countVisibleByTarget(viewerId, targetType, targetId);
 	}
 
 	private void validateMutation(UUID userId,EngagementTargetType type,UUID id) {
@@ -134,8 +134,7 @@ public class LikeServiceImpl implements LikeService{
 	}
 
     private void validateTarget(UUID viewerId, EngagementTargetType type, UUID id) {
-        if (type == EngagementTargetType.ANNOUNCEMENT) engagementTargetValidator.validateExists(viewerId,type,id);
-        else engagementTargetValidator.validateExists(type,id);
+        engagementTargetValidator.validateExists(viewerId, type, id);
     }
 
 	private void requireActiveActor(UUID userId) {

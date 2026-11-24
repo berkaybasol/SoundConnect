@@ -32,6 +32,8 @@ public class DmMessageEventListener {
 	public void onDmMessageSent(DmMessageSentEvent event) {
 		if (event == null || !accountDeliveryFence.canDeliver(event.getRecipientId(),
 				java.util.List.of(event.getSenderId(), event.getRecipientId()))) return;
+		if (accountDeliveryFence.contactEventSuppressed(event.getSenderId(), event.getRecipientId(),
+				event.getSentAt() == null ? null : event.getSentAt().toInstant(java.time.ZoneOffset.UTC))) return;
 		try {
 			// eventteki bilgiden DMMessage entity'sini DB'den cek (responseDto icin)
 			var msg = messageRepository.findById(event.getMessageId())

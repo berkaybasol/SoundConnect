@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.shared.resolver.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.contributor.PublicProfileContributor;
@@ -115,7 +116,7 @@ class PublicProfileResolverServiceImplTest {
 		ListenerVisibilityPolicy policy = mock(ListenerVisibilityPolicy.class);
 		when(policy.publicVisibilityRestrictions(List.of(userId))).thenReturn(restrictions);
 		when(contributor.resolve(userId)).thenReturn(targets);
-		return new PublicProfileResolverServiceImpl(List.of(contributor), policy).resolveByUserId(userId);
+		return new PublicProfileResolverServiceImpl(List.of(contributor), policy, mock(ProfileBlockVisibility.class)).resolveByUserId(userId);
 	}
 
 	@Test
@@ -133,7 +134,7 @@ class PublicProfileResolverServiceImplTest {
 		));
 
 		PublicProfileResolverServiceImpl service = new PublicProfileResolverServiceImpl(
-				List.of(contributor), visibilityPolicy);
+				List.of(contributor), visibilityPolicy, mock(ProfileBlockVisibility.class));
 
 		assertThat(service.resolveByUserId(userId).profiles())
 				.extracting(UserProfileTargetDto::type)
@@ -162,7 +163,7 @@ class PublicProfileResolverServiceImplTest {
 		));
 
 		PublicProfileResolverServiceImpl service = new PublicProfileResolverServiceImpl(
-				List.of(contributor), visibilityPolicy);
+				List.of(contributor), visibilityPolicy, mock(ProfileBlockVisibility.class));
 
 		assertThat(service.resolveByUserId(userId).profiles()).containsExactly(ghostListener);
 	}
@@ -176,7 +177,7 @@ class PublicProfileResolverServiceImplTest {
 				.thenReturn(new ListenerVisibilityPolicy.PublicVisibilityRestrictions(
 						Set.of(), Set.of(userId)));
 		PublicProfileResolverServiceImpl service = new PublicProfileResolverServiceImpl(
-				List.of(contributor), visibilityPolicy);
+				List.of(contributor), visibilityPolicy, mock(ProfileBlockVisibility.class));
 
 		assertThat(service.resolveByUserId(userId).profiles()).isEmpty();
 		verifyNoInteractions(contributor);
@@ -195,7 +196,7 @@ class PublicProfileResolverServiceImplTest {
 						"MUSICIAN", UUID.randomUUID(), "Must stay hidden", null)
 		));
 		PublicProfileResolverServiceImpl service = new PublicProfileResolverServiceImpl(
-				List.of(contributor), visibilityPolicy);
+				List.of(contributor), visibilityPolicy, mock(ProfileBlockVisibility.class));
 
 		assertThat(service.resolveByUserId(userId).profiles()).isEmpty();
 	}

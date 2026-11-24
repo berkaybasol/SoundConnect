@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Real signed JWT + production security chain + actual mappings; no database/provider. */
-@WebMvcTest(controllers = {VenueApplicationSessionController.class, VenueApplicationPushController.class}, properties = {
+@WebMvcTest(controllers = {VenueApplicationSessionController.class, VenueApplicationPushController.class, SessionAccessController.class}, properties = {
         "app.notification.push.enabled=true", "app.jwt.secret=0123456789abcdef0123456789abcdef",
         "app.jwt.expiration=60000", "app.jwt.issuer=venue-application-http-test"
 })
@@ -121,6 +121,25 @@ class VenueApplicationHttpSecurityTest {
                 .andExpect(header().string("Cache-Control", "no-store"));
         verify(sessions).promote(user.getId(), application, user.getSessionVersion());
         verifyNoInteractions(devices);
+    }
+
+    @Test void accessCheckForBothSessionTypesDistinguishesSuspensionAndPermanentRevocation() throws Exception {
+        mvc.perform(get(SessionAccessController.PATH)).andExpect(status().isUnauthorized());
+        mvc.perform(get(SessionAccessController.PATH).header("Authorization", bearer))
+                .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", "no-store"));
+        user.setStatus(UserStatus.ACTIVE);
+        user.setRoles(Set.of(Role.builder().name("ROLE_VENUE").build()));
+        String ordinary = "Bearer " + tokens.generateToken(new UserDetailsImpl(user));
+        mvc.perform(get(SessionAccessController.PATH).header("Authorization", ordinary)).andExpect(status().isNoContent());
+        user.setSessionVersion(user.getSessionVersion()+1);
+        user.setAccessSuspended(true);
+        for (String token : List.of(ordinary, bearer)) {
+            mvc.perform(get(SessionAccessController.PATH).header("Authorization", token))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1119));
+        }
+        user.setAccessSuspended(false);
+        for (String token : List.of(ordinary, bearer))
+            mvc.perform(get(SessionAccessController.PATH).header("Authorization", token)).andExpect(status().isUnauthorized());
     }
 
     @Test void activeOrdinaryVenueTokenCanUseOwnedStatusEndpoint() throws Exception {

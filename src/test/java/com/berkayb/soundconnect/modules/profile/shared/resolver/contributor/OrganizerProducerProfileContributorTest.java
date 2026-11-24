@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.shared.resolver.contributor;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.entity.OrganizerProfile;
 import com.berkayb.soundconnect.modules.profile.OrganizerProfile.repository.OrganizerProfileRepository;
@@ -111,7 +112,7 @@ class OrganizerProducerProfileContributorTest {
     void publicResolverStillSuppressesPendingAndGhostAlternateProfiles(String type) {
         Fixture f = fixture(type);
         var visibility = mock(ListenerVisibilityPolicy.class);
-        var resolver = new PublicProfileResolverServiceImpl(List.of(f.contributor), visibility);
+        var resolver = new PublicProfileResolverServiceImpl(List.of(f.contributor), visibility, mock(ProfileBlockVisibility.class));
         when(visibility.publicVisibilityRestrictions(List.of(f.userId)))
                 .thenReturn(new ListenerVisibilityPolicy.PublicVisibilityRestrictions(Set.of(), Set.of(f.userId)));
         assertThat(resolver.resolveByUserId(f.userId).profiles()).isEmpty();

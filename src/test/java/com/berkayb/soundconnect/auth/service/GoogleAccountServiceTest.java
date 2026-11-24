@@ -52,6 +52,15 @@ class GoogleAccountServiceTest {
 		verifyNoInteractions(tokens, profiles, passwords);
 	}
 
+	@Test void suspendedGoogleAccountCannotResumeOnboardingOrReceiveAnySession() {
+		User user = account();
+		user.setAccessSuspended(true);
+		when(users.findByProviderSubjectForUpdate(AuthProvider.GOOGLE, ID.subject())).thenReturn(Optional.of(user));
+		expectError(() -> service.signIn(ID), ErrorType.ACCOUNT_SUSPENDED);
+		expectError(() -> service.complete(ID, form(RoleEnum.ROLE_MUSICIAN)), ErrorType.ACCOUNT_SUSPENDED);
+		verifyNoInteractions(applications, tokens, profiles);
+	}
+
 	@Test void localMailboxAndConflictingBoundSubjectsAreNeverLinked() {
 		User local = account();
 		local.setProvider(AuthProvider.LOCAL);

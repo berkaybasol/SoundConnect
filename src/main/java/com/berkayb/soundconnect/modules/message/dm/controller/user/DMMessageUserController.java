@@ -47,7 +47,7 @@ public class DMMessageUserController {
 		// Listing/prefetching a page is not a read receipt. Only an explicit
 		// message ACK may clear its inbox notification and pending push.
 		
-		Page<DMMessageResponseDto> data = messageService.getMessagesByConversationId(conversationId, pageable);
+		Page<DMMessageResponseDto> data = messageService.getMessagesByConversationId(conversationId, pageable, currentUserId);
 		return ResponseEntity.ok(BaseResponse.<Page<DMMessageResponseDto>>builder()
 		                                     .success(true)
 		                                     .message("Messages listed")

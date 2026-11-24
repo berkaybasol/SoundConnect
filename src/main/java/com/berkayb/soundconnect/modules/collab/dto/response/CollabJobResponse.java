@@ -18,5 +18,6 @@ public record CollabJobResponse(
         Instant applicantConfirmedAt,
         boolean confirmedByMe,
         boolean reviewedByMe,
-        Instant completedAt
+        Instant completedAt,
+        boolean interactionBlocked
 ) {}

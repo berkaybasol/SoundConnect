@@ -106,6 +106,7 @@ class OverthinkingRevealRequestPostgresTest {
     }
 
     @Autowired OverthinkingRevealRequestService service;
+    @Autowired com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
     @Autowired OverthinkingRevealInboxService inbox;
     @Autowired OverthinkingRevealNotificationRetractionService retraction;
     @Autowired NotificationEventListener notificationConsumer;
@@ -145,6 +146,75 @@ class OverthinkingRevealRequestPostgresTest {
                     .visibilityType(OverthinkingVisibilityType.ANONYMOUS).build());
             return new Fixture(author.getId(), requester.getId(), outsider.getId(), post.getId());
         });
+    }
+
+    @Test
+    void blockedAnonymousRequestsHaveNormalSenderReceiptsAndNoRecipientDeliveryEvenAfterUnblock() {
+        jdbc.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)",fixture.requesterId,fixture.authorId);
+        var before = inbox.getUnreadStatus(fixture.authorId);
+        var sent = service.createRevealRequest(fixture.requesterId, fixture.postId);
+        assertThat(sent.authorId()).isNull();
+        assertThat(sent.status()).isEqualTo(OverthinkingRevealRequestStatus.PENDING);
+        assertThat(service.createRevealRequest(fixture.requesterId, fixture.postId).id()).isEqualTo(sent.id());
+        assertThat(service.getMySentRequests(fixture.requesterId,PageRequest.of(0,1)).getTotalElements()).isOne();
+        assertThat(service.getIncomingRequests(fixture.authorId,PageRequest.of(0,1))).isEmpty();
+        assertThat(service.getIncomingPendingRequestCount(fixture.authorId)).isZero();
+        assertThat(inbox.getUnreadStatus(fixture.authorId)).isEqualTo(before);
+        verifyNoInteractions(notifications);
+        jdbc.update("update tbl_user_block set unblocked_at=now() where blocker_id=? and blocked_id=?",fixture.requesterId,fixture.authorId);
+        assertThat(service.getIncomingRequests(fixture.authorId,PageRequest.of(0,1))).isEmpty();
+        assertThatThrownBy(() -> service.approveRevealRequest(fixture.authorId,sent.id()))
+                .isInstanceOfSatisfying(SoundConnectException.class, e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
+        service.cancelRevealRequest(fixture.requesterId,fixture.postId);
+        assertThat(service.getMySentRequests(fixture.requesterId,PageRequest.of(0,1))).isEmpty();
+        var fresh = service.createRevealRequest(fixture.requesterId,fixture.postId);
+        assertThat(fresh.id()).isNotEqualTo(sent.id());
+        assertThat(inbox.getUnreadStatus(fixture.authorId).revision()).isOne();
+    }
+
+    @Test
+    void receivedNotificationAndImmediateApprovalTakeContactBeforeTheRequestRow() throws Exception {
+        var request = service.createRevealRequest(fixture.requesterId, fixture.postId);
+        var recorded = receivedEvent(request.id());
+        var occurred = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        Map<String,Object> payload = Map.of("module","OVERTHINKING", "action","REVEAL_REQUEST_RECEIVED",
+                "postId",fixture.postId.toString(), "postTitle","Anonymous title",
+                "revealRequestId",request.id().toString(), "requesterId",fixture.requesterId.toString());
+        jdbc.update("update tbl_overthinking_notification_outbox set occurred_at=?,payload=cast(? as jsonb) where event_id=?",
+                java.sql.Timestamp.from(occurred), new ObjectMapper().writeValueAsString(payload), recorded.eventId());
+        var event = NotificationInboundEvent.builder().eventId(recorded.eventId()).recipientId(fixture.authorId)
+                .occurredAt(occurred).type(NotificationType.OVERTHINKING_REVEAL_REQUEST_RECEIVED).payload(payload).build();
+        var policy = new com.berkayb.soundconnect.modules.notification.service.NotificationDeliveryPolicy(accounts,
+                new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc),transactionManager,null);
+        var pairHeld = new CountDownLatch(1);
+        var inspectSource = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var delivering = pool.submit(() -> transactions.execute(status -> {
+                assertThat(accounts.canDeliver(fixture.authorId,List.of(fixture.requesterId))).isTrue();
+                assertThat(accounts.contactEventSuppressed(fixture.requesterId,fixture.authorId,occurred)).isFalse();
+                pairHeld.countDown();
+                waitFor(inspectSource);
+                return policy.eligible(event);
+            }));
+            try {
+                waitFor(pairHeld);
+                var approval = pool.submit(() -> service.approveRevealRequest(fixture.authorId,request.id()));
+                awaitContactLockWaiter();
+                inspectSource.countDown();
+                assertThat(delivering.get(10,TimeUnit.SECONDS)).isTrue();
+                assertThat(approval.get(10,TimeUnit.SECONDS).status()).isEqualTo(OverthinkingRevealRequestStatus.APPROVED);
+            } finally { inspectSource.countDown(); }
+        }
+    }
+
+    @Test
+    void priorApprovalKeepsTheReceiptButHidesTheAuthorDuringTheBlock() {
+        var sent = service.createRevealRequest(fixture.requesterId,fixture.postId);
+        service.approveRevealRequest(fixture.authorId,sent.id());
+        jdbc.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)",fixture.authorId,fixture.requesterId);
+        var hidden = service.getMySentRequests(fixture.requesterId,PageRequest.of(0,1)).getContent().getFirst();
+        assertThat(hidden.status()).isEqualTo(OverthinkingRevealRequestStatus.APPROVED);
+        assertThat(hidden.authorId()).isNull();
     }
 
     @Test
@@ -382,7 +452,7 @@ class OverthinkingRevealRequestPostgresTest {
                     else service.approveRevealRequest(fixture.authorId, request.id());
                     return null;
                 }));
-                awaitPostLockWaiter();
+                awaitContactLockWaiter();
                 release.countDown();
                 first.get(10, TimeUnit.SECONDS);
                 assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(approveFirst
@@ -457,6 +527,7 @@ class OverthinkingRevealRequestPostgresTest {
             assertThat(connection.getCatalog()).isEqualTo(postgres.getDatabaseName());
             try (var statement = connection.createStatement()) {
                 statement.execute(Files.readString(Path.of("scripts/db/2026-09-10-overthinking-inbox-seen.sql")));
+                statement.execute(Files.readString(Path.of("scripts/db/2026-11-24-overthinking-block-delivery.sql")));
             }
         }
     }
@@ -534,7 +605,7 @@ class OverthinkingRevealRequestPostgresTest {
             try {
                 waitFor(firstInsideTransaction);
                 var second = pool.submit(() -> service.createRevealRequest(fixture.requesterId, fixture.postId));
-                awaitPostLockWaiter();
+                awaitContactLockWaiter();
                 releaseFirst.countDown();
                 assertThat(second.get(10, TimeUnit.SECONDS).id()).isEqualTo(first.get(10, TimeUnit.SECONDS).id());
                 assertThat(requests.count()).isEqualTo(1);
@@ -561,7 +632,7 @@ class OverthinkingRevealRequestPostgresTest {
             try {
                 waitFor(firstInsideTransaction);
                 var second = pool.submit(() -> domainError(() -> decide(!approveFirst, requestId)));
-                awaitPostLockWaiter();
+                awaitContactLockWaiter();
                 releaseFirst.countDown();
                 var expected = approveFirst ? OverthinkingRevealRequestStatus.APPROVED : OverthinkingRevealRequestStatus.REJECTED;
                 assertThat(first.get(10, TimeUnit.SECONDS).status()).isEqualTo(expected);
@@ -651,6 +722,12 @@ class OverthinkingRevealRequestPostgresTest {
                 : service.rejectRevealRequest(fixture.authorId, requestId);
     }
 
+    private void awaitContactLockWaiter() {
+        await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(20)).until(() ->
+                jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() "
+                        + "and wait_event='advisory' and query like '%pg_advisory_xact_lock%'", Integer.class) > 0);
+    }
+
     private void awaitPostLockWaiter() {
         // Wait for PostgreSQL to observe contention, not a scheduler-dependent sleep.
         await().atMost(Duration.ofSeconds(10)).pollInterval(Duration.ofMillis(20)).until(() ->
@@ -688,7 +765,7 @@ class OverthinkingRevealRequestPostgresTest {
     @EntityScan("com.berkayb.soundconnect")
     @EnableJpaRepositories(basePackageClasses = {OverthinkingPostRepository.class, UserRepository.class, LikeRepository.class,
             NotificationRepository.class, OverthinkingNotificationOutboxRepository.class})
-    @Import({OverthinkingRevealRequestServiceImpl.class, OverthinkingRevealParticipantGuard.class, OverthinkingRevealInboxService.class, UserEntityFinder.class,
+    @Import({com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class, OverthinkingRevealRequestServiceImpl.class, OverthinkingRevealParticipantGuard.class, OverthinkingRevealInboxService.class, UserEntityFinder.class,
             OverthinkingRevealNotificationRetractionService.class, NotificationEventListener.class,
             com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})
     static class TestConfiguration {

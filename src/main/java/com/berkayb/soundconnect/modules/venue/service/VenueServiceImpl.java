@@ -4,6 +4,7 @@ import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
 import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
@@ -23,6 +24,7 @@ import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,7 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -50,6 +54,7 @@ public class VenueServiceImpl implements VenueService {
 	private final UserRepository userRepository;
 	private final VenueProfileService venueProfileService;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	@Override
 	@Transactional(readOnly = true)
@@ -76,12 +81,12 @@ public class VenueServiceImpl implements VenueService {
 			);
 		}
 		
-		return venueRepository
-				.searchByName(
-						query,
-						PageRequest.of(pageable.getPageNumber(), pageable.getPageSize())
-				)
-				.map(venueMapper::toResponse);
+		var page = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+		UUID viewer = ProfileBlockVisibility.viewerId();
+		var venues = viewer == null ? venueRepository.searchByName(query, page)
+				: venueRepository.searchVisibleByName(viewer, query, page);
+		var hiddenMusicians = hiddenMusicianIds(venues.getContent());
+		return venues.map(venue -> venueMapper.toResponse(venue, hiddenMusicians));
 	}
 	
 	@Transactional
@@ -146,7 +151,7 @@ public class VenueServiceImpl implements VenueService {
 		);
 		venueProfileService.createProfile(savedVenue.getId(), profileDto);
 		
-		return venueMapper.toResponse(savedVenue);
+		return venueMapper.toResponse(savedVenue, Set.of());
 	}
 	
 	@Override
@@ -193,14 +198,19 @@ public class VenueServiceImpl implements VenueService {
 		venue.setOwner(owner);
 
 		Venue updated = venueRepository.save(venue);
-		return venueMapper.toResponse(updated);
+		return venueMapper.toResponse(updated, Set.of());
 	}
 	
 	@Override
 	@Transactional(readOnly = true)
 	public List<VenueResponseDto> findAll() {
 		log.info("Retrieving all venues");
-		return venueMapper.toResponseList(venueRepository.findAllPubliclyVisible());
+		var venues = venueRepository.findAllPubliclyVisible();
+		var hidden = profileBlocks.hiddenOwners(venues.stream().filter(venue -> venue.getOwner() != null)
+				.map(venue -> venue.getOwner().getId()).toList());
+		var visible = venues.stream().filter(venue -> venue.getOwner() == null ||
+				!hidden.contains(venue.getOwner().getId())).toList();
+		return venueMapper.toResponseList(visible, hiddenMusicianIds(visible));
 	}
 	
 	@Override
@@ -209,7 +219,17 @@ public class VenueServiceImpl implements VenueService {
 		log.info("Finding venue by id: {}", id);
 		Venue venue = venueRepository.findPubliclyVisibleById(id)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
-		return venueMapper.toResponse(venue);
+		if (venue.getOwner() != null && profileBlocks.hidden(venue.getOwner().getId()))
+			throw new SoundConnectException(ErrorType.VENUE_NOT_FOUND);
+		return venueMapper.toResponse(venue, hiddenMusicianIds(List.of(venue)));
+	}
+
+	private Set<UUID> hiddenMusicianIds(List<Venue> venues) {
+		UUID viewer = ProfileBlockVisibility.viewerId();
+		if (viewer == null) return Set.of();
+		var musicianIds = venues.stream().flatMap(venue -> venue.getActiveMusicians().stream())
+				.map(MusicianProfile::getId).collect(Collectors.toSet());
+		return profileBlocks.hiddenTargets(viewer, "MUSICIAN", musicianIds);
 	}
 	
 	@Override

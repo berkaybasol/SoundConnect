@@ -54,15 +54,15 @@ class CommentServiceImplTest {
     }
 
     @Test void rootReadRejectsHiddenTargetBeforeQueryingCommentsOrIdentity() {
-        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(EngagementTargetType.MEDIA, target);
+        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(actor, EngagementTargetType.MEDIA, target);
         assertError(() -> service.getComments(actor, EngagementTargetType.MEDIA, target, PageRequest.of(0, 20)), ErrorType.ENGAGEMENT_NOT_FOUND);
         verifyNoInteractions(repository, authors, burstGuard);
     }
 
     @Test void repliesRecheckTargetsAndRejectReplyAsParent() {
         var root = comment(null);
-        when(finder.getById(rootId)).thenReturn(root);
-        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(EngagementTargetType.MEDIA, target);
+        when(finder.getVisibleById(actor, rootId)).thenReturn(root);
+        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(actor, EngagementTargetType.MEDIA, target);
         assertError(() -> service.getReplies(actor, rootId, PageRequest.of(0, 20)), ErrorType.ENGAGEMENT_NOT_FOUND);
         verifyNoInteractions(repository, authors, burstGuard);
         root.setParentComment(comment(null));
@@ -70,29 +70,29 @@ class CommentServiceImplTest {
     }
 
     @Test void readableCountChecksMediaAccessBeforeCountingWithoutHydratingComments() {
-        when(repository.countActiveByTarget(EngagementTargetType.MEDIA, target)).thenReturn(7L);
+        when(repository.countActiveByTarget(actor, EngagementTargetType.MEDIA, target)).thenReturn(7L);
         assertThat(service.countReadableComments(actor, EngagementTargetType.MEDIA, target)).isEqualTo(7L);
         var order = inOrder(targets, repository);
-        order.verify(targets).requireReadable(EngagementTargetType.MEDIA, target);
-        order.verify(repository).countActiveByTarget(EngagementTargetType.MEDIA, target);
+        order.verify(targets).requireReadable(actor, EngagementTargetType.MEDIA, target);
+        order.verify(repository).countActiveByTarget(actor, EngagementTargetType.MEDIA, target);
         verifyNoMoreInteractions(repository);
         verifyNoInteractions(authors, finder, posts, likes, burstGuard);
     }
 
     @Test void readableCountCannotRevealAHiddenMediaTargetOrUseAnAnonymousViewer() {
         doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND))
-                .when(targets).requireReadable(EngagementTargetType.MEDIA, target);
+                .when(targets).requireReadable(actor, EngagementTargetType.MEDIA, target);
         assertError(() -> service.countReadableComments(actor, EngagementTargetType.MEDIA, target), ErrorType.ENGAGEMENT_NOT_FOUND);
         assertError(() -> service.countReadableComments(null, EngagementTargetType.MEDIA, target), ErrorType.UNAUTHORIZED);
         verifyNoInteractions(repository, authors);
     }
 
     @Test void readableAnnouncementCountPassesViewerToTheAudienceGuardBeforeCounting() {
-        when(repository.countActiveByTarget(EngagementTargetType.ANNOUNCEMENT, target)).thenReturn(3L);
+        when(repository.countActiveByTarget(actor, EngagementTargetType.ANNOUNCEMENT, target)).thenReturn(3L);
         assertThat(service.countReadableComments(actor, EngagementTargetType.ANNOUNCEMENT, target)).isEqualTo(3L);
         var order = inOrder(targets, repository);
         order.verify(targets).requireReadable(actor, EngagementTargetType.ANNOUNCEMENT, target);
-        order.verify(repository).countActiveByTarget(EngagementTargetType.ANNOUNCEMENT, target);
+        order.verify(repository).countActiveByTarget(actor, EngagementTargetType.ANNOUNCEMENT, target);
         verify(targets, never()).requireReadable(EngagementTargetType.ANNOUNCEMENT, target);
     }
 
@@ -104,9 +104,9 @@ class CommentServiceImplTest {
     }
 
     @Test void rootAndReplyPaginationOverrideUntrustedSortWithStableBoundedOrder() {
-        when(repository.findByTargetTypeAndTargetIdAndParentCommentIsNull(any(), any(), any())).thenAnswer(i -> Page.empty(i.getArgument(2)));
-        when(finder.getById(rootId)).thenReturn(comment(null));
-        when(repository.findByParentComment(any(), any())).thenAnswer(i -> Page.empty(i.getArgument(1)));
+        when(repository.visibleRoots(any(), any(), any(), any())).thenAnswer(i -> Page.empty(i.getArgument(3)));
+        when(finder.getVisibleById(actor, rootId)).thenReturn(comment(null));
+        when(repository.visibleReplies(any(), any(), any())).thenAnswer(i -> Page.empty(i.getArgument(2)));
         var roots = service.getComments(actor, EngagementTargetType.MEDIA, target, PageRequest.of(2, 100, Sort.by("text")));
         var replies = service.getReplies(actor, rootId, PageRequest.of(3, 100, Sort.by("text")));
         assertThat(roots.getSize()).isEqualTo(50);
@@ -130,7 +130,7 @@ class CommentServiceImplTest {
         when(locked.getDeleted()).thenReturn(true);
         assertError(() -> service.createComment(actor, EngagementTargetType.MEDIA, target, new CommentCreateRequestDto("reply", rootId)), ErrorType.COMMENT_PARENT_DELETED);
         verify(repository, never()).save(any());
-        verifyNoInteractions(finder);
+        verify(finder).requireVisibleAuthor(eq(actor), any(), any(), eq(true));
         verifyNoInteractions(burstGuard);
     }
 
@@ -162,7 +162,7 @@ class CommentServiceImplTest {
     @Test void deletedTextIsMaskedAndAuthorsResolvedOncePerPage() {
         var one = comment(null); one.setDeleted(true);
         var two = comment(null); two.setId(UUID.randomUUID());
-        when(repository.findByTargetTypeAndTargetIdAndParentCommentIsNull(any(), any(), any())).thenReturn(new PageImpl<>(List.of(one,two)));
+        when(repository.visibleRoots(any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of(one,two)));
         when(authors.resolve(Set.of(actor))).thenReturn(Map.of(actor, new UserSummaryDto(actor, "handle", "https://cdn.test/current.jpg")));
         var result = service.getComments(actor, EngagementTargetType.MEDIA, target, PageRequest.of(0,20));
         assertThat(result.getContent().getFirst().text()).isEqualTo("[Bu yorum silinmiştir]");
@@ -172,7 +172,7 @@ class CommentServiceImplTest {
 
     @Test void anonymousPostOwnerIsHiddenFromOthersAndMissingPostFailsClosed() {
         var comment = comment(null); comment.setTargetType(EngagementTargetType.OVERTHINKING);
-        when(repository.findByTargetTypeAndTargetIdAndParentCommentIsNull(any(), any(), any())).thenReturn(new PageImpl<>(List.of(comment)));
+        when(repository.visibleRoots(any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of(comment)));
         var post = OverthinkingPost.builder().id(target).author(user()).visibilityType(OverthinkingVisibilityType.ANONYMOUS).build();
         when(posts.findAllById(Set.of(target))).thenReturn(List.of(post), List.of());
         for (int i=0; i<2; i++) {
@@ -185,7 +185,7 @@ class CommentServiceImplTest {
     }
 
     @Test void invalidTargetOrMissingUserCannotConsumeBurstQuota() {
-        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(EngagementTargetType.EVENT,target);
+        doThrow(new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND)).when(targets).requireReadable(actor, EngagementTargetType.EVENT,target);
         assertError(() -> service.createComment(actor,EngagementTargetType.EVENT,target,new CommentCreateRequestDto("valid",null)),ErrorType.ENGAGEMENT_NOT_FOUND);
         when(users.getUser(actor)).thenThrow(new SoundConnectException(ErrorType.USER_NOT_FOUND));
         assertError(() -> service.createComment(actor,EngagementTargetType.MEDIA,target,new CommentCreateRequestDto("valid",null)),ErrorType.USER_NOT_FOUND);
@@ -215,11 +215,11 @@ class CommentServiceImplTest {
         when(repository.getReferenceById(rootId)).thenReturn(comment(null));
         service.createComment(actor,EngagementTargetType.MEDIA,target,new CommentCreateRequestDto("reply",rootId));
         var order=inOrder(targets,users,repository,burstGuard);
-        order.verify(targets).requireReadable(EngagementTargetType.MEDIA,target);
+        order.verify(targets).requireReadable(actor, EngagementTargetType.MEDIA,target);
         order.verify(users).getUser(actor);
         order.verify(burstGuard).reserve(actor,EngagementTargetType.MEDIA,target);
         order.verify(repository).save(any());
-        order.verify(targets).requireReadable(EngagementTargetType.MEDIA,target);
+        order.verify(targets).requireReadable(actor, EngagementTargetType.MEDIA,target);
         order.verify(users).getUser(actor);
         order.verify(repository).lockComment(rootId);
         order.verify(repository).getReferenceById(rootId);

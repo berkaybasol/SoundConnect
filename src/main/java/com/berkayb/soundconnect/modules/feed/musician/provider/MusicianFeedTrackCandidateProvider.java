@@ -15,7 +15,7 @@ import java.util.*;
 
 @Component
 public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidateProvider {
-    private static final String ELIGIBLE_TRACK_SQL = """
+    private static final String ELIGIBLE_TRACK_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             with publications as (
                 select track.id as track_id, track.media_asset_id, track.title, track.duration_seconds, track.bpm,
                        track.owner_type, track.owner_id, track.created_at,
@@ -81,8 +81,8 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                    (case when publication.owner_type='BAND' then band_follow.id is not null
                          else following.id is not null end) as followed_by_viewer,
                    ((publication.author_user_id=:viewerId) or publication.owned_band) as owned_by_viewer,
-                   (select count(*) from tbl_like likes where likes.target_type='MEDIA' and likes.target_id=publication.media_asset_id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='MEDIA'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='MEDIA' and likes.target_id=publication.media_asset_id) as like_count,
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='MEDIA'
                        and comments.target_id=publication.media_asset_id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId and mine.target_type='MEDIA'
                        and mine.target_id=publication.media_asset_id) as liked_by_me
@@ -136,7 +136,7 @@ public class MusicianFeedTrackCandidateProvider implements MusicianFeedCandidate
                    or (:artistCityPool='LOCAL' and /* ARTIST_CITY_MATCH */)
                    or (:artistCityPool='OTHER' and not /* ARTIST_CITY_MATCH */))
             offset 0
-            """.replace("/* FEED_MODERATION */", allowed(item("'TRACK:' || publication.track_id::text"),
+            """).replace("/* FEED_MODERATION */", allowed(item("'TRACK:' || publication.track_id::text"),
                     target("'MEDIA'", "publication.media_asset_id")))
             .replace("/* ARTIST_CITY_MATCH */", MusicianFeedArtistDiscovery.cityMatchSql(
                     "publication.author_profile_type", "publication.author_profile_id", "account.city_id"));

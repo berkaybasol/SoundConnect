@@ -98,7 +98,7 @@ public class MusicianFeedReplayVisibilityGuard {
             requested as (select * from jsonb_to_recordset(cast(:checks as jsonb)) as requested(
                 key text,kind text,id uuid,publication_id uuid,source_id uuid,
                 author_type text,author_profile_id uuid,author_user_id uuid,
-                musician_id uuid,band_id uuid))
+                musician_id uuid,band_id uuid,interaction_blocked boolean, table_description text))
             """;
 
     private static final String MEDIA_SQL = "with " + REQUESTED_TARGETS + "," + PUBLIC_PROFILES + """
@@ -161,6 +161,8 @@ public class MusicianFeedReplayVisibilityGuard {
                 and publisher.profile_id=share.listener_profile_id and publisher.user_id=share.owner_user_id
             where (requested.author_profile_id is null or (publisher.profile_id=requested.author_profile_id
                 and publisher.user_id=requested.author_user_id))
+              and coalesce(share.final_source->>'description',table_group.description)
+                    is not distinct from requested.table_description
               and (share.final_source is not null or (not share.final_source_frozen
                   and table_group.status='ACTIVE' and table_group.expires_at>:now
                   and (table_group.owner_id=share.owner_user_id or exists(
@@ -175,6 +177,8 @@ public class MusicianFeedReplayVisibilityGuard {
             join public_profiles publisher on publisher.profile_type=actor.profile_type
                 and publisher.profile_id=actor.source_profile_id and publisher.user_id=listing.owner_user_id
             where listing.status='OPEN' and listing.published_at is not null
+              and requested.interaction_blocked =
+            """ + com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionSql.COLLAB_CONTACT_BLOCKED + """
               and (listing.expires_at is null or listing.expires_at>:now)
               and actor.profile_type in ('MUSICIAN','BAND','VENUE','STUDIO')
               and publisher.profile_type=requested.author_type and publisher.profile_id=requested.author_profile_id
@@ -217,7 +221,7 @@ public class MusicianFeedReplayVisibilityGuard {
     }
 
     public void requireVisible(UUID viewerId, MusicianFeedPageResponse page, Instant now) {
-        if (viewerId == null || page == null || now == null || page.items() == null
+        if (viewerId == null || page == null || page.generatedAt() == null || now == null || page.items() == null
                 || page.items().size() > MAX_ITEMS) throw invalid();
         List<Map<String, Object>> identities = new ArrayList<>();
         Map<String, List<Map<String, Object>>> targets = new LinkedHashMap<>();
@@ -320,6 +324,8 @@ public class MusicianFeedReplayVisibilityGuard {
                             ? id(source, "id") : firstId(source, "tableGroupId", "id");
                     check.put("id", shareId);
                     check.put("source_id", sourceId);
+                    if (type == MusicianFeedItemType.TABLEGROUP_PROFILE_SHARE)
+                        check.put("table_description", textOrNull(source, "description"));
                     String targetType = type == MusicianFeedItemType.OVERTHINKING_PROFILE_SHARE
                             ? "OVERTHINKING_PROFILE_SHARE" : "TABLE_GROUP_POST";
                     check.put("kind", targetType);
@@ -335,6 +341,7 @@ public class MusicianFeedReplayVisibilityGuard {
                     putPublisher(check, requiredText(actor, "profileType"), id(actor, "sourceProfileId"),
                             id(actor, "contactUserId"));
                     check.put("id", listingId);
+                    check.put("interaction_blocked", listing.path("interactionBlocked").asBoolean(false));
                     requireTarget(item, "COLLAB", listingId);
                     addTarget(targets, "COLLAB", check);
                 }
@@ -342,8 +349,17 @@ public class MusicianFeedReplayVisibilityGuard {
             }
         }
         if (identities.size() > MAX_ITEMS * 10 || activities.size() > MAX_ITEMS * 10) throw invalid();
-        restrictions.requireUnrestricted(page.items());
+        restrictions.requireUnrestricted(viewerId, page.items());
         MapSqlParameterSource parameters = parameters(now).addValue("viewerId", viewerId);
+        if (page.items().stream().anyMatch(item -> item.engagement() != null)) {
+            // Totals in a delivered page were projected before any newer block. Rebuild
+            // the page so neither a visible reaction nor its old count survives replay.
+            boolean changed = Boolean.TRUE.equals(jdbc.queryForObject("""
+                    select exists(select 1 from tbl_user_block where unblocked_at is null
+                        and (blocker_id=:viewerId or blocked_id=:viewerId) and created_at > :generatedAt)
+                    """, parameters.addValue("generatedAt", java.sql.Timestamp.from(page.generatedAt())), Boolean.class));
+            if (changed) throw invalid();
+        }
         requireRows(IDENTITIES_SQL, "identities", identities, parameters);
         for (var entry : targets.entrySet()) {
             String sql = switch (entry.getKey()) {
@@ -388,7 +404,8 @@ public class MusicianFeedReplayVisibilityGuard {
                         throw invalid();
                     if (cached.path("canViewAuthor").asBoolean(false) && dto.authorId() == null) throw invalid();
                     if (!cached.path("canViewAuthor").asBoolean(false)
-                            && (optionalId(cached, "authorId") != null || textOrNull(cached, "authorAvatarUrl") != null))
+                            && (optionalId(cached, "authorId") != null || textOrNull(cached, "authorAvatarUrl") != null
+                            || (!dto.canViewAuthor() && !Objects.equals(textOrNull(cached, "authorUsername"), dto.authorUsername()))))
                         throw invalid();
                 }
             }

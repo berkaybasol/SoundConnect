@@ -33,6 +33,12 @@ The frontend generates `requestId` once per submission and keeps it for retries 
 
 Only this exact POST route is added to anonymous security permissions. Other venue writes and suggestion reads/deletes are not made public. The route-specific guard uses Spring's decoded application-path semantics, so encoded ordinary letters and context paths cannot bypass the checks.
 
+## Admin list
+
+`GET /api/v1/admin/venue-suggestions?page=0&size=20` lists suggestions from newest to oldest for active, verified non-listener administrators holding both `ADMIN_PANEL_ACCESS` and `MANAGE_VENUES`. The response uses `BaseResponse.data` with the standard `PageResponse` fields. Each record contains `venueName`, `cityName`, `districtName` and `liveMusic` (`YES`, `NO` or `UNKNOWN`). The city and district are the names saved at submission time. Page numbers start at 0 and go up to 1000. Page size ranges from 1 to 50 and defaults to 20.
+
+The read-only query orders by creation time and breaks ties by ID. Apply [the listing index](../scripts/db/2026-11-24-venue-suggestion-page.sql) with PostgreSQL autocommit enabled after the original intake migration. Local `dev.ps1` includes this step.
+
 ## Abuse protection
 
 The existing trusted-proxy client address resolver is reused, including its configured proxy CIDRs and forwarded-header policy. Untrusted clients cannot choose their rate-limit bucket with `Forwarded` or `X-Forwarded-For`. Only a SHA-256 digest of the resolved address appears in Redis keys, which expire automatically.

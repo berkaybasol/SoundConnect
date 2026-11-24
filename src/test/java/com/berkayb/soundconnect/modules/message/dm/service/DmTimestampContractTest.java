@@ -64,7 +64,7 @@ class DmTimestampContractTest {
         var id = UUID.randomUUID();
         var message = DMMessage.builder().id(id).conversationId(conversationId)
                 .senderId(sender).recipientId(recipient).build();
-        when(messages.findConversationIdByMessageId(id)).thenReturn(Optional.of(conversationId));
+        when(messages.findReadTargetById(id)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, sender, recipient)));
         when(messages.findByIdForUpdate(id)).thenReturn(Optional.of(message));
         var before = Instant.now();
         service.markMessageAsRead(id, recipient);

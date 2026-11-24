@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.event.audience;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.event.discovery.EventDiscoveryService;
 import com.berkayb.soundconnect.modules.event.dto.response.EventResponseDto;
 import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
@@ -31,7 +32,7 @@ class EventAudienceServiceTest {
         repository=mock(EventAudienceRepository.class); users=mock(UserRepository.class);
         cards=mock(EventDiscoveryService.class); clock=mock(EventScheduleClock.class); when(clock.instant()).thenReturn(now);
         likes=mock(LikeRepository.class); comments=mock(CommentRepository.class);
-        service=new EventAudienceService(repository,users,cards,clock,likes,comments);
+        service=new EventAudienceService(repository,users,cards,clock,likes,comments, mock(UserBlockService.class));
         profile=ListenerProfile.builder().visibilityMode(ListenerVisibilityMode.STANDARD).visibilityChoiceCompleted(true).build(); profile.setId(profileId);
         when(repository.lockActor(user)).thenReturn(Optional.of(user)); when(repository.lockActiveAccountForRead(user)).thenReturn(Optional.of(user));
         when(users.findRoleNamesByUserId(user)).thenReturn(Set.of("ROLE_LISTENER"));
@@ -73,11 +74,11 @@ class EventAudienceServiceTest {
                 .thenReturn(new PageImpl<>(List.of(eventId)));
         when(repository.pageStates(user,List.of(eventId))).thenReturn(List.of(authorValue));
         when(repository.pageStates(viewer,List.of(eventId))).thenReturn(List.of(viewerValue));
-        when(likes.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId)))
+        when(likes.countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST,List.of(postId)))
                 .thenReturn(List.of(new LikeRepository.TargetCountProjection() {
                     public UUID getTargetId() { return postId; } public long getCount() { return 3; }
                 }));
-        when(comments.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId)))
+        when(comments.countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST,List.of(postId)))
                 .thenReturn(List.of(new CommentRepository.TargetCountProjection() {
                     public UUID getTargetId() { return postId; } public long getCount() { return 5; }
                 }));
@@ -90,9 +91,9 @@ class EventAudienceServiceTest {
         assertThat(result.viewerIntentState().intent()).isEqualTo(EventIntent.THINKING);
         assertThat(result.viewerIntentState().version()).isEqualTo(7);
         assertThat(result.viewerIntentState().note()).isNull();
-        verify(likes).countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId));
+        verify(likes).countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST,List.of(postId));
         verify(likes).findLikedTargetIds(viewer,EngagementTargetType.EVENT_POST,List.of(postId));
-        verify(comments).countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST,List.of(postId));
+        verify(comments).countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST,List.of(postId));
         verifyNoMoreInteractions(likes,comments);
         verify(repository,never()).findById(any(EventAudienceIntent.Id.class));
     }

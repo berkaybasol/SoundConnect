@@ -39,7 +39,7 @@ class StudioFeedServiceTest {
         when(personalization.loadForStudio(viewer, studio)).thenReturn(new MusicianFeedPersonalizationSnapshot(city, Set.of(), null));
         when(feedback.snapshot(viewer)).thenReturn(MusicianFeedFeedbackSnapshot.empty());
         when(feedback.forCandidates(eq(viewer), any(), anyCollection(), anyCollection())).thenAnswer(call -> call.getArgument(1));
-        when(restrictions.filter(anyCollection())).thenAnswer(call -> List.copyOf(call.getArgument(0)));
+        when(restrictions.filter(any(), anyCollection())).thenAnswer(call -> List.copyOf(call.getArgument(1)));
         when(deliveries.snapshot(eq(viewer), any(), eq(NOW))).thenReturn(MusicianFeedDeliverySnapshot.empty(0));
         when(deliveries.recordPage(eq(viewer), any(), any(), eq(1), eq("studio-v1.0.0"), anyLong(), anyList(), anyList(), eq(NOW)))
                 .thenAnswer(call -> {

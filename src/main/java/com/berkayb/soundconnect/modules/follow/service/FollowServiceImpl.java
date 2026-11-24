@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerProfileChoiceStatusReader;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class FollowServiceImpl implements FollowService {
 	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
 	private final ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
 	private final FollowNotificationOutboxService notificationOutbox;
+	private final UserBlockService blocks;
 	
 	@Transactional // islemlerden birinde bile hata olursa butun islemleri geri al
 	@Override
@@ -40,6 +42,7 @@ public class FollowServiceImpl implements FollowService {
 			throw new SoundConnectException(ErrorType.CANNOT_FOLLOW_SELF);
 		}
 
+		blocks.requireInteractionAllowed(follower.getId(), following.getId());
 		// Follow creation and ghost activation serialize on the same listener row.
 		// Therefore activation either purges this relationship after it commits, or
 		// this request observes GHOST and cannot insert it after the purge.
@@ -105,7 +108,9 @@ public class FollowServiceImpl implements FollowService {
 	@Override
 	public List<Follow> getFollowingVisibleTo(UUID viewerId, User follower) {
 		assertCanViewGraph(viewerId, follower);
-		return getFollowing(follower);
+		var edges = getFollowing(follower);
+		var hidden = blocks.blockedAmong(viewerId, edges.stream().map(edge -> edge.getFollowing().getId()).toList());
+		return edges.stream().filter(edge -> !hidden.contains(edge.getFollowing().getId())).toList();
 	}
 	
 	@Transactional(readOnly = true)
@@ -118,7 +123,9 @@ public class FollowServiceImpl implements FollowService {
 	@Override
 	public List<Follow> getFollowersVisibleTo(UUID viewerId, User following) {
 		assertCanViewGraph(viewerId, following);
-		return getFollowers(following);
+		var edges = getFollowers(following);
+		var hidden = blocks.blockedAmong(viewerId, edges.stream().map(edge -> edge.getFollower().getId()).toList());
+		return edges.stream().filter(edge -> !hidden.contains(edge.getFollower().getId())).toList();
 	}
 	
 	@Transactional(readOnly = true)
@@ -171,6 +178,9 @@ public class FollowServiceImpl implements FollowService {
 
 	private void assertCanViewGraph(UUID viewerId, User subject) {
 		UUID subjectUserId = subject.getId();
+		if (blocks.blockedEitherWay(viewerId, subjectUserId)) {
+			throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
+		}
 		if (listenerProfileChoiceStatusReader.requiresChoice(subject)) {
 			throw new SoundConnectException(ErrorType.FOLLOW_GRAPH_PRIVATE);
 		}

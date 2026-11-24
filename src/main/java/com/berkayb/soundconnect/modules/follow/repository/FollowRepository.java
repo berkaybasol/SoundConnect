@@ -13,6 +13,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface FollowRepository extends JpaRepository<Follow, UUID> {
+	@Modifying(flushAutomatically = true)
+	@Query("""
+			delete from Follow f where (f.follower.id = :first and f.following.id = :second)
+				or (f.follower.id = :second and f.following.id = :first)
+			""")
+	int deleteBetween(@Param("first") UUID first, @Param("second") UUID second);
 	
 	// bir kullanici baska bir kullaniciyi takip ediyor mu?
 	boolean existsByFollowerAndFollowing(User follower, User following);

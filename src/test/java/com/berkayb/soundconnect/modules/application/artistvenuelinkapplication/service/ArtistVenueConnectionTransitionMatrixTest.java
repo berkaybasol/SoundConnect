@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.service;
 
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
+
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.dto.response.ArtistVenueConnectionRequestResponseDto;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.entity.ArtistVenueConnectionRequest;
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.*;
@@ -34,6 +36,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ArtistVenueConnectionTransitionMatrixTest {
+    @Mock private AccountDeliveryFence contact;
     @Mock ArtistVenueConnectionRequestRepository requests;
     @Mock MusicianProfileRepository musicians;
     @Mock VenueRepository venues;

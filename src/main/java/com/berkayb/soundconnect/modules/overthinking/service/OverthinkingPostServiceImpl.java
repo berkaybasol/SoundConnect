@@ -23,6 +23,7 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -57,6 +58,7 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	private final LikeRepository likeRepository;
 	private final OverthinkingPostCreationReceipts creationReceipts;
 	private final OverthinkingRevealNotificationRetractionService notificationRetraction;
+	private final UserBlockService blocks;
 	
 	@Override
 	@Transactional
@@ -72,6 +74,23 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
 		}
 		
+		deleteLocked(post);
+	}
+
+	@Override
+	public void removeReportedPost(UUID postId, String reportedTitle, String reportedContent) {
+		OverthinkingPost post = postRepository.findByIdForUpdate(postId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.CONTENT_REPORT_STATE_CHANGED));
+		if (!java.util.Objects.equals(post.getTitle(), reportedTitle)
+				|| !java.util.Objects.equals(post.getContent(), reportedContent)) {
+			throw new SoundConnectException(ErrorType.CONTENT_REPORT_STATE_CHANGED);
+		}
+		deleteLocked(post);
+	}
+
+	private void deleteLocked(OverthinkingPost post) {
+		UUID postId = post.getId();
+		UUID authorId = post.getAuthor().getId();
 		// Engagement/reveal creation locks the same post first. Once this writer
 		// owns it, no subordinate row can be inserted behind the cleanup.
 		notificationRetraction.retractPost(authorId, postId);
@@ -82,7 +101,7 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		likeRepository.deleteOverthinkingTargetReferences(postId);
 		postRepository.delete(post);
 		
-		log.info("[Overthinking] Post silindi. post={}, user={}", postId, authorId);
+		log.info("[Overthinking] Post silindi. post={}", postId);
 	}
 	
 	@Override
@@ -115,6 +134,10 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 	
 	@Override
 	public Page<OverthinkingPostResponseDto> getPostsByArtist(UUID artistId, UUID viewerId, Pageable pageable) {
+		if (blocks.hasBlocks(viewerId)) {
+			return mapPage(postRepository.findVisibleToViewer(viewerId, artistId, MediaContentAudiencePolicy.isListenerViewer(),
+					false, OverthinkingPagination.page(pageable, Sort.unsorted())), viewerId);
+		}
 		if (MediaContentAudiencePolicy.isListenerViewer()) {
 			return mapPage(postRepository.findMainstagePage(null, artistId, false,
 					OverthinkingPagination.page(pageable, Sort.unsorted())), viewerId);
@@ -130,6 +153,13 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 
 	@Override
 	public Page<OverthinkingPostResponseDto> getAll(UUID viewerId, Pageable pageable, OverthinkingFeedOrder order) {
+		if (blocks.hasBlocks(viewerId)) {
+			Pageable safe = OverthinkingPagination.page(pageable, Sort.unsorted());
+			boolean mainstage = MediaContentAudiencePolicy.isListenerViewer();
+			return mapPage(order == OverthinkingFeedOrder.MOST_LIKED
+					? postRepository.findMostLikedVisibleToViewer(viewerId, null, mainstage, safe)
+					: postRepository.findVisibleToViewer(viewerId, null, mainstage, order == OverthinkingFeedOrder.OLDEST, safe), viewerId);
+		}
 		if (MediaContentAudiencePolicy.isListenerViewer()) {
 			Pageable safe = OverthinkingPagination.page(pageable, Sort.unsorted());
 			return mapPage(order == OverthinkingFeedOrder.MOST_LIKED
@@ -219,11 +249,23 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 					page.getPageable(), page.getTotalElements());
 		}
 		List<OverthinkingPost> posts = page.getContent();
+		Set<UUID> approved = getApprovedRevealPostIds(posts, viewerId);
+		var attributable = posts.stream().filter(post -> post.getAuthor() != null && canViewAuthor(post, viewerId, approved))
+				.map(post -> post.getAuthor().getId()).distinct().toList();
+		Set<UUID> hiddenAuthors = blocks.blockedAmong(viewerId, attributable);
+		Set<UUID> approvedRevealPostIds = hiddenAuthors.isEmpty() ? approved : posts.stream()
+                .filter(post -> approved.contains(post.getId()) && post.getAuthor() != null
+                        && !hiddenAuthors.contains(post.getAuthor().getId()))
+                .map(OverthinkingPost::getId).collect(Collectors.toSet());
+        if (!hiddenAuthors.isEmpty()) {
+			posts = posts.stream().filter(post -> post.getAuthor() == null || post.isAnonymous()
+					|| !hiddenAuthors.contains(post.getAuthor().getId())).toList();
+			page = new PageImpl<>(posts, page.getPageable(), page.getTotalElements());
+		}
 		
-		Map<UUID, Long> likeCounts = getLikeCounts(posts);
-		Map<UUID, Long> commentCounts = getCommentCounts(posts);
+		Map<UUID, Long> likeCounts = getLikeCounts(posts, viewerId);
+		Map<UUID, Long> commentCounts = getCommentCounts(posts, viewerId);
 		Set<UUID> likedPostIds = getLikedPostIds(posts, viewerId);
-		Set<UUID> approvedRevealPostIds = getApprovedRevealPostIds(posts, viewerId);
 		Set<UUID> pendingRevealPostIds = getPendingRevealPostIds(posts, viewerId);
 		Map<UUID, UserSummaryDto> identities = getVisibleIdentities(
 				posts,
@@ -308,26 +350,26 @@ public class OverthinkingPostServiceImpl implements OverthinkingPostService {
 		return approvedRevealPostIds.contains(post.getId());
 	}
 	
-	private Map<UUID, Long> getLikeCounts(List<OverthinkingPost> posts) {
+	private Map<UUID, Long> getLikeCounts(List<OverthinkingPost> posts, UUID viewerId) {
 		List<UUID> postIds = extractPostIds(posts);
 		if (postIds.isEmpty()) {
 			return Collections.emptyMap();
 		}
 		
 		return likeService.countLikesByTargets(
-				EngagementTargetType.OVERTHINKING,
+				viewerId, EngagementTargetType.OVERTHINKING,
 				postIds
 		);
 	}
 	
-	private Map<UUID, Long> getCommentCounts(List<OverthinkingPost> posts) {
+	private Map<UUID, Long> getCommentCounts(List<OverthinkingPost> posts, UUID viewerId) {
 		List<UUID> postIds = extractPostIds(posts);
 		if (postIds.isEmpty()) {
 			return Collections.emptyMap();
 		}
 		
 		return commentService.countCommentsByTargets(
-				EngagementTargetType.OVERTHINKING,
+				viewerId, EngagementTargetType.OVERTHINKING,
 				postIds
 		);
 	}

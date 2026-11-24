@@ -24,6 +24,7 @@ import com.berkayb.soundconnect.modules.location.support.LocationEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,7 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 	private final StudioProfileTransactionExecutor transactionExecutor;
 	private final LocationEntityFinder locationEntityFinder;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final ProfileBlockVisibility profileBlocks;
 
 	@Override
 	public StudioProfileResponseDto createProfile(UUID userId, StudioProfileSaveRequestDto dto) {
@@ -157,8 +159,10 @@ public class StudioProfileServiceImpl implements StudioProfileService {
 	@Transactional(readOnly = true)
 	public StudioProfileResponseDto getProfileByProfileId(UUID profileId) {
 		MediaContentAudiencePolicy.requireStudioAccess();
-		return toResponseDto(studioProfileRepository.findById(profileId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)));
+		var profile = studioProfileRepository.findById(profileId)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND));
+		profileBlocks.requireVisible(profile.getUser().getId());
+		return toResponseDto(profile);
 	}
 
 	@Override

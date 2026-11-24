@@ -107,15 +107,27 @@ public class AnnouncementReadService {
                 .collect(Collectors.toMap(Promotion::getId, Function.identity()));
         var parameters = new MapSqlParameterSource("ids", ids).addValue("viewer", viewerId);
         Map<UUID, long[]> engagement = new HashMap<>();
-        jdbc.query("""
+        String hiddenAccounts = """
+                with hidden(id) as (
+                    select blocked_id from tbl_user_block where blocker_id=:viewer and unblocked_at is null
+                    union all
+                    select blocker_id from tbl_user_block where blocked_id=:viewer and unblocked_at is null
+                )
+                """;
+        jdbc.query(hiddenAccounts + """
                 select target_id,count(*) as total,coalesce(bool_or(user_id=cast(:viewer as uuid)),false) as liked
-                from tbl_like where target_type='ANNOUNCEMENT' and target_id in (:ids) group by target_id
+                from tbl_like where target_type='ANNOUNCEMENT' and target_id in (:ids)
+                  and user_id not in (select id from hidden) group by target_id
                 """, parameters, row -> {
             engagement.put(row.getObject("target_id", UUID.class), new long[]{row.getLong("total"), 0, row.getBoolean("liked") ? 1 : 0});
         });
-        jdbc.query("""
-                select target_id,count(*) as total from tbl_comment
-                where target_type='ANNOUNCEMENT' and target_id in (:ids) and is_deleted=false group by target_id
+        jdbc.query(hiddenAccounts + """
+                select c.target_id,count(*) as total from tbl_comment c
+                where c.target_type='ANNOUNCEMENT' and c.target_id in (:ids) and c.is_deleted=false
+                  and c.user_id not in (select id from hidden)
+                  and not exists (select 1 from tbl_comment root join hidden on hidden.id=root.user_id
+                      where root.id=c.parent_comment_id)
+                group by c.target_id
                 """, parameters, row -> {
             engagement.computeIfAbsent(row.getObject("target_id", UUID.class), ignored -> new long[3])[1] = row.getLong("total");
         });

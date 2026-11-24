@@ -26,8 +26,7 @@ public class EngagementTargetValidatorImpl implements EngagementTargetValidator{
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void validateExists(UUID viewerId, EngagementTargetType type, UUID id) {
-        if (type == EngagementTargetType.ANNOUNCEMENT) targetAccess.requireReadable(viewerId, type, id);
-        else targetAccess.requireReadable(type, id);
+        targetAccess.requireReadable(viewerId, type, id);
     }
 
 }

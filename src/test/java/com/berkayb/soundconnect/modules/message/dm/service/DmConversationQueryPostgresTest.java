@@ -53,7 +53,7 @@ class DmConversationQueryPostgresTest {
         jdbc = new JdbcTemplate(source);
         assertThat(com.berkayb.soundconnect.modules.user.entity.User.class.getDeclaredField("username")
                 .getAnnotation(jakarta.persistence.Column.class).name()).isEqualTo("user_name");
-        jdbc.execute("create table tbl_user(id uuid primary key,status text,email_verified boolean,erased_at timestamp,user_name text,profile_picture text)");
+        jdbc.execute("create table tbl_user(id uuid primary key,status text,email_verified boolean,erased_at timestamp,user_name text,profile_picture text, access_suspended boolean not null default false)");
         jdbc.execute("create table tbl_dm_conversation(id uuid primary key,user_a_id uuid,user_b_id uuid,last_message_at timestamp,check(user_a_id<user_b_id),unique(user_a_id,user_b_id))");
         jdbc.execute("create table tbl_dm_message(id uuid primary key,conversation_id uuid,sender_id uuid,recipient_id uuid,content text,message_type text,created_at timestamp,read_at timestamp,deleted_at timestamp)");
         for (String name : List.of("musician", "organizer", "producer", "studio")) {

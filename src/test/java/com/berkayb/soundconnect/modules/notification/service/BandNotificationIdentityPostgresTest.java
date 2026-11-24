@@ -85,6 +85,18 @@ class BandNotificationIdentityPostgresTest {
         tx(() -> {founder=user();member=user();return null;});
         band=bands.createBand(founder,profile("OldBand"+UUID.randomUUID().toString().substring(0,8))).id();
     }
+    @Test void blockedFounderCannotInviteAndOlderInvitationIsNotDeliveredAfterUnblock() {
+        bands.inviteMember(band, founder, member, null);
+        var previous = event(rows().getFirst());
+        jdbc.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)", member, founder);
+        assertThat(tx(() -> policy.eligible(previous))).isFalse();
+        assertThatThrownBy(() -> bands.inviteMember(band, founder, member, null))
+                .isInstanceOfSatisfying(com.berkayb.soundconnect.shared.exception.SoundConnectException.class,
+                        e -> assertThat(e.getErrorType()).isEqualTo(com.berkayb.soundconnect.shared.exception.ErrorType.USER_INTERACTION_UNAVAILABLE));
+        jdbc.update("update tbl_user_block set unblocked_at=clock_timestamp() where blocker_id=? and blocked_id=?", member, founder);
+        assertThat(tx(() -> policy.eligible(previous))).isFalse();
+    }
+
     @Test void realDomainFiveTypesRenameAndDelayedDeliveryUseCurrentIdentity() {
         produceFive(); var rows=rows();assertThat(rows.stream().map(Notification::getType)).containsAll(BandNotificationIdentity.TYPES);
         bands.updateBand(band,founder,profile("CurrentBand"));

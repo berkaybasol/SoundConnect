@@ -20,6 +20,9 @@ public final class VenueApplicationRequestPolicy {
         if (applicationId == null || request.getRequestURI() == null) return false;
         String base = BASE + applicationId;
         String path = request.getRequestURI();
+        if (SessionAccessController.PATH.equals(path)) {
+            return "GET".equals(request.getMethod()) && request.getQueryString() == null;
+        }
         if (!path.startsWith(base)) return false;
         String suffix = path.substring(base.length());
         String method = request.getMethod();

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.comment.service;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
@@ -92,6 +94,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class CommentServicePostgresTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
@@ -135,6 +139,34 @@ class CommentServicePostgresTest {
             event=persist(Event.builder().title("Event").venue(venue).eventDate(LocalDate.of(2026,9,8)).startTime(LocalTime.NOON).build()).getId();
             return null;
         });
+    }
+
+    @Test void sharedEventThreadOnlyCountsAndReturnsPeopleVisibleToTheReader() {
+        UUID reader = actor.getId();
+        UUID peer = tx(() -> user().getId());
+        UUID other = tx(() -> user().getId());
+        var root = service.createComment(other, EngagementTargetType.EVENT, event, new CommentCreateRequestDto("third", null)).id();
+        var peerRoot = service.createComment(peer, EngagementTargetType.EVENT, event, new CommentCreateRequestDto("peer", null)).id();
+        service.createComment(peer, EngagementTargetType.EVENT, event, new CommentCreateRequestDto("reply", root));
+        service.createComment(other, EngagementTargetType.EVENT, event, new CommentCreateRequestDto("reply", peerRoot));
+        likeService.setCommentLike(peer, root, true);
+        jdbc.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)", peer, reader);
+        var page = service.getComments(reader, EngagementTargetType.EVENT, event, PageRequest.of(0,1));
+        assertThat(page.getTotalElements()).isOne();
+        var row = page.getContent().getFirst();
+        assertThat(row.id()).isEqualTo(root);
+        assertThat(row.likeCount()).isZero();
+        assertThat(row.replyCount()).isZero();
+        assertThat(service.countReadableComments(reader, EngagementTargetType.EVENT, event)).isOne();
+        assertThat(service.countCommentsByTargets(reader, EngagementTargetType.EVENT, List.of(event)))
+                .containsEntry(event, 1L);
+        assertThat(service.getReplies(reader,root,PageRequest.of(0,5))).isEmpty();
+        assertLikeError(() -> service.getReplies(reader,peerRoot,PageRequest.of(0,5)), ErrorType.COMMENT_NOT_FOUND);
+        assertLikeError(() -> service.createComment(reader,EngagementTargetType.EVENT,event,new CommentCreateRequestDto("reply",peerRoot)),ErrorType.COMMENT_NOT_FOUND);
+        assertLikeError(() -> likeService.setCommentLike(reader,peerRoot,true),ErrorType.COMMENT_NOT_FOUND);
+        assertThat(service.countReadableComments(other, EngagementTargetType.EVENT, event)).isEqualTo(4);
+        jdbc.update("update tbl_user_block set unblocked_at=now() where blocker_id=? and blocked_id=?",peer,reader);
+        assertThat(service.countReadableComments(reader, EngagementTargetType.EVENT, event)).isEqualTo(4);
     }
 
     @Test void hiddenEventCannotBeReadRepliedToOrCommentedThroughGenericRoutes() {
@@ -257,6 +289,10 @@ class CommentServicePostgresTest {
         assertThat(service.getComments(actor.getId(), EngagementTargetType.EVENT, event, PageRequest.of(0, 1))
                 .getTotalElements()).isEqualTo(2);
         assertThat(service.countReadableComments(actor.getId(), EngagementTargetType.EVENT, event)).isEqualTo(4);
+        assertThat(service.countCommentsByTargets(actor.getId(), EngagementTargetType.EVENT, List.of(event)))
+                .containsEntry(event, 4L);
+        assertThat(service.countCommentsByTargets(null, EngagementTargetType.EVENT, List.of(event)))
+                .containsEntry(event, 4L);
         assertThat(service.countComments(EngagementTargetType.EVENT, event)).isEqualTo(6); // Legacy contract is unchanged.
         jdbc.update("update tbl_venues set status='PENDING' where id=?", venue.getId());
         assertHidden(() -> service.countReadableComments(actor.getId(), EngagementTargetType.EVENT, event));
@@ -911,7 +947,7 @@ class CommentServicePostgresTest {
         var root=service.createComment(actor.getId(),EngagementTargetType.EVENT_POST,postId,new CommentCreateRequestDto("private after removal",null));
         var clock=mock(EventScheduleClock.class); when(clock.instant()).thenReturn(Instant.parse("2026-09-08T07:00:00Z"));
         var cards=mock(EventDiscoveryService.class); when(cards.present(anyList())).thenReturn(List.of());
-        var publications=new EventAudienceService(audienceRepository,userRepository,cards,clock,likeRepository,repository);
+        var publications=new EventAudienceService(audienceRepository,userRepository,cards,clock,likeRepository,repository, mock(UserBlockService.class));
         var stranger=eventPost();
         assertHidden(() -> tx(() -> publications.deletePost(stranger.getId().getUserId(),postId)));
         var removed=tx(() -> publications.deletePost(owner,postId));
@@ -1038,7 +1074,7 @@ class CommentServicePostgresTest {
     @Configuration(proxyBeanMethods=false)
     @EnableJpaRepositories(basePackageClasses={CommentRepository.class,OverthinkingPostRepository.class,EventCommentReadRepository.class,LikeRepository.class,NotificationRepository.class,EventAudienceRepository.class,UserRepository.class})
     @EntityScan(basePackages="com.berkayb.soundconnect")
-    @Import({CommentServiceImpl.class,CommentEntityFinder.class,CommentTargetAccessGuard.class,CommentAuthorBatchResolver.class,JpaAuditingConfig.class,EventCommentReadService.class,
+    @Import({com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class, CommentServiceImpl.class,CommentEntityFinder.class,CommentTargetAccessGuard.class,CommentAuthorBatchResolver.class,JpaAuditingConfig.class,EventCommentReadService.class,
             LikeServiceImpl.class,CommentLikeAccessGuard.class,MediaEngagementCleanupService.class,EngagementTargetValidatorImpl.class,
             MediaEngagementNotificationService.class,TransactionalNotificationService.class,
             com.berkayb.soundconnect.support.DeliveryPolicyTestSupport.Config.class})

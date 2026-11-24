@@ -11,6 +11,7 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.EmailVerificationRequiredException;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -70,6 +71,28 @@ class AuthServiceVenueApplicationSessionTest {
         ordered.verify(applications).findSessionApplication(user);
         ordered.verify(tokens).generateVenueApplicationToken(any(), eq(applicationId));
         verify(tokens, never()).generateToken(any());
+    }
+
+    @Test void suspendedApplicantSeesTheDecisionOnlyAfterCorrectCredentialsAndReceivesNoSession() {
+        user.setAccessSuspended(true);
+        when(users.findByUsername("applicant")).thenReturn(Optional.of(user));
+        assertThatThrownBy(() -> service.login(new LoginRequestDto("applicant","wrong")))
+                .isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.INVALID_CREDENTIALS);
+        when(passwords.matches("password","hash")).thenReturn(true);
+        assertThatThrownBy(() -> service.login(new LoginRequestDto("applicant","password")))
+                .isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.ACCOUNT_SUSPENDED);
+        verifyNoInteractions(tokens, applications);
+    }
+
+    @Test void verifiedOtpCannotActivateOrLogInASuspendedApplicant() {
+        user.setEmailVerified(false);
+        user.setAccessSuspended(true);
+        when(otp.verifyOtp(user.getEmail(), "123456")).thenReturn(true);
+        when(users.findByEmailForUpdate(user.getEmail())).thenReturn(Optional.of(user));
+        assertThatThrownBy(() -> service.verifyCode(new VerifyCodeRequestDto(user.getEmail(),"123456")))
+                .isInstanceOf(SoundConnectException.class).extracting("errorType").isEqualTo(ErrorType.ACCOUNT_SUSPENDED);
+        assertThat(user.getEmailVerified()).isFalse();
+        verifyNoInteractions(tokens, applications);
     }
 
     @Test void wrongPasswordCannotProbeSourceOrReceiveScopedToken() {

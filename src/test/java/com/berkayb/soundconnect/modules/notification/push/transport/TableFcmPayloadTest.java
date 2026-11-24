@@ -50,7 +50,7 @@ class TableFcmPayloadTest {
         verifyNoInteractions(http);
     }
     @Test void cancellationReasonsAreDistinctAndCanonicalTimesAreRequired() throws Exception {
-        for(String reason:List.of("OWNER_CANCELLED","OWNER_JOINED_ANOTHER_TABLE"))
+        for(String reason:List.of("OWNER_CANCELLED","OWNER_JOINED_ANOTHER_TABLE","ADMIN_REMOVED"))
             assertThat(FcmWireAssertions.sendNative(transport,http,envelope(data("TABLE_CANCELLED",reason)),"300s").at("/message/data/displayVariant").asText()).isEqualTo(reason);
         for(String reason:List.of("DEFAULT","OTHER")) assertThatThrownBy(()->transport.payload(envelope(data("TABLE_CANCELLED",reason)))).isInstanceOf(IllegalArgumentException.class);
         for(String sent:List.of("+"+now.toEpochMilli(),"0"+now.toEpochMilli()," "+now.toEpochMilli(),"9223372036854775808")) {

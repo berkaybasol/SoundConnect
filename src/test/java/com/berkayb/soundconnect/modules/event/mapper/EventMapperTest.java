@@ -56,6 +56,9 @@ class EventMapperTest {
 	void toDto_shouldMapMusicianEventProperly() {
 		var musician = new MusicianProfile();
 		musician.setStageName("Berkay Başol");
+		var account = new User();
+		account.setUsername("berkayhesabi");
+		musician.setUser(account);
 		
 		var venue = new Venue();
 		venue.setId(UUID.randomUUID());
@@ -75,8 +78,10 @@ class EventMapperTest {
 		EventResponseDto dto = mapper.toDto(event);
 		
 		assertThat(dto.performerType()).isEqualTo(PerformerType.MUSICIAN);
-		assertThat(dto.performerName()).isEqualTo("Berkay Başol");
+		assertThat(dto.performerName()).isEqualTo("berkayhesabi");
 		assertThat(dto.venueName()).isEqualTo("IF Performance Hall");
+		musician.setUser(null);
+		assertThat(mapper.toDto(event).performerName()).isEqualTo("Berkay Başol");
 		
 	}
 

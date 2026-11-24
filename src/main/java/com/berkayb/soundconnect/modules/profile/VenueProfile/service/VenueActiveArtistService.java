@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.response.VenueActiveArtistDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.enums.VenueActiveArtistType;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.repository.VenueActiveArtistRepository;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.PageResponse;
@@ -34,7 +35,7 @@ public class VenueActiveArtistService {
         String term = query == null ? "" : query.strip();
         var pageable = PageRequest.of(page, size);
         var artists = switch (type) {
-            case MUSICIAN -> repository.findMusicians(venueId, term, pageable);
+            case MUSICIAN -> repository.findMusicians(venueId, term, ProfileBlockVisibility.viewerId(), pageable);
             case BAND -> repository.findBands(venueId, term, pageable);
         };
         return PageResponse.from(artists.map(row -> new VenueActiveArtistDto(

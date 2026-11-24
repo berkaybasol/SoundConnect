@@ -50,11 +50,27 @@ public interface OverthinkingRevealRequestRepository extends JpaRepository<Overt
 	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Optional<OverthinkingRevealRequest> findByIdAndAuthorId(UUID requestId, UUID authorId);
 	
-	@EntityGraph(attributePaths = {"post", "requester", "author"})
-	Page<OverthinkingRevealRequest> findByAuthorIdOrderByCreatedAtDesc(UUID authorId, Pageable pageable);
+	String INCOMING = """
+            from OverthinkingRevealRequest r where r.author.id=:authorId and r.deliverySuppressed=false
+              and not exists (select 1 from UserBlock b where b.unblockedAt is null and
+                 ((b.blocker.id=:authorId and b.blocked.id=r.requester.id)
+                   or (b.blocked.id=:authorId and b.blocker.id=r.requester.id)))
+            """;
+    @EntityGraph(attributePaths = {"post", "requester", "author"})
+    @Query("select r " + INCOMING)
+    Page<OverthinkingRevealRequest> findByAuthorIdOrderByCreatedAtDesc(@Param("authorId") UUID authorId, Pageable pageable);
+
+    @Query("""
+            select r.id from OverthinkingRevealRequest r where r.requester.id=:viewer and r.id in :ids
+              and exists (select 1 from UserBlock b where b.unblockedAt is null and
+                ((b.blocker.id=:viewer and b.blocked.id=r.author.id)
+                  or (b.blocked.id=:viewer and b.blocker.id=r.author.id)))
+            """)
+    Set<UUID> blockedRequestIds(@Param("viewer") UUID viewer, @Param("ids") Collection<UUID> ids);
 
 	/** Uses the existing author/status index without fetching request or profile data. */
-	long countByAuthorIdAndStatus(UUID authorId, OverthinkingRevealRequestStatus status);
+	@Query("select count(r) " + INCOMING + " and r.status=:status")
+    long countByAuthorIdAndStatus(@Param("authorId") UUID authorId, @Param("status") OverthinkingRevealRequestStatus status);
 	
 	@EntityGraph(attributePaths = {"post", "requester", "author"})
 	Page<OverthinkingRevealRequest> findByRequesterIdOrderByCreatedAtDesc(UUID requesterId, Pageable pageable);

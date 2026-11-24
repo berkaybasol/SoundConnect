@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.comment.support.CommentTargetAccessGuard
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.modules.comment.support.CommentEntityFinder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -19,6 +20,7 @@ import java.util.UUID;
 public class CommentLikeAccessGuard {
     private final CommentRepository comments;
     private final CommentTargetAccessGuard content;
+    private final CommentEntityFinder finder;
 
     public void requireLikeable(UUID id,boolean mutation) {
         requireLikeable(null, id, mutation);
@@ -31,14 +33,15 @@ public class CommentLikeAccessGuard {
         try { type=EngagementTargetType.valueOf(initial.getTargetType()); }
         catch(RuntimeException malformed) { throw notFound(); }
         if(type==EngagementTargetType.COMMENT) throw notFound();
-        if (type == EngagementTargetType.ANNOUNCEMENT) content.requireReadable(viewerId, type, initial.getTargetId());
-        else content.requireReadable(type,initial.getTargetId());
+        content.requireReadable(viewerId, type, initial.getTargetId());
         var current=(mutation ? comments.lockComment(id) : comments.lockCommentForRead(id)).orElseThrow(this::notFound);
+        finder.requireVisibleAuthor(viewerId, id, current.getUserId(), mutation);
         if(current.getDeleted() || !Objects.equals(current.getTargetType(),initial.getTargetType())
                 || !Objects.equals(current.getTargetId(),initial.getTargetId())
                 || !Objects.equals(current.getParentId(),initial.getParentId())) throw notFound();
         if(current.getParentId()!=null) {
             var parent=comments.findCommentTarget(current.getParentId()).orElseThrow(this::notFound);
+            finder.requireVisibleAuthor(viewerId, parent.getId(), parent.getUserId(), false);
             // Existing replies on a soft-deleted root remain visible/likeable; nested or misbound rows do not.
             if(parent.getParentId()!=null || !Objects.equals(parent.getTargetType(),current.getTargetType())
                     || !Objects.equals(parent.getTargetId(),current.getTargetId())) throw notFound();

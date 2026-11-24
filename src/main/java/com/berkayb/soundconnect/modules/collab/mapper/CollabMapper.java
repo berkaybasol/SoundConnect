@@ -17,9 +17,9 @@ public class CollabMapper {
     private final CollabActorService actorService;
 
     public record ListingContext(UUID viewerId, Set<UUID> appliedIds, Set<UUID> savedIds,
-                                 Map<UUID, Long> applicationCounts) {
+                                 Map<UUID, Long> applicationCounts, Set<UUID> blockedContacts) {
         public static ListingContext empty(UUID viewerId) {
-            return new ListingContext(viewerId, Set.of(), Set.of(), Map.of());
+            return new ListingContext(viewerId, Set.of(), Set.of(), Map.of(), Set.of());
         }
     }
 
@@ -38,17 +38,21 @@ public class CollabMapper {
                 toInstant(value.getCreatedAt()), actorService.toSummary(value.getPublisherActor(), owner),
                 context.applicationCounts().getOrDefault(value.getId(), 0L),
                 Objects.equals(viewerId, ownerId), context.appliedIds().contains(value.getId()),
-                context.savedIds().contains(value.getId()));
+                context.savedIds().contains(value.getId()), context.blockedContacts().contains(ownerId));
     }
 
     public CollabApplicationResponse application(CollabApplication value, UUID viewerId, ListingContext listingContext) {
         boolean party = Objects.equals(viewerId, value.getApplicantUser().getId())
                 || Objects.equals(viewerId, value.getListing().getOwner().getId());
+        boolean applicant = Objects.equals(viewerId, value.getApplicantUser().getId());
+        UUID peerId = applicant ? value.getListing().getOwner().getId() : value.getApplicantUser().getId();
+        boolean blocked = party && listingContext.blockedContacts().contains(peerId);
         return new CollabApplicationResponse(value.getId(), value.getVersion(), value.getStatus(),
                 listing(value.getListing(), listingContext),
                 actorService.toSummary(value.getApplicantActor(), value.getApplicantUser()),
-                party ? value.getPhoneSnapshot() : null, party ? value.getMessage() : null, value.getSubmittedAt(),
-                value.getStatusChangedAt(), value.getDecidedAt());
+                party && (!blocked || applicant) ? value.getPhoneSnapshot() : null,
+                party ? value.getMessage() : null, value.getSubmittedAt(),
+                value.getStatusChangedAt(), value.getDecidedAt(), blocked);
     }
 
     public CollabJobResponse job(CollabJob value, UUID viewerId, boolean reviewedByMe,
@@ -61,7 +65,8 @@ public class CollabMapper {
                 value.getPublisherConfirmedAt() != null, value.getApplicantConfirmedAt() != null,
                 value.getPublisherConfirmedAt(), value.getApplicantConfirmedAt(),
                 publisher ? value.getPublisherConfirmedAt() != null : value.getApplicantConfirmedAt() != null,
-                reviewedByMe, value.getCompletedAt());
+                reviewedByMe, value.getCompletedAt(), listingContext.blockedContacts().contains(
+                        publisher ? value.getApplicantUser().getId() : value.getPublisherUser().getId()));
     }
 
     public CollabReviewResponse review(CollabReview value) {

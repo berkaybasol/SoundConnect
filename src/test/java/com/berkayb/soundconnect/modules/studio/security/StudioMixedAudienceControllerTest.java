@@ -22,6 +22,7 @@ import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.service.TrackService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -71,6 +73,15 @@ class StudioMixedAudienceControllerTest {
     final UUID actor = UUID.randomUUID(), resource = UUID.randomUUID();
 
     @AfterEach void clearViewer() { SecurityContextHolder.clearContext(); }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_ADMIN", "ADMIN_PANEL_ACCESS"})
+    void panelAccessAloneDoesNotExposeStudioCategoryRequests() throws Exception {
+        mvc.perform(request(Route.CATEGORY_ADMIN))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.data").doesNotExist());
+        verifyNoInteractions(catalog);
+    }
 
     @ParameterizedTest @EnumSource(Route.class)
     void listenerVetoWinsOverLegacyStudioAndAdministrativeAuthorities(Route route) throws Exception {

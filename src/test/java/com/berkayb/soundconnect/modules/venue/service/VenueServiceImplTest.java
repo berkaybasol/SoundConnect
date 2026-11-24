@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.venue.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
@@ -59,6 +60,8 @@ class VenueServiceImplTest {
 	@Mock private UserRepository userRepository;
 	@Mock private VenueProfileService venueProfileService;
 	@Mock private PersonalProfileTypePolicy personalProfileTypePolicy;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	
 	@InjectMocks
 	private VenueServiceImpl sut; // system under test
@@ -178,7 +181,7 @@ class VenueServiceImplTest {
 		when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 		
 		// mapper.toResponse -> response üret
-		when(venueMapper.toResponse(any(Venue.class))).thenAnswer(inv -> {
+		when(venueMapper.toResponse(any(Venue.class), eq(Set.of()))).thenAnswer(inv -> {
 			Venue v = inv.getArgument(0);
 			return new VenueResponseDto(
 					v.getId(),
@@ -232,7 +235,7 @@ class VenueServiceImplTest {
 		inOrder.verify(roleRepository).findByName(RoleEnum.ROLE_VENUE.name());
 		inOrder.verify(userRepository).save(any(User.class));
 		inOrder.verify(venueProfileService).createProfile(any(UUID.class), any(VenueProfileSaveRequestDto.class));
-		inOrder.verify(venueMapper).toResponse(any(Venue.class));
+		inOrder.verify(venueMapper).toResponse(any(Venue.class), eq(Set.of()));
 		inOrder.verifyNoMoreInteractions();
 		verify(userEntityFinder, never()).getUser(dto.ownerId());
 	}
@@ -288,7 +291,7 @@ class VenueServiceImplTest {
 		when(venueRepository.save(any(Venue.class))).thenAnswer(inv -> inv.getArgument(0));
 		
 		// mapper.toResponse: updated entity'den response üretelim
-		when(venueMapper.toResponse(any(Venue.class))).thenAnswer(inv -> {
+		when(venueMapper.toResponse(any(Venue.class), eq(Set.of()))).thenAnswer(inv -> {
 			Venue v = inv.getArgument(0);
 			return new VenueResponseDto(
 					v.getId(),
@@ -341,7 +344,7 @@ class VenueServiceImplTest {
 		inOrder.verify(locationEntityFinder).getDistrict(dto.districtId());
 		inOrder.verify(locationEntityFinder).getNeighborhood(dto.neighborhoodId());
 		inOrder.verify(venueRepository).save(any(Venue.class));
-		inOrder.verify(venueMapper).toResponse(any(Venue.class));
+		inOrder.verify(venueMapper).toResponse(any(Venue.class), eq(Set.of()));
 		inOrder.verifyNoMoreInteractions();
 	}
 
@@ -394,7 +397,7 @@ class VenueServiceImplTest {
 		                      .build();
 		
 		when(venueRepository.findPubliclyVisibleById(venueId)).thenReturn(java.util.Optional.of(existing));
-		when(venueMapper.toResponse(existing)).thenAnswer(inv -> {
+		when(venueMapper.toResponse(existing, Set.of())).thenAnswer(inv -> {
 			Venue v = inv.getArgument(0);
 			return new VenueResponseDto(
 					v.getId(),
@@ -418,7 +421,7 @@ class VenueServiceImplTest {
 		assertThat(res.status()).isEqualTo(VenueStatus.APPROVED);
 		
 		verify(venueRepository).findPubliclyVisibleById(venueId);
-		verify(venueMapper).toResponse(existing);
+		verify(venueMapper).toResponse(existing, Set.of());
 		verifyNoMoreInteractions(venueEntityFinder, venueMapper);
 	}
 	@Test
@@ -457,7 +460,7 @@ class VenueServiceImplTest {
 		Venue v1 = Venue.builder().id(UUID.randomUUID()).name("KaraKedi").city(city).district(district).neighborhood(neighborhood).owner(owner).build();
 		Venue v2 = Venue.builder().id(UUID.randomUUID()).name("SiyahBeyaz").city(city).district(district).neighborhood(neighborhood).owner(owner).build();
 		when(venueRepository.findAllPubliclyVisible()).thenReturn(java.util.List.of(v1, v2));
-		when(venueMapper.toResponseList(anyList())).thenAnswer(inv -> {
+		when(venueMapper.toResponseList(anyList(), eq(Set.of()))).thenAnswer(inv -> {
 			@SuppressWarnings("unchecked")
 			java.util.List<Venue> list = (java.util.List<Venue>) inv.getArgument(0);
 			return list.stream().map(v -> new VenueResponseDto(
@@ -484,7 +487,7 @@ class VenueServiceImplTest {
 		assertThat(res.get(1).name()).isEqualTo("SiyahBeyaz");
 		
 		verify(venueRepository).findAllPubliclyVisible();
-		verify(venueMapper).toResponseList(anyList());
+		verify(venueMapper).toResponseList(anyList(), eq(Set.of()));
 		verifyNoMoreInteractions(venueRepository, venueMapper);
 	}
 	

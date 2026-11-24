@@ -25,6 +25,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.modules.venue.support.VenueEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	private final MediaAssetService mediaAssetService;
 	private final MediaAssetRepository mediaAssetRepository;
 	private final EventScheduleClock scheduleClock;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	@Override
 	public List<VenueProfileResponseDto> getProfilesByUserId(UUID userId) {
@@ -210,6 +212,7 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 	public VenuePublicProfileResponseDto getPublicProfileDetail(UUID venueId) { //eklendi
 		Venue venue = venueRepository.findPubliclyVisibleById(venueId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.VENUE_NOT_FOUND));
+		if (venue.getOwner() != null) profileBlocks.requireVisible(venue.getOwner().getId());
 		
 		VenueProfile profile = venueProfileRepository.findByVenueId(venueId) //eklendi
 		                                             .orElseThrow(() -> new SoundConnectException(ErrorType.PROFILE_NOT_FOUND)); //eklendi
@@ -291,8 +294,11 @@ public class VenueProfileServiceImpl implements VenueProfileService {
 			return List.of(); //eklendi
 		}
 		
+		var hidden = profileBlocks.hiddenTargets(ProfileBlockVisibility.viewerId(), "MUSICIAN",
+				venue.getActiveMusicians().stream().map(MusicianProfile::getId).toList());
 		return venue.getActiveMusicians()
 		            .stream()
+		            .filter(profile -> !hidden.contains(profile.getId()))
 		            .sorted(Comparator.comparing(mp -> safeText(mp.getStageName())))
 		            .map(this::toActiveMusicianDto)
 		            .toList();

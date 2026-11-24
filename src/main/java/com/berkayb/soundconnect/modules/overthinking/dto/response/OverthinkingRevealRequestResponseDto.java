@@ -37,7 +37,12 @@ public record OverthinkingRevealRequestResponseDto(
 		}
 	}
 
-	/** Keeps source compatibility for call sites that do not project contextual identity. */
+	public OverthinkingRevealRequestResponseDto withoutAuthor() {
+        return new OverthinkingRevealRequestResponseDto(id, postId, postTitle, requesterId, requesterUsername,
+                requesterAvatarUrl, requesterVisibilityMode, null, status, createdAt);
+    }
+
+    /** Keeps source compatibility for call sites that do not project contextual identity. */
 	public OverthinkingRevealRequestResponseDto(
 			UUID id,
 			UUID postId,

@@ -146,7 +146,7 @@ class StudioFeedPromotionTest {
                 "Kayıt için stüdyo arıyoruz", "Yeni şarkılarımızı kaydetmek istiyoruz.",
                 new CollabCitySummary(id("city"), "İstanbul"), List.of("Rock"), NOW.plusSeconds(1800),
                 NOW.plusSeconds(3600), null, null, CollabFeeStatus.UNSPECIFIED, NOW.minusSeconds(60),
-                null, NOW.minusSeconds(60), publisher, 0, false, false, false);
+                null, NOW.minusSeconds(60), publisher, 0, false, false, false, false);
         return new MusicianFeedCandidate("COLLAB:" + target, MusicianFeedItemType.COLLAB, 1, NOW.minusSeconds(60),
                 reason(MusicianFeedReasonCode.CITY_MATCH), author, new MusicianFeedItemResponse.Target("COLLAB", target),
                 null, null, List.of(MusicianFeedFeedbackAction.HIDE), new MusicianFeedPayloads.Collab(listing),

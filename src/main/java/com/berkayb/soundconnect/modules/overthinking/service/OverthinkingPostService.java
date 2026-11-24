@@ -20,6 +20,8 @@ public interface OverthinkingPostService {
 	OverthinkingPostResponseDto update(UUID postId, UUID authorId, OverthinkingPostSaveRequestDto dto);
 	
 	void delete(UUID postId, UUID authorId);
+
+    void removeReportedPost(UUID postId, String reportedTitle, String reportedContent);
 	
 	OverthinkingPostResponseDto getById(UUID postId, UUID viewerId);
 

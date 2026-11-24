@@ -17,7 +17,7 @@ import java.util.*;
 
 @Component
 public class MusicianFeedTableGroupShareCandidateProvider implements MusicianFeedCandidateProvider {
-    private static final String SQL = """
+    private static final String SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select share.id as share_id, share.note, share.published_at, share.final_source::text as final_source,
                    account.id as author_user_id, listener.id as author_profile_id,
                    'LISTENER' as author_profile_type, account.user_name as author_username,
@@ -29,9 +29,9 @@ public class MusicianFeedTableGroupShareCandidateProvider implements MusicianFee
                    table_group.expires_at, table_group.status, table_group.max_person_count,
                    (select count(*) from tbl_table_group_participants participant
                        where participant.table_group_id=table_group.id and participant.status='ACCEPTED') as accepted_count,
-                   (select count(*) from tbl_like likes where likes.target_type='TABLE_GROUP_POST'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='TABLE_GROUP_POST'
                        and likes.target_id=share.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='TABLE_GROUP_POST'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='TABLE_GROUP_POST'
                        and comments.target_id=share.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='TABLE_GROUP_POST' and mine.target_id=share.id) as liked_by_me
@@ -79,7 +79,7 @@ public class MusicianFeedTableGroupShareCandidateProvider implements MusicianFee
                          and eligible.user_id=share.owner_user_id and eligible.status='ACCEPTED'))))
             order by share.published_at desc, share.id desc
             limit :limit
-            """.replace("/* FEED_MODERATION */", allowed(item("'TABLEGROUP_PROFILE_SHARE:' || share.id::text"),
+            """).replace("/* FEED_MODERATION */", allowed(item("'TABLEGROUP_PROFILE_SHARE:' || share.id::text"),
                     target("'TABLE_GROUP_POST'", "share.id")));
 
     private final NamedParameterJdbcTemplate jdbc;

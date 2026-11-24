@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.admin.health;
 
+import com.berkayb.soundconnect.support.RedisTestReadiness;
 import io.lettuce.core.api.async.RedisServerAsyncCommands;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ class RedisHealthMetricsIT {
                 .shutdownTimeout(Duration.ofMillis(100)).build();
         connection = new LettuceConnectionFactory(configuration, client);
         connection.afterPropertiesSet();
+        RedisTestReadiness.awaitPing(connection);
     }
 
     @AfterEach void releaseConnections() {

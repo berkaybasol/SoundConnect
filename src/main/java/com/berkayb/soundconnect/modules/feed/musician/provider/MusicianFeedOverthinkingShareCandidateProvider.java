@@ -21,7 +21,7 @@ import java.util.UUID;
 
 @Component
 public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianFeedCandidateProvider {
-    private static final String SQL = """
+    private static final String SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select share.id as share_id, share.note, share.published_at,
                    account.id as author_user_id, listener.id as author_profile_id,
                    'LISTENER' as author_profile_type, account.user_name as author_username,
@@ -29,9 +29,9 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
                    coalesce(avatar.playback_url, avatar.source_url, avatar.thumbnail_url,
                             account.profile_picture) as author_avatar_url,
                    true as followed_by_viewer, share.source_post_id as source_id,
-                   (select count(*) from tbl_like likes where likes.target_type='OVERTHINKING_PROFILE_SHARE'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='OVERTHINKING_PROFILE_SHARE'
                        and likes.target_id=share.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='OVERTHINKING_PROFILE_SHARE'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='OVERTHINKING_PROFILE_SHARE'
                        and comments.target_id=share.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='OVERTHINKING_PROFILE_SHARE' and mine.target_id=share.id) as liked_by_me
@@ -72,7 +72,7 @@ public class MusicianFeedOverthinkingShareCandidateProvider implements MusicianF
                           and delivered.target_id=share.id)))
             order by share.published_at desc, share.id desc
             limit :limit
-            """.replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"))
+            """).replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"))
             .replace("/* FEED_MODERATION */", allowed(item("'OVERTHINKING_PROFILE_SHARE:' || share.id::text"),
                     target("'OVERTHINKING_PROFILE_SHARE'", "share.id")));
 

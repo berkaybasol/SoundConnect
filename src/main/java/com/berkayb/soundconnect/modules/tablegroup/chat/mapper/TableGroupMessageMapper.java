@@ -19,7 +19,7 @@ public interface TableGroupMessageMapper {
 	@Mapping(target = "tableGroupId", source = "tableGroupId")
 	@Mapping(target = "senderId",     source = "senderId")
 	@Mapping(target = "clientMessageId", source = "clientMessageId")
-	@Mapping(target = "content",      source = "content")
+	@Mapping(target = "content", expression = "java(entity.getDeletedAt() == null ? entity.getContent() : \"Bu mesaj kaldırıldı.\")")
 	@Mapping(target = "messageType",  source = "messageType")
 	@Mapping(target = "sentAt",       source = "createdAt", qualifiedByName = "utcInstant")
 	@Mapping(target = "deletedAt",    source = "deletedAt", qualifiedByName = "utcInstant")

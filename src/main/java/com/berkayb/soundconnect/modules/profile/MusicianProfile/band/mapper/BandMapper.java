@@ -34,5 +34,6 @@ public interface BandMapper {
 	@Mapping(target = "status", source = "status")
 	@Mapping(target = "memberTitle", source = "memberTitle")
 	@Mapping(target = "titleVersion", source = "titleVersion")
+	@Mapping(target = "contactAvailable", expression = "java(member.canReceiveBandContact())")
 	BandMemberResponseDto toMemberDto(BandMember member);
 }

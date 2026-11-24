@@ -101,7 +101,7 @@ public class PushDeliveryStore {
                 where j.id=:id and j.status='IN_FLIGHT' and j.lease_owner=:owner and j.lease_until>:now
                   and d.user_id=:recipient and d.generation=:generation and d.revoked_at is null
                   and d.token_ciphertext is not null and d.permission in ('AUTHORIZED','PROVISIONAL')
-                  and d.last_seen_at>:stale and u.erased_at is null and u.email_verified
+                  and d.last_seen_at>:stale and u.erased_at is null and u.email_verified and not u.access_suspended
                   and (u.status='ACTIVE' or (:applicationType and u.status='PENDING_VENUE_REQUEST'))
                   and (d.application_scope_id is null or (:applicationType and d.application_scope_id=:applicationId))
                   and n.is_read=false and coalesce(p.enabled,true)

@@ -153,6 +153,9 @@ public class GoogleAccountService {
 		if (subject != null && !subject.isBlank() && !subject.equals(identity.subject())) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
 		}
+		if (user.getErasedAt() == null && user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
+		}
 		if (user.getErasedAt() != null || !Boolean.TRUE.equals(user.getEmailVerified())
 				|| (user.getStatus() != UserStatus.ACTIVE && GoogleBusinessApplications.applicantRole(user.getStatus()) == null)) {
 			throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);

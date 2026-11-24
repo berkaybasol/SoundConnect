@@ -24,7 +24,16 @@ public interface NotificationMapper {
 			target = "createdAt",
 			source = "occurredAt"
 	)
+	@Mapping(target = "payload", expression = "java(publicPayload(n))")
 	NotificationResponseDto toDto(Notification n);
+
+	default java.util.Map<String, Object> publicPayload(Notification notification) {
+		var payload = notification.getPayload();
+		if (payload == null || !payload.containsKey("invitingRepresentativeId")) return payload;
+		var visible = new java.util.LinkedHashMap<>(payload);
+		visible.remove("invitingRepresentativeId");
+		return visible;
+	}
 	
 	List<NotificationResponseDto> toDtoList(List<Notification> notifications);
 }

@@ -10,6 +10,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
@@ -27,6 +28,7 @@ public class EventAudienceService {
     private final EventScheduleClock clock;
     private final LikeRepository likes;
     private final CommentRepository comments;
+    private final UserBlockService blocks;
 
     /** Lightweight current-account preflight before consuming the shared mutation quota. */
     @Transactional(timeout = 5)
@@ -121,6 +123,7 @@ public class EventAudienceService {
         var pageable = page(period, page, size);
         activeAccount(viewer, false);
         UUID author = repository.listenerUserId(profileId).orElseThrow(this::profileNotFound);
+        if (blocks.blockedEitherWay(viewer, author)) throw profileNotFound();
         Actor target;
         try { target = actor(author, false); }
         catch (SoundConnectException hidden) { throw profileNotFound(); }
@@ -156,9 +159,9 @@ public class EventAudienceService {
         var postIds = values.stream().filter(EventAudienceIntent::isPublishedOnProfile)
                 .map(EventAudienceIntent::getPostId).filter(Objects::nonNull).distinct().toList();
         if (postIds.isEmpty()) return Map.of();
-        var likeCounts = likes.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST, postIds).stream()
+        var likeCounts = likes.countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST, postIds).stream()
                 .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId, LikeRepository.TargetCountProjection::getCount));
-        var commentCounts = comments.countByTargetTypeAndTargetIdIn(EngagementTargetType.EVENT_POST, postIds).stream()
+        var commentCounts = comments.countVisibleByTargets(viewer, EngagementTargetType.EVENT_POST, postIds).stream()
                 .collect(Collectors.toMap(CommentRepository.TargetCountProjection::getTargetId, CommentRepository.TargetCountProjection::getCount));
         var liked = likes.findLikedTargetIds(viewer, EngagementTargetType.EVENT_POST, postIds);
         return postIds.stream().collect(Collectors.toMap(Function.identity(), id ->

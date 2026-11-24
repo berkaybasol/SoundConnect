@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.instrument.entity.Instrument;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
@@ -42,6 +43,8 @@ class MusicianProfileContentRegressionTest {
     @Mock MediaAssetService media;
     @Mock EntityManager entityManager;
     @Spy MusicianProfileMapper mapper = Mappers.getMapper(MusicianProfileMapper.class);
+
+    @Mock ProfileBlockVisibility profileBlocks;
     @InjectMocks MusicianProfileServiceImpl service;
     final UUID userId = UUID.randomUUID();
     final User user = User.builder().id(userId).username("artist").build();

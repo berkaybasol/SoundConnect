@@ -23,6 +23,7 @@ public interface ArtistVenueConnectionRequestRepository extends JpaRepository <A
 	@Query(value = """
 		select id from tbl_user
 		where id in :accountIds and status = 'ACTIVE' and email_verified = true
+		  and not access_suspended and erased_at is null
 		order by id for share
 		""", nativeQuery = true)
 	List<UUID> lockUsableAccountIds(@Param("accountIds") Collection<UUID> accountIds);

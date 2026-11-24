@@ -56,7 +56,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 	@Transactional
 	public OverthinkingRevealRequestResponseDto createRevealRequest(UUID requesterId, UUID postId) {
 		lockActiveActor(requesterId);
-		participants.lockPostAuthor(postId);
+		boolean suppressed = participants.lockPostAuthor(requesterId, postId);
 		rateGuard.lockRequester(requesterId);
 		User requester = userEntityFinder.getUser(requesterId);
 		
@@ -87,11 +87,12 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		                                                             .post(post)
 		                                                             .requester(requester)
 		                                                             .author(post.getAuthor())
+                                                                     .deliverySuppressed(suppressed)
 		                                                             .build();
 		
 		request = revealRequestRepository.save(request);
 		
-		notificationService.sendRevealRequestReceivedNotification(request);
+		if (!suppressed) notificationService.sendRevealRequestReceivedNotification(request);
 		
 		log.info("[OverthinkingReveal] Reveal request created. post={}, requester={}, author={}, request={}",
 		         postId, requesterId, post.getAuthor().getId(), request.getId());
@@ -103,7 +104,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 	@Transactional
 	public void cancelRevealRequest(UUID requesterId, UUID postId) {
 		lockActiveActor(requesterId);
-		participants.lockPostAuthor(postId);
+		participants.lockPostAuthor(requesterId, postId);
 		userEntityFinder.getUser(requesterId);
 		// Same actor -> parent -> child order as create/approve/delete. If the
 		// parent was deleted, withdrawal is already complete.
@@ -114,7 +115,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		if (!request.isPending()) {
 			throw new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_ALREADY_DECIDED);
 		}
-		notificationRetraction.retract(request.getAuthor().getId(), request.getId());
+		if (!request.isDeliverySuppressed()) notificationRetraction.retract(request.getAuthor().getId(), request.getId());
 		revealRequestRepository.delete(request);
 	}
 
@@ -178,7 +179,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 	public Page<OverthinkingRevealRequestResponseDto> getIncomingRequests(UUID authorId, Pageable pageable) {
 		userEntityFinder.getUser(authorId);
 		
-		return mapPage(revealRequestRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, OverthinkingPagination.newest(pageable)));
+		return mapPage(revealRequestRepository.findByAuthorIdOrderByCreatedAtDesc(authorId, OverthinkingPagination.newest(pageable)), Set.of());
 	}
 
 	@Override
@@ -193,7 +194,10 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 	public Page<OverthinkingRevealRequestResponseDto> getMySentRequests(UUID requesterId, Pageable pageable) {
 		userEntityFinder.getUser(requesterId);
 		
-		return mapPage(revealRequestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId, OverthinkingPagination.newest(pageable)));
+		var sent = revealRequestRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId, OverthinkingPagination.newest(pageable));
+        var approved = sent.stream().filter(OverthinkingRevealRequest::isApproved).map(OverthinkingRevealRequest::getId).toList();
+        var hidden = approved.isEmpty() ? Set.<UUID>of() : revealRequestRepository.blockedRequestIds(requesterId, approved);
+        return mapPage(sent, hidden);
 	}
 
 	private void lockActiveActor(UUID actorId) {
@@ -209,8 +213,11 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		// Never lock the child before the parent: deletion uses this same order.
 		postRepository.findByIdForUpdate(postId)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
-		return revealRequestRepository.findByIdAndAuthorIdForUpdate(requestId, authorId)
-				.orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
+		var request = revealRequestRepository.findByIdAndAuthorIdForUpdate(requestId, authorId)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND));
+        if (request.isDeliverySuppressed())
+            throw new SoundConnectException(ErrorType.OVERTHINKING_REVEAL_REQUEST_NOT_FOUND);
+        return request;
 	}
 
 	private OverthinkingRevealRequestResponseDto toDto(OverthinkingRevealRequest request) {
@@ -222,7 +229,7 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		return revealRequestMapper.toDto(request, ghostIdentities.get(requesterId), identities.get(requesterId));
 	}
 
-	private Page<OverthinkingRevealRequestResponseDto> mapPage(Page<OverthinkingRevealRequest> page) {
+	private Page<OverthinkingRevealRequestResponseDto> mapPage(Page<OverthinkingRevealRequest> page, Set<UUID> hiddenAuthorRequests) {
 		List<OverthinkingRevealRequest> requests = page.getContent();
 		LinkedHashSet<UUID> requesterIds = new LinkedHashSet<>();
 		for (OverthinkingRevealRequest request : requests) {
@@ -235,7 +242,8 @@ public class OverthinkingRevealRequestServiceImpl implements OverthinkingRevealR
 		var identities = resolveStandardIdentities(requesterIds, ghostIdentities);
 		return page.map(request -> {
 			UUID requesterId = requesterId(request);
-			return revealRequestMapper.toDto(request, ghostIdentities.get(requesterId), identities.get(requesterId));
+			var dto = revealRequestMapper.toDto(request, ghostIdentities.get(requesterId), identities.get(requesterId));
+            return hiddenAuthorRequests.contains(request.getId()) ? dto.withoutAuthor() : dto;
 		});
 	}
 

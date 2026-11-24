@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.venue.suggestion;
 
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.admin.security.AdminPanelReadAccess;
+import com.berkayb.soundconnect.modules.role.enums.PermissionEnum;
 import org.junit.jupiter.api.*;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.dao.DataAccessException;
@@ -15,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.IntConsumer;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @Testcontainers
 class VenueSuggestionStorePostgresTest {
@@ -40,6 +44,7 @@ class VenueSuggestionStorePostgresTest {
     }
     static void migrate() {
         new ResourceDatabasePopulator(new FileSystemResource("scripts/db/2026-09-08-venue-suggestions.sql")).execute(dataSource);
+        new ResourceDatabasePopulator(new FileSystemResource("scripts/db/2026-11-24-venue-suggestion-page.sql")).execute(dataSource);
     }
     static void assertDisposable() throws Exception {
         try (var connection = dataSource.getConnection()) {
@@ -54,6 +59,45 @@ class VenueSuggestionStorePostgresTest {
         jdbc.update("INSERT INTO tbl_city VALUES (:id,'Ankara')", Map.of("id", city));
         jdbc.update("INSERT INTO tbl_district VALUES (:id,:city,'Çankaya')", Map.of("id", district, "city", city));
     }
+    @Test void adminReadsTheIntakeSnapshotOncePerSuggestionAcrossTiedPages() {
+        var actor = mock(UserDetailsImpl.class);
+        var access = mock(AdminPanelReadAccess.class);
+        var query = new VenueSuggestionAdminQuery(jdbc, access);
+        assertThat(query.list(actor, 0, 20).content()).isEmpty();
+        accept(new VenueSuggestionRequest(UUID.randomUUID(), "Mekan", city, district, VenueSuggestionRequest.LiveMusic.UNKNOWN));
+        jdbc.update("""
+                insert into tbl_venue_suggestion(id, venue_name, city_id, district_id, city_name, district_name, live_music, created_at)
+                values ('00000000-0000-0000-0000-000000000001','Birinci',:city,:district,'Ankara','Çankaya','YES','2025-01-01'),
+                       ('00000000-0000-0000-0000-000000000002','İkinci',:city,:district,'Ankara','Çankaya','NO','2025-01-01')
+                """, Map.of("city", city, "district", district));
+        jdbc.update("update tbl_district set name='Değişen ad' where id=:district", Map.of("district", district));
+
+        var first = query.list(actor, 0, 2);
+        assertThat(first.totalElements()).isEqualTo(3);
+        assertThat(first.totalPages()).isEqualTo(2);
+        assertThat(first.content()).containsExactly(
+                new VenueSuggestionAdminQuery.Row("Mekan", "Ankara", "Çankaya", VenueSuggestionRequest.LiveMusic.UNKNOWN),
+                new VenueSuggestionAdminQuery.Row("İkinci", "Ankara", "Çankaya", VenueSuggestionRequest.LiveMusic.NO));
+        var second = query.list(actor, 1, 2);
+        assertThat(second.last()).isTrue();
+        assertThat(second.content()).containsExactly(
+                new VenueSuggestionAdminQuery.Row("Birinci", "Ankara", "Çankaya", VenueSuggestionRequest.LiveMusic.YES));
+        var beyond = query.list(actor, 2, 2);
+        assertThat(beyond.content()).isEmpty();
+        assertThat(beyond.totalElements()).isEqualTo(3);
+        assertThat(count("tbl_venue_suggestion_mail")).isEqualTo(2);
+        verify(access, times(4)).require(actor, PermissionEnum.MANAGE_VENUES);
+    }
+
+    @Test void adminPaginationRejectsOutOfRangeValues() {
+        var query = new VenueSuggestionAdminQuery(jdbc, mock(AdminPanelReadAccess.class));
+        var actor = mock(UserDetailsImpl.class);
+        assertThatThrownBy(() -> query.list(actor, -1, 20)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> query.list(actor, 1001, 20)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> query.list(actor, 0, 0)).isInstanceOf(SoundConnectException.class);
+        assertThatThrownBy(() -> query.list(actor, 0, 51)).isInstanceOf(SoundConnectException.class);
+    }
+
     @Test void sameRequestRaceCommitsOneSuggestionAndExactlyOneJobPerRecipient() throws Exception {
         var request = request(UUID.randomUUID());
         parallel(8, ignored -> store.accept(request, "Mekan", hash, dedupe, recipients));

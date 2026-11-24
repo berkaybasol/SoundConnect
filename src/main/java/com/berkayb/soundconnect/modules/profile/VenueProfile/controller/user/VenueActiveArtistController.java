@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueProfile.PUBLIC_BASE;
 
@@ -27,6 +28,7 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.VenueProfile.PU
 @Tag(name = "PUBLIC / Venue Profile")
 public class VenueActiveArtistController {
     private final VenueActiveArtistService service;
+    private final ProfileBlockVisibility profileBlocks;
 
     @GetMapping("/{venueId}/active-artists")
     public ResponseEntity<BaseResponse<PageResponse<VenueActiveArtistDto>>> list(
@@ -35,6 +37,7 @@ public class VenueActiveArtistController {
             @RequestParam(name = "q", required = false) @Size(max = 100) String query,
             @RequestParam(defaultValue = "0") @Min(0) @Max(10_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        profileBlocks.requireVisibleTarget("VENUE", venueId);
         return ResponseEntity.ok(BaseResponse.<PageResponse<VenueActiveArtistDto>>builder()
                 .success(true).code(200).message("Aktif sanatçılar getirildi.")
                 .data(service.list(venueId, type, query, page, size)).build());

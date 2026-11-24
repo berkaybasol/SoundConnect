@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.application.admin;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.admin.security.AdminPanelReadAccess;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest
-@ContextConfiguration(classes = {PendingApplicationAdminController.class, PendingApplicationQuery.class,
+@ContextConfiguration(classes = {PendingApplicationAdminController.class, PendingApplicationQuery.class, AdminPanelReadAccess.class,
         GlobalExceptionHandler.class, PendingApplicationAdminTest.Config.class})
 class PendingApplicationAdminTest {
     private static final String VENUES = "/api/v1/admin/venue-applications/pending";
@@ -69,7 +70,7 @@ class PendingApplicationAdminTest {
 
     @BeforeEach void createReviewer() {
         jdbc = new JdbcTemplate(db);
-        jdbc.update("insert into tbl_user values (?,'reviewer','ACTIVE',true,null,7)", actor);
+        jdbc.update("insert into tbl_user values (?,'reviewer','ACTIVE',true,null,7,false)", actor);
         jdbc.update("insert into user_roles values (?,1)", actor);
         jdbc.update("insert into user_permissions values (?,2),(?,3)", actor, actor);
     }

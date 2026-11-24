@@ -389,15 +389,15 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     + "'ACTIVITY_COMMENT:' || activity.activity_id::text else 'ACTIVITY_LIKE:' || activity.target_type "
                     + "|| ':' || activity.target_id::text end"), target("activity.target_type", "activity.target_id")));
 
-    private static final String MEDIA_TARGET_SQL = """
+    private static final String MEDIA_TARGET_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select media.id as target_id, media.kind, media.source_url, media.playback_url,
                    media.thumbnail_url, media.title as media_title, media.description as media_description, media.content_audience,
                    media.duration_seconds as media_duration_seconds, media.width, media.height,
                    publication.renderer_type, publication.publication_id, publication.track_title,
                    publication.track_duration_seconds, publication.bpm,
-                   (select count(*) from tbl_like likes where likes.target_type='MEDIA'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='MEDIA'
                        and likes.target_id=media.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='MEDIA'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='MEDIA'
                        and comments.target_id=media.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='MEDIA' and mine.target_id=media.id) as liked_by_me
@@ -472,9 +472,9 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                       where public_member.band_id=media.owner_id and public_member.status='ACTIVE')
                     and not exists(select 1 from tbl_band_member own_member where own_member.band_id=media.owner_id
                       and own_member.user_id=:viewerId and own_member.status='ACTIVE')))
-            """;
+            """);
 
-    private static final String EVENT_TARGET_SQL = """
+    private static final String EVENT_TARGET_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select event.id as target_id, event.title, event.description, event.event_date,
                    %s as normalized_start_seconds,
                    case when event.end_time is null then null else %s end as normalized_end_seconds,
@@ -485,9 +485,9 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
                    band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
-                   (select count(*) from tbl_like likes where likes.target_type='EVENT'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='EVENT'
                        and likes.target_id=event.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='EVENT'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='EVENT'
                        and comments.target_id=event.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='EVENT' and mine.target_id=event.id) as liked_by_me
@@ -526,11 +526,11 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                   join tbl_musician_profile own_profile on own_profile.id=own_publication.musician_profile_id
                   where own_publication.event_id=event.id and own_publication.visible
                     and own_profile.user_id=:viewerId)
-            """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
+            """).formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS);
 
-    private static final String EVENT_POST_TARGET_SQL = """
+    private static final String EVENT_POST_TARGET_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select intent.post_id as target_id, intent.note, intent.published_at,
                    event.id as event_id, event.title, event.description, event.event_date,
                    %s as normalized_start_seconds,
@@ -542,9 +542,9 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                    musician.id as musician_profile_id, musician_user.user_name as musician_username,
                    band.id as band_id, band.name as band_name,
                    event.manual_performer_name,
-                   (select count(*) from tbl_like likes where likes.target_type='EVENT_POST'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='EVENT_POST'
                        and likes.target_id=intent.post_id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='EVENT_POST'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='EVENT_POST'
                        and comments.target_id=intent.post_id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='EVENT_POST' and mine.target_id=intent.post_id) as liked_by_me
@@ -593,20 +593,20 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     and member_account.status='ACTIVE' and member_account.email_verified
                     and member_account.erased_at is null
                   where public_member.band_id=event.band_id and public_member.status='ACTIVE'))
-            """.formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
+            """).formatted(EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS);
 
-    private static final String TABLE_TARGET_SQL = """
+    private static final String TABLE_TARGET_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select share.id as target_id, share.note, share.published_at, share.final_source::text as final_source,
                    table_group.id as source_id, table_group.description, table_group.venue_name,
                    city.name as city_name, district.name as district_name, table_group.meeting_at,
                    table_group.expires_at, table_group.status, table_group.max_person_count,
                    (select count(*) from tbl_table_group_participants participant
                        where participant.table_group_id=table_group.id and participant.status='ACCEPTED') as accepted_count,
-                   (select count(*) from tbl_like likes where likes.target_type='TABLE_GROUP_POST'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='TABLE_GROUP_POST'
                        and likes.target_id=share.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='TABLE_GROUP_POST'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='TABLE_GROUP_POST'
                        and comments.target_id=share.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='TABLE_GROUP_POST' and mine.target_id=share.id) as liked_by_me
@@ -635,13 +635,13 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
                     select 1 from tbl_table_group_participants eligible
                     where eligible.table_group_id=table_group.id
                       and eligible.user_id=share.owner_user_id and eligible.status='ACCEPTED'))))
-            """;
+            """);
 
-    private static final String OVERTHINKING_TARGET_SQL = """
+    private static final String OVERTHINKING_TARGET_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select share.id as target_id, share.note, share.published_at, share.source_post_id as source_id,
-                   (select count(*) from tbl_like likes where likes.target_type='OVERTHINKING_PROFILE_SHARE'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='OVERTHINKING_PROFILE_SHARE'
                        and likes.target_id=share.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='OVERTHINKING_PROFILE_SHARE'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='OVERTHINKING_PROFILE_SHARE'
                        and comments.target_id=share.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='OVERTHINKING_PROFILE_SHARE' and mine.target_id=share.id) as liked_by_me
@@ -663,7 +663,7 @@ public class MusicianFeedMediaActivityCandidateProvider implements MusicianFeedC
               and not exists(select 1 from tbl_organizer_profile profile where profile.user_id=publisher.id)
               and not exists(select 1 from tbl_producer_profile profile where profile.user_id=publisher.id)
               and not exists(select 1 from tbl_venues owned_venue where owned_venue.owner_id=publisher.id)
-            """.replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"));
+            """).replace("/* MAINSTAGE_SOURCE */", com.berkayb.soundconnect.modules.feed.listener.core.ListenerFeedSourceSql.overthinking("source"));
 
     private final NamedParameterJdbcTemplate jdbc;
     private final EventShareUrlBuilder shareUrls;

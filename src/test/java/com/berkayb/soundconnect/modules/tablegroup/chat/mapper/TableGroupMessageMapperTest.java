@@ -18,7 +18,7 @@ class TableGroupMessageMapperTest {
 			Mappers.getMapper(TableGroupMessageMapper.class);
 	
 	@Test
-	void toResponseDto_shouldMapAllFieldsCorrectly() {
+	void toResponseDtoForDeletedMessagePreservesIdentityAndRedactsContent() {
 		// given
 		UUID messageId   = UUID.randomUUID();
 		UUID tableGroupId = UUID.randomUUID();
@@ -50,7 +50,7 @@ class TableGroupMessageMapperTest {
 		assertThat(dto.tableGroupId()).isEqualTo(tableGroupId);
 		assertThat(dto.senderId()).isEqualTo(senderId);
 		assertThat(dto.clientMessageId()).isEqualTo(clientMessageId);
-		assertThat(dto.content()).isEqualTo(content);
+		assertThat(dto.content()).isEqualTo("Bu mesaj kaldırıldı.");
 		assertThat(dto.messageType()).isEqualTo(type);
 		assertThat(dto.sentAt()).isEqualTo(sentAt.toInstant(ZoneOffset.UTC));
 		assertThat(dto.deletedAt()).isEqualTo(deletedAt.toInstant(ZoneOffset.UTC));
@@ -82,5 +82,6 @@ class TableGroupMessageMapperTest {
 		// then
 		assertThat(dto.sentAt()).isEqualTo(sentAt.toInstant(ZoneOffset.UTC));
 		assertThat(dto.deletedAt()).isNull();
+		assertThat(dto.content()).isEqualTo(content);
 	}
 }

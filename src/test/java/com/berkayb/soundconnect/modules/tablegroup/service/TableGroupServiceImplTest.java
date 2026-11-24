@@ -1224,6 +1224,25 @@ class TableGroupServiceImplTest {
 	}
 	
 	// -------------------- cancelTableGroup --------------------
+
+	@Test
+	void moderatorClosureUsesNormalCleanupAndAlsoNotifiesTheOwner() {
+		TableGroup group = createActiveTableGroup(3, Instant.now().plusSeconds(900));
+		group.setId(tableGroupId);
+		group.getParticipants().add(TableGroupParticipant.builder().userId(participantId)
+				.status(ParticipantStatus.ACCEPTED).build());
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
+
+		tableGroupService.closeForModeration(tableGroupId);
+
+		assertThat(group.getStatus()).isEqualTo(TableGroupStatus.CANCELLED);
+		verify(gameLifecycleService).tableClosed(group, "TABLE_CANCELLED");
+		verify(tableGroupMessageRepository).deleteAllByTableGroupIdIn(List.of(tableGroupId));
+		verify(notificationOutboxService).enqueue(eq(ownerId),eq(NotificationType.TABLE_CANCELLED),
+				anyString(),anyString(),anyMap());
+		verify(notificationOutboxService).enqueue(eq(participantId),eq(NotificationType.TABLE_CANCELLED),
+				anyString(),anyString(),anyMap());
+	}
 	
 	@Test
 	void cancelTableGroup_whenOwnerCancels_shouldSetStatusCancelledAndNotifyAcceptedParticipants() {

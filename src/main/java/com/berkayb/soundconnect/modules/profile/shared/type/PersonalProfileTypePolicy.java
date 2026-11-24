@@ -107,6 +107,11 @@ public class PersonalProfileTypePolicy {
 		return role != null && PERSONAL_PROFILE_ROLES.contains(role);
 	}
 
+	public static boolean isProfessionalProfileRole(String roleName) {
+		RoleEnum role = personalProfileRole(roleName);
+		return role != null && role != RoleEnum.ROLE_LISTENER;
+	}
+
 	private Set<RoleEnum> existingTypes(User user) {
 		EnumSet<RoleEnum> types = EnumSet.noneOf(RoleEnum.class);
 		if (user.getRoles() != null) {

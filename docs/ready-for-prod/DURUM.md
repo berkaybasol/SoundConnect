@@ -1,5 +1,7 @@
 # Güncel durum — tek durum kaynağı
 
+**25 Kasım 2026.** Yönetici paneli staging v15’e kadar doğrulandı. Kullanıcı 5. maddeyi prod sonrasına bıraktı ve backend ile mobilin teknik kapanışını istedi. [Aşama 02 kapsamı](asamalar/02/GOREV.md#25-kasım-2026--kabul-edilen-panel-kapsamı)
+
 **21 Kasım 2026.** 01.1–01.6 işletim kabulleri bağımsız olarak incelendi. Ürün kaynağının PR ve ana dal doğrulamasına ilişkin bağlantılar 01.8 kapanış özetinde yer alır. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
 
 Kapasite kabulü açık. Kullanıcı bu ölçümü yayın öncesine erteledi. 01’in Git kapanışı doğrulandıktan sonra 02’ye geçilebilir. [02 görevi](asamalar/02/GOREV.md)

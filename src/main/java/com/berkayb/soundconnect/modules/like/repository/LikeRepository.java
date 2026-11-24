@@ -35,7 +35,11 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 	@Query(value = """
 			select target_id as "targetId",count(*) as "likeCount",
 			       coalesce(bool_or(user_id=cast(:viewerId as uuid)),false) as "likedByMe"
-			from tbl_like where target_type='COMMENT' and target_id in (:ids) group by target_id
+			from tbl_like likes where target_type='COMMENT' and target_id in (:ids)
+            and not exists (select 1 from tbl_user_block b where b.unblocked_at is null
+              and ((b.blocker_id=:viewerId and b.blocked_id=likes.user_id)
+                or (b.blocked_id=:viewerId and b.blocker_id=likes.user_id)))
+            group by target_id
 			""",nativeQuery = true)
 	List<CommentLikes> commentLikes(@Param("ids") Collection<UUID> ids,@Param("viewerId") UUID viewerId);
 	interface CommentLikes {
@@ -69,6 +73,15 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 	// icerigin toplam begeni sayisi
 	long countByTargetTypeAndTargetId(EngagementTargetType targetType, UUID targetId);
 
+    String VISIBLE_LIKER = """
+            not exists (select 1 from UserBlock b where b.unblockedAt is null
+                and ((b.blocker.id=:viewer and b.blocked.id=l.user.id)
+                  or (b.blocked.id=:viewer and b.blocker.id=l.user.id)))
+            """;
+    @Query("select count(l) from Like l where l.targetType=:targetType and l.targetId=:targetId and " + VISIBLE_LIKER)
+    long countVisibleByTarget(@Param("viewer") UUID viewer, @Param("targetType") EngagementTargetType targetType,
+                              @Param("targetId") UUID targetId);
+
 	/**
 	 * Engagement is subordinate to its target and must not become a hard
 	 * reference that prevents the target owner from deleting their content.
@@ -86,9 +99,9 @@ public interface LikeRepository extends JpaRepository<Like, UUID> {
 	from Like l
 	where l.targetType = :targetType
 	  and l.targetId in :targetIds
-	group by l.targetId
-	""")
-	List<TargetCountProjection> countByTargetTypeAndTargetIdIn(
+	and """ + " " + VISIBLE_LIKER + " group by l.targetId")
+    List<TargetCountProjection> countVisibleByTargets(
+            @Param("viewer") UUID viewer,
 			@Param("targetType") EngagementTargetType targetType,
 			@Param("targetIds") Collection<UUID> targetIds
 	);

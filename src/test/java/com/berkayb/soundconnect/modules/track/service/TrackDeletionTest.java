@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.track.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
@@ -32,6 +33,8 @@ class TrackDeletionTest {
   @Mock BandMemberRepository bandMembers;
   @Mock StudioProfileRepository studios;
   @Mock MediaAssetRepository assets;
+
+  @Mock ProfileBlockVisibility profileBlocks;
   @InjectMocks TrackServiceImpl service;
   final UUID owner = UUID.randomUUID(), user = UUID.randomUUID(), asset = UUID.randomUUID(), id = UUID.randomUUID();
   Track track() { return Track.builder().id(id).ownerId(owner).ownerType(TrackOwnerType.MUSICIAN_PROFILE).mediaAssetId(asset).build(); }

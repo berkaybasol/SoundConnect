@@ -162,7 +162,7 @@ class StudioFeedMixerTest {
         var listing = new CollabListingResponse(UUID.randomUUID(), 0, CollabListingStatus.OPEN, null,
                 CollabCadence.REGULAR, wantedType, null, wantedType == CollabWantedType.MUSICIAN ? CollabBranch.SOUND_ENGINEER : null,
                 null, "Recording collaboration", "Request", null, List.of(), null, NOW.plusSeconds(3600), null,
-                null, CollabFeeStatus.NOT_APPLICABLE, NOW, null, NOW, null, 0, false, false, false);
+                null, CollabFeeStatus.NOT_APPLICABLE, NOW, null, NOW, null, 0, false, false, false, false);
         return candidate(id, MusicianFeedItemType.COLLAB, "MUSICIAN", score,
                 MusicianFeedLane.RELEVANT_OPPORTUNITY, new MusicianFeedPayloads.Collab(listing));
     }

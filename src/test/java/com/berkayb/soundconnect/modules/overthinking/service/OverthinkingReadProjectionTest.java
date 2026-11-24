@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.overthinking.service;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.comment.dto.support.UserSummaryDto;
 import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
 import com.berkayb.soundconnect.modules.comment.service.CommentService;
@@ -32,11 +33,28 @@ class OverthinkingReadProjectionTest {
     private final CommentAuthorBatchResolver identities = mock(CommentAuthorBatchResolver.class);
     private final PublicProfileResolverService navigationResolver = mock(PublicProfileResolverService.class);
     private final OverthinkingPostMapper mapper = Mappers.getMapper(OverthinkingPostMapper.class);
+    private final OverthinkingRevealRequestRepository reveals = mock(OverthinkingRevealRequestRepository.class);
+    private final UserBlockService blocks = mock(UserBlockService.class);
     private final OverthinkingPostServiceImpl posts = new OverthinkingPostServiceImpl(repository,
-            mock(OverthinkingRevealRequestRepository.class), mock(UserEntityFinder.class),
+            reveals, mock(UserEntityFinder.class),
             mock(OverthinkingArtistResolverService.class), mapper, mock(LikeService.class), mock(CommentService.class),
             identities, mock(CommentRepository.class), mock(LikeRepository.class), mock(OverthinkingPostCreationReceipts.class),
-            mock(OverthinkingRevealNotificationRetractionService.class));
+            mock(OverthinkingRevealNotificationRetractionService.class), blocks);
+
+    @Test void blockedAuthorsVisiblePostDisappearsButTheirAnonymousPostIsIndistinguishable() {
+        var viewer = UUID.randomUUID();
+        var author = User.builder().id(UUID.randomUUID()).build();
+        var named = post(author, OverthinkingVisibilityType.VISIBLE);
+        var anonymous = post(author, OverthinkingVisibilityType.ANONYMOUS);
+        var ids = List.of(named.getId(), anonymous.getId());
+        when(repository.findForViewerProjection(ids)).thenReturn(List.of(named, anonymous));
+        when(blocks.blockedAmong(viewer, List.of(author.getId()))).thenReturn(Set.of(author.getId()));
+        when(reveals.findPostIdsByRequesterIdAndStatusAndPostIdIn(viewer, OverthinkingRevealRequestStatus.APPROVED, ids)).thenReturn(Set.of(anonymous.getId()));
+        var visible = posts.getByIdsForViewer(viewer, ids);
+        assertThat(visible).containsOnlyKeys(anonymous.getId());
+        assertThat(visible.get(anonymous.getId()).authorId()).isNull();
+        verifyNoInteractions(identities);
+    }
 
     @Test void sameAuthorIsResolvedOnceAndStoredMusicNeedsNoProfileNavigationEnrichment() {
         User author = User.builder().id(UUID.randomUUID()).username("raw-name-must-not-win").build();

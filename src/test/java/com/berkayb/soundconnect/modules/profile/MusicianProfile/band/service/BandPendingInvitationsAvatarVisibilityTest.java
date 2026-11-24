@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
@@ -24,6 +25,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class BandPendingInvitationsAvatarVisibilityTest {
     @Mock MediaAssetRepository assets;
+
+    @Mock ProfileBlockVisibility profileBlocks;
     @InjectMocks MediaAssetServiceImpl media;
 
     @Test void displayBatchUsesCanonicalThumbnailAndOmitsMissingOrUnusableAssets() {

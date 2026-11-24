@@ -109,6 +109,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 				return;
 			}
+			if (rejectSuspended(request, response, userDetails)) return;
 			if (!(userDetails instanceof UserDetailsImpl principal)
 					|| principal.getUser().getSessionVersion() != sessionVersion) {
 				SecurityContextHolder.clearContext();
@@ -166,6 +167,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 			return;
 		}
+		if (rejectSuspended(request, response, details)) return;
 		if (!(details instanceof UserDetailsImpl principal)
 				|| principal.getUser().getSessionVersion() != sessionVersion
 				|| !venueApplicationSessionAccess.isAccessible(principal.getUser(), claims.applicationId())) {
@@ -174,6 +176,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		}
 		setAuthentication(request, new VenueApplicationPrincipal(principal.getUser(), claims.applicationId()));
 		filterChain.doFilter(request, response);
+	}
+
+	private boolean rejectSuspended(HttpServletRequest request, HttpServletResponse response, UserDetails details)
+			throws IOException {
+		// An authentic, unexpired bearer can learn only this account-level decision,
+		// including when the decision itself just revoked its session revision.
+		if (details instanceof UserDetailsImpl principal && principal.getUser().getErasedAt() == null
+				&& principal.getUser().isAccessSuspended()) {
+			SecurityContextHolder.clearContext();
+			securityErrorResponseWriter.write(request, response, ErrorType.ACCOUNT_SUSPENDED);
+			return true;
+		}
+		return false;
 	}
 
 	private void continueWithoutAuthentication(HttpServletRequest request, HttpServletResponse response,

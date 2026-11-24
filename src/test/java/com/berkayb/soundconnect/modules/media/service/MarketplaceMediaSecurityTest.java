@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaAccess;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
@@ -28,6 +29,8 @@ class MarketplaceMediaSecurityTest {
     @Mock MediaAssetRepository mediaAssetRepository;
     @Mock MarketplaceMediaAccess marketplaceMediaAccess;
     @Mock StorageClient storageClient;
+
+    @Mock ProfileBlockVisibility profileBlocks;
     @InjectMocks MediaAssetServiceImpl service;
     final UUID actor = UUID.randomUUID(), listing = UUID.randomUUID(), id = UUID.randomUUID();
 

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.event.audience;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.event.discovery.*;
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.enums.*;
@@ -57,6 +58,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class EventAudiencePostgresTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean UserBlockService blocks;
+
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("audience_test").withUsername("audience_test").withPassword("audience_test").withReuse(false);
     @Autowired DataSource dataSource; @Autowired EntityManager em; @Autowired PlatformTransactionManager manager;

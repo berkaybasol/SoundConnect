@@ -13,6 +13,23 @@ import java.util.UUID;
 final class MusicianFeedJdbcSupport {
     private MusicianFeedJdbcSupport() { }
 
+    private static final String BLOCKED_USERS = """
+            (select blocked_id from tbl_user_block where blocker_id=:viewerId and unblocked_at is null
+             union all select blocker_id from tbl_user_block where blocked_id=:viewerId and unblocked_at is null)
+            """;
+
+    // These aggregates belong to identified publications. The anonymous Overthinking
+    // source nested inside a share uses the canonical Overthinking projection instead.
+    static String withVisibleEngagement(String sql) {
+        return sql.replace("/* VISIBLE_LIKER */", "likes.user_id not in " + BLOCKED_USERS)
+                .replace("/* VISIBLE_COMMENT */", "comments.user_id not in " + BLOCKED_USERS + """
+                        and (comments.parent_comment_id is null or exists
+                          (select 1 from tbl_comment root where root.id=comments.parent_comment_id
+                           and root.target_id=comments.target_id and root.target_type=comments.target_type
+                           and root.user_id not in
+                        """ + BLOCKED_USERS + "))");
+    }
+
     static UUID uuid(ResultSet row, String column) throws SQLException {
         Object value = row.getObject(column);
         if (value == null) return null;

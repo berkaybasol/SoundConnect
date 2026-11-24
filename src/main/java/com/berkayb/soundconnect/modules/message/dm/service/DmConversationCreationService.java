@@ -21,6 +21,7 @@ public class DmConversationCreationService {
         return conversations.findConversationBetweenUsers(pair.userAId(),pair.userBId()).map(DMConversation::getId)
                 .orElseGet(() -> {
                     accounts.requireActive(List.of(pair.userAId(),pair.userBId()));
+                    accounts.requireInteractionAllowed(pair.userAId(),pair.userBId());
                     return conversations.saveAndFlush(DMConversation.builder()
                         .userAId(pair.userAId()).userBId(pair.userBId()).build()).getId();
                 });

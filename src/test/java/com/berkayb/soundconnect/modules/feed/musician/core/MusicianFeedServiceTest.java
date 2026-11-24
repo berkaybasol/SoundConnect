@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.feed.musician.core;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.feed.musician.api.*;
 import com.berkayb.soundconnect.modules.feed.musician.announcement.MusicianFeedAnnouncementPlan;
 import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementResponse;
@@ -68,7 +69,7 @@ class MusicianFeedServiceTest {
         guard = mock(MusicianFeedViewerGuard.class);
         feedback = mock(MusicianFeedFeedbackService.class);
         restrictions = mock(MusicianFeedRestrictionGuard.class);
-        when(restrictions.filter(anyCollection())).thenAnswer(invocation -> List.copyOf(invocation.getArgument(0)));
+        when(restrictions.filter(any(), anyCollection())).thenAnswer(invocation -> List.copyOf(invocation.getArgument(1)));
         personalization = mock(MusicianFeedPersonalizationSource.class);
         properties = new MusicianFeedProperties();
         deliveries = mock(MusicianFeedDeliveryService.class);
@@ -156,6 +157,20 @@ class MusicianFeedServiceTest {
     }
 
     @Test
+    void blockedAuthorIsRemovedFromNewFeedAndAnOldReplayBecomesInvalid() {
+        var repository = mock(com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionRepository.class);
+        var visibility = mock(ProfileBlockVisibility.class);
+        var hidden = candidate("TRACK:" + UUID.randomUUID(), 10);
+        var kept = candidate("TRACK:" + UUID.randomUUID(), 5);
+        when(visibility.hiddenOwners(eq(viewer), anyCollection())).thenReturn(Set.of(hidden.author().userId()));
+        var guard = new MusicianFeedRestrictionGuard(repository,
+                new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(new ObjectMapper()), visibility);
+        assertThat(guard.filter(viewer, List.of(hidden, kept))).containsExactly(kept);
+        assertThatThrownBy(() -> guard.requireUnrestricted(viewer, List.of(hidden.toResponse())))
+                .isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);
+    }
+
+    @Test
     void globalRestrictionsCoverOptionalProvidersAndPromotionsBeforeMixing() {
         var blocked = candidate("TRACK:globally-blocked", 1_000_000);
         var kept = candidate("TRACK:globally-kept", 900_000);
@@ -167,7 +182,7 @@ class MusicianFeedServiceTest {
             return requested.stream().filter(active::contains).collect(java.util.stream.Collectors.toSet());
         });
         restrictions = new MusicianFeedRestrictionGuard(repository,
-                new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(new ObjectMapper()));
+                new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedModerationScopeResolver(new ObjectMapper()), mock(ProfileBlockVisibility.class));
 
         var page = service(List.of(provider("new-extension", request -> List.of(blocked, kept))),
                 List.of(sponsorship("campaign", Set.of(MusicianFeedItemType.COLLAB), request -> List.of(promoted))), executor)

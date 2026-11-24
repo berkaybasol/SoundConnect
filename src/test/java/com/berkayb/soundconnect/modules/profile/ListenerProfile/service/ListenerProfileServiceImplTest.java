@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.ListenerProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.follow.service.FollowGraphMutationService;
 import com.berkayb.soundconnect.modules.follow.service.FollowService;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
@@ -64,6 +65,8 @@ class ListenerProfileServiceImplTest {
 	@Mock PersonalProfileTypePolicy personalProfileTypePolicy;
 	@Mock ListenerProfileProvisioner listenerProfileProvisioner;
 	@Mock ListenerSpotifyPlaylistRepository listenerSpotifyPlaylistRepository;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 
 	@InjectMocks ListenerProfileServiceImpl service;
 

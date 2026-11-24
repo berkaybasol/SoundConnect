@@ -37,7 +37,8 @@ public record StudioReservationOwnerResponse(
         String currency,
         long version,
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        ListenerVisibilityMode requesterVisibilityMode
+        ListenerVisibilityMode requesterVisibilityMode,
+        boolean interactionBlocked
 ) {
     public StudioReservationOwnerResponse {
         requesterVisibilityMode = requesterVisibilityMode == ListenerVisibilityMode.GHOST
@@ -91,7 +92,7 @@ public record StudioReservationOwnerResponse(
                 totalPriceMinor,
                 currency,
                 version,
-                null
+                null, false
         );
     }
 }

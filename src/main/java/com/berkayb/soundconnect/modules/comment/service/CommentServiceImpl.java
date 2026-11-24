@@ -60,12 +60,12 @@ public class CommentServiceImpl implements CommentService {
 	
 	@Override
 	@Transactional(readOnly = true)
-	public Map<UUID, Long> countCommentsByTargets(EngagementTargetType targetType, Collection<UUID> targetIds) {
+	public Map<UUID, Long> countCommentsByTargets(UUID viewerId, EngagementTargetType targetType, Collection<UUID> targetIds) {
 		if (targetIds == null || targetIds.isEmpty()) {
 			return Collections.emptyMap();
 		}
 		
-		return commentRepository.countByTargetTypeAndTargetIdIn(targetType, targetIds)
+		return commentRepository.countVisibleByTargets(viewerId, targetType, targetIds)
 		                        .stream()
 		                        .collect(Collectors.toMap(
 				                        CommentRepository.TargetCountProjection::getTargetId,
@@ -93,6 +93,7 @@ public class CommentServiceImpl implements CommentService {
 			var lockedParent = commentRepository.lockComment(request.parentCommentId())
 					.orElseThrow(() -> new SoundConnectException(ErrorType.COMMENT_NOT_FOUND));
 			
+			commentEntityFinder.requireVisibleAuthor(userId, lockedParent.getId(), lockedParent.getUserId(), true);
 			if (lockedParent.getDeleted()) {
 				throw new SoundConnectException(ErrorType.COMMENT_PARENT_DELETED);
 			}
@@ -158,13 +159,14 @@ public class CommentServiceImpl implements CommentService {
 		Pageable safePageable = buildCommentPageable(pageable);
 		requireReadable(viewerId, targetType, targetId);
 		
-		Page<Comment> page = commentRepository.findByTargetTypeAndTargetIdAndParentCommentIsNull(
+		Page<Comment> page = commentRepository.visibleRoots(
+				viewerId,
 				targetType,
 				targetId,
 				safePageable
 		);
 		
-		Map<UUID, Integer> replyCountMap = getReplyCountMap(page.getContent());
+		Map<UUID, Integer> replyCountMap = getReplyCountMap(page.getContent(), viewerId);
 		CommentAuthorContext authorContext = resolveAuthorContext(page.getContent(), viewerId);
 		var likeContext=loadLikes(page.getContent(),viewerId);
 		
@@ -177,13 +179,13 @@ public class CommentServiceImpl implements CommentService {
 	@Override
 	@Transactional(isolation = Isolation.REPEATABLE_READ)
 	public Page<CommentReplyResponseDto> getReplies(UUID viewerId, UUID parentCommentId, Pageable pageable) {
-		Comment parent = commentEntityFinder.getById(parentCommentId);
+		Comment parent = commentEntityFinder.getVisibleById(viewerId, parentCommentId);
 		if (parent.getParentComment() != null) throw new SoundConnectException(ErrorType.COMMENT_REPLY_DEPTH_NOT_ALLOWED);
 		requireReadable(viewerId, parent.getTargetType(), parent.getTargetId());
 		
 		Pageable safePageable = buildReplyPageable(pageable);
 		
-		Page<Comment> replies = commentRepository.findByParentComment(parent, safePageable);
+		Page<Comment> replies = commentRepository.visibleReplies(viewerId, parent, safePageable);
 		CommentAuthorContext authorContext = resolveAuthorContext(replies.getContent(), viewerId);
 		var likeContext=loadLikes(replies.getContent(),viewerId);
 		
@@ -203,7 +205,7 @@ public class CommentServiceImpl implements CommentService {
 		// Access guards lock current publication/privacy state in this transaction,
 		// just as comment list reads do. Do not expose the legacy unguarded count.
 		requireReadable(viewerId, targetType, targetId);
-		return commentRepository.countActiveByTarget(targetType, targetId);
+		return commentRepository.countActiveByTarget(viewerId, targetType, targetId);
 	}
 	
 	private void validateCommentText(String text) {
@@ -285,8 +287,7 @@ public class CommentServiceImpl implements CommentService {
 	}
 
     private void requireReadable(UUID viewerId, EngagementTargetType type, UUID id) {
-        if (type == EngagementTargetType.ANNOUNCEMENT) targetAccess.requireReadable(viewerId, type, id);
-        else targetAccess.requireReadable(type, id);
+        targetAccess.requireReadable(viewerId, type, id);
     }
 
 	private void requireActiveActor(UUID userId) {
@@ -387,7 +388,7 @@ public class CommentServiceImpl implements CommentService {
 	) {
 	}
 	
-	private Map<UUID, Integer> getReplyCountMap(List<Comment> comments) {
+	private Map<UUID, Integer> getReplyCountMap(List<Comment> comments, UUID viewerId) {
 		List<UUID> parentIds = comments.stream()
 		                               .map(Comment::getId)
 		                               .toList();
@@ -396,7 +397,7 @@ public class CommentServiceImpl implements CommentService {
 			return Collections.emptyMap();
 		}
 		
-		return commentRepository.countRepliesByParentIds(parentIds).stream()
+		return commentRepository.countRepliesByParentIds(viewerId, parentIds).stream()
 		                        .collect(Collectors.toMap(
 				                        projection -> projection.getParentCommentId(),
 				                        projection -> Math.toIntExact(projection.getReplyCount())

@@ -162,6 +162,39 @@ The first production release uses the following canonical TableGroup contract:
   retention rules and must be reviewed against erasure and legal-hold policy
   before release.
 
+## Reporting a table, message or incident
+
+Authenticated clients submit `POST /api/v1/table-groups/{tableGroupId}/reports`
+with a UUID `requestId`, a `kind`, a `reason`, and an optional `description` of
+up to 500 Unicode code points. A successful response contains only `id` and
+`reportedAt`. Keep the same key and payload when retrying an uncertain
+submission. A different incident uses a fresh key.
+
+| Kind | Eligibility and evidence | Reasons |
+| --- | --- | --- |
+| `LISTING` | An authenticated viewer of the active table reports its current listing. | `INAPPROPRIATE`, `MISLEADING`, `MONEY_REQUEST`, `OTHER` |
+| `MESSAGE` | An active owner or accepted member supplies the `messageId` of another user's visible text message. The server captures that one message, its author and its timestamp under the table lock. | `MONEY_REQUEST`, `HARASSMENT`, `SPAM`, `OTHER` |
+| `INCIDENT` | An active owner or accepted member, or a verified recent participant, supplies a nonblank account of what happened. | `HARASSMENT`, `MONEY_REQUEST`, `SAFETY`, `OTHER` |
+
+`GET /api/v1/table-groups/reportable-recent?page=0&size=20` returns the
+caller's recent tables using the standard page envelope. Rows include
+`tableGroupId`, `tableDescription`, `venueName`, `cityName`, `districtName`,
+`meetingAt`, `endReason`, `endedAt` and `reportUntil`. Eligibility lasts 48
+hours from leaving, removal, early closure or natural expiry. The end reasons
+are `LEFT`, `KICKED`, `CLOSED` and `EXPIRED`. Historic exit notifications
+prove participation after reapplication or membership pruning. The original
+expiry applies during scheduler lag. A pre-migration cancellation with no
+recoverable time cannot start a new window. Selecting a former table opens
+only the incident form.
+
+Staff can review the captured evidence after the table or its chat closes.
+Account erasure unlinks the erased account's stored identifiers and usernames
+from the report. The normal chat cleanup continues independently. A new report
+uses the configurable `app.table-group.rate-limit.report` quota, which
+defaults to 30 per account per hour. A successful replay consumes no quota.
+An unavailable report target returns `9135`. Reusing a request key for a
+different submission returns `9134`.
+
 ## Who pays game
 
 The first chat game topic is `WHO_PAYS` ("Hesap Kimde?"). It is available in

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.feed.musician.provider;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
 import com.berkayb.soundconnect.modules.event.support.EventShareUrlBuilder;
 import com.berkayb.soundconnect.modules.feed.musician.api.MusicianFeedItemType;
@@ -81,6 +82,8 @@ import static org.mockito.Mockito.when;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class MusicianFeedOverthinkingProviderTransactionPostgresTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")

@@ -99,6 +99,7 @@ public class VenueApplicationSessionService {
         var user=users.findByIdForUpdate(userId)
                 .orElseThrow(()->new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
         entityManager.refresh(user,LockModeType.PESSIMISTIC_WRITE);
+        if(user.isAccessSuspended()) throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
         if(application.getApprovedVenue()!=null)
             entityManager.refresh(application.getApprovedVenue(),LockModeType.PESSIMISTIC_READ);
         if(!access.permits(user,application)) throw new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND);

@@ -78,7 +78,7 @@ import static org.mockito.Mockito.*;
 @Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ContextConfiguration(classes = EventCommentReadRepositoryTest.RepositoryConfiguration.class)
-@Import({EventCommentReadService.class, CommentServiceImpl.class, CommentEntityFinder.class,
+@Import({com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class, EventCommentReadService.class, CommentServiceImpl.class, CommentEntityFinder.class,
         GhostListenerIdentityBatchResolver.class, CommentAuthorBatchResolver.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class EventCommentReadRepositoryTest {

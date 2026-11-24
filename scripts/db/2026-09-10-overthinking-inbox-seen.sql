@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS soundconnect_schema_migrations (
 
 LOCK TABLE tbl_overthinking_reveal_request IN SHARE ROW EXCLUSIVE MODE;
 ALTER TABLE tbl_overthinking_reveal_request ADD COLUMN IF NOT EXISTS inbox_revision bigint;
+-- This migration can also be replayed after viewer-block delivery was installed.
+ALTER TABLE tbl_overthinking_reveal_request ADD COLUMN IF NOT EXISTS delivery_suppressed boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS tbl_overthinking_reveal_inbox (
     author_id uuid PRIMARY KEY REFERENCES tbl_user(id) ON DELETE CASCADE,
@@ -40,24 +42,24 @@ WITH known AS (
            ) AS revision
     FROM tbl_overthinking_reveal_request request
     LEFT JOIN maxima ON maxima.author_id = request.author_id
-    WHERE request.inbox_revision IS NULL
+    WHERE request.inbox_revision IS NULL AND NOT request.delivery_suppressed
 )
 UPDATE tbl_overthinking_reveal_request request SET inbox_revision = missing.revision
 FROM missing WHERE request.id = missing.id;
 
 INSERT INTO tbl_overthinking_reveal_inbox(author_id, latest_revision, seen_revision)
 SELECT author_id, max(inbox_revision), 0
-FROM tbl_overthinking_reveal_request GROUP BY author_id
+FROM tbl_overthinking_reveal_request WHERE inbox_revision IS NOT NULL GROUP BY author_id
 ON CONFLICT (author_id) DO UPDATE
 SET latest_revision = greatest(tbl_overthinking_reveal_inbox.latest_revision, excluded.latest_revision);
 
-ALTER TABLE tbl_overthinking_reveal_request ALTER COLUMN inbox_revision SET NOT NULL;
+-- Suppressed requests have no recipient revision.
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint
                    WHERE conrelid = 'tbl_overthinking_reveal_request'::regclass
                      AND conname = 'ck_overthinking_reveal_inbox_revision') THEN
         ALTER TABLE tbl_overthinking_reveal_request
-            ADD CONSTRAINT ck_overthinking_reveal_inbox_revision CHECK (inbox_revision > 0);
+            ADD CONSTRAINT ck_overthinking_reveal_inbox_revision CHECK (delivery_suppressed OR (inbox_revision IS NOT NULL AND inbox_revision > 0));
     END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uk_overthinking_reveal_author_revision
@@ -75,7 +77,7 @@ BEGIN
 END $$;
 CREATE OR REPLACE TRIGGER trg_assign_overthinking_reveal_inbox_revision
 BEFORE INSERT ON tbl_overthinking_reveal_request
-FOR EACH ROW EXECUTE FUNCTION assign_overthinking_reveal_inbox_revision();
+FOR EACH ROW WHEN (NOT NEW.delivery_suppressed) EXECUTE FUNCTION assign_overthinking_reveal_inbox_revision();
 
 INSERT INTO soundconnect_schema_migrations(migration_id)
 VALUES ('2026-09-10-overthinking-inbox-seen') ON CONFLICT DO NOTHING;

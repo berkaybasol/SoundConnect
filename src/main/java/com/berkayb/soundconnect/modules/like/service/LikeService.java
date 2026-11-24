@@ -24,7 +24,7 @@ public interface LikeService {
 	long countLikes(EngagementTargetType targetType, UUID targetId);
     long countLikes(UUID viewerId, EngagementTargetType targetType, UUID targetId);
 	
-	Map<UUID, Long> countLikesByTargets(EngagementTargetType targetType, Collection<UUID> targetIds);
+	Map<UUID, Long> countLikesByTargets(UUID viewerId, EngagementTargetType targetType, Collection<UUID> targetIds);
 	
 	Set<UUID> findLikedTargetIds(UUID userId, EngagementTargetType targetType, Collection<UUID> targetIds);
 	

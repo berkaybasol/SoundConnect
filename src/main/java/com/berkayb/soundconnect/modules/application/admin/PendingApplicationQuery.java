@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.application.admin;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.admin.security.AdminPanelReadAccess;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 import com.berkayb.soundconnect.modules.role.enums.PermissionEnum;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -26,6 +27,7 @@ import java.util.UUID;
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class PendingApplicationQuery {
     private final NamedParameterJdbcTemplate jdbc;
+    private final AdminPanelReadAccess panelAccess;
 
     public enum Kind {
         VENUE("tbl_venue_applications", "user_id", "venue_name", "venue_address",
@@ -110,25 +112,7 @@ public class PendingApplicationQuery {
     }
 
     public void requireAccess(UserDetailsImpl actor, Kind kind) {
-        if (actor == null || actor.getId() == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
-        // Evaluate role-derived and direct permissions against the same snapshot as the page and count.
-        boolean allowed = Boolean.TRUE.equals(jdbc.queryForObject("""
-                select exists (
-                    select 1 from tbl_user u
-                    where u.id=:actor and u.status='ACTIVE' and u.email_verified and u.erased_at is null
-                      and u.session_version=:sessionVersion
-                      and not exists (select 1 from "tbl_listener-profile" lp where lp.user_id=u.id)
-                      and not exists (select 1 from user_roles ur join tbl_role r on r.id=ur.role_id
-                                      where ur.user_id=u.id and r.name='ROLE_LISTENER')
-                      and 2 = (select count(*) from tbl_permissions p
-                               where p.name in ('ADMIN_PANEL_ACCESS', :permission) and
-                                 (exists (select 1 from user_permissions up where up.user_id=u.id and up.permission_id=p.id)
-                                  or exists (select 1 from user_roles ur join role_permissions rp on rp.role_id=ur.role_id
-                                             where ur.user_id=u.id and rp.permission_id=p.id)))
-                )
-                """, Map.of("actor", actor.getId(), "sessionVersion", actor.getUser().getSessionVersion(),
-                "permission", kind.permission.name()), Boolean.class));
-        if (!allowed) throw new SoundConnectException(ErrorType.FORBIDDEN_ACCESS);
+        panelAccess.require(actor, kind.permission);
     }
 
     private PendingApplicationRow map(ResultSet row, int index) throws SQLException {

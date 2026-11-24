@@ -36,7 +36,7 @@ class NotificationErasureBoundaryPostgresTest {
             assertThat(connection.getCatalog()).isEqualTo("delivery_erasure_test");
         }
         jdbc=new JdbcTemplate(dataSource);
-        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
+        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp, access_suspended boolean not null default false)");
         jdbc.execute("create table if not exists tbl_overthinking_post(id uuid primary key,author_id uuid,visibility_type text,musician_track_id uuid,band_track_id uuid)");
         jdbc.execute("create table if not exists tbl_overthinking_reveal_request(id uuid primary key,post_id uuid,status text,requester_id uuid,author_id uuid)");
         jdbc.execute("create table if not exists tbl_role(id uuid primary key,name text);create table if not exists user_roles(user_id uuid,role_id uuid)");
@@ -44,7 +44,8 @@ class NotificationErasureBoundaryPostgresTest {
         jdbc.execute("create table if not exists tbl_media_asset(id uuid,content_audience text,owner_type text)");
         jdbc.execute("create table if not exists tbl_overthinking_notification_outbox(event_id uuid primary key,recipient_id uuid,notification_type text,payload jsonb,occurred_at timestamptz)");
         jdbc.execute("create table if not exists tbl_notification(id uuid primary key,recipient_id uuid)");
-        jdbc.execute("truncate tbl_notification,tbl_overthinking_reveal_request,tbl_overthinking_post,tbl_user,tbl_overthinking_notification_outbox");
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-11-24-user-blocks.sql")));
+        jdbc.execute("truncate tbl_user_block,tbl_notification,tbl_overthinking_reveal_request,tbl_overthinking_post,tbl_user,tbl_overthinking_notification_outbox");
         var manager=new DataSourceTransactionManager(dataSource);
         transaction=new TransactionTemplate(manager);
         var named=new NamedParameterJdbcTemplate(dataSource);
@@ -70,6 +71,16 @@ class NotificationErasureBoundaryPostgresTest {
     }
     boolean eligible() { return Boolean.TRUE.equals(transaction.execute(status -> policy.eligible(event()))); }
 
+    @Test void suspendedRecipientCannotReceiveDeliveryAndSharedHistoryStaysAvailableToTheirPeer() {
+        jdbc.update("update tbl_user set access_suspended=true where id=?", recipient);
+        assertThat(eligible()).isFalse();
+        assertThatThrownBy(() -> transaction.executeWithoutResult(status -> accounts.requireActive(List.of(requester, recipient))))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS));
+        assertThatCode(() -> transaction.executeWithoutResult(status ->
+                accounts.requireConversationReader(requester, List.of(requester, recipient)))).doesNotThrowAnyException();
+    }
+
     @Test void disabledOrUnverifiedPeerDoesNotInvalidateTheActiveCallersSession() {
         jdbc.update("update tbl_user set status='INACTIVE' where id=?",requester);
         var inactive=catchThrowableOfType(() -> transaction.executeWithoutResult(status ->
@@ -79,6 +90,14 @@ class NotificationErasureBoundaryPostgresTest {
         var unverified=catchThrowableOfType(() -> transaction.executeWithoutResult(status ->
                 accounts.requireActive(List.of(recipient,requester))),SoundConnectException.class);
         assertThat(unverified.getErrorType()).isEqualTo(ErrorType.FORBIDDEN_ACCESS);
+    }
+
+    @Test void queuedRevealDoesNotReachAnAccountAfterThePairHasBlockedAndUnblocked() {
+        assertThat(eligible()).isTrue();
+        jdbc.update("insert into tbl_user_block(blocker_id,blocked_id) values (?,?)", requester, recipient);
+        assertThat(eligible()).isFalse();
+        jdbc.update("update tbl_user_block set unblocked_at=clock_timestamp() where blocker_id=?", requester);
+        assertThat(eligible()).isFalse();
     }
 
     @Test void erasedRecipientOrActorAndMissingOrDecidedRequestCannotBeDelivered() {

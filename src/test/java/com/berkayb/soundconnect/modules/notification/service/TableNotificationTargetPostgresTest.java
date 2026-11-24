@@ -22,7 +22,8 @@ import static org.assertj.core.api.Assertions.*;
 @Testcontainers
 class TableNotificationTargetPostgresTest {
     @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16.4-alpine")
-            .withDatabaseName("table_target_test").withUsername("target_test").withPassword("target_test");
+            .withDatabaseName("table_target_test").withUsername("target_test").withPassword("target_test")
+            .withUrlParam("sslmode", "disable"); // This disposable database has no TLS configuration.
     JdbcTemplate jdbc;
     TableNotificationTargetService service;
     final ObjectMapper json=new ObjectMapper().findAndRegisterModules();
@@ -53,8 +54,11 @@ class TableNotificationTargetPostgresTest {
         jdbc.execute(Files.readString(Path.of("scripts/db/2026-09-30-table-notification-target.sql")));
     }
     void fixture(String suffix, String reason, boolean bound) throws Exception {
+        fixture(suffix,reason,bound,subject);
+    }
+    void fixture(String suffix, String reason, boolean bound, UUID recipient) throws Exception {
         boolean ownerEvent=Set.of("JOIN_REQUEST_RECEIVED","PARTICIPANT_LEFT").contains(suffix);
-        reader=ownerEvent?owner:subject;
+        reader=ownerEvent?owner:recipient;
         String action=suffix.equals("REMOVED")?"PARTICIPANT_REMOVED":suffix;
         Map<String,Object> payload=new LinkedHashMap<>();
         payload.put("module","TABLE");payload.put("tableGroupId",table.toString());payload.put("action",action);
@@ -73,8 +77,8 @@ class TableNotificationTargetPostgresTest {
     @ParameterizedTest @CsvSource({
         "JOIN_REQUEST_RECEIVED,,PENDING_APPLICATION","JOIN_REQUEST_APPROVED,,CHAT","JOIN_REQUEST_REJECTED,,RESULT",
         "PARTICIPANT_LEFT,,RESULT","REMOVED,,RESULT","CANCELLED,OWNER_CANCELLED,RESULT",
-        "CANCELLED,OWNER_JOINED_ANOTHER_TABLE,RESULT","EXPIRED,,RESULT"})
-    void allSevenTypesAndBothCancellationReasons(String suffix,String reason,Kind kind) throws Exception {
+        "CANCELLED,OWNER_JOINED_ANOTHER_TABLE,RESULT","CANCELLED,ADMIN_REMOVED,RESULT","EXPIRED,,RESULT"})
+    void allSevenTypesAndCancellationReasons(String suffix,String reason,Kind kind) throws Exception {
         fixture(suffix,reason,true);
         var r=service.resolve(reader,notification);
         assertThat(r.kind()).isEqualTo(kind);assertThat(r.reason()).isEqualTo(reason);
@@ -157,6 +161,15 @@ class TableNotificationTargetPostgresTest {
         assertThat(service.resolve(owner,notification).kind()).isEqualTo(Kind.PENDING_APPLICATION);
         jdbc.update("update tbl_role set name=?",role);unavailable(reader);
     }
+    @Test void moderatorRemovalCanBeOpenedByTheOwnerWhoReceivedIt() throws Exception {
+        jdbc.update("insert into tbl_table_group_participants values(?,?,'ACCEPTED',?,null)",table,owner,Timestamp.from(at));
+        fixture("CANCELLED","ADMIN_REMOVED",false,owner);
+        var result=service.resolve(owner,notification);
+        assertThat(result.kind()).isEqualTo(Kind.RESULT);
+        assertThat(result.subjectId()).isEqualTo(owner);
+        unavailable(stranger);
+    }
+
     @Test void migrationReplayPreservesProofAndLegacyExpiryWriterCanStillInsert() throws Exception {
         fixture("EXPIRED",null,false);
         String before=jdbc.queryForObject("select row_to_json(e)::text from tbl_table_notification_event e",String.class);

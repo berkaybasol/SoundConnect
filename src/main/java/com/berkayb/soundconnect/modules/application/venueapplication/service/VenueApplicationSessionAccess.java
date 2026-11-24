@@ -59,7 +59,8 @@ public class VenueApplicationSessionAccess {
     }
 
     private static boolean usable(User user) {
-        return user != null && user.getId() != null && user.getErasedAt() == null && Boolean.TRUE.equals(user.getEmailVerified());
+        return user != null && user.getId() != null && user.getErasedAt() == null && !user.isAccessSuspended()
+                && Boolean.TRUE.equals(user.getEmailVerified());
     }
     private static boolean pending(User user) {
         return usable(user) && user.getStatus() == UserStatus.PENDING_VENUE_REQUEST

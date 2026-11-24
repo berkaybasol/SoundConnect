@@ -179,6 +179,16 @@ class VenueApplicationPushPostgresTest {
         assertThat(f.store.prepare(oldClaim)).isEmpty();
         plan(unrelated(DM_NEW_MESSAGE,null)); assertThat(count("tbl_push_delivery")).isEqualTo(2);
     }
+    @Test void suspendedApplicantCannotRebindAnInstallationThroughTheLimitedSession() {
+        f.jdbc.update("update tbl_user set access_suspended=true where id=?", f.user);
+        int originalCount = count("tbl_push_device");
+        assertThatThrownBy(() -> f.tx.executeWithoutResult(s -> f.devices.registerApplication(f.user, app,
+                UUID.randomUUID(), registration(2, VenueApplicationPushPresentation.CAPABILITY))))
+                .isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class)
+                .extracting("errorType").isEqualTo(com.berkayb.soundconnect.shared.exception.ErrorType.ACCOUNT_SUSPENDED);
+        assertThat(count("tbl_push_device")).isEqualTo(originalCount);
+    }
+
     @Test void pendingCannotUseNormalRegisterAndWrongOrUnverifiedScopedSourceIsRejected() {
         assertThatThrownBy(()->f.tx.executeWithoutResult(s->f.devices.register(f.user,f.installation,registration(2,VenueApplicationPushPresentation.CAPABILITY))))
                 .isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);

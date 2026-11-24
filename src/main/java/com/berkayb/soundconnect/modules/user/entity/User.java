@@ -74,6 +74,12 @@ public class User extends BaseEntity {
 			columnDefinition = "bigint default 0")
 	@JsonIgnore
 	private long sessionVersion;
+
+	/** Changed together with the account-access decision and credential revision. */
+	@Column(name = "access_suspended", nullable = false, updatable = false,
+			columnDefinition = "boolean default false")
+	@JsonIgnore
+	private boolean accessSuspended;
 	
 	@NotBlank
 	@Email

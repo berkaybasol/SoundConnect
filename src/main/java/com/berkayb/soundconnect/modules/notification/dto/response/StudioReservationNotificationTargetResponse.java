@@ -17,4 +17,4 @@ public record StudioReservationNotificationTargetResponse(
         @JsonFormat(shape = JsonFormat.Shape.STRING) LocalDate localDate,
         @JsonFormat(shape = JsonFormat.Shape.STRING) LocalDate localEndDate,
         @JsonFormat(shape = JsonFormat.Shape.STRING) LocalTime localStartTime,
-        @JsonFormat(shape = JsonFormat.Shape.STRING) LocalTime localEndTime) { }
+        @JsonFormat(shape = JsonFormat.Shape.STRING) LocalTime localEndTime, boolean interactionBlocked) { }

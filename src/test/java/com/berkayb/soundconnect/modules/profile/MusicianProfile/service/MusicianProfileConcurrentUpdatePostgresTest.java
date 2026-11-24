@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.instrument.repository.InstrumentRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandService;
@@ -66,6 +67,8 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class MusicianProfileConcurrentUpdatePostgresTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("musician_profile_concurrent_update_test")

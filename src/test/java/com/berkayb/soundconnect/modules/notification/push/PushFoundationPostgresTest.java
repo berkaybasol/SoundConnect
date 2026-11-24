@@ -72,7 +72,8 @@ class PushFoundationPostgresTest {
         jdbc=new JdbcTemplate(datasource); sql=new NamedParameterJdbcTemplate(jdbc);
         transactionManager=new DataSourceTransactionManager(datasource);
         tx=new TransactionTemplate(transactionManager);
-        jdbc.execute("create table tbl_user(id uuid primary key, erased_at timestamptz, status varchar(20),email_verified boolean)");
+        jdbc.execute("create table tbl_user(id uuid primary key, erased_at timestamptz, status varchar(20),email_verified boolean,access_suspended boolean not null default false)");
+        jdbc.execute(Files.readString(Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         jdbc.execute("create table tbl_notification(id uuid primary key, recipient_id uuid not null references tbl_user(id), is_read boolean not null default false)");
         String migration=Files.readString(Path.of("scripts/db/2026-09-22-push-delivery-foundation.sql"));
         jdbc.execute(migration);
@@ -129,6 +130,17 @@ class PushFoundationPostgresTest {
     private void plan(Notification notification) { tx.executeWithoutResult(status->planner.plan(new NotificationPersisted(notification))); }
     private PushDeliveryStore.Claim claim() { return tx.execute(status->store.claimNext().orElseThrow()); }
     private String state(UUID id) { return jdbc.queryForObject("select status from tbl_push_delivery where id=?",String.class,id); }
+
+    @Test void suspensionPreventsNewDeviceBindingsAndSuppressesAnAlreadyQueuedDelivery() {
+        register(user,installation,"device-token");
+        plan(notification());
+        var inFlight = claim();
+        jdbc.update("update tbl_user set access_suspended=true where id=?",user);
+        assertThatThrownBy(()->register(user,UUID.randomUUID(),"other-device-token"))
+                .isInstanceOf(com.berkayb.soundconnect.shared.exception.SoundConnectException.class);
+        assertThat(store.prepare(inFlight)).isEmpty();
+        assertThat(state(inFlight.id())).isEqualTo("SUPPRESSED");
+    }
 
     @Test void inboxAndDeliveryRollbackTogetherAndPlanIsIdempotent() {
         register(user,installation,"device-token");

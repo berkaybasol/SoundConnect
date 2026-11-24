@@ -13,6 +13,9 @@ import com.berkayb.soundconnect.modules.track.dto.response.TrackResponseDto;
 import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.service.TrackService;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +33,12 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 	private final MediaAssetMapper mediaAssetMapper;
 	private final TrackService trackService;
 	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	@Override
 	@Transactional
 	public ProfileMediaUiResponseDto getProfileMedia(ProfileType profileType, UUID profileId) {
+		if (profileBlocks.hiddenTarget(profileType.name(), profileId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		if (profileType == ProfileType.STUDIO) MediaContentAudiencePolicy.requireStudioAccess();
 		if (profileType == ProfileType.LISTENER
 				&& listenerVisibilityPolicy.lockForReadAndIsPubliclyRestrictedProfile(profileId)) {

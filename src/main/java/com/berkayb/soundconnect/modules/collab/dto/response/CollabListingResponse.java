@@ -32,5 +32,6 @@ public record CollabListingResponse(
         long applicationCount,
         boolean ownedByMe,
         boolean appliedByMe,
-        boolean savedByMe
+        boolean savedByMe,
+        boolean interactionBlocked
 ) {}

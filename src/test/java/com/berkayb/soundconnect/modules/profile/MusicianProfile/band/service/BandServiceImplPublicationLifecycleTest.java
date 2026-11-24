@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
+
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.event.performer.service.EventPerformerRequestService;
 import com.berkayb.soundconnect.modules.event.publication.EventMemberPublicationRepository;
@@ -47,6 +49,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class BandServiceImplPublicationLifecycleTest {
+    @Mock private AccountDeliveryFence contact;
     @Mock BandRepository bandRepository;
     @Mock BandMemberRepository bandMemberRepository;
     @Mock UserEntityFinder userEntityFinder;

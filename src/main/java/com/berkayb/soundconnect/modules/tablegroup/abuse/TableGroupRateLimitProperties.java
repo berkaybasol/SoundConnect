@@ -26,6 +26,9 @@ public class TableGroupRateLimitProperties {
 	private Policy join = new Policy(60, Duration.ofHours(1));
 
 	@Valid @NotNull
+	private Policy report = new Policy(30, Duration.ofHours(1));
+
+	@Valid @NotNull
 	private Policy messagePerTable = new Policy(60, Duration.ofMinutes(1));
 
 	@Valid @NotNull
@@ -50,6 +53,8 @@ public class TableGroupRateLimitProperties {
 	public Policy getCreate() { return create; }
 	public void setCreate(Policy create) { this.create = create; }
 	public Policy getJoin() { return join; }
+	public Policy getReport() { return report; }
+	public void setReport(Policy report) { this.report = report; }
 	public void setJoin(Policy join) { this.join = join; }
 	public Policy getMessagePerTable() { return messagePerTable; }
 	public void setMessagePerTable(Policy messagePerTable) { this.messagePerTable = messagePerTable; }

@@ -26,8 +26,12 @@ public final class VenueApplicationDeviceScope {
                 """,args,(rs,index)->Map.entry(rs.getString(1),Optional.ofNullable(rs.getObject(2,UUID.class))));
         if(sources.isEmpty()) reject();
         var accounts=jdbc.query("""
-                select status from tbl_user where id=:user and email_verified and erased_at is null for share nowait
-                """,args,(rs,index)->rs.getString(1));
+                select status, access_suspended from tbl_user
+                where id=:user and email_verified and erased_at is null for share nowait
+                """,args,(rs,index)-> {
+                    if (rs.getBoolean("access_suspended")) throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
+                    return rs.getString("status");
+                });
         if(accounts.isEmpty()) reject();
         boolean pending="PENDING_VENUE_REQUEST".equals(accounts.getFirst())
                 && Set.of("PENDING","REJECTED").contains(sources.getFirst().getKey())

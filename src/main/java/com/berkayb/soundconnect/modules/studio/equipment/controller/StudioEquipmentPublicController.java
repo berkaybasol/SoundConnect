@@ -15,6 +15,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +30,13 @@ import java.util.UUID;
 @RequestMapping("/api/v1/public/studio-profiles/{studioProfileId}/equipment")
 @Tag(name = "Studio Equipment - Public", description = "Public equipment inventory and daily availability")
 public class StudioEquipmentPublicController {
+    private final ProfileBlockVisibility profileBlocks;
+
+    @ModelAttribute
+    public void checkProfileAccess(@PathVariable UUID studioProfileId) {
+        profileBlocks.requireVisibleTarget("STUDIO", studioProfileId);
+    }
+
     private final StudioEquipmentService equipmentService;
 
     @GetMapping
