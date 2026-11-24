@@ -51,8 +51,8 @@ public class TrackServiceImpl implements TrackService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
-		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		List<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
 				? trackRepository.findMainstageByOwner(ownerId, ownerType)
 				: trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
@@ -69,8 +69,8 @@ public class TrackServiceImpl implements TrackService {
 	@Override
 	@Transactional(readOnly = true)
 	public Page<TrackResponseDto> listTracks(UUID ownerId, TrackOwnerType ownerType, Pageable pageable) {
-		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		Page<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
 				? trackRepository.findMainstageByOwner(ownerId, ownerType, pageable)
 				: trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);

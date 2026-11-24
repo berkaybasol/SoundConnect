@@ -1,42 +1,56 @@
 package com.berkayb.soundconnect.modules.follow.controller;
 
-import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
-
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.entity.ListenerProfile;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.enums.ListenerVisibilityMode;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.repository.ListenerProfileRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.config.ExternalRabbitConsumersTestIsolation;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.List;
 import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Follow.*;
@@ -47,27 +61,48 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(classes = SoundConnectApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@SpringBootTest(classes = SoundConnectApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
 @TestMethodOrder(OrderAnnotation.class)
-// >>> HER KOŞUDA AYRI H2: başka testlerle çarpışmayı keser
-@TestPropertySource(properties = {
-		"spring.datasource.url=jdbc:h2:mem:sc-follow-ctrl-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-		"spring.jpa.hibernate.ddl-auto=create-drop"
-})
-// (opsiyonel) sınıf bitince context’i at → daha da izole
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Tag("web")
-@H2NotificationIdentityTestBoundary
+@Testcontainers
+@Import({ExternalRabbitConsumersTestIsolation.class, FollowControllerTest.Schema.class})
 class FollowControllerTest {
 
-    // This H2 HTTP contract fixture does not emulate PostgreSQL's durable INSERT.
-    // Real follow+intent transactions are covered by FollowNotificationOutboxPostgresRabbitIT.
+    @Container
+    static final PostgreSQLContainer<?> database = new PostgreSQLContainer<>("postgres:16.4-alpine");
+
+    @DynamicPropertySource
+    static void postgres(DynamicPropertyRegistry properties) {
+        properties.add("spring.datasource.url", database::getJdbcUrl);
+        properties.add("spring.datasource.username", database::getUsername);
+        properties.add("spring.datasource.password", database::getPassword);
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class Schema {
+        @Bean
+        @DependsOn("entityManagerFactory")
+        InitializingBean followSchema(JdbcTemplate jdbc) {
+            return () -> {
+                for (String migration : List.of("2026-09-28-media-notification-identity.sql",
+                        "2026-09-29-band-notification-identity.sql", "2026-11-24-user-blocks.sql")) {
+                    jdbc.execute(Files.readString(Path.of("scripts/db", migration)));
+                }
+            };
+        }
+    }
+
+    // FollowNotificationOutboxPostgresRabbitIT covers the durable intent and broker delivery.
     @MockitoBean com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService notificationOutbox;
+    @MockitoBean NotificationDlqBroker notificationDlqBroker;
+    @Autowired UserBlockService blocks;
 	
 	@Autowired MockMvc mockMvc;
 	@Autowired UserRepository userRepository;
@@ -118,6 +153,8 @@ class FollowControllerTest {
 		
 		User follower = userRepository.save(User.builder()
 		                                        .username("follower")
+		                                        .status(UserStatus.ACTIVE)
+		                                        .emailVerified(true)
 		                                        .email("f@x.com")
 		                                        .password("{noop}x")
 		                                        .roles(new HashSet<>())
@@ -126,6 +163,8 @@ class FollowControllerTest {
 		
 		User following = userRepository.save(User.builder()
 		                                         .username("following")
+		                                         .status(UserStatus.ACTIVE)
+		                                         .emailVerified(true)
 		                                         .email("g@x.com")
 		                                         .password("{noop}x")
 		                                         .roles(new HashSet<>())
@@ -260,6 +299,20 @@ class FollowControllerTest {
 		       .andExpect(jsonPath("$.code").value(1201))
 		       .andExpect(jsonPath("$.httpStatus").value("CONFLICT"))
 		       .andExpect(jsonPath("$.message").exists());
+	}
+
+	@Test
+	void blockedTargetRejectsFollowAndHidesTheGraph() throws Exception {
+		blocks.block(followingId, followerId);
+		mockMvc.perform(post(BASE + FOLLOW).contentType(APPLICATION_JSON)
+		                .content("{\"followingId\":\"" + followingId + "\"}"))
+		       .andExpect(status().isForbidden())
+		       .andExpect(jsonPath("$.code").value(1120));
+		mockMvc.perform(get(BASE + FOLLOWERS_COUNT, followingId))
+		       .andExpect(status().isNotFound())
+		       .andExpect(jsonPath("$.code").value(1301));
+		assertFalse(followRepository.existsByFollowerAndFollowing(
+				userRepository.findById(followerId).orElseThrow(), userRepository.findById(followingId).orElseThrow()));
 	}
 
 	@Test

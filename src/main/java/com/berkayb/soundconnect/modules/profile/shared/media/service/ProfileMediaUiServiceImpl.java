@@ -38,8 +38,8 @@ public class ProfileMediaUiServiceImpl implements ProfileMediaUiService {
 	@Override
 	@Transactional
 	public ProfileMediaUiResponseDto getProfileMedia(ProfileType profileType, UUID profileId) {
-		if (profileBlocks.hiddenTarget(profileType.name(), profileId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		if (profileType == ProfileType.STUDIO) MediaContentAudiencePolicy.requireStudioAccess();
+		if (profileBlocks.hiddenTarget(profileType.name(), profileId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		if (profileType == ProfileType.LISTENER
 				&& listenerVisibilityPolicy.lockForReadAndIsPubliclyRestrictedProfile(profileId)) {
 			return new ProfileMediaUiResponseDto(null, List.of(), List.of());

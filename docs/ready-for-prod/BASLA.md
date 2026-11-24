@@ -1,6 +1,6 @@
 # SoundConnect — yeni oturum başlangıcı
 
-**25 Kasım 2026.** Aşama 02 için seçilen yönetici paneli özelliklerinin ürün kabulü tamamlandı. Teknik kapanış ve iki ürün deposunun ana dal kontrolleri izleniyor. [Panel kapsamı ve yayın öncesi kontroller](asamalar/02/GOREV.md#25-kasım-2026--kabul-edilen-panel-kapsamı)
+**25 Kasım 2026.** Aşama 02 için seçilen yönetici paneli özelliklerinin ürün kabulü tamamlandı. Teknik kapanışın testleri ve ana dallara birleştirme kayıtları iki ürün deposunda izlenebilir. [Panel kapsamı](asamalar/02/GOREV.md#25-kasım-2026--kabul-edilen-panel-kapsamı) · [Backend PR 8](https://github.com/berkaybasol/SoundConnect/pull/8) · [Mobil PR 6](https://github.com/berkaybasol/soundconnect_mobile_231225/pull/6)
 
 **21 Kasım 2026.** Aşama 01’in işletim kabulleri bağımsız teknik incelemeden geçti. Ürün PR’ı ve ana dalın CI sonuçları 01.8 kapanış özetinden izlenebilir. [01.8 kapanış özeti](asamalar/01/KAPANIS_01_8_20261121.md)
 
