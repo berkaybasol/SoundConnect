@@ -18,6 +18,7 @@ import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypeP
 import com.berkayb.soundconnect.modules.pulse.redis.PulseRedisService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.controller.user.UserAccountController;
 import com.berkayb.soundconnect.modules.user.deletion.ListenerAccountDeletionService;
 import com.berkayb.soundconnect.modules.user.entity.User;
@@ -70,7 +71,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.socket.WebSocketHttpHeaders;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketMessage;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 import org.testcontainers.containers.*;
 import org.testcontainers.junit.jupiter.Container;
@@ -199,6 +205,7 @@ class AuthResetRealtimeAuthenticatedHttpIT {
     @MockitoBean ListenerAccountDeletionService deletion;
     @MockitoBean MarketplaceMediaLifecycle marketplace;
     @MockitoBean PulseRedisService pulse;
+    @MockitoBean UserBlockService blocks;
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private static AuthResetRealtimeAuthenticatedHttpIT monitorInstance;
     @TempDir Path temporaryRecoveryEvidence;
@@ -512,7 +519,7 @@ class AuthResetRealtimeAuthenticatedHttpIT {
             assertThat(changed.getSessionVersion()).isEqualTo(1L);
             assertThat(encoder.matches(NEW_PASSWORD, changed.getPassword())).isTrue();
             request("PATCH", USERNAME_PATH, oldToken, Map.of("username", "must-not-be-written"), 401);
-            assertConnectRejected(client, oldToken);
+            assertRevokedConnectClosed(oldToken);
             notifications.sendUnreadBadgeToUser(actor.id, 43);
             await().atMost(Duration.ofSeconds(5)).until(() -> droppedFrames.get() >= 1);
             assertThat(existing.messages.poll(300, TimeUnit.MILLISECONDS)).isNull();
@@ -603,6 +610,34 @@ class AuthResetRealtimeAuthenticatedHttpIT {
         var result = REDIS.execInContainer("timeout", "5", "redis-cli", "-n", "0", command);
         assertThat(result.getExitCode()).isZero(); return result.getStdout();
     }
+    private void assertRevokedConnectClosed(String token) throws Exception {
+        var closed = new CompletableFuture<CloseStatus>();
+        var frames = new AtomicInteger();
+        var observer = new AbstractWebSocketHandler() {
+            @Override public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) {
+                frames.incrementAndGet();
+            }
+            @Override public void handleTransportError(WebSocketSession session, Throwable error) {
+                closed.completeExceptionally(error);
+            }
+            @Override public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+                closed.complete(status);
+            }
+        };
+        var headers = new WebSocketHttpHeaders();
+        headers.setSecWebSocketProtocol(List.of("v12.stomp"));
+        var url = URI.create("ws://127.0.0.1:" + port + "/ws/websocket");
+        try (var socket = new StandardWebSocketClient().execute(observer, headers, url).get(10, TimeUnit.SECONDS)) {
+            var connect = StompHeaderAccessor.create(StompCommand.CONNECT);
+            connect.setAcceptVersion("1.2");
+            connect.setHost("127.0.0.1");
+            connect.setNativeHeader("Authorization", "Bearer " + token);
+            socket.sendMessage(new TextMessage(new StompEncoder().encode(connect.getMessageHeaders(), new byte[0])));
+            assertThat(closed.get(10, TimeUnit.SECONDS).getCode()).isEqualTo(CloseStatus.POLICY_VIOLATION.getCode());
+            assertThat(frames).as("revoked CONNECT receives neither CONNECTED nor private data").hasValue(0);
+        }
+    }
+
     private void assertConnectRejected(WebSocketStompClient client, String token) throws Exception {
         StompHeaders headers = new StompHeaders(); headers.add("Authorization", "Bearer " + token);
         CompletableFuture<StompHeaders> error = new CompletableFuture<>();
