@@ -12,6 +12,14 @@ class BandGateTest(unittest.TestCase):
         self.assertEqual(3, len(inventory()))
         self.assertTrue(all(inventory().values()))
 
+    def test_both_founder_departures_require_xml_and_gradle_events(self):
+        suite = "com.berkayb.soundconnect.modules.notification.service.BandNotificationIdentityPostgresTest"
+        self.assertEqual(["[1] cofounder=false", "[2] cofounder=true"],
+                         [case for case in inventory()[suite] if "cofounder=" in case])
+        self.assertEqual(["departureWithRemainingFounderNeedsNoChoice(boolean)[1]",
+                          "departureWithRemainingFounderNeedsNoChoice(boolean)[2]"],
+                         [case for case in inventory(events=True)[suite] if "departureWithRemainingFounder" in case])
+
     def test_actual_lifecycle_success(self):
         verify_events(self.GOOD, {'band': ['guard()']})
 
