@@ -31,6 +31,7 @@ import com.berkayb.soundconnect.modules.tablegroup.game.service.TableGroupGameLi
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.*;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.config.JpaAuditingConfig;
 import com.berkayb.soundconnect.shared.exception.*;
 import jakarta.persistence.EntityManager;
@@ -711,7 +712,8 @@ class ListenerAccountDeletionPostgresTest {
     @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
     @EntityScan(basePackages = "com.berkayb.soundconnect")
     @Import({JpaAuditingConfig.class, ListenerAccountDeletionService.class, ListenerAccountDataCleaner.class,
-            MediaDeletionStateService.class, CommentAuthorBatchResolver.class, OverthinkingRevealParticipantGuard.class})
+            MediaDeletionStateService.class, CommentAuthorBatchResolver.class, OverthinkingRevealParticipantGuard.class,
+            AccountDeliveryFence.class})
     static class Config {
         @Bean DataSource dataSource() {
             if (!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL must be running");
