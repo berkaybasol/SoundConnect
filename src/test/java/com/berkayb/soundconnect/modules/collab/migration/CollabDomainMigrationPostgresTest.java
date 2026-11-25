@@ -219,6 +219,33 @@ class CollabDomainMigrationPostgresTest {
     }
 
     @Test
+    void accountErasureMigrationClosesListingsAndRedactsOnlyTheErasedPersonsPhoneUnderDomainConstraints() throws Exception {
+        executeMigration(migrationSql());
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            seedCanonicalActorsAndListing(statement);
+            statement.execute(applicationInsert(APPLICATION_ONE_ID, APPLICANT_ONE_ACTOR_ID, APPLICANT_ONE_ID,
+                    "00000000-0000-0000-0000-000000000921", "'+905550000012'", "'PENDING'", "NULL"));
+            assertSqlState("23502", () -> statement.execute("update tbl_collab_application set phone_snapshot=null"));
+            statement.execute("alter table tbl_user add column erased_at timestamp");
+            statement.execute("update tbl_user set erased_at=now() where id='" + OWNER_ID + "'");
+        }
+
+        String migration = Files.readString(Path.of("scripts/db/2026-11-25-collab-account-erasure.sql"));
+        executeMigration(migration);
+        executeMigration(migration);
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            assertThat(singleString(statement, "select phone_snapshot from tbl_collab_application")).isEqualTo("+905550000012");
+            assertThat(singleString(statement, "select status from tbl_collab")).isEqualTo("CLOSED");
+            assertThat(singleString(statement, "select status from tbl_collab_application")).isEqualTo("INVALIDATED_BY_LISTING_CLOSURE");
+            assertThat(singleString(statement, "select phone_snapshot from tbl_collab_application")).isEqualTo("+905550000012");
+            statement.execute("select soundconnect_purge_collab_account('" + APPLICANT_ONE_ID + "'::uuid)");
+            assertThat(singleInt(statement, "select count(*) from tbl_collab_application where phone_snapshot is null")).isOne();
+            assertSqlState("23514", () -> statement.execute("update tbl_collab_application set status='PENDING'"));
+            assertSqlState("23514", () -> statement.execute("update tbl_collab_application set phone_snapshot='invalid'"));
+        }
+    }
+
+    @Test
     void canonicalTablesMatchJpaMappingsAndExposeProductionIndexes() throws Exception {
         executeMigration(migrationSql());
 

@@ -18,8 +18,14 @@ public record TableGroupParticipantDto(
 		String profilePictureUrl, //eklendi
 		@JsonInclude(JsonInclude.Include.NON_NULL)
 		ListenerVisibilityMode visibilityMode,
-		@JsonInclude(JsonInclude.Include.NON_NULL) UUID applicationId
+		@JsonInclude(JsonInclude.Include.NON_NULL) UUID applicationId,
+		@JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean blockedByMe,
+		@JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean blockedArrival
 ) {
+	public TableGroupParticipantDto(UUID userId, Instant joinedAt, ParticipantStatus status, String joinNote,
+			String username, String profilePictureUrl, ListenerVisibilityMode visibilityMode, UUID applicationId) {
+		this(userId, joinedAt, status, joinNote, username, profilePictureUrl, visibilityMode, applicationId, false, false);
+	}
 	public TableGroupParticipantDto(UUID userId, Instant joinedAt, ParticipantStatus status, String joinNote,
 		String username, String profilePictureUrl, ListenerVisibilityMode visibilityMode) {
 		this(userId, joinedAt, status, joinNote, username, profilePictureUrl, visibilityMode, null);

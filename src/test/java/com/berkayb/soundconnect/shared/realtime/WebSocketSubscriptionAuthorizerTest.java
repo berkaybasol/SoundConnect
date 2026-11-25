@@ -26,7 +26,21 @@ class WebSocketSubscriptionAuthorizerTest {
 
 	@Mock TableGroupRepository tableGroupRepository;
 	@Mock PulseRedisService pulseRedisService;
+	@Mock com.berkayb.soundconnect.modules.user.block.UserBlockService blocks;
+	@org.mockito.Spy com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
 	@InjectMocks WebSocketSubscriptionAuthorizer authorizer;
+
+	@Test void recipientDoesNotReceiveBrokerFrameRenderedBeforeTheyBlockedTheSender() throws Exception {
+		UUID viewer = UUID.randomUUID(), sender = UUID.randomUUID(), table = UUID.randomUUID();
+		var payload = new com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto(
+				UUID.randomUUID(), table, sender, "text", com.berkayb.soundconnect.modules.tablegroup.chat.enums.MessageType.TEXT,
+				Instant.now(), null);
+		when(blocks.blockedAmong(viewer, java.util.Set.of(sender))).thenReturn(java.util.Set.of(sender), java.util.Set.of());
+		byte[] bytes = json.writeValueAsBytes(payload);
+		String destination = WebSocketChannels.tableGroup(table, viewer);
+		org.assertj.core.api.Assertions.assertThat(authorizer.suppressStaleTableFrame(viewer, destination, bytes)).isTrue();
+		org.assertj.core.api.Assertions.assertThat(authorizer.suppressStaleTableFrame(viewer, destination, bytes)).isFalse();
+	}
 
 	@Test
 	void userCanOnlySubscribeToOwnDmAndNotificationTopics() {
@@ -56,14 +70,18 @@ class WebSocketSubscriptionAuthorizerTest {
 				org.mockito.ArgumentMatchers.any(Instant.class)
 		)).thenReturn(1L, 0L);
 
+		assertThatThrownBy(() -> authorizer.authorize(principal(userId), WebSocketChannels.tableGroup(groupId)))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> authorizer.authorize(principal(userId), WebSocketChannels.tableGroup(groupId, UUID.randomUUID())))
+				.isInstanceOf(AccessDeniedException.class);
 		assertThatCode(() -> authorizer.authorize(
 				principal(userId),
-				WebSocketChannels.tableGroup(groupId)
+				WebSocketChannels.tableGroup(groupId, userId)
 		)).doesNotThrowAnyException();
 
 		assertThatThrownBy(() -> authorizer.authorize(
 				principal(userId),
-				WebSocketChannels.tableGroup(groupId)
+				WebSocketChannels.tableGroup(groupId, userId)
 		)).isInstanceOf(AccessDeniedException.class);
 	}
 

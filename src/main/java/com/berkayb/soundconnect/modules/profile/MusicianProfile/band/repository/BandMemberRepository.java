@@ -16,6 +16,13 @@ import java.util.UUID;
 
 public interface BandMemberRepository extends JpaRepository<BandMember, UUID> {
 
+	@Query(value = """
+			select exists(select 1 from tbl_band_member m join tbl_user u on u.id=m.user_id
+			    where m.band_id=:bandId and m.user_id<>:userId and m.status='ACTIVE' and m.band_role='FOUNDER'
+			      and u.status='ACTIVE' and u.email_verified and u.erased_at is null and not u.access_suspended)
+			""", nativeQuery = true)
+	boolean hasOtherAvailableFounder(@Param("bandId") UUID bandId, @Param("userId") UUID userId);
+
 	// Lock the accounts while an offer is created, so suspension and creation have a defined order.
 	@Query(value = """
 			select u.id from tbl_band_member m join tbl_user u on u.id=m.user_id

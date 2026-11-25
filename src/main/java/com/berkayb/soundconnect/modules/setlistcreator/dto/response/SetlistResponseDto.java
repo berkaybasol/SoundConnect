@@ -6,6 +6,6 @@ import java.util.UUID;
 public record SetlistResponseDto(
 		UUID id,
 		String name,
-		List<SetlistResponseDto> sets
+		List<SetlistSetResponseDto> sets
 ) {
 }

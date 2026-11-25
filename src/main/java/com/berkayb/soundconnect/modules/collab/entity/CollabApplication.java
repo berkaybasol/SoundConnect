@@ -45,7 +45,7 @@ public class CollabApplication extends BaseEntity {
     @Column(name = "request_payload_hash", nullable = false, length = 64, updatable = false)
     private String requestPayloadHash;
 
-    @Column(name = "phone_snapshot", nullable = false, length = 32)
+    @Column(name = "phone_snapshot", length = 32)
     private String phoneSnapshot;
 
     @Column(length = 500)

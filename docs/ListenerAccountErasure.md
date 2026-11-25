@@ -1,12 +1,18 @@
-# Dinleyici hesabını kalıcı silme
+# Hesabı kalıcı silme
 
-`DELETE /api/v1/users/me/account`, kimliği doğrulanmış dinleyiciye aittir. Gövde `confirmation: "DELETE"` ile LOCAL hesapta `currentPassword`, GOOGLE hesapta doğrulanabilir `googleIdToken` içerir. Token doğrulaması veritabanı işlemi açılmadan yapılır; şifre veya Google subject, kullanıcı satırı kilitlendikten sonra güncel kimlikle karşılaştırılır. Giriş limitlerinden ayrı hesap silme kotası uygulanır. İstek/sır bilgileri loglanmaz.
+`DELETE /api/v1/users/me/account` dinleyici, müzisyen, mekân ve stüdyo hesaplarını kapsar. İstek `confirmation: "DELETE"` ile LOCAL hesapta `currentPassword`, GOOGLE hesapta `googleIdToken` içerir. Google kimlik doğrulaması veritabanı işleminden önce yapılır. Sunucu kullanıcı satırını kilitler ve güncel şifreyi veya Google kimliğini karşılaştırır. Hesap silme denemelerine kota uygulanır.
 
-Başarı `200 / success:true / data:true` döndürür. Yanlış yeniden doğrulama `1006/403`, farklı profil veya yönetici rolü `1007/409`, kalıcı silinmiş hesap `1008/410` üretir. İstek yalnızca mevcut oturumun hesabını hedefler. Yönetici silme yolu da dinleyici için aynı temizliği kullanır. Profesyonel hesapların kapatılması bu akışa dahil değildir. Bekleme veya geri alma dönemi yoktur.
+Başarı yanıtı `200 / success:true / data:true` olur. Kimlik uyuşmazlığı `1006/403`, yönetim yetkileri veya uyumsuz profil türleri `1007/409`, silinmiş hesap `1008/410` döndürür. İşlem kalıcıdır.
 
-Tek veritabanı işlemi şu değişiklikleri birlikte tamamlar:
+Son kurucu için `GET /api/v1/user/bands/account-deletion-options` bandları ve uygun aktif üyeleri listeler. Silme isteğinin `bandDecisions` dizisinde her band için `TRANSFER` ve `successorUserId` ya da `CLOSE` seçilir. Devir, kurucunun silme onayıyla aynı işlemde geçer. Band üyeliği veya karar geçerliliği değişirse sunucu `9223/409` döndürür ve işlem geri alınır.
+
+Uygulamaya erişemeyen kullanıcı `/api/v1/public/account-deletion/index.html` adresinde kayıtlı e-postasına kod isteyebilir. E-postası doğrulanmış yerel hesaplar mevcut SoundConnect şifresiyle de ilerleyebilir. Her iki yol hesap adını ve varsa devir seçeneklerini gösterir. Kullanıcının son onayına kadar hesap açık kalır. Doğrulama yalnızca hesap silmeye yetki verir ve on dakika geçerlidir.
+
+Veritabanı bu değişiklikleri birlikte tamamlar.
 
 - Dinleyici profili, Spotify listeleri, profil medyası bağlantıları, Overthinking yazıları ve bu yazılara bağlı yorum/beğeni/paylaşım/görüntüleme istekleri kaldırılır.
+- Hesapta geçmişten kalan Pazar ilanları ve kaydedilen Pazar ilanı bağlantıları kaldırılır. Mevcut bir şikâyetteki ilan görüntüsü ve kanıt fotoğrafları yönetici incelemesi için saklanır. Diğer ilan fotoğrafları arka planda temizlenir. Başka bir satıcının ilanı yayında kalır.
+- Hesabın kişisel veya band adına yayımladığı açık Collab ilanları kapanır. Bu ilanların bekleyen başvurularında kapanış görünür. Hesabın başka ilanlara yaptığı bekleyen başvurular geri çekilir, taraf olduğu açık işler iptal edilir ve başvurularındaki telefon temizlenir. Aynı bandın başka üyesine ait ilanlar ve tamamlanmış işlerin durumu korunur.
 - Kullanıcının etkinlik planı/paylaşımı, beğenileri, takipleri, başvuruları ve kaydedilmiş ilanları temizlenir. Başkalarının yazılarındaki kendi yorumunun metni kaldırılır; başkalarının yanıtları korunur.
 - Sahibi olduğu masalar kapanır; diğer masalardaki katılımı ve oyun kimlik görüntüleri temizlenir. Kendi masa profil paylaşımları ve sahip olduğu masaların başkalarınca yapılmış paylaşımları, bunlara bağlı yorum ve beğenilerle birlikte kaldırılır. Stüdyo rezervasyonu iptal edilir, doluluk serbest bırakılır ve telefon görüntüsü silinir.
 - Bildirim kutusu ve gönderim kuyruğundaki kimlik görüntüleri temizlenir. Eski bildirim tekrarını engelleyen teslim makbuzları kalır. Teslim anında hesap ve Overthinking kaynak kaydı yeniden doğrulanır.
@@ -24,4 +30,6 @@ Silinen kullanıcıya yeni referanslar eklemeyi engelleyen tetikleyiciler, hesap
 
 Silme işlemi kullanıcı satırından sonra masa/oyun ve rezervasyon kayıtlarını, ardından dinleyici profilini kilitler. Böylece devam eden oyunların profil okuması ile karşılıklı kilit bekleme oluşmaz. Hesap silmeye ait oyun geçişleri işlem içinde isim/avatar çözümlemez; başarılı commit callback’i yalnızca oyun UUID’sini sınırlı arka plan kuyruğuna bırakır. Güncel veri işçinin ayrı veritabanı işleminde okunur; eski işlem bağlantısını bırakmadan ikinci bağlantı beklemez. Kuyruk dolu veya kapanıyor olsa da veritabanındaki kapanış ve katılımcı temizliği korunur; anlık bildirim atlanabilir. Overthinking görüntüleme istekleri de kaynak/istek kilidinden önce diğer katılımcının kullanıcı satırını kilitleyerek hesap silmeyle aynı sırayı izler.
 
-Mobil uygulamanın mevcut giriş akışı LOCAL olduğundan şifre doğrulamalı silme diyaloğu uygulanmıştır. Backend Google tokenını destekler; mobil Google giriş/yeniden doğrulama SDK entegrasyonu mevcut değildir ve bu çalışma onu tamamlanmış saymaz.
+Android’de dinleyici, hesabı için mevcut şifresini girer veya Google kimliğini yeniden doğrular. Sunucu hangi yöntemin geçerli olduğunu hesap kaydından belirler. Google hesabı için doğrulanmış kimlikteki kalıcı hesap tanımlayıcısının (`subject`) kayıtla eşleşmesi gerekir. Geçersiz Google doğrulaması `1006/403`, Google doğrulama hizmetinin geçici kesintisi `1117/503` döndürür.
+
+Kendi hesabını silme, etkin ve e-postası doğrulanmış dinleyiciler içindir. Dinleyicinin yanında teknik `ROLE_USER` rolü bulunabilir. İşlem kilit altında güncel askıyı, rolleri, gerçek profil kayıtlarını ve doğrudan ya da rolden gelen yönetim izinlerini denetler. `ADMIN_PANEL_ACCESS`, `READ_USERS` veya `MANAGE_` ile başlayan bir izin varsa `1007/409` döner. Olağan bir ek izin (örneğin `READ_LOCATION`) dinleyicinin hesabını silmesine engel olmaz.

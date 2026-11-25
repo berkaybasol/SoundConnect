@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.image;
 
+import com.berkayb.soundconnect.modules.marketplace.dto.MarketplaceRequests;
 import com.berkayb.soundconnect.modules.media.deletion.*;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetReferenceGuard;
@@ -189,6 +190,36 @@ class ProtectedImageLifecyclePostgresTest extends MediaJpaPostgresFixture {
         assertThat(asset(photo.getId()).getStatus()).isEqualTo(MediaStatus.DELETION_PENDING);
         assertThat(storage.objects).containsOnlyKeys(photo.getStorageKey());
         assertThat(storage.deleted).isEmpty();
+    }
+
+    @Test
+    void accountPurgeRemovesOnlyUnreportedPhotoBytesAndThumbnails() throws Exception {
+        var listing = draft();
+        var evidence = image(listing.id());
+        var ordinary = image(listing.id());
+        var otherListing = service.createDraft(buyer, new MarketplaceRequests.Draft(UUID.randomUUID()));
+        var otherPhoto = image(otherListing.id());
+        listing = update(listing, evidence.getId());
+        retainInReport(listing.id(), evidence.getId());
+        update(listing, evidence.getId(), ordinary.getId());
+        for (var photo : List.of(evidence, ordinary, otherPhoto)) {
+            seed(photo.getStorageKey());
+            assertThat(workflow.backfillOne(photo.getId())).isTrue();
+        }
+
+        tx(() -> {
+            listings.lockUser(seller);
+            lifecycle.purgeAccount(seller);
+            return null;
+        });
+        assertThat(events.committed).containsExactly(ordinary.getId());
+        expireProducerGrace(ordinary.getId());
+        deletion.delete(ordinary.getId());
+
+        assertThat(assets.findById(ordinary.getId())).isEmpty();
+        assertThat(storage.objects).containsOnlyKeys(
+                evidence.getStorageKey(), ImageThumbnailService.protectedThumbnailKeyFor(evidence.getStorageKey()),
+                otherPhoto.getStorageKey(), ImageThumbnailService.protectedThumbnailKeyFor(otherPhoto.getStorageKey()));
     }
 
     private void seed(String key) { storage.objects.put(key, new byte[] {10, 20, 30}); }

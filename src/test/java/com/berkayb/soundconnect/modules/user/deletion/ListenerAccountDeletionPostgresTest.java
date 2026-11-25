@@ -1,6 +1,9 @@
 package com.berkayb.soundconnect.modules.user.deletion;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.collab.entity.*;
+import com.berkayb.soundconnect.modules.collab.enums.*;
+import com.berkayb.soundconnect.modules.collab.service.CollabAccountLifecycle;
 import com.berkayb.soundconnect.modules.comment.entity.Comment;
 import com.berkayb.soundconnect.modules.comment.support.CommentAuthorBatchResolver;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
@@ -8,6 +11,8 @@ import com.berkayb.soundconnect.modules.event.audience.EventAudienceIntent;
 import com.berkayb.soundconnect.modules.event.audience.EventIntent;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.like.entity.Like;
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionStateService;
 import com.berkayb.soundconnect.modules.media.enums.*;
@@ -86,13 +91,18 @@ class ListenerAccountDeletionPostgresTest {
     @Autowired EntityManager em;
     @Autowired PlatformTransactionManager manager;
     @Autowired ListenerAccountDeletionService deletion;
+    @Autowired CollabAccountLifecycle collab;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwords;
     @Autowired MediaDeletionStateService mediaDeletion;
     @Autowired CommentAuthorBatchResolver identities;
     @Autowired OverthinkingRevealParticipantGuard revealParticipants;
     @MockitoBean MediaAssetService media;
+    @MockitoBean MarketplaceMediaLifecycle marketplace;
     @MockitoBean TableGroupGameLifecycleService games;
+    @MockitoBean com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandAccountLifecycle bands;
+    @MockitoBean MusicianAccountDataCleaner musicians;
+    @MockitoBean BusinessAccountDeletionService businesses;
     JdbcTemplate jdbc;
     UUID owner;
 
@@ -115,7 +125,7 @@ class ListenerAccountDeletionPostgresTest {
                     "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
                     "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql",
                     "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql",
-                    "2026-11-24-user-blocks.sql")) {
+                    "2026-11-24-user-blocks.sql", "2026-11-25-collab-account-erasure.sql")) {
                 statement.execute(Files.readString(Path.of("scripts/db", migration)));
             }
         }
@@ -131,6 +141,167 @@ class ListenerAccountDeletionPostgresTest {
     @AfterEach void removeFailureTrigger() {
         jdbc.execute("drop trigger if exists test_fail_listener_cleanup on tbl_listener_spotify_playlist");
         jdbc.execute("drop function if exists test_fail_listener_cleanup()");
+    }
+
+    @Test void erasureClosesOnlyListingsCreatedByThisAccountEvenWithASharedBandAndPreservesReportEvidence() {
+        var ownerUser = users.findById(owner).orElseThrow();
+        var peer = tx(this::listener);
+        var city = tx(() -> persist(City.builder().name("Collab " + UUID.randomUUID()).build()));
+        var personal = collabActor(ProfileType.MUSICIAN);
+        var band = collabActor(ProfileType.BAND);
+        var peerActor = collabActor(ProfileType.MUSICIAN);
+        var personalListing = collabListing(ownerUser, personal, city, CollabListingStatus.OPEN);
+        var bandListing = collabListing(ownerUser, band, city, CollabListingStatus.OPEN);
+        var draft = collabListing(ownerUser, band, city, CollabListingStatus.DRAFT);
+        var survivingListing = collabListing(peer, band, city, CollabListingStatus.OPEN);
+        var pending = collabApplication(bandListing, peer, peerActor, CollabApplicationStatus.PENDING);
+        var ownSubmission = collabApplication(survivingListing, ownerUser, personal, CollabApplicationStatus.PENDING);
+        var report = tx(() -> persist(CollabReport.builder().listing(bandListing).reporterUser(peer)
+                .reason(CollabReportReason.MISLEADING).reportedAt(Instant.now()).clientRequestId(UUID.randomUUID())
+                .requestPayloadHash("1".repeat(64)).listingEvidence(CollabReportListingEvidence.capture(bandListing))
+                .evidenceCapturedAtReport(true).build()));
+        String reportBefore = collabRow("tbl_collab_report", report.getId());
+        String otherListingBefore = collabRow("tbl_collab", survivingListing.getId());
+
+        String bandListingBefore = collabRow("tbl_collab", bandListing.getId());
+        String submissionBefore = collabRow("tbl_collab_application", ownSubmission.getId());
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            deletion.deleteSelf(owner, PASSWORD, null);
+            status.setRollbackOnly();
+        });
+        assertThat(collabRow("tbl_collab", bandListing.getId())).isEqualTo(bandListingBefore);
+        assertThat(collabRow("tbl_collab_application", ownSubmission.getId())).isEqualTo(submissionBefore);
+
+        deletion.deleteSelf(owner, PASSWORD, null);
+
+        for (var listing : List.of(personalListing, bandListing)) {
+            assertThat(jdbc.queryForMap("select status,closure_reason from tbl_collab where id=?", listing.getId()))
+                    .containsEntry("status", "CLOSED").containsEntry("closure_reason", "OWNER_CLOSED");
+        }
+        assertThat(count("tbl_collab", "id", draft.getId())).isZero();
+        assertThat(collabRow("tbl_collab", survivingListing.getId())).isEqualTo(otherListingBefore);
+        assertThat(collabRow("tbl_collab_report", report.getId())).isEqualTo(reportBefore);
+        assertThat(collabApplicationRow(pending)).containsEntry("status", "INVALIDATED_BY_LISTING_CLOSURE")
+                .containsEntry("phone_snapshot", pending.getPhoneSnapshot());
+        assertThat(collabApplicationRow(ownSubmission)).containsEntry("status", "WITHDRAWN_BY_APPLICANT")
+                .containsEntry("phone_snapshot", null);
+
+        String listingAfter = collabRow("tbl_collab", bandListing.getId());
+        String applicationAfter = collabRow("tbl_collab_application", ownSubmission.getId());
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            users.findByIdForUpdate(owner).orElseThrow();
+            collab.purgeAccount(owner);
+        });
+        assertThat(collabRow("tbl_collab", bandListing.getId())).isEqualTo(listingAfter);
+        assertThat(collabRow("tbl_collab_application", ownSubmission.getId())).isEqualTo(applicationAfter);
+    }
+
+    @Test void erasureCancelsActiveJobsOnEitherSideAndErasesTheApplicantsPhoneEvenInCompletedHistory() {
+        var ownerUser = users.findById(owner).orElseThrow();
+        var peer = tx(this::listener);
+        var otherMember = tx(this::listener);
+        var city = tx(() -> persist(City.builder().name("Collab " + UUID.randomUUID()).build()));
+        var band = collabActor(ProfileType.BAND);
+        var peerActor = collabActor(ProfileType.MUSICIAN);
+        var ownJob = collabJob(collabListing(ownerUser, band, city, CollabListingStatus.CLOSED),
+                peer, peerActor, CollabJobStatus.ACTIVE);
+        var applicantJob = collabJob(collabListing(peer, peerActor, city, CollabListingStatus.CLOSED),
+                ownerUser, band, CollabJobStatus.ACTIVE);
+        var completedJob = collabJob(collabListing(peer, peerActor, city, CollabListingStatus.CLOSED),
+                ownerUser, band, CollabJobStatus.COMPLETED);
+        var otherMembersJob = collabJob(collabListing(otherMember, band, city, CollabListingStatus.CLOSED),
+                peer, peerActor, CollabJobStatus.ACTIVE);
+        String completedBefore = collabRow("tbl_collab_job", completedJob.getId());
+        String otherMemberBefore = collabRow("tbl_collab_job", otherMembersJob.getId());
+
+        deletion.deleteSelf(owner, PASSWORD, null);
+
+        for (var job : List.of(ownJob, applicantJob)) {
+            assertThat(jdbc.queryForObject("select status from tbl_collab_job where id=?", String.class, job.getId()))
+                    .isEqualTo("CANCELLED");
+        }
+        for (var history : List.of(applicantJob.getApplication(), completedJob.getApplication())) {
+            assertThat(collabApplicationRow(history)).containsEntry("status", "ACCEPTED").containsEntry("phone_snapshot", null);
+        }
+        assertThat(collabApplicationRow(ownJob.getApplication())).containsEntry("phone_snapshot", ownJob.getApplication().getPhoneSnapshot());
+        assertThat(collabRow("tbl_collab_job", completedJob.getId())).isEqualTo(completedBefore);
+        assertThat(collabRow("tbl_collab_job", otherMembersJob.getId())).isEqualTo(otherMemberBefore);
+    }
+
+    @Test void reciprocalCollabApplicationsAndBookmarksCanBeErasedConcurrently() throws Exception {
+        var ownerUser = users.findById(owner).orElseThrow();
+        var peer = tx(this::listener);
+        var city = tx(() -> persist(City.builder().name("Collab " + UUID.randomUUID()).build()));
+        var personal = collabActor(ProfileType.MUSICIAN);
+        var band = collabActor(ProfileType.BAND);
+        var personalListing = collabListing(ownerUser, personal, city, CollabListingStatus.OPEN);
+        var bandListing = collabListing(peer, band, city, CollabListingStatus.OPEN);
+        var one = collabApplication(personalListing, peer, band, CollabApplicationStatus.PENDING);
+        var two = collabApplication(bandListing, ownerUser, personal, CollabApplicationStatus.PENDING);
+        tx(() -> persist(CollabSavedListing.builder().user(peer).listing(personalListing).build()));
+        tx(() -> persist(CollabSavedListing.builder().user(ownerUser).listing(bandListing).build()));
+
+        var locked = new CountDownLatch(2);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var completions = new ArrayList<Future<?>>();
+            for (UUID id : List.of(owner, peer.getId())) {
+                completions.add(pool.submit(() -> new TransactionTemplate(manager).executeWithoutResult(status -> {
+                    users.findByIdForUpdate(id).orElseThrow();
+                    locked.countDown();
+                    waitFor(locked);
+                    deletion.deleteSelf(id, PASSWORD, null);
+                })));
+            }
+            for (var completion : completions) completion.get(15, TimeUnit.SECONDS);
+        }
+
+        for (var application : List.of(one, two)) {
+            var finalRow = collabApplicationRow(application);
+            assertThat(finalRow.get("status")).isIn("INVALIDATED_BY_LISTING_CLOSURE", "WITHDRAWN_BY_APPLICANT");
+            assertThat(finalRow.get("phone_snapshot")).isNull();
+            assertThat(count("tbl_collab_saved_listing", "collab_id", application.getListing().getId())).isZero();
+        }
+    }
+
+    private CollabActor collabActor(ProfileType type) {
+        return tx(() -> persist(CollabActor.builder().profileType(type).sourceProfileId(UUID.randomUUID())
+                .displayName(type.name()).build()));
+    }
+
+    private Collab collabListing(User publisher, CollabActor actor, City city, CollabListingStatus status) {
+        Instant now = Instant.now();
+        boolean wantsMusician = actor.getProfileType() == ProfileType.BAND;
+        return tx(() -> persist(Collab.builder().owner(publisher).publisherActor(actor).city(city)
+                .clientRequestId(UUID.randomUUID()).creationPayloadHash("2".repeat(64))
+                .cadence(CollabCadence.REGULAR).wantedType(wantsMusician ? CollabWantedType.MUSICIAN : CollabWantedType.BAND)
+                .branch(wantsMusician ? CollabBranch.VOCAL : null).title("Collab listing")
+                .description("Band rehearsal in the studio").status(status).publishedAt(status == CollabListingStatus.DRAFT ? null : now)
+                .closedAt(status == CollabListingStatus.CLOSED ? now : null)
+                .closureReason(status == CollabListingStatus.CLOSED ? CollabClosureReason.MATCHED : null).build()));
+    }
+
+    private CollabApplication collabApplication(Collab listing, User applicant, CollabActor actor, CollabApplicationStatus status) {
+        Instant now = Instant.now();
+        return tx(() -> persist(CollabApplication.builder().listing(listing).applicantUser(applicant).applicantActor(actor)
+                .clientRequestId(UUID.randomUUID()).requestPayloadHash("3".repeat(64)).phoneSnapshot("+905550000012")
+                .status(status).submittedAt(now).statusChangedAt(now)
+                .decidedAt(status == CollabApplicationStatus.ACCEPTED ? now : null).build()));
+    }
+
+    private CollabJob collabJob(Collab listing, User applicant, CollabActor actor, CollabJobStatus status) {
+        var accepted = collabApplication(listing, applicant, actor, CollabApplicationStatus.ACCEPTED);
+        Instant completed = status == CollabJobStatus.COMPLETED ? Instant.now() : null;
+        return tx(() -> persist(CollabJob.builder().listing(listing).application(accepted).publisherUser(listing.getOwner())
+                .publisherActor(listing.getPublisherActor()).applicantUser(applicant).applicantActor(actor).status(status)
+                .completedAt(completed).publisherConfirmedAt(completed).applicantConfirmedAt(completed).build()));
+    }
+
+    private Map<String, Object> collabApplicationRow(CollabApplication application) {
+        return jdbc.queryForMap("select status, phone_snapshot from tbl_collab_application where id=?", application.getId());
+    }
+
+    private String collabRow(String table, UUID id) {
+        return jdbc.queryForObject("select to_jsonb(r)::text from " + table + " r where id=?", String.class, id);
     }
 
     @Test void erasureRemovesTheFullPublicationGraphAndRetainsAnUnauthenticatableIdentityFreeTombstone() {
@@ -356,6 +527,50 @@ class ListenerAccountDeletionPostgresTest {
         UUID ordinary = tx(() -> { User user = listener(); user.getRoles().add(role("ROLE_USER")); return user.getId(); });
         deletion.deleteSelf(ordinary, PASSWORD, null);
         assertThat(users.findById(ordinary).orElseThrow().getErasedAt()).isNotNull();
+    }
+
+    @Test void directAdministrativeGrantsProtectAListenerWhileOrdinaryLegacyGrantsDoNot() {
+        for (String grant : List.of("ADMIN_PANEL_ACCESS", "MANAGE_USERS", "READ_USERS")) {
+            UUID protectedAccount = tx(() -> {
+                User user = listener();
+                user.getPermissions().add(persist(Permission.builder().name(grant).build()));
+                profile(user);
+                return user.getId();
+            });
+            assertError(() -> deletion.deleteSelf(protectedAccount, PASSWORD, null), ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE);
+            assertThat(users.findById(protectedAccount).orElseThrow().getErasedAt()).isNull();
+            assertThat(count("\"tbl_listener-profile\"", "user_id", protectedAccount)).isOne();
+        }
+        tx(() -> {
+            User user = em.find(User.class, owner);
+            user.getPermissions().add(persist(Permission.builder().name("READ_LOCATION").build()));
+            return null;
+        });
+        deletion.deleteSelf(owner, PASSWORD, null);
+        assertThat(users.findById(owner).orElseThrow().getErasedAt()).isNotNull();
+    }
+
+    @Test void administrativeGrantOnTheTechnicalUserRoleAlsoProtectsTheListener() {
+        new TransactionTemplate(manager).executeWithoutResult(transaction -> {
+            User user = em.find(User.class, owner);
+            Role technicalRole = role("ROLE_USER");
+            technicalRole.getPermissions().add(persist(Permission.builder().name("MANAGE_ROLES").build()));
+            user.getRoles().add(technicalRole);
+            em.flush();
+
+            assertError(() -> deletion.deleteSelf(owner, PASSWORD, null), ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE);
+            assertThat(users.findById(owner).orElseThrow().getErasedAt()).isNull();
+            transaction.setRollbackOnly();
+        });
+    }
+
+    @Test void selfDeletionChecksCurrentAccountAccessAgainUnderTheAccountLock() {
+        jdbc.update("update tbl_user set access_suspended=true where id=?", owner);
+        assertError(() -> deletion.deleteSelf(owner, PASSWORD, null), ErrorType.ACCOUNT_SUSPENDED);
+        jdbc.update("update tbl_user set access_suspended=false, status='INACTIVE' where id=?", owner);
+        assertError(() -> deletion.deleteSelf(owner, PASSWORD, null), ErrorType.FORBIDDEN_ACCESS);
+        assertThat(users.findById(owner).orElseThrow().getErasedAt()).isNull();
+        verifyNoInteractions(media, games);
     }
 
     @Test void administratorRetriesAreIdempotentAndNeitherSqlNorStaleEntitiesCanReviveTheAccount() {
@@ -713,7 +928,7 @@ class ListenerAccountDeletionPostgresTest {
     @EntityScan(basePackages = "com.berkayb.soundconnect")
     @Import({JpaAuditingConfig.class, ListenerAccountDeletionService.class, ListenerAccountDataCleaner.class,
             MediaDeletionStateService.class, CommentAuthorBatchResolver.class, OverthinkingRevealParticipantGuard.class,
-            AccountDeliveryFence.class})
+            AccountDeliveryFence.class, CollabAccountLifecycle.class})
     static class Config {
         @Bean DataSource dataSource() {
             if (!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL must be running");

@@ -5,6 +5,11 @@ import com.berkayb.soundconnect.modules.pulse.redis.PulseRedisService;
 import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
 import com.berkayb.soundconnect.modules.tablegroup.enums.TableGroupStatus;
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
+import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
+import com.berkayb.soundconnect.modules.tablegroup.game.service.TableGroupGameVisibility;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -30,7 +35,7 @@ public class WebSocketSubscriptionAuthorizer {
 					+ UUID_PATTERN + "(?:\\.badge)?$"
 	);
 	private static final Pattern TABLE_GROUP_DESTINATION = Pattern.compile(
-			"^" + Pattern.quote(WebSocketChannels.TOPIC_TABLE_GROUP) + "\\." + UUID_PATTERN + "$"
+			"^" + Pattern.quote(WebSocketChannels.TOPIC_TABLE_GROUP) + "\\." + UUID_PATTERN + "\\." + UUID_PATTERN + "$"
 	);
 	private static final Pattern PULSE_DESTINATION = Pattern.compile(
 			"^" + Pattern.quote(WebSocketChannels.TOPIC_PULSE) + "\\."
@@ -38,6 +43,34 @@ public class WebSocketSubscriptionAuthorizer {
 	);
 	private final TableGroupRepository tableGroupRepository;
 	private final PulseRedisService pulseRedisService;
+	private final UserBlockService blocks;
+	private final ObjectMapper json;
+
+	/** A queued broker frame may arrive after a block committed on another node. */
+	public boolean suppressStaleTableFrame(UUID viewer, String destination, Object payload) {
+		if (!destination.startsWith(WebSocketChannels.TOPIC_TABLE_GROUP + ".")) return false;
+		try {
+			JsonNode body = switch (payload) {
+				case byte[] bytes -> json.readTree(bytes);
+				case String text -> json.readTree(text);
+				default -> json.valueToTree(payload);
+			};
+			if (body == null || !body.isObject()) return true;
+			if (body.has("type")) {
+				String type = body.path("type").asText();
+				if ("TABLE_VISIBILITY_CHANGED".equals(type)) return false;
+				return !"BLOCKED_MEMBER_JOINED".equals(type)
+						|| !blocks.status(viewer, UUID.fromString(body.path("userId").asText())).blockedByMe();
+			}
+			var message = json.treeToValue(body, TableGroupMessageResponseDto.class);
+			var ids = message.game() == null ? new java.util.HashSet<UUID>()
+					: TableGroupGameVisibility.identities(java.util.List.of(message.game()));
+			if (message.senderId() != null) ids.add(message.senderId());
+			return !blocks.blockedAmong(viewer, ids).isEmpty();
+		} catch (RuntimeException | java.io.IOException unreadable) {
+			return true;
+		}
+	}
 
 	public void authorize(UserDetailsImpl principal, String destination) {
 		if (principal == null || destination == null || destination.isBlank()) {
@@ -56,7 +89,8 @@ public class WebSocketSubscriptionAuthorizer {
 		Matcher tableGroupMatcher = TABLE_GROUP_DESTINATION.matcher(destination);
 		if (tableGroupMatcher.matches()) {
 			UUID tableGroupId = UUID.fromString(tableGroupMatcher.group(1));
-			if (!canAccessTableGroup(principal.getId(), tableGroupId)) {
+			if (!principal.getId().equals(UUID.fromString(tableGroupMatcher.group(2)))
+					|| !canAccessTableGroup(principal.getId(), tableGroupId)) {
 				throw denied(destination);
 			}
 			return;

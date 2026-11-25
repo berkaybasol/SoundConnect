@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Hesabını sil · SoundConnect</title>
+  <link rel="stylesheet" href="./form.css">
+  <script src="./form.js" defer></script>
+</head>
+<body>
+<main>
+  <p class="brand">SoundConnect</p>
+  <h1>Hesabını sil</h1>
+  <noscript>Silme talebini iletmek için tarayıcında JavaScript'i etkinleştir.</noscript>
+  <form id="start">
+    <p>Kayıtlı e-posta adresine bir doğrulama kodu göndereceğiz.</p>
+    <label for="email">E-posta adresi</label>
+    <input id="email" type="email" autocomplete="email" required maxlength="254">
+    <button>Doğrulama kodu gönder</button>
+    <button class="secondary" type="button" id="use-password">SoundConnect şifremi kullan</button>
+  </form>
+  <form id="password" hidden>
+    <label for="password-email">Kayıtlı e-posta adresi</label>
+    <input id="password-email" type="email" autocomplete="username" required maxlength="254">
+    <label for="current-password">Mevcut SoundConnect şifren</label>
+    <input id="current-password" type="password" autocomplete="current-password" required maxlength="128">
+    <button>Şifremi doğrula</button>
+    <button class="secondary" type="button" id="use-code">E-posta kodu kullan</button>
+  </form>
+  <form id="verify" hidden>
+    <p>Bu adrese bağlı bir hesap varsa silme kodu e-postayla gönderildi.</p>
+    <label for="code">6 haneli doğrulama kodu</label>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" required pattern="[0-9]{6}" maxlength="6">
+    <button>Kodu doğrula</button>
+    <button class="secondary" type="button" id="restart">E-posta adımına dön</button>
+  </form>
+  <form id="confirm" hidden>
+    <p><strong id="account"></strong> hesabını kalıcı olarak sileceksin. Profilin, kişisel paylaşımların ve iletişim bilgilerin kaldırılır. Diğer kişilerin sohbet ve işlem geçmişinde ortak kayıtlar kalabilir.</p>
+    <div id="bands"></div>
+    <button>Hesabımı kalıcı olarak sil</button>
+    <button class="secondary" type="button" id="cancel">Vazgeç</button>
+  </form>
+  <p id="feedback" role="status" aria-live="polite"></p>
+</main>
+</body>
+</html>

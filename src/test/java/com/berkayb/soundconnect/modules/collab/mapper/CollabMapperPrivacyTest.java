@@ -147,6 +147,23 @@ class CollabMapperPrivacyTest {
         assertThat(reviewResponse.target().contactUsername()).isEqualTo("venue_owner");
     }
 
+    @Test
+    void completedJobDisablesFurtherInteractionWithAnErasedPersonalProfileButKeepsBandReviewsAvailable() {
+        User owner = user("venue_owner");
+        User applicant = user("deleted_applicant");
+        applicant.setErasedAt(java.time.LocalDateTime.now());
+        Collab listing = listing(owner, actor(ProfileType.VENUE));
+        CollabJob job = CollabJob.builder().status(CollabJobStatus.COMPLETED).listing(listing)
+                .publisherUser(owner).publisherActor(listing.getPublisherActor())
+                .applicantUser(applicant).applicantActor(actor(ProfileType.MUSICIAN)).build();
+        CollabMapper mapper = new CollabMapper(actorService);
+        var context = CollabMapper.ListingContext.empty(owner.getId());
+
+        assertThat(mapper.job(job, owner.getId(), false, context).interactionBlocked()).isTrue();
+        job.setApplicantActor(actor(ProfileType.BAND));
+        assertThat(mapper.job(job, owner.getId(), false, context).interactionBlocked()).isFalse();
+    }
+
     private User user(String username) {
         User value = new User();
         value.setId(UUID.randomUUID());

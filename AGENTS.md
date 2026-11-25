@@ -11,6 +11,8 @@ Bu giriş tek başına yeni ürün işi veya sonraki aşamayı başlatma talimat
 
 ## Kod kalitesi ve mevcut altyapı
 
+25 Kasım 2026 çalışma kuralı. İş yeni ekran içeriyorsa ürün koduna başlamadan önce her yeni ekranın görseli için kullanıcı onayı al. Kodlama sonunda yerelde kısa bir temel kontrol yap. Staging yayınından sonra yazılan otomatik testleri çalıştır, değişen API davranışını staging'de ve ilgili mobil akışı staging'e bağlı emülatörde elle doğrula. Kullanıcıya kısa test adımlarını ve beklenen sonucu ver. İş kullanıcının açık onayıyla kapanır. [Ortak karar](../../hafiza/kararlar.md#k-30--yeni-ekran-onayı-staging-testleri-ve-kullanıcıyla-kapanış)
+
 3 Ekim 2026 açık kullanıcı kararı: üretime hazır (prod-ready) seviyede kod
 kalitesi hedefle. Her ihtiyaçta önce mevcut altyapıyı tara; ihtiyacı karşılayan
 yapı varsa yeniden yazma, kullan ve gerektiğinde geliştir. Uygun yapı yoksa veya

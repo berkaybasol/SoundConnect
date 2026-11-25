@@ -17,13 +17,11 @@ import com.berkayb.soundconnect.modules.tablegroup.observability.TableGroupMetri
 import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.*;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -50,7 +48,8 @@ class TableGroupChatServiceImplTest {
 	private TableGroupMessageMapper messageMapper;
 	
 	@Mock
-	private SimpMessagingTemplate messagingTemplate;
+	private TableGroupChatDelivery delivery;
+	@Mock private com.berkayb.soundconnect.modules.user.block.UserBlockService blocks;
 	
 	@Mock
 	private TableGroupEntityFinder tableGroupEntityFinder;
@@ -78,15 +77,14 @@ class TableGroupChatServiceImplTest {
 		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(table)).thenReturn(TableGroup.builder()
 				.status(TableGroupStatus.ACTIVE).expiresAt(Instant.now().plusSeconds(60)).build());
 		when(messageRepository.findById(id)).thenReturn(Optional.of(message));
-		var mapper = org.mapstruct.factory.Mappers.getMapper(TableGroupMessageMapper.class);
-		when(messageMapper.toResponseDto(message)).thenAnswer(invocation -> mapper.toResponseDto(message));
+
 		TransactionSynchronizationManager.initSynchronization();
 		try {
 			chatService.removeReportedMessage(table,id);
-			verifyNoInteractions(messagingTemplate);
+			verifyNoInteractions(delivery);
 			assertThat(message.getDeletedAt()).isNotNull();
 			TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
-			verify(messagingTemplate).convertAndSend(WebSocketChannels.tableGroup(table),mapper.toResponseDto(message));
+			verify(delivery).enqueue(table, id, Set.of());
 			verifyNoInteractions(unreadHelper);
 		} finally {
 			TransactionSynchronizationManager.clearSynchronization();
@@ -98,7 +96,7 @@ class TableGroupChatServiceImplTest {
 		doThrow(new SoundConnectException(ErrorType.ACCOUNT_DELETED)).when(accounts).requireActive(List.of(sender));
 		assertThatThrownBy(() -> chatService.sendMessage(sender,table,new TableGroupMessageRequestDto("Message",MessageType.TEXT,UUID.randomUUID())))
 				.isInstanceOfSatisfying(SoundConnectException.class,e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETED));
-		verifyNoInteractions(messageRepository,tableGroupEntityFinder,rateLimitGuard,unreadHelper,messagingTemplate);
+		verifyNoInteractions(messageRepository,tableGroupEntityFinder,rateLimitGuard,unreadHelper,delivery);
 	}
 	
 	private TableGroup createActiveGroupWithAcceptedParticipants(UUID tableGroupId, UUID senderId, UUID otherUserId) {
@@ -185,15 +183,7 @@ class TableGroupChatServiceImplTest {
 		verify(rateLimitGuard).checkMessageUser(senderId, tableGroupId);
 		verify(metrics).messageSent();
 		
-		// unread: sadece diger accepted user icin increment
-		verify(unreadHelper, times(1)).incrementUnread(otherUserId, tableGroupId);
-		verify(unreadHelper, never()).incrementUnread(senderId, tableGroupId);
-		
-		// WS publish denemesi
-		verify(messagingTemplate).convertAndSend(
-				eq(WebSocketChannels.tableGroup(tableGroupId)),
-				eq(dto)
-		);
+		verify(delivery).enqueue(tableGroupId, dto.messageId(), Set.of(senderId, otherUserId));
 	}
 
 	@Test
@@ -229,7 +219,7 @@ class TableGroupChatServiceImplTest {
 		verify(messageRepository, never()).acquireClientMessageKeyLock(any(), any(), any());
 		verify(messageRepository, never()).countByTableGroupIdAndDeletedAtIsNull(any());
 		verify(messageRepository, never()).save(any());
-		verifyNoInteractions(unreadHelper, messagingTemplate, metrics);
+		verifyNoInteractions(unreadHelper, delivery, metrics);
 	}
 
 	@Test
@@ -260,7 +250,7 @@ class TableGroupChatServiceImplTest {
 		verifyNoInteractions(rateLimitGuard, tableGroupEntityFinder);
 		verify(messageRepository, never()).acquireClientMessageKeyLock(any(), any(), any());
 		verify(messageRepository, never()).save(any());
-		verifyNoInteractions(messageMapper, unreadHelper, messagingTemplate, metrics);
+		verifyNoInteractions(messageMapper, unreadHelper, delivery, metrics);
 	}
 
 	@Test
@@ -299,7 +289,7 @@ class TableGroupChatServiceImplTest {
 				tableGroupId, senderId, clientMessageId);
 		verify(messageRepository, never()).countByTableGroupIdAndDeletedAtIsNull(any());
 		verify(messageRepository, never()).save(any());
-		verifyNoInteractions(unreadHelper, messagingTemplate, metrics);
+		verifyNoInteractions(unreadHelper, delivery, metrics);
 	}
 
 	@Test
@@ -332,79 +322,18 @@ class TableGroupChatServiceImplTest {
 		TransactionSynchronizationManager.initSynchronization();
 		try {
 			assertThat(chatService.sendMessage(senderId, tableGroupId, request)).isEqualTo(dto);
-			verifyNoInteractions(unreadHelper, messagingTemplate, metrics);
+			verifyNoInteractions(unreadHelper, delivery, metrics);
 
 			List<TransactionSynchronization> synchronizations =
 					TransactionSynchronizationManager.getSynchronizations();
 			assertThat(synchronizations).hasSize(1);
 			synchronizations.getFirst().afterCommit();
 
-			verify(unreadHelper).incrementUnread(otherUserId, tableGroupId);
-			verify(messagingTemplate).convertAndSend(WebSocketChannels.tableGroup(tableGroupId), dto);
+			verify(delivery).enqueue(tableGroupId, dto.messageId(), Set.of(senderId, otherUserId));
 			verify(metrics).messageSent();
 		} finally {
 			TransactionSynchronizationManager.clearSynchronization();
 		}
-	}
-
-	@Test
-	void sendMessage_whenUnreadDeliveryFails_shouldStillBroadcastCommittedMessage() {
-		UUID tableGroupId = UUID.randomUUID();
-		UUID senderId = UUID.randomUUID();
-		UUID otherUserId = UUID.randomUUID();
-		TableGroup group = createActiveGroupWithAcceptedParticipants(tableGroupId, senderId, otherUserId);
-		TableGroupMessageRequestDto request = new TableGroupMessageRequestDto(
-				"selam", MessageType.TEXT, UUID.randomUUID());
-		TableGroupMessage saved = TableGroupMessage.builder()
-				.tableGroupId(tableGroupId)
-				.senderId(senderId)
-				.content(request.content())
-				.messageType(MessageType.TEXT)
-				.build();
-		TableGroupMessageResponseDto dto = new TableGroupMessageResponseDto(
-				UUID.randomUUID(), tableGroupId, senderId, request.content(), MessageType.TEXT,
-				Instant.now(), null
-		);
-		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
-		when(messageRepository.save(any(TableGroupMessage.class))).thenReturn(saved);
-		when(messageMapper.toResponseDto(saved)).thenReturn(dto);
-		doThrow(new IllegalStateException("redis unavailable"))
-				.when(unreadHelper).incrementUnread(otherUserId, tableGroupId);
-
-		assertThat(chatService.sendMessage(senderId, tableGroupId, request)).isEqualTo(dto);
-
-		verify(messagingTemplate).convertAndSend(WebSocketChannels.tableGroup(tableGroupId), dto);
-		verify(metrics).unreadCacheFailed("delivery");
-	}
-
-	@Test
-	void sendMessage_whenRealtimePublishFails_shouldReturnPersistedMessageAndRecordMetric() {
-		UUID tableGroupId = UUID.randomUUID();
-		UUID senderId = UUID.randomUUID();
-		UUID otherUserId = UUID.randomUUID();
-		TableGroup group = createActiveGroupWithAcceptedParticipants(tableGroupId, senderId, otherUserId);
-		TableGroupMessageRequestDto request = new TableGroupMessageRequestDto(
-				"persist me", MessageType.TEXT, UUID.randomUUID());
-		TableGroupMessage saved = TableGroupMessage.builder()
-				.tableGroupId(tableGroupId)
-				.senderId(senderId)
-				.content(request.content())
-				.messageType(MessageType.TEXT)
-				.build();
-		TableGroupMessageResponseDto dto = new TableGroupMessageResponseDto(
-				UUID.randomUUID(), tableGroupId, senderId, request.content(), MessageType.TEXT,
-				Instant.now(), null
-		);
-		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
-		when(messageRepository.save(any(TableGroupMessage.class))).thenReturn(saved);
-		when(messageMapper.toResponseDto(saved)).thenReturn(dto);
-		doThrow(new IllegalStateException("broker unavailable"))
-				.when(messagingTemplate).convertAndSend(WebSocketChannels.tableGroup(tableGroupId), dto);
-
-		assertThat(chatService.sendMessage(senderId, tableGroupId, request)).isEqualTo(dto);
-
-		verify(metrics).messageSent();
-		verify(metrics).realtimePublishFailed();
 	}
 
 	@Test
@@ -422,7 +351,7 @@ class TableGroupChatServiceImplTest {
 		verify(messageRepository, times(2)).findByTableGroupIdAndSenderIdAndClientMessageId(
 				eq(tableGroupId), eq(senderId), any(UUID.class));
 		verify(messageRepository, never()).save(any());
-		verifyNoInteractions(unreadHelper, messagingTemplate);
+		verifyNoInteractions(unreadHelper, delivery);
 	}
 
 	@Test
@@ -440,6 +369,8 @@ class TableGroupChatServiceImplTest {
 				.build();
 		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
 		when(messageRepository.save(any(TableGroupMessage.class))).thenReturn(saved);
+		when(messageMapper.toResponseDto(saved)).thenReturn(new TableGroupMessageResponseDto(
+				UUID.randomUUID(), tableGroupId, senderId, "ordered", MessageType.TEXT, Instant.now(), null));
 
 		chatService.sendMessage(
 				senderId,
@@ -505,7 +436,7 @@ class TableGroupChatServiceImplTest {
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_CHAT_LIMIT_REACHED);
 		verify(rateLimitGuard).checkMessageUser(senderId, tableGroupId);
 		verify(messageRepository, never()).save(any());
-		verifyNoInteractions(unreadHelper, messagingTemplate, metrics);
+		verifyNoInteractions(unreadHelper, delivery, metrics);
 	}
 
 	@Test
@@ -520,7 +451,7 @@ class TableGroupChatServiceImplTest {
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.VALIDATION_ERROR);
 		verifyNoInteractions(tableGroupEntityFinder);
-		verifyNoInteractions(rateLimitGuard, messageRepository, unreadHelper, messagingTemplate, metrics);
+		verifyNoInteractions(rateLimitGuard, messageRepository, unreadHelper, delivery, metrics);
 	}
 
 	@Test
@@ -537,7 +468,7 @@ class TableGroupChatServiceImplTest {
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.VALIDATION_ERROR);
 
 		verifyNoInteractions(rateLimitGuard, tableGroupEntityFinder, messageRepository,
-				unreadHelper, messagingTemplate, metrics);
+				unreadHelper, delivery, metrics);
 	}
 	
 	@Test
@@ -688,7 +619,7 @@ class TableGroupChatServiceImplTest {
 						.status(ParticipantStatus.ACCEPTED).joinedAt(Instant.now()).build())).build();
 		when(tableGroupEntityFinder.GetTableGroupByTableGroupId(tableId)).thenReturn(group);
 		Pageable page = PageRequest.of(0, 20);
-		when(messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(tableId, page))
+		when(messageRepository.findVisibleHistory(tableId, userId, page))
 				.thenReturn(Page.empty(page));
 		assertThat(chatService.getMessages(userId, tableId, page, false, cycle)).isEmpty();
 		verifyNoInteractions(unreadHelper);
@@ -737,7 +668,7 @@ class TableGroupChatServiceImplTest {
 		                                         .build();
 		
 		Page<TableGroupMessage> msgPage = new PageImpl<>(List.of(msg));
-		when(messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(tableGroupId, pageable))
+		when(messageRepository.findVisibleHistory(tableGroupId, requesterId, pageable))
 				.thenReturn(msgPage);
 		
 		TableGroupMessageResponseDto dto = new TableGroupMessageResponseDto(
@@ -788,7 +719,7 @@ class TableGroupChatServiceImplTest {
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.FORBIDDEN_ACCESS);
 		
 		verify(unreadHelper, never()).resetUnread(any(), any());
-		verify(messageRepository, never()).findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(any(), any());
+		verify(messageRepository, never()).findVisibleHistory(any(), any(), any());
 	}
 
 	@Test
@@ -800,8 +731,8 @@ class TableGroupChatServiceImplTest {
 		Pageable requested = PageRequest.of(1, 500, Sort.by("senderId").ascending());
 		Pageable expected = PageRequest.of(1, 100);
 		when(tableGroupEntityFinder.GetTableGroupByTableGroupId(tableGroupId)).thenReturn(group);
-		when(messageRepository.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
-				tableGroupId,
+		when(messageRepository.findVisibleHistory(
+				tableGroupId, requesterId,
 				expected
 		)).thenReturn(Page.empty(expected));
 
@@ -810,8 +741,8 @@ class TableGroupChatServiceImplTest {
 
 		assertThat(result).isEmpty();
 		verify(unreadHelper, never()).resetUnread(any(), any());
-		verify(messageRepository).findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
-				tableGroupId,
+		verify(messageRepository).findVisibleHistory(
+				tableGroupId, requesterId,
 				expected
 		);
 	}

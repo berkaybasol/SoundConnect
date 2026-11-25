@@ -1,7 +1,5 @@
 package com.berkayb.soundconnect.modules.application.venueapplication.controller.admin;
 
-import com.berkayb.soundconnect.shared.config.H2NotificationIdentityTestBoundary;
-
 import com.berkayb.soundconnect.SoundConnectApplication;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
@@ -15,6 +13,7 @@ import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.location.repository.CityRepository;
 import com.berkayb.soundconnect.modules.location.repository.DistrictRepository;
 import com.berkayb.soundconnect.modules.location.repository.NeighborhoodRepository;
+import com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.service.VenueProfileService;
 import com.berkayb.soundconnect.modules.role.entity.Role;
@@ -26,6 +25,7 @@ import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
+import com.berkayb.soundconnect.shared.config.ExternalRabbitConsumersTestIsolation;
 import com.berkayb.soundconnect.shared.mail.adapter.MailSenderClient;
 import com.berkayb.soundconnect.shared.mail.helper.MailJobHelper;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,23 +33,36 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -68,12 +81,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
 @EntityScan(basePackages = "com.berkayb.soundconnect")
-@TestPropertySource(properties = {
-		"spring.datasource.url=jdbc:h2:mem:sc-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-		"spring.jpa.hibernate.ddl-auto=create-drop"
-})
-@H2NotificationIdentityTestBoundary
+@Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Import({ExternalRabbitConsumersTestIsolation.class, VenueApplicationAdminControllerTest.NotificationSchema.class})
 class VenueApplicationAdminControllerTest {
+	@Container
+	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine");
+
+	@DynamicPropertySource
+	static void database(DynamicPropertyRegistry properties) {
+		properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+		properties.add("spring.datasource.username", POSTGRES::getUsername);
+		properties.add("spring.datasource.password", POSTGRES::getPassword);
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class NotificationSchema {
+		@Bean @DependsOn("entityManagerFactory")
+		InitializingBean notificationMigrations(JdbcTemplate jdbc) {
+			return () -> {
+				for (String script : List.of("2026-09-28-media-notification-identity.sql", "2026-09-29-band-notification-identity.sql")) {
+					jdbc.execute(Files.readString(Path.of("scripts/db", script)));
+				}
+			};
+		}
+	}
 	
 	private static final String BASE = "/api/v1/admin/venue-applications";
 	
@@ -90,6 +122,7 @@ class VenueApplicationAdminControllerTest {
 	@Autowired NeighborhoodRepository neighborhoodRepository;
 	
 	@MockitoBean RabbitTemplate rabbitTemplate;
+	@MockitoBean NotificationDlqBroker notificationDlqBroker;
 	@MockitoBean RedisConnectionFactory redisConnectionFactory;
 	@MockitoBean RedisTemplate<String, String> redisTemplate;
 	@MockitoBean OtpService otpService;
@@ -108,7 +141,7 @@ class VenueApplicationAdminControllerTest {
 	
 	// Profil oluşturmayı stub’la
 	@MockitoBean VenueProfileService venueProfileService;
-	// H2 exercises the HTTP/domain decision. Native receipt/inbox atomicity is
+	// This fixture exercises the HTTP/domain decision. Native receipt/inbox atomicity is
 	// covered by VenueApplicationPushPostgresTest with the real decision producer.
 	@MockitoBean VenueApplicationDecisionNotifications decisionNotifications;
 	

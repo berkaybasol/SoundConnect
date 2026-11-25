@@ -1,30 +1,25 @@
 package com.berkayb.soundconnect.modules.tablegroup.game.realtime;
 
-import com.berkayb.soundconnect.modules.tablegroup.chat.cache.TableGroupChatUnreadHelper;
+import com.berkayb.soundconnect.modules.tablegroup.chat.service.TableGroupChatDelivery;
 import com.berkayb.soundconnect.modules.tablegroup.chat.dto.response.TableGroupMessageResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.chat.entity.TableGroupMessage;
 import com.berkayb.soundconnect.modules.tablegroup.chat.mapper.TableGroupMessageMapper;
 import com.berkayb.soundconnect.modules.tablegroup.entity.TableGroup;
-import com.berkayb.soundconnect.modules.tablegroup.enums.ParticipantStatus;
 import com.berkayb.soundconnect.modules.tablegroup.game.dto.response.TableGroupGameResponseDto;
 import com.berkayb.soundconnect.modules.tablegroup.observability.TableGroupMetrics;
-import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.*;
+import java.util.Set;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class TableGroupGameRealtimePublisher {
 	private final TableGroupMessageMapper messageMapper;
-	private final SimpMessagingTemplate messagingTemplate;
-	private final TableGroupChatUnreadHelper unreadHelper;
+	private final TableGroupChatDelivery delivery;
 	private final TableGroupMetrics metrics;
 
 	public TableGroupMessageResponseDto publishCreatedAfterCommit(
@@ -33,32 +28,11 @@ public class TableGroupGameRealtimePublisher {
 			TableGroupGameResponseDto game
 	) {
 		TableGroupMessageResponseDto response = messageMapper.toResponseDto(message, game);
-		UUID senderId = message.getSenderId();
-		List<UUID> recipients = Optional.ofNullable(tableGroup.getParticipants()).orElseGet(Set::of)
-				.stream()
-				.filter(participant -> participant.getStatus() == ParticipantStatus.ACCEPTED)
-				.map(participant -> participant.getUserId())
-				.filter(Objects::nonNull)
-				.filter(userId -> !userId.equals(senderId))
-				.distinct()
-				.toList();
+		Set<UUID> recipients = TableGroupChatDelivery.acceptedUsers(tableGroup);
 		runAfterCommit(() -> {
-			for (UUID recipient : recipients) {
-				try {
-					unreadHelper.incrementUnread(recipient, tableGroup.getId());
-				} catch (RuntimeException exception) {
-					safeMetric(() -> metrics.unreadCacheFailed("game_delivery"));
-					log.warn(
-							"TABLE-GROUP GAME unread delivery failed: userId={}, tableGroupId={}, error={}",
-							recipient,
-							tableGroup.getId(),
-							exception.toString()
-					);
-				}
-			}
 			safeMetric(metrics::messageSent);
 			safeMetric(metrics::gameCreated);
-			publish(tableGroup.getId(), response);
+			delivery.enqueue(tableGroup.getId(), response.messageId(), recipients);
 		});
 		return response;
 	}
@@ -69,22 +43,8 @@ public class TableGroupGameRealtimePublisher {
 			TableGroupGameResponseDto game
 	) {
 		TableGroupMessageResponseDto response = messageMapper.toResponseDto(message, game);
-		runAfterCommit(() -> publish(tableGroupId, response));
+		runAfterCommit(() -> delivery.enqueue(tableGroupId, response.messageId(), Set.of()));
 		return response;
-	}
-
-	private void publish(UUID tableGroupId, TableGroupMessageResponseDto response) {
-		try {
-			messagingTemplate.convertAndSend(WebSocketChannels.tableGroup(tableGroupId), response);
-		} catch (RuntimeException exception) {
-			safeMetric(metrics::realtimePublishFailed);
-			log.warn(
-					"TABLE-GROUP GAME realtime publish failed: tableGroupId={}, gameId={}, error={}",
-					tableGroupId,
-					response.game() == null ? null : response.game().gameId(),
-					exception.toString()
-			);
-		}
 	}
 
 	private void safeMetric(Runnable metric) {

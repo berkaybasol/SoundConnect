@@ -76,10 +76,11 @@ public class SetistServiceImpl implements SetlistService{
 		SetlistSet set = setlistSetMapper.toEntity(request);
 		set.setSetlist(setlist);
 		setlist.addSet(set);
-		return setlistMapper.toResponse(setlistRepository.save(setlist));
+		return setlistMapper.toResponse(setlistRepository.saveAndFlush(setlist));
 	}
 	
 	@Override
+	@Transactional
 	public SetlistResponseDto addItemToSet(UUID userId, UUID setId, SetlistItemRequestDto request) {
 		SetlistSet set = setlistSetRepository.findById(setId)
 		                                     .orElseThrow(() -> new SoundConnectException(ErrorType.SETLIST_SET_NOT_FOUND));
@@ -90,8 +91,7 @@ public class SetistServiceImpl implements SetlistService{
 		
 		set.addItem(item);
 		
-		setlistSetRepository.save(set);
-		return setlistMapper.toResponse(set.getSetlist());
+		return setlistMapper.toResponse(setlistSetRepository.saveAndFlush(set).getSetlist());
 	}
 	
 	@Override

@@ -57,6 +57,7 @@ $LocalSchemaMigrations = @(
     @{ Name = "Overthinking profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-profile-shares.sql" },
     @{ Name = "Overthinking production safety"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-overthinking-production-safety.sql" },
     @{ Name = "Listener account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-listener-account-erasure.sql" },
+    @{ Name = "Collab account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-collab-account-erasure.sql" },
     @{ Name = "TableGroup profile shares"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-shares.sql" },
     @{ Name = "TableGroup profile share history"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-10-tablegroup-profile-share-history.sql" },
     @{ Name = "Musician feed preferences"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-11-musician-feed-preferences.sql" },
@@ -109,6 +110,10 @@ $LocalSchemaMigrations = @(
     @{ Name = "Mobile diagnostics"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-08-mobile-diagnostics.sql" }
     @{ Name = "Table report permission"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-table-report-permission.sql" }
     @{ Name = "Profile and content reports"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-content-reports.sql" }
+    @{ Name = "Band closure"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-band-collab-closure.sql" }
+    @{ Name = "Business account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-business-account-erasure.sql" }
+    @{ Name = "Application mail cleanup"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-application-erasure-mail-cleanup.sql" }
+    @{ Name = "Table membership acceptance time"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-table-block-arrival.sql" }
 )
 
 function Assert-Command([string]$Name) {

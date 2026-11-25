@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.collab.entity;
 
 import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
+import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -48,6 +49,10 @@ public class CollabActor extends BaseEntity {
     @Builder.Default
     @Column(nullable = false)
     private long version = 0;
+
+    public boolean profileAvailableFor(User contact) {
+        return profileType == ProfileType.BAND ? active : contact.getErasedAt() == null;
+    }
 
     public void recordReview(int rating) {
         ratingSum += rating;

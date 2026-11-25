@@ -108,6 +108,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private final TableGroupMetrics metrics;
 	private final TableGroupGameLifecycleService gameLifecycleService;
 	private final TableGroupExpiryWorker expiryWorker;
+	private final TableGroupBlockWarnings blockWarnings;
 
 	@Value("${app.table-group.chat.retention:P30D}")
 	private Duration chatRetention = Duration.ofDays(30);
@@ -249,6 +250,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 	// kullanicinin masaya katilma basvurusu
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote) {
+		joinTableGroup(userId, tableGroupId, joinNote, Set.of());
+	}
+
+	@Override
+	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote, Set<UUID> acknowledgedBlockedMemberIds) {
 		if (userId == null) {
 			throw new SoundConnectException(ErrorType.UNAUTHORIZED);
 		}
@@ -269,7 +275,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 		TableGroupActorPolicy.requireEligible(lockedActor);
 		requireNoInstitutionalFootprint(userId);
 		TableGroup tableGroup = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
-		Instant now = Instant.now();
+		// This request is the point at which the applicant acknowledged the current seats.
+		Instant now = blockWarnings.membershipTime();
 		requireActiveAndUnexpired(tableGroup, now);
 
 		if (tableGroup.getOwnerId().equals(userId)) {
@@ -291,6 +298,10 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 
 		String normalizedNote = normalizeJoinNote(joinNote);
+		Set<UUID> acknowledged = acknowledgedBlockedMemberIds == null ? Set.of() : acknowledgedBlockedMemberIds;
+		if (!acknowledged.containsAll(blockWarnings.forViewer(tableGroupId, userId).keySet())) {
+			throw new SoundConnectException(ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
+		}
 
 		TableGroupParticipant joinRequest;
 		if (existing.isPresent()) {
@@ -299,6 +310,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 			joinRequest = existing.get();
 			joinRequest.setStatus(ParticipantStatus.PENDING);
 			joinRequest.setJoinedAt(now);
+			joinRequest.setAcceptedAt(null);
 			joinRequest.setJoinNote(normalizedNote);
 		} else {
 			joinRequest = TableGroupParticipant.builder()
@@ -397,6 +409,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 
 		participant.setStatus(ParticipantStatus.ACCEPTED);
+		participant.setAcceptedAt(blockWarnings.membershipTime());
 		// Cancellation purges games with clearAutomatically=true. Flush the target
 		// acceptance first so that clearing the persistence context cannot discard
 		// it; the surrounding transaction still rolls both changes back together.
@@ -429,6 +442,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				applicationPayload(tableGroup.getId(), "JOIN_REQUEST_APPROVED", Map.of("ownerId", ownerId), participant)
 		);
 		runAfterCommit("join_approved", metrics::joinApproved);
+		UUID applicationId = participant.getApplicationId();
+		runAfterCommit("blocked_member_joined", () -> blockWarnings.notifyAccepted(tableGroupId, participantId, applicationId));
 
 	}
 
@@ -676,9 +691,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		entity.setNeighborhood(neighborhood);
 
 		// Owner'ı otomatik ACCEPTED participant olarak ekle
+		Instant ownerAdmission = blockWarnings.membershipTime();
 		TableGroupParticipant ownerParticipant = TableGroupParticipant.builder()
 		                                                              .userId(ownerId)
-		                                                              .joinedAt(now)
+		                                                              .joinedAt(ownerAdmission)
+		                                                              .acceptedAt(ownerAdmission)
 		                                                              .status(ParticipantStatus.ACCEPTED)
 		                                                              .build();
 
@@ -892,7 +909,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		Map<UUID, TableGroupResponseDto> renderedById = projectedById.entrySet().stream()
 				.collect(Collectors.toMap(
 						Map.Entry::getKey,
-						entry -> enrichUserMetadata(entry.getValue(), metadata, false),
+						entry -> enrichUserMetadata(entry.getValue(), metadata, false, Map.of()),
 						(first, ignored) -> first,
 						LinkedHashMap::new
 				));
@@ -905,7 +922,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 				viewerId,
 				true
 		);
-		return enrichUserMetadata(projected, resolveUserMetadata(List.of(projected), true), true);
+		Map<UUID, Boolean> warnings = blockWarnings.forViewer(entity.getId(), viewerId);
+		return enrichUserMetadata(projected, resolveUserMetadata(List.of(projected), true), true, warnings);
 	}
 
 	/**
@@ -1055,7 +1073,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 	private TableGroupResponseDto enrichUserMetadata(
 			TableGroupResponseDto dto,
 			UserMetadata metadata,
-			boolean includeParticipantProfileImages
+			boolean includeParticipantProfileImages,
+			Map<UUID, Boolean> warnings
 	) {
 		Set<TableGroupParticipantDto> participants = Optional.ofNullable(dto.participants())
 				.orElseGet(Set::of)
@@ -1071,6 +1090,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 								? metadata.profileImages().get(participant.userId())
 								: null)
 						.visibilityMode(metadata.visibilityModes().get(participant.userId()))
+						.blockedByMe(warnings.containsKey(participant.userId()))
+						.blockedArrival(Boolean.TRUE.equals(warnings.get(participant.userId())))
 						.build())
 				.collect(Collectors.toCollection(LinkedHashSet::new));
 

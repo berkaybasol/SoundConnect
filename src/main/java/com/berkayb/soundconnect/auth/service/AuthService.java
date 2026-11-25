@@ -52,7 +52,7 @@ public class AuthService {
 	
 	// Bilinmeyen kullanicilarda da BCrypt calistirarak username timing farkini azaltir.
 	// Bu hash herhangi bir gercek hesaba ait degildir ve yalniz dummy karsilastirma icindir.
-	private static final String DUMMY_PASSWORD_HASH =
+	public static final String DUMMY_PASSWORD_HASH =
 			"$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 	private final JwtTokenProvider jwtTokenProvider;

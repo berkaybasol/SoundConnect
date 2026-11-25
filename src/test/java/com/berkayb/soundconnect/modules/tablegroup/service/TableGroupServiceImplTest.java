@@ -126,6 +126,8 @@ class TableGroupServiceImplTest {
 
 	@Mock
 	private TableGroupExpiryWorker expiryWorker;
+	@Mock
+	private TableGroupBlockWarnings blockWarnings;
 	
 	@InjectMocks
 	private TableGroupServiceImpl tableGroupService;
@@ -137,6 +139,7 @@ class TableGroupServiceImplTest {
 	@BeforeEach
 	void setUp() {
 		ownerId = UUID.randomUUID();
+		lenient().when(blockWarnings.membershipTime()).thenAnswer(invocation -> Instant.now());
 		tableGroupId = UUID.randomUUID();
 		participantId = UUID.randomUUID();
 		lenient().when(userRepository.findRoleNamesByUserId(any(UUID.class)))
@@ -673,6 +676,30 @@ class TableGroupServiceImplTest {
 		assertThat(applicant.getApplicationId()).isEqualTo(currentCycle);
 		verifyNoInteractions(notificationOutboxService, gameLifecycleService);
 		verify(tableGroupRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void joinWithAcknowledgementRechecksBlockedSeatsBeforeCreatingRequest() {
+		TableGroup group = createActiveTableGroup(3, Instant.now().plusSeconds(3600));
+		group.setId(tableGroupId);
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
+		when(blockWarnings.forViewer(tableGroupId, participantId)).thenReturn(Map.of(ownerId, false));
+
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null, null))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null, Set.of()))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
+		verify(tableGroupRepository, never()).save(any());
+
+		tableGroupService.joinTableGroup(participantId, tableGroupId, null, Set.of(ownerId));
+		assertThat(group.getParticipants()).anyMatch(member -> participantId.equals(member.getUserId())
+				&& member.getStatus() == ParticipantStatus.PENDING && member.getAcceptedAt() == null);
+		verify(blockWarnings, never()).notifyAccepted(any(), any(), any());
 	}
 
 	@Test

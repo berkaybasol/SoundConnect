@@ -184,21 +184,24 @@ public class StudioRoomService {
         assertVersion(request.expectedVersion(), room.getVersion());
 
         Instant now = timeProvider.now();
-        reservationRepository.findFutureByRoomAndStatusesForUpdate(
+        var futureReservations = reservationRepository.findFutureByRoomAndStatusesForUpdate(
                 roomId,
                 List.of(StudioReservationStatus.PENDING_APPROVAL, StudioReservationStatus.CONFIRMED),
                 now
-        ).forEach(reservation -> {
-            reservation.setStatus(StudioReservationStatus.CANCELLED_BY_STUDIO);
-            reservation.setCancelledAt(now);
-            reservation.setCancelledBy(ownerUserId);
-            publishRoomArchiveCancellation(reservation, now);
-        });
+        );
         occupancyRepository.findFutureActiveByRoomForUpdate(roomId, now).forEach(occupancy -> {
             occupancy.setActive(false);
             occupancy.setReleasedAt(now);
             occupancy.setReleasedBy(ownerUserId);
             occupancy.setReleaseReason("Room archived");
+        });
+        // PostgreSQL validates the confirmed booking while its occupancy is updated.
+        occupancyRepository.flush();
+        futureReservations.forEach(reservation -> {
+            reservation.setStatus(StudioReservationStatus.CANCELLED_BY_STUDIO);
+            reservation.setCancelledAt(now);
+            reservation.setCancelledBy(ownerUserId);
+            publishRoomArchiveCancellation(reservation, now);
         });
         room.setArchivedAt(now);
         // Archived room history does not need to retain delivery references;

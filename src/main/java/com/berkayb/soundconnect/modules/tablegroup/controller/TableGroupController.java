@@ -20,6 +20,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -155,7 +156,8 @@ public class TableGroupController {
 	) {
 		UUID userId = getCurrentUserId(principal);
 		String joinNote = dto == null ? null : dto.note();
-		tableGroupService.joinTableGroup(userId, tableGroupId, joinNote);
+		tableGroupService.joinTableGroup(userId, tableGroupId, joinNote,
+				dto == null ? Set.of() : dto.acknowledgedBlockedMemberIds());
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Void>builder()

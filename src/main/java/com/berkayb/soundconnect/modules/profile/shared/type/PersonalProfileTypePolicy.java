@@ -60,6 +60,9 @@ public class PersonalProfileTypePolicy {
 		if (lockedUser == null || lockedUser.getId() == null) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
+		if (lockedUser.getErasedAt() != null) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
+		}
 		if (!isPersonalProfileRole(targetRole)) {
 			throw new SoundConnectException(ErrorType.ROLE_NOT_FOUND);
 		}

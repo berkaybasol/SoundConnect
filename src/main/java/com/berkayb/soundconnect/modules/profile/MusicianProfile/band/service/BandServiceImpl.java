@@ -66,7 +66,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class BandServiceImpl implements BandService {
-	private static final int MAX_FOUNDED_BANDS_PER_USER = 3;
+	static final int MAX_FOUNDED_BANDS_PER_USER = 3;
 	private static final int MAX_PENDING_INVITATION_PAGE = 10_000;
 	private static final int MAX_PENDING_INVITATION_SIZE = 50;
 	private static final long MAX_PENDING_INVITATION_OFFSET = 100_000L;
@@ -196,6 +196,7 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.BAND_INVITE_UNAUTHORIZED);
 		}
 		contact.requireInteractionAllowed(inviterId, invitedUserId);
+		contact.requireActive(List.of(inviterId, invitedUserId));
 		User invited = userEntityFinder.getUser(invitedUserId);
 		// A band invitation must be answerable by its recipient. The decision
 		// endpoints require an active, verified musician with a canonical profile.
@@ -432,8 +433,7 @@ public class BandServiceImpl implements BandService {
 			throw new SoundConnectException(ErrorType.BAND_MEMBER_NOT_ACTIVE);
 		}
 		
-		// founder ise cikamasin once baska founder atanmasi gerek
-		if (member.getBandRole() == BandRole.FOUNDER) {
+		if (member.getBandRole() == BandRole.FOUNDER && !bandMemberRepository.hasOtherAvailableFounder(bandId, userId)) {
 			throw new SoundConnectException(ErrorType.BAND_FOUNDER_CANNOT_LEAVE);
 		}
 		if (expectedTitleVersion == null || expectedTitleVersion < 0 ||
@@ -496,6 +496,12 @@ public class BandServiceImpl implements BandService {
 		setlistRepository.deleteAllByBand_Id(bandId);
 		trackRepository.deleteAllByOwnerIdAndOwnerType(bandId, TrackOwnerType.BAND);
 		bandFollowRepository.deleteAllByBand(band);
+		band.setProfilePictureMediaId(null);
+		bandRepository.deleteMediaAttachments(bandId);
+		bandRepository.adoptReferencedCovers("BAND", bandId);
+		for (UUID assetId : bandRepository.lockOwnedMedia(bandId)) {
+			mediaAssetService.delete(assetId, userId, MediaOwnerType.BAND, bandId);
+		}
 		bandRepository.delete(band);
 
 		log.info("Band silindi. bandId={}, requesterId={}", bandId, userId);

@@ -20,14 +20,18 @@ def inventory(events=False):
         if re.search(r"@Disabled|disabledWithoutDocker\s*=\s*true", text):
             raise ValueError(f"Required BAND suite may not skip: {suite}")
         names = [name + "()" for name in re.findall(r"@Test\s+void\s+(\w+)\s*\(", text)]
-        parameters = re.findall(r"@(?:org.junit.jupiter.params.)?ParameterizedTest\s+"
-                               r"@(?:org.junit.jupiter.params.provider.)?ValueSource\(strings=\{([^}]+)\}\)\s+"
-                               r"void\s+(\w+)\(String\s+(\w+)\)", text)
+        parameters = re.findall(r"@(?:org\.junit\.jupiter\.params\.)?ParameterizedTest\s+"
+                                r"@(?:org\.junit\.jupiter\.params\.provider\.)?ValueSource\("
+                                r"(strings|booleans)=\{([^}]+)\}\)\s+void\s+(\w+)\((String|boolean)\s+(\w+)\)", text)
         if text.count("ParameterizedTest") != len(parameters):
             raise ValueError(f"Unreviewed parameterized inventory: {suite}")
-        for values, method, argument in parameters:
-            for index, value in enumerate(re.findall(r'"([^"\\]+)"', values), 1):
-                names.append(f"{method}(String)[{index}]" if events else f"[{index}] {argument}={value}")
+        for source_type, values, method, java_type, argument in parameters:
+            literal = {("strings", "String"): r'"[^"\\]+"', ("booleans", "boolean"): r"(?:true|false)"}.get((source_type, java_type))
+            if not literal or not re.fullmatch(rf"{literal}(?:\s*,\s*{literal})*", values.strip()):
+                raise ValueError(f"Unreviewed parameter values: {suite}#{method}")
+            for index, raw in enumerate(re.findall(literal, values), 1):
+                value = raw.strip('"')
+                names.append(f"{method}({java_type})[{index}]" if events else f"[{index}] {argument}={value}")
         if not names or len(names) != len(set(names)):
             raise ValueError(f"Invalid source inventory: {suite}")
         result[suite] = names

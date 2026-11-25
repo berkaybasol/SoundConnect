@@ -50,7 +50,8 @@ public class CollabMapper {
         return new CollabApplicationResponse(value.getId(), value.getVersion(), value.getStatus(),
                 listing(value.getListing(), listingContext),
                 actorService.toSummary(value.getApplicantActor(), value.getApplicantUser()),
-                party && (!blocked || applicant) ? value.getPhoneSnapshot() : null,
+                party && (!blocked || applicant) && value.getApplicantUser().getErasedAt() == null
+                        ? value.getPhoneSnapshot() : null,
                 party ? value.getMessage() : null, value.getSubmittedAt(),
                 value.getStatusChangedAt(), value.getDecidedAt(), blocked);
     }
@@ -58,6 +59,8 @@ public class CollabMapper {
     public CollabJobResponse job(CollabJob value, UUID viewerId, boolean reviewedByMe,
                                  ListingContext listingContext) {
         boolean publisher = Objects.equals(viewerId, value.getPublisherUser().getId());
+        User peer = publisher ? value.getApplicantUser() : value.getPublisherUser();
+        CollabActor peerActor = publisher ? value.getApplicantActor() : value.getPublisherActor();
         return new CollabJobResponse(value.getId(), value.getVersion(), value.getStatus(),
                 listing(value.getListing(), listingContext),
                 actorService.toSummary(value.getPublisherActor(), value.getPublisherUser()),
@@ -65,8 +68,8 @@ public class CollabMapper {
                 value.getPublisherConfirmedAt() != null, value.getApplicantConfirmedAt() != null,
                 value.getPublisherConfirmedAt(), value.getApplicantConfirmedAt(),
                 publisher ? value.getPublisherConfirmedAt() != null : value.getApplicantConfirmedAt() != null,
-                reviewedByMe, value.getCompletedAt(), listingContext.blockedContacts().contains(
-                        publisher ? value.getApplicantUser().getId() : value.getPublisherUser().getId()));
+                reviewedByMe, value.getCompletedAt(), !peerActor.profileAvailableFor(peer)
+                        || listingContext.blockedContacts().contains(peer.getId()));
     }
 
     public CollabReviewResponse review(CollabReview value) {

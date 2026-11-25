@@ -15,5 +15,13 @@ public record CollabActorSummary(
         String avatarUrl,
         BigDecimal rating,
         long reviewCount,
-        long completedJobCount
-) {}
+        long completedJobCount,
+        boolean profileAvailable
+) {
+    public CollabActorSummary(UUID actorId, ProfileType profileType, UUID sourceProfileId,
+                              UUID contactUserId, String contactUsername, String displayName, String avatarUrl,
+                              BigDecimal rating, long reviewCount, long completedJobCount) {
+        this(actorId, profileType, sourceProfileId, contactUserId, contactUsername, displayName, avatarUrl,
+                rating, reviewCount, completedJobCount, true);
+    }
+}

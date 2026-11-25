@@ -54,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @DataJpaTest
 @Import(JpaAuditingConfig.class)
@@ -357,6 +358,8 @@ class TableGroupCapacityConcurrencyPostgresTest {
 	}
 
 	private TableGroupServiceImpl actualLifecycleService() {
+		var blockWarnings = mock(com.berkayb.soundconnect.modules.tablegroup.service.TableGroupBlockWarnings.class);
+		when(blockWarnings.membershipTime()).thenAnswer(invocation -> Instant.now());
 		return new TableGroupServiceImpl(
 				mock(TableGroupNotificationOutboxService.class),
 				tableGroupRepository,
@@ -376,7 +379,8 @@ class TableGroupCapacityConcurrencyPostgresTest {
 				mock(TableGroupRateLimitGuard.class),
 				mock(TableGroupMetrics.class),
 				mock(TableGroupGameLifecycleService.class),
-				mock(com.berkayb.soundconnect.modules.tablegroup.scheduler.TableGroupExpiryWorker.class)
+				mock(com.berkayb.soundconnect.modules.tablegroup.scheduler.TableGroupExpiryWorker.class),
+				blockWarnings
 		);
 	}
 

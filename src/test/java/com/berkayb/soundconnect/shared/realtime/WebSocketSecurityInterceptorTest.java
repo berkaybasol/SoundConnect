@@ -370,7 +370,7 @@ class WebSocketSecurityInterceptorTest {
 	void brokerDeliveryDropsAUserWhoseDestinationAccessWasRevoked() {
 		UUID userId = UUID.randomUUID();
 		String sessionId = "session-revoked-outbound";
-		String destination = WebSocketChannels.tableGroup(UUID.randomUUID());
+		String destination = WebSocketChannels.tableGroup(UUID.randomUUID(), userId);
 		UserDetailsImpl principal = principal(userId);
 		sessionRegistry.register(sessionId, userId, System.currentTimeMillis() + 60_000);
 		when(userDetailsService.loadUserById(userId)).thenReturn(principal);
