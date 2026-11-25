@@ -250,7 +250,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 	// kullanicinin masaya katilma basvurusu
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote) {
-		joinTableGroup(userId, tableGroupId, joinNote, null);
+		joinTableGroup(userId, tableGroupId, joinNote, Set.of());
 	}
 
 	@Override
@@ -297,8 +297,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 
 		String normalizedNote = normalizeJoinNote(joinNote);
-		if (acknowledgedBlockedMemberIds != null
-				&& !acknowledgedBlockedMemberIds.containsAll(blockWarnings.forViewer(tableGroupId, userId).keySet())) {
+		Set<UUID> acknowledged = acknowledgedBlockedMemberIds == null ? Set.of() : acknowledgedBlockedMemberIds;
+		if (!acknowledged.containsAll(blockWarnings.forViewer(tableGroupId, userId).keySet())) {
 			throw new SoundConnectException(ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
 		}
 

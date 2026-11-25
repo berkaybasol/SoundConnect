@@ -583,7 +583,6 @@ class TableGroupControllerTest {
 		// given
 		UUID tableGroupId = UUID.randomUUID();
 		
-		doNothing().when(tableGroupService).joinTableGroup(userId, tableGroupId, null);
 		
 		// when & then
 		mockMvc.perform(
@@ -595,7 +594,19 @@ class TableGroupControllerTest {
 		       .andExpect(jsonPath("$.code").value(200))
 		       .andExpect(jsonPath("$.message").value("Masaya katilim istegi gonderildi"));
 		
-		verify(tableGroupService).joinTableGroup(userId, tableGroupId, null);
+		verify(tableGroupService).joinTableGroup(userId, tableGroupId, null, Set.of());
+	}
+
+	@Test
+	void missingAndExplicitlyNullAcknowledgementsBothMeanNobodyWasConfirmed() throws Exception {
+		UUID tableId = UUID.randomUUID();
+		for (String json : List.of("{}", "{\"acknowledgedBlockedMemberIds\":null}")) {
+			mockMvc.perform(post(EndPoints.TableGroup.BASE + EndPoints.TableGroup.JOIN, tableId)
+					.principal(principal()).contentType("application/json").content(json))
+					.andExpect(status().isOk());
+		}
+		verify(tableGroupService, times(2)).joinTableGroup(userId, tableId, null, Set.of());
+		assertThat(new TableGroupJoinRequestDto(null).acknowledgedBlockedMemberIds()).isEmpty();
 	}
 	
 	// -------------------- approveJoinRequest --------------------

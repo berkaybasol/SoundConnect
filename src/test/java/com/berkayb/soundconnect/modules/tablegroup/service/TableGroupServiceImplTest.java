@@ -684,6 +684,12 @@ class TableGroupServiceImplTest {
 		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId)).thenReturn(group);
 		when(blockWarnings.forViewer(tableGroupId, participantId)).thenReturn(Map.of(ownerId, false));
 
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
+		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null, null))
+				.isInstanceOf(SoundConnectException.class)
+				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);
 		assertThatThrownBy(() -> tableGroupService.joinTableGroup(participantId, tableGroupId, null, Set.of()))
 				.isInstanceOf(SoundConnectException.class)
 				.hasFieldOrPropertyWithValue("errorType", ErrorType.TABLE_GROUP_BLOCKED_MEMBERS_CHANGED);

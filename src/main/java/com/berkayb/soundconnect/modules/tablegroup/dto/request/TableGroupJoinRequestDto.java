@@ -10,6 +10,10 @@ public record TableGroupJoinRequestDto(
 		String note,
 		@Size(max = 6) Set<@NotNull UUID> acknowledgedBlockedMemberIds
 ) {
+	public TableGroupJoinRequestDto {
+		if (acknowledgedBlockedMemberIds == null) acknowledgedBlockedMemberIds = Set.of();
+	}
+
 	public TableGroupJoinRequestDto(String note) {
 		this(note, null);
 	}
