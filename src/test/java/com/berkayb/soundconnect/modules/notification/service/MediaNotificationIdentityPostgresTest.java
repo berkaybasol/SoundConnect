@@ -1,6 +1,8 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
 import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.collab.service.CollabAccountLifecycle;
+import com.berkayb.soundconnect.modules.marketplace.media.MarketplaceMediaLifecycle;
 import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.mapper.CommentMapper;
@@ -74,6 +76,7 @@ import static org.mockito.Mockito.*;
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class MediaNotificationIdentityPostgresTest {
     @MockitoBean ProfileBlockVisibility profileBlocks;
+    @MockitoBean MarketplaceMediaLifecycle marketplace;
 
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("media_identity_test").withUsername("media_identity").withPassword("disposable")
@@ -82,6 +85,10 @@ class MediaNotificationIdentityPostgresTest {
     @Autowired LikeServiceImpl likes; @Autowired CommentServiceImpl comments;
     @Autowired NotificationService reads; @Autowired NotificationRepository inbox;
     @Autowired ListenerAccountDeletionService deletion; @Autowired PasswordEncoder passwords;
+    @MockitoBean CollabAccountLifecycle collab;
+    @MockitoBean com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandAccountLifecycle bands;
+    @MockitoBean com.berkayb.soundconnect.modules.user.deletion.MusicianAccountDataCleaner musicians;
+    @MockitoBean com.berkayb.soundconnect.modules.user.deletion.BusinessAccountDeletionService businesses;
     @Autowired TransactionalNotificationService transactional; @Autowired NotificationDeliveryPolicy policy;
     @Autowired NotificationEventListener consumer; @Autowired NotificationMailDelivery mailDelivery;
     @MockitoBean MediaAssetService media; @MockitoBean UserEntityFinder users; @MockitoBean CommentBurstGuard burst;

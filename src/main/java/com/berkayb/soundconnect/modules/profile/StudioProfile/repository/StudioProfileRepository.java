@@ -16,19 +16,21 @@ import java.util.UUID;
 
 public interface StudioProfileRepository extends JpaRepository<StudioProfile, UUID> {
 	// belirli bir kullaniciya ait studio profilini id ile getir
-	Optional<StudioProfile> findByUserId(UUID userID);
+	@Query("select sp from StudioProfile sp where sp.user.id = :userId and sp.user.erasedAt is null")
+	Optional<StudioProfile> findByUserId(@Param("userId") UUID userId);
 
 	boolean existsByUserId(UUID userId);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query("select sp from StudioProfile sp where sp.user.id = :userId")
+	@Query("select sp from StudioProfile sp where sp.user.id = :userId and sp.user.erasedAt is null")
 	Optional<StudioProfile> findByUserIdForUpdate(@Param("userId") UUID userId);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select sp from StudioProfile sp where sp.id = :profileId")
 	Optional<StudioProfile> findByIdForUpdate(@Param("profileId") UUID profileId);
 
-	Optional<StudioProfile> findById(UUID profileId);
+	@Query("select sp from StudioProfile sp where sp.id = :profileId and sp.user.erasedAt is null")
+	Optional<StudioProfile> findById(@Param("profileId") UUID profileId);
 
 	// belirli bir kullaniciya ait studio profilini studioname ile getir.
 	Optional<StudioProfile> findStudioProfileByName(String name);
@@ -45,12 +47,12 @@ public interface StudioProfileRepository extends JpaRepository<StudioProfile, UU
 	@Query("""
         select sp
         from StudioProfile sp
-        where
+        where sp.user.erasedAt is null and (
             (:q is null or trim(:q) = '')
             or locate(lower(:q), lower(coalesce(sp.name, ''))) > 0
             or (:usernameQuery <> ''
                 and locate(:usernameQuery, coalesce(sp.user.username, '')) > 0)
-            or locate(lower(:q), lower(coalesce(sp.description, ''))) > 0
+            or locate(lower(:q), lower(coalesce(sp.description, ''))) > 0)
         order by
             case
                 when lower(coalesce(sp.name, sp.user.username, '')) = lower(:q) then 0

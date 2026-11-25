@@ -3,6 +3,8 @@ package com.berkayb.soundconnect.auth.passwordreset.service;
 import com.berkayb.soundconnect.auth.dto.request.LoginRequestDto;
 import com.berkayb.soundconnect.auth.otp.service.OtpMailService;
 import com.berkayb.soundconnect.auth.otp.service.OtpService;
+import com.berkayb.soundconnect.auth.passwordchange.AccountPasswordChangeService;
+import com.berkayb.soundconnect.auth.passwordchange.PasswordChangeRequest;
 import com.berkayb.soundconnect.auth.passwordreset.dto.request.ResetPasswordRequestDto;
 import com.berkayb.soundconnect.auth.ratelimit.AuthAccountRateLimitGuard;
 import com.berkayb.soundconnect.auth.security.JwtTokenProvider;
@@ -19,6 +21,9 @@ import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import com.berkayb.soundconnect.shared.realtime.WebSocketSessionRegistry;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +42,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,6 +80,9 @@ class PasswordResetSessionPostgresTest {
     @Autowired EntityManager em;
     @Autowired UserRepository users;
     @Autowired PasswordResetService resets;
+    @Autowired AccountPasswordChangeService changes;
+    @Autowired WebSocketSessionRegistry sockets;
+    @Autowired JwtTokenProvider tokens;
     @Autowired PlatformTransactionManager transactions;
     @MockitoBean OtpService otp;
     @MockitoBean PasswordResetMailService mail;
@@ -83,7 +90,6 @@ class PasswordResetSessionPostgresTest {
     @MockitoBean PublicProfileResolverService profiles;
     @MockitoBean PasswordEncoder encoder;
     final BCryptPasswordEncoder bcrypt = new BCryptPasswordEncoder(4);
-    final JwtTokenProvider tokens = tokens();
     UUID id;
     String username;
     String email;
@@ -130,6 +136,57 @@ class PasswordResetSessionPostgresTest {
         });
         assertThat(current().getSessionVersion()).isZero();
         assertThat(bcrypt.matches("old-password", current().getPassword())).isTrue();
+    }
+
+    @Test void settingsChangeDisconnectsOnlyPreviousSessionsAfterCommit() {
+        String oldSocket = UUID.randomUUID().toString();
+        String newSocket = UUID.randomUUID().toString();
+        sockets.register(oldSocket, id, System.currentTimeMillis() + 60_000, 0);
+        transaction().executeWithoutResult(status -> {
+            changes.change(id, 0, new PasswordChangeRequest("old-password", "rolled-back"));
+            status.setRollbackOnly();
+        });
+        assertThat(current().getSessionVersion()).isZero();
+        assertThat(sockets.find(oldSocket)).isPresent();
+        String updated = transaction().execute(status -> {
+            String token = changes.change(id, 0, new PasswordChangeRequest("old-password", "new-password"));
+            assertThat(sockets.find(oldSocket)).isPresent();
+            sockets.register(newSocket, id, System.currentTimeMillis() + 60_000, tokens.getSessionVersionFromToken(token));
+            return token;
+        });
+        assertThat(tokens.getSessionVersionFromToken(updated)).isEqualTo(1L);
+        assertThat(tokens.getUserIdFromToken(updated)).isEqualTo(id);
+        assertThat(sockets.find(oldSocket)).isEmpty();
+        assertThat(sockets.find(newSocket)).isPresent();
+    }
+
+    @Test void settingsChangeRejectsARevokedRequestAlreadyWaitingForTheAccountLock() throws Exception {
+        CountDownLatch locked = new CountDownLatch(1), release = new CountDownLatch(1), secondRead = new CountDownLatch(1);
+        when(encoder.encode("first-password")).thenAnswer(invocation -> {
+            locked.countDown(); await(release); return bcrypt.encode("first-password");
+        });
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> changes.change(id, 0, new PasswordChangeRequest("old-password", "first-password")));
+            try {
+                await(locked);
+                var second = executor.submit(() -> transaction().executeWithoutResult(status -> {
+                    // Emulate the JWT filter attaching the earlier version before this request acquires the lock.
+                    long authenticatedVersion = current().getSessionVersion();
+                    secondRead.countDown();
+                    changes.change(id, authenticatedVersion, new PasswordChangeRequest("first-password", "second-password"));
+                }));
+                try {
+                    await(secondRead);
+                    assertThatThrownBy(() -> second.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                } finally { release.countDown(); }
+                assertThatThrownBy(() -> second.get(15, TimeUnit.SECONDS)).cause()
+                        .isInstanceOfSatisfying(SoundConnectException.class,
+                                failure -> assertThat(failure.getErrorType()).isEqualTo(ErrorType.UNAUTHORIZED));
+            } finally { release.countDown(); }
+            assertThat(tokens.getSessionVersionFromToken(first.get(15, TimeUnit.SECONDS))).isEqualTo(1L);
+        }
+        assertThat(current().getSessionVersion()).isEqualTo(1L);
+        assertThat(bcrypt.matches("first-password", current().getPassword())).isTrue();
     }
 
     @Test void oldRevisionRemainsVisibleBeforeCommitAndNewRevisionOnlyAfterCommit() throws Exception {
@@ -267,17 +324,11 @@ class PasswordResetSessionPostgresTest {
         try { if (!latch.await(15, TimeUnit.SECONDS)) throw new AssertionError("fixture coordination timed out"); }
         catch (InterruptedException exception) { Thread.currentThread().interrupt(); throw new AssertionError(exception); }
     }
-    static JwtTokenProvider tokens() {
-        var tokens = new JwtTokenProvider();
-        ReflectionTestUtils.setField(tokens, "jwtSecret", "session-postgres-synthetic-signing-secret-32-bytes");
-        ReflectionTestUtils.setField(tokens, "jwtIssuer", "session-fixture");
-        ReflectionTestUtils.setField(tokens, "jwtExpiration", 600000L); return tokens;
-    }
     @Configuration(proxyBeanMethods = false)
     @EnableJpaAuditing
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     @EntityScan(basePackages = "com.berkayb.soundconnect")
-    @Import(PasswordResetService.class)
+    @Import({PasswordResetService.class, AccountPasswordChangeService.class, JwtTokenProvider.class, WebSocketSessionRegistry.class})
     static class TestConfiguration {
         @Bean DataSource dataSource() {
             if (!postgres.isRunning()) throw new IllegalStateException("Disposable PostgreSQL required");

@@ -577,6 +577,9 @@ public class CollabService {
                     && Objects.equals(existing.get().getComment(), comment)) return mapper.review(existing.get());
             throw new SoundConnectException(ErrorType.COLLAB_REVIEW_DUPLICATE);
         }
+        if (!targetActor.profileAvailableFor(targetUser)) {
+            throw new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE);
+        }
         userBlocks.requireInteractionAllowed(userId, targetUser.getId());
         CollabActor lockedTarget = actorRepository.findByIdForUpdate(targetActor.getId())
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
@@ -587,9 +590,11 @@ public class CollabService {
                 .clientRequestId(request.clientRequestId()).requestPayloadHash(payloadHash)
                 .rating(request.rating()).comment(comment).submittedAt(now).build();
         reviewRepository.saveAndFlush(review);
-        publish(targetUser.getId(), NotificationType.COLLAB_REVIEW_RECEIVED,
-                "Yeni değerlendirme", "Tamamlanan işin için yeni bir değerlendirme aldın.",
-                "REVIEW_RECEIVED", Map.of("listingId", job.getListing().getId(), "jobId", jobId, "reviewId", review.getId()), now);
+        if (targetUser.getErasedAt() == null) {
+            publish(targetUser.getId(), NotificationType.COLLAB_REVIEW_RECEIVED,
+                    "Yeni değerlendirme", "Tamamlanan işin için yeni bir değerlendirme aldın.",
+                    "REVIEW_RECEIVED", Map.of("listingId", job.getListing().getId(), "jobId", jobId, "reviewId", review.getId()), now);
+        }
         return mapper.review(review);
     }
 
@@ -750,8 +755,11 @@ public class CollabService {
     }
 
     private User lockUser(UUID id) {
-        return userRepository.findByIdForUpdate(id)
+        User user = userRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+        // Erasure may have committed between the initial audience check and the lock.
+        access.requireActive(id);
+        return user;
     }
 
     private CollabApplication lockApplication(UUID id) {

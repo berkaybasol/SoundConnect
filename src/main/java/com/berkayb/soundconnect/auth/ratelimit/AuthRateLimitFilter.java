@@ -38,6 +38,10 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 	private static final String PASSWORD_RESET_CONFIRM_BUCKET = "password-reset-confirm";
 
 	private static final Map<String, String> BUCKET_BY_PATH = Map.ofEntries(
+			Map.entry("/api/v1/public/account-deletion/request", PASSWORD_RESET_REQUEST_BUCKET),
+			Map.entry("/api/v1/public/account-deletion/verify", PASSWORD_RESET_CONFIRM_BUCKET),
+			Map.entry("/api/v1/public/account-deletion/password", LOGIN_BUCKET),
+			Map.entry("/api/v1/public/account-deletion/confirm", PASSWORD_RESET_CONFIRM_BUCKET),
 			Map.entry(BASE + LOGIN, LOGIN_BUCKET),
 			Map.entry(BASE + GOOGLE_SIGN_IN, GOOGLE_LOGIN_BUCKET),
 			Map.entry(BASE + COMPLETE_GOOGLE_PROFILE, GOOGLE_LOGIN_BUCKET),

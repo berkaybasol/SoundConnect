@@ -36,6 +36,7 @@ public class CollabActorService {
         // The user row is the mutex for a non-band profile whose actor projection does not exist yet.
         User contactUser = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
+        access.requireActive(userId);
         List<OwnedProfileTarget> ownedTargets = ownershipResolver.resolveOwnedProfiles(userId, ALLOWED_TYPES);
         ownedTargets.stream().filter(target -> target.type() == ProfileType.BAND)
                 .map(OwnedProfileTarget::sourceId)
@@ -57,6 +58,10 @@ public class CollabActorService {
                 .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
         if (!ALLOWED_TYPES.contains(actorSnapshot.getProfileType())) {
             throw new SoundConnectException(ErrorType.COLLAB_INVALID_ACTOR);
+        }
+        if (actorSnapshot.getProfileType() == ProfileType.BAND) {
+            bandRepository.findByIdForUpdate(actorSnapshot.getSourceProfileId())
+                    .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_ACTOR_NOT_FOUND));
         }
         OwnedProfileTarget owned = ownershipResolver.requireOwnership(
                 userId, actorSnapshot.getProfileType(), actorSnapshot.getSourceProfileId());
@@ -94,10 +99,15 @@ public class CollabActorService {
                 ? BigDecimal.ZERO.setScale(2)
                 : BigDecimal.valueOf(actor.getRatingSum())
                 .divide(BigDecimal.valueOf(actor.getReviewCount()), 2, RoundingMode.HALF_UP);
+        boolean erasedContact = contactUser.getErasedAt() != null;
+        boolean profileAvailable = actor.profileAvailableFor(contactUser);
         return new CollabActorSummary(actor.getId(), actor.getProfileType(), actor.getSourceProfileId(),
-                contactUser.getId(), normalizeContactUsername(contactUser.getUsername()), actor.getDisplayName(),
-                actor.getAvatarUrl(), rating,
-                actor.getReviewCount(), actor.getCompletedJobCount());
+                erasedContact ? null : contactUser.getId(),
+                erasedContact ? null : normalizeContactUsername(contactUser.getUsername()),
+                profileAvailable ? actor.getDisplayName()
+                        : actor.getProfileType() == ProfileType.BAND ? "Kapatılmış grup" : "Silinmiş hesap",
+                profileAvailable ? actor.getAvatarUrl() : null, rating,
+                actor.getReviewCount(), actor.getCompletedJobCount(), profileAvailable);
     }
 
     private String normalizeContactUsername(String value) {

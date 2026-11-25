@@ -47,6 +47,10 @@ public final class WebSocketChannels {
 	public static String tableGroup(UUID tableGroupId) {
 		return TOPIC_TABLE_GROUP + "." + tableGroupId;
 	}
+
+	public static String tableGroup(UUID tableGroupId, UUID viewerId) {
+		return tableGroup(tableGroupId) + "." + viewerId;
+	}
 	
 	// Pulse kanali
 	public static final String TOPIC_PULSE = "/topic/pulse";

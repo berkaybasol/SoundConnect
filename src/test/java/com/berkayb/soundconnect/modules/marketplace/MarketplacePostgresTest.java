@@ -419,6 +419,8 @@ class MarketplacePostgresTest {
         jdbc.update("delete from tbl_marketplace_listing where id=:id",Map.of("id",listing.id()));
         assertThat(repository.report(receipt.id(),false).orElseThrow().listingId()).isNull();
         assertThat(jdbc.queryForObject("select count(*) from tbl_marketplace_report_photo",Map.of(),Long.class)).isEqualTo(1);
+        assertThat(tx(()->service.report(buyer,listing.id(),report)).id()).isEqualTo(receipt.id());
+        denied(()->tx(()->service.report(buyer,UUID.randomUUID(),report)),ErrorType.MARKETPLACE_IDEMPOTENCY_CONFLICT);
         role(admin,"LISTENER");denied(()->tx(()->service.reports(admin,null,0,20)),ErrorType.MARKETPLACE_FORBIDDEN);
     }
     @Test void draftDeletionDetachesBeforeDurableCleanupAndPublishedDeletionIsRejected() {

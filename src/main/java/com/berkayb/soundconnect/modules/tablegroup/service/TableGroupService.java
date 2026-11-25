@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public interface TableGroupService {
@@ -30,6 +31,7 @@ public interface TableGroupService {
 	
 	// masaya katilma istegi
 	void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote);
+	void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote, Set<UUID> acknowledgedBlockedMemberIds);
 	
 	// masa sahibi katilim istegini onaylar
 	void approveJoinRequest(UUID ownerId, UUID tableGroupId, UUID participantId);

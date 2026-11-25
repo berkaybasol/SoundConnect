@@ -8,6 +8,13 @@ import com.berkayb.soundconnect.modules.location.entity.City;
 import com.berkayb.soundconnect.modules.location.entity.District;
 import com.berkayb.soundconnect.modules.location.entity.Neighborhood;
 import com.berkayb.soundconnect.modules.media.deletion.MediaDeletionDispatcher;
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.enums.MediaContentAudience;
+import com.berkayb.soundconnect.modules.media.enums.MediaKind;
+import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
+import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
+import com.berkayb.soundconnect.modules.media.enums.MediaVisibility;
+import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.storage.StorageClient;
 import com.berkayb.soundconnect.modules.notification.dlq.NotificationDlqBroker;
 import com.berkayb.soundconnect.modules.role.entity.Permission;
@@ -87,6 +94,9 @@ import static org.mockito.Mockito.when;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class GoogleRegistrationHttpPostgresTest {
     private static final String AUTH = "/api/v1/auth/";
+    private static final String ACCOUNT_PASSWORD = "/api/v1/users/me/password";
+    private static final String MARKET = "/api/v1/user/marketplace";
+    private static final String COLLAB = "/api/v1/collabs";
     private static final String PASSWORD = "Fixture-password-48";
     private static final String REVIEWER = "fixture-reviewer";
     private static UUID cityId, districtId, neighborhoodId, reviewerId;
@@ -133,11 +143,13 @@ class GoogleRegistrationHttpPostgresTest {
     @MockitoBean(enforceOverride = true) NotificationDlqBroker dlq;
     @MockitoBean Jackson2JsonMessageConverter converter;
     @MockitoBean MailSenderClient mail;
+    @MockitoBean com.berkayb.soundconnect.shared.mail.producer.MailProducer mailQueue;
     @MockitoBean DlqMailJobConsumer mailConsumer;
 
     @LocalServerPort int port;
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate jdbc;
+    @Autowired MediaAssetRepository marketplaceAssets;
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @BeforeAll
@@ -196,6 +208,323 @@ class GoogleRegistrationHttpPostgresTest {
         assertThat(next.path("requiresListenerProfileChoice").asBoolean()).isFalse();
         request("GET", ownerPath(role), next.get("token").asText(), null, 200);
         verifyNoInteractions(otpMail);
+    }
+
+    @Test
+    void passwordChangeKeepsTheChangingDeviceSignedInAndRevokesPriorSessions() throws Exception {
+        String account = "password-change-user";
+        ObjectNode registration = form(account, "MUSICIAN");
+        registration.remove(List.of("idToken", "consent"));
+        registration.put("email", email(account)).put("password", PASSWORD).put("rePassword", PASSWORD);
+        request("POST", AUTH + "register", null, registration, 201);
+        var code = ArgumentCaptor.forClass(String.class);
+        verify(otpMail).sendVerificationMail(eq(email(account)), code.capture());
+        request("POST", AUTH + "verify-code", null, Map.of("email", email(account), "code", code.getValue()), 200);
+        String first = passwordLogin(account, 200).at("/data/token").textValue();
+        assertThat(first).isNotBlank();
+        // The issuer serializes iat in seconds. Ensure the second login has its own bearer.
+        long firstSecond = java.time.Instant.now().getEpochSecond();
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(3))
+                .until(() -> java.time.Instant.now().getEpochSecond() > firstSecond);
+        String second = passwordLogin(account, 200).at("/data/token").textValue();
+        assertThat(second).isNotBlank().isNotEqualTo(first);
+
+        request("GET", ACCOUNT_PASSWORD, null, null, 401);
+        assertThat(request("GET", ACCOUNT_PASSWORD, first, null, 200).at("/data/provider").textValue()).isEqualTo("LOCAL");
+        String replacement = "New-device-password-42";
+        var wrong = Map.of("currentPassword", "incorrect-password", "newPassword", replacement);
+        assertThat(request("POST", ACCOUNT_PASSWORD, first, wrong, 400).path("code").asInt()).isEqualTo(1123);
+        var unchanged = Map.of("currentPassword", PASSWORD, "newPassword", PASSWORD);
+        assertThat(request("POST", ACCOUNT_PASSWORD, first, unchanged, 400).path("code").asInt()).isEqualTo(1122);
+        var tooManyBytes = Map.of("currentPassword", PASSWORD, "newPassword", "ü".repeat(37));
+        request("POST", ACCOUNT_PASSWORD, first, tooManyBytes, 400);
+        request("GET", ownerPath("MUSICIAN"), first, null, 200);
+        request("GET", ownerPath("MUSICIAN"), second, null, 200);
+
+        var change = Map.of("currentPassword", PASSWORD, "newPassword", replacement);
+        request("POST", ACCOUNT_PASSWORD, null, change, 401);
+        String renewed = request("POST", ACCOUNT_PASSWORD, first, change, 200).at("/data/token").textValue();
+        assertThat(renewed).isNotBlank().isNotEqualTo(first).isNotEqualTo(second);
+        request("GET", ownerPath("MUSICIAN"), renewed, null, 200);
+        request("GET", ownerPath("MUSICIAN"), first, null, 401);
+        request("GET", ownerPath("MUSICIAN"), second, null, 401);
+        assertThat(passwordLogin(account, 401).required("code").asInt()).isEqualTo(1100);
+        request("POST", AUTH + "login", null, Map.of("username", account, "password", replacement), 200);
+    }
+
+    private void prepareAccountErasureSchema() throws Exception {
+        for (String migration : List.of("2026-09-09-overthinking-lifecycle.sql",
+                "2026-09-10-overthinking-inbox-seen.sql", "2026-09-10-overthinking-profile-shares.sql",
+                "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
+                "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql",
+                "2026-09-20-marketplace-domain.sql", "2026-09-24-studio-reservation-notification-outbox.sql",
+                "2026-09-27-follow-notification-outbox.sql", "2026-11-24-user-blocks.sql",
+                "2026-11-25-collab-account-erasure.sql", "2026-11-25-band-collab-closure.sql",
+                "2026-11-25-business-account-erasure.sql", "2026-11-25-application-erasure-mail-cleanup.sql")) {
+            jdbc.execute(Files.readString(Path.of("scripts/db", migration)));
+        }
+    }
+
+    @Test
+    void deletingListenerWithMarketplaceHistoryRemovesOnlyItsListings() throws Exception {
+        prepareAccountErasureSchema();
+        String owner = "former-musician", observer = "second-seller";
+        stubIdentity(owner);
+        stubIdentity(observer);
+        var account = complete(form(owner, "MUSICIAN"), 200).required("data");
+        var ownerId = UUID.fromString(account.required("userId").textValue());
+        String ownerToken = account.required("token").textValue();
+        String observerToken = complete(form(observer, "MUSICIAN"), 200).at("/data/token").textValue();
+        String original = publishMarketplaceFixture(ownerToken, "Fixture guitar");
+        String control = publishMarketplaceFixture(observerToken, "Fixture piano");
+        String listings = MARKET + "/listings";
+        var before = request("GET", listings, observerToken, null, 200).at("/data/content");
+        assertThat(before.findValuesAsText("title")).contains("Fixture guitar", "Fixture piano");
+        request("GET", listings + "/" + original, observerToken, null, 200);
+        var ownListing = request("GET", listings + "/" + control, observerToken, null, 200).required("data");
+        var report = Map.of("reason", "MISLEADING", "description", "Test report", "clientRequestId", UUID.randomUUID());
+        UUID reportId = UUID.fromString(request("POST", listings + "/" + original + "/reports",
+                observerToken, report, 201).at("/data/id").textValue());
+        String reviewer = passwordLogin(REVIEWER, 200).at("/data/token").textValue();
+        String queue = "/api/v1/admin/marketplace/reports?status=OPEN";
+        var originalReport = request("GET", queue, reviewer, null, 200).at("/data/content/0");
+        assertThat(originalReport.required("id").textValue()).isEqualTo(reportId.toString());
+        assertThat(originalReport.at("/evidence/title").textValue()).isEqualTo("Fixture guitar");
+        assertThat(originalReport.at("/evidence/photos/0/assetId").textValue()).isNotBlank();
+
+        // The old listener-with-marketplace-history case stays covered alongside the musician Collab case.
+        var erase = Map.of("confirmation", "DELETE", "googleIdToken", owner);
+        switchFixtureToListener(ownerId);
+        String listenerToken = signIn(owner, 200).at("/data/token").textValue();
+        assertThat(request("DELETE", "/api/v1/users/me/account", listenerToken, erase, 200).required("data").asBoolean()).isTrue();
+        request("GET", ownerPath("LISTENER"), listenerToken, null, 401);
+        var after = request("GET", listings, observerToken, null, 200).at("/data/content").findValuesAsText("title");
+        assertThat(after).contains("Fixture piano").doesNotContain("Fixture guitar");
+        request("GET", listings + "/" + original, observerToken, null, 404);
+        assertThat(request("GET", listings + "/" + control, observerToken, null, 200).required("data")).isEqualTo(ownListing);
+        assertThat(jdbc.queryForObject("select count(*) from tbl_marketplace_listing where owner_user_id=?", Integer.class, ownerId)).isZero();
+        var retained = request("GET", queue, reviewer, null, 200).at("/data/content/0");
+        assertThat(retained.required("id")).isEqualTo(originalReport.required("id"));
+        assertThat(retained.hasNonNull("listingId")).isFalse();
+        assertThat(retained.required("evidence")).isEqualTo(originalReport.required("evidence"));
+    }
+
+    @Test
+    void deletingAnAccountClosesItsPendingCollabAndCancelsItsJobForTheOtherMusician() throws Exception {
+        prepareAccountErasureSchema();
+        String departing = "collab-departing", remaining = "collab-remaining";
+        stubIdentity(departing);
+        stubIdentity(remaining);
+        JsonNode account = complete(form(departing, "MUSICIAN"), 200).required("data");
+        String firstToken = account.required("token").textValue();
+        String otherToken = complete(form(remaining, "MUSICIAN"), 200).at("/data/token").textValue();
+        UUID profileId = jdbc.queryForObject("select id from tbl_musician_profile where user_id=?", UUID.class,
+                UUID.fromString(account.required("userId").textValue()));
+        var trackAsset = marketplaceAssets.saveAndFlush(MediaAsset.builder().ownerType(MediaOwnerType.MUSICIAN_PROFILE)
+                .ownerId(profileId).kind(MediaKind.AUDIO).visibility(MediaVisibility.PUBLIC)
+                .status(MediaStatus.READY).mimeType("audio/mpeg").size(1200L).build());
+        jdbc.update("insert into tbl_tracks(id,owner_type,owner_id,media_asset_id,title) values (?,'MUSICIAN_PROFILE',?,?,?)",
+                UUID.randomUUID(), profileId, trackAsset.getId(), "Disposable rehearsal recording");
+        jdbc.update("insert into tbl_setlist(id,musician_profile_id,name) values (?,?,?)", UUID.randomUUID(), profileId, "Personal repertoire");
+        String firstActor = request("GET", COLLAB + "/actors/me", firstToken, null, 200).at("/data/0/actorId").textValue();
+        String otherActor = request("GET", COLLAB + "/actors/me", otherToken, null, 200).at("/data/0/actorId").textValue();
+        String firstListing = publishCollabFixture(firstToken, firstActor, "First rehearsal");
+        String otherListing = publishCollabFixture(otherToken, otherActor, "Second rehearsal");
+        var pending = submitCollabApplication(otherToken, otherActor, firstListing, "+905550000001");
+        var accepted = submitCollabApplication(firstToken, firstActor, otherListing, "+905550000002");
+        String incomingPath = COLLAB + "/me/listings/" + otherListing + "/applications";
+        assertThat(request("GET", incomingPath, otherToken, null, 200).at("/data/content/0/phoneNumber").textValue())
+                .isEqualTo("+905550000002");
+        String job = request("POST", COLLAB + "/applications/" + accepted.required("id").textValue() + "/accept", otherToken,
+                Map.of("expectedVersion", accepted.required("version").longValue()), 200).at("/data/id").textValue();
+
+        request("DELETE", "/api/v1/users/me/account", firstToken, Map.of("confirmation", "DELETE", "googleIdToken", departing), 200);
+        request("GET", ownerPath("MUSICIAN"), firstToken, null, 401);
+        assertThat(jdbc.queryForObject("select count(*) from tbl_musician_profile where user_id=?",
+                Integer.class, UUID.fromString(account.required("userId").textValue()))).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from tbl_tracks where owner_id=?", Integer.class, profileId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from tbl_setlist where musician_profile_id=?", Integer.class, profileId)).isZero();
+        assertThat(marketplaceAssets.findById(trackAsset.getId()).orElseThrow().getStatus()).isEqualTo(MediaStatus.DELETION_PENDING);
+
+        var result = request("GET", COLLAB + "/me/applications", otherToken, null, 200).at("/data/content/0");
+        assertThat(result.required("id")).isEqualTo(pending.required("id"));
+        assertThat(result.required("status").textValue()).isEqualTo("INVALIDATED_BY_LISTING_CLOSURE");
+        assertThat(result.at("/listing/status").textValue()).isEqualTo("CLOSED");
+        JsonNode closed = request("GET", COLLAB + "/" + firstListing, otherToken, null, 200).required("data");
+        assertThat(closed.required("status").textValue()).isEqualTo("CLOSED");
+        assertThat(closed.required("publisher").required("profileAvailable").booleanValue()).isFalse();
+        assertThat(request("GET", COLLAB, otherToken, null, 200).at("/data/content").findValuesAsText("id"))
+                .doesNotContain(firstListing);
+        var cancelled = request("GET", COLLAB + "/me/jobs?status=CANCELLED", otherToken, null, 200).at("/data/content/0");
+        assertThat(cancelled.required("id").textValue()).isEqualTo(job);
+        assertThat(cancelled.required("status").textValue()).isEqualTo("CANCELLED");
+        var history = request("GET", incomingPath, otherToken, null, 200).at("/data/content/0");
+        assertThat(history.required("id")).isEqualTo(accepted.required("id"));
+        assertThat(history.hasNonNull("phoneNumber")).isFalse();
+        assertThat(history.required("applicant").hasNonNull("contactUserId")).isFalse();
+    }
+
+    private JsonNode submitCollabApplication(String token, String actor, String listing, String phone) throws Exception {
+        return request("POST", COLLAB + "/" + listing + "/applications", token,
+                Map.of("clientRequestId", UUID.randomUUID(), "applicantActorId", actor, "phoneNumber", phone), 201).required("data");
+    }
+
+    private String publishCollabFixture(String token, String actor, String title) throws Exception {
+        var draft = request("POST", COLLAB + "/drafts", token, Map.of("clientRequestId", UUID.randomUUID(),
+                "publisherActorId", actor, "cadence", "REGULAR", "wantedType", "MUSICIAN", "branch", "VOCAL",
+                "title", title, "description", "Vocalist wanted for a weekly rehearsal.", "cityId", cityId), 201).required("data");
+        String listing = draft.required("id").textValue();
+        request("POST", COLLAB + "/" + listing + "/publish", token, Map.of("expectedVersion", draft.required("version").longValue()), 200);
+        return listing;
+    }
+
+    @ParameterizedTest
+    @CsvSource({"LISTENER,first", "MUSICIAN,suspended", "VENUE,pending", "VENUE,rejected",
+            "STUDIO,pending", "STUDIO,rejected", "VENUE,approved", "STUDIO,approved"})
+    void mailboxErasureWorksWithoutAnApplicationSession(String role, String state) throws Exception {
+        prepareAccountErasureSchema();
+        String account = "web-" + role.toLowerCase(Locale.ROOT) + "-" + state;
+        stubIdentity(account);
+        var created = complete(form(account, role), 200).required("data");
+        UUID user = UUID.fromString(created.required("userId").textValue());
+        if (state.equals("first")) assertThat(created.path("requiresListenerProfileChoice").booleanValue()).isTrue();
+        if (state.equals("suspended")) jdbc.update("update tbl_user set access_suspended=true where id=?", user);
+        if (state.equals("approved") || state.equals("rejected")) {
+            review(role, state.toUpperCase(Locale.ROOT), UUID.fromString(created.required("applicationId").textValue()));
+        }
+        String base = "/api/v1/public/account-deletion/";
+        String email = email(account);
+        String proof = verifyMailbox(account);
+        request("POST", base + "confirm", null, Map.of("email", email("another"), "proof", proof, "confirmation", "DELETE"), 403);
+        assertThat(accounts(account)).isOne();
+        var command = Map.of("email", email, "proof", proof, "confirmation", "DELETE");
+        request("POST", base + "confirm", null, command, 204);
+        request("POST", base + "confirm", null, command, 403);
+        assertThat(accounts(account)).isZero();
+        assertThat(jdbc.queryForObject("select erased_at is not null from tbl_user where id=?", Boolean.class, user)).isTrue();
+        if (created.hasNonNull("applicationId")) {
+            UUID application = UUID.fromString(created.required("applicationId").textValue());
+            assertThat(jdbc.queryForObject("select count(*) from tbl_application_mail_intent where application_id=?", Integer.class, application)).isZero();
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"VENUE", "STUDIO"})
+    void mailboxErasureAndReviewerDecisionSerialize(String role) throws Exception {
+        prepareAccountErasureSchema();
+        String account = "web-race-" + role.toLowerCase(Locale.ROOT);
+        stubIdentity(account);
+        var result = complete(form(account, role), 200).required("data");
+        String token = passwordLogin(REVIEWER, 200).at("/data/token").textValue();
+        String approval = "/api/v1/admin/" + role.toLowerCase(Locale.ROOT) + "-applications/approve/" + result.required("applicationId").textValue();
+        String proof = verifyMailbox(account);
+        var command = Map.of("email", email(account), "proof", proof, "confirmation", "DELETE");
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try (var threads = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var reviewer = threads.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                // The application row can disappear immediately after the successful HTTP response.
+                return http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + approval))
+                        .header("Authorization", "Bearer " + token).POST(HttpRequest.BodyPublishers.noBody())
+                        .timeout(Duration.ofSeconds(20)).build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+            });
+            var erased = threads.submit(() -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return request("POST", "/api/v1/public/account-deletion/confirm", null, command, 204);
+            });
+            erased.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(reviewer.get(30, java.util.concurrent.TimeUnit.SECONDS)).isIn(200,404,409,410);
+        }
+        assertThat(accounts(account)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from user_roles where user_id=?", Integer.class,
+                UUID.fromString(result.required("userId").textValue()))).isZero();
+    }
+
+    private String verifyMailbox(String account) throws Exception {
+        String base = "/api/v1/public/account-deletion/";
+        String email = email(account);
+        request("POST", base + "request", null, Map.of("email", email), 202);
+        var captured = ArgumentCaptor.forClass(com.berkayb.soundconnect.shared.mail.dto.MailSendRequest.class);
+        verify(mailQueue, org.mockito.Mockito.atLeastOnce()).send(captured.capture());
+        var message = captured.getAllValues().stream().filter(job -> email.equals(job.to()) &&
+                "SoundConnect hesap silme kodu".equals(job.subject())).findFirst().orElseThrow();
+        var matcher = java.util.regex.Pattern.compile("[0-9]{6}").matcher(message.textBody());
+        assertThat(matcher.find()).isTrue();
+        String code = matcher.group();
+        request("POST", base + "verify", null, Map.of("email", email, "code", code.equals("000000") ? "999999" : "000000"), 403);
+        var preview = request("POST", base + "verify", null, Map.of("email", email, "code", code), 200);
+        assertThat(preview.required("username").textValue()).isEqualTo(account);
+        request("POST", base + "verify", null, Map.of("email", email, "code", code), 403);
+        return preview.required("proof").textValue();
+    }
+
+    @Test void suspendedLocalAccountCanUseItsCurrentPasswordAndAResetInvalidatesItsEarlierProof() throws Exception {
+        prepareAccountErasureSchema();
+        String username = "web-password-owner";
+        ObjectNode registration = form(username, "MUSICIAN");
+        registration.remove(List.of("idToken", "consent"));
+        String email = email(username);
+        registration.put("email", email).put("password", PASSWORD).put("rePassword", PASSWORD);
+        request("POST", AUTH + "register", null, registration, 201);
+        var code = ArgumentCaptor.forClass(String.class);
+        verify(otpMail).sendVerificationMail(eq(email), code.capture());
+        request("POST", AUTH + "verify-code", null, Map.of("email", email, "code", code.getValue()), 200);
+        jdbc.update("update tbl_user set access_suspended=true where email=?", email);
+        String base = "/api/v1/public/account-deletion/";
+        request("POST", base + "password", null, Map.of("email", email, "currentPassword", "wrong"), 403);
+        var credentials = Map.of("email", email, "currentPassword", PASSWORD);
+        String old = request("POST", base + "password", null, credentials, 200).required("proof").textValue();
+        jdbc.update("update tbl_user set session_version=session_version+1 where email=?", email);
+        request("POST", base + "confirm", null, Map.of("email", email, "proof", old, "confirmation", "DELETE"), 403);
+        var current = request("POST", base + "password", null, credentials, 200);
+        assertThat(current.required("username").textValue()).isEqualTo(username);
+        request("POST", base + "confirm", null, Map.of("email", email, "proof", current.required("proof").textValue(),
+                "confirmation", "DELETE"), 204);
+        assertThat(accounts(username)).isZero();
+    }
+
+    private void switchFixtureToListener(UUID userId) {
+        assertThat(jdbc.update("delete from tbl_musician_profile where user_id=?", userId)).isOne();
+        assertThat(jdbc.update("update user_roles set role_id=(select id from tbl_role where name='ROLE_LISTENER') where user_id=?",
+                userId)).isOne();
+        assertThat(jdbc.update("""
+                insert into "tbl_listener-profile"(id, created_at, updated_at, user_id, name, visibility_mode,
+                    visibility_choice_completed, version, playlist_revision)
+                values (?, now(), now(), ?, 'Former musician', 'STANDARD', true, 0, 0)
+                """, UUID.randomUUID(), userId)).isOne();
+    }
+
+    private String publishMarketplaceFixture(String token, String title) throws Exception {
+        var draft = request("POST", MARKET + "/drafts", token, Map.of("clientRequestId", UUID.randomUUID()), 201).required("data");
+        UUID listing = UUID.fromString(draft.required("id").textValue());
+        // The image processor is outside this HTTP fixture. Attach its persisted READY output.
+        MediaAsset image = marketplaceAssets.saveAndFlush(MediaAsset.builder()
+                .ownerType(MediaOwnerType.MARKETPLACE).ownerId(listing).kind(MediaKind.IMAGE)
+                .visibility(MediaVisibility.PRIVATE).contentAudience(MediaContentAudience.BACKSTAGE)
+                .status(MediaStatus.READY).mimeType("image/jpeg").size(1000L).build());
+        image.setStorageKey("protected/private-verified/media/" + image.getId() + "/attempts/" + UUID.randomUUID() + "/source.jpg");
+        marketplaceAssets.saveAndFlush(image);
+        UUID category = jdbc.queryForObject("select id from tbl_marketplace_category where code='ELECTRIC_GUITAR'", UUID.class);
+        var item = Map.of("expectedVersion", draft.required("version").longValue(), "title", title, "description", "Used test instrument",
+                "categoryId", category, "condition", "USED", "priceMinor", 50000L, "districtId", districtId,
+                "photoIds", List.of(image.getId()), "negotiable", false, "deliveryMethod", "PICKUP");
+        String path = MARKET + "/listings/" + listing;
+        var version = request("PUT", path, token, item, 200).at("/data/version").longValue();
+        request("POST", path + "/publish", token, Map.of("expectedVersion", version), 200);
+        return listing.toString();
+    }
+
+    @Test
+    void googleAccountKeepsItsSessionAndCannotSetALocalPassword() throws Exception {
+        String account = "google-password-change";
+        stubIdentity(account);
+        String token = complete(form(account, "MUSICIAN"), 200).at("/data/token").textValue();
+        var lookup = "select password, session_version from tbl_user where user_name=?";
+        var before = jdbc.queryForMap(lookup, account);
+        assertThat(request("GET", ACCOUNT_PASSWORD, token, null, 200).at("/data/provider").textValue()).isEqualTo("GOOGLE");
+        var change = Map.of("currentPassword", PASSWORD, "newPassword", "New-device-password-42");
+        assertThat(request("POST", ACCOUNT_PASSWORD, token, change, 409).required("code").asInt()).isEqualTo(1121);
+        assertThat(jdbc.queryForMap(lookup, account)).isEqualTo(before);
+        request("GET", ownerPath("MUSICIAN"), token, null, 200);
     }
 
     @ParameterizedTest @CsvSource({"VENUE,APPROVED", "VENUE,REJECTED", "STUDIO,APPROVED", "STUDIO,REJECTED"})
@@ -573,7 +902,7 @@ class GoogleRegistrationHttpPostgresTest {
         request.method(method, body == null ? HttpRequest.BodyPublishers.noBody() :
                 HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         var result = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
-        JsonNode envelope = json.readTree(result.body());
+        JsonNode envelope = result.body().isBlank() ? json.createObjectNode() : json.readTree(result.body());
         assertThat(result.statusCode()).as("%s %s (app code %s)", method, path, envelope.path("code")).isIn(java.util.Arrays.stream(expectedStatuses).boxed().toList());
         if (method.equals("POST") && path.startsWith("/api/v1/admin/") && result.statusCode() == 200) {
             var requestId = UUID.fromString(result.headers().firstValue("X-Decision-Id").orElseThrow());

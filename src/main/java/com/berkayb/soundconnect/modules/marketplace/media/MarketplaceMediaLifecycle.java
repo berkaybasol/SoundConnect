@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -65,10 +66,25 @@ public class MarketplaceMediaLifecycle {
     }
 
     /** Called while the account row is locked, before its domain rows are removed. */
+    @Transactional(propagation = Propagation.MANDATORY)
     public void purgeAccount(UUID userId) {
-        for (UUID listing : jdbc.queryForList("""
+        List<UUID> listings = jdbc.queryForList("""
                 select id from tbl_marketplace_listing where owner_user_id=:user order by id for update
-                """, Map.of("user", userId), UUID.class)) {
+                """, Map.of("user", userId), UUID.class);
+        // Soft erasure retains the user row. Lock outgoing and incoming saves
+        // in the same order when two accounts erase concurrently.
+        String incomingSaves = listings.isEmpty() ? "" : """
+                or listing_id in (select id from tbl_marketplace_listing where owner_user_id=:user)
+                """;
+        jdbc.update("""
+                delete from tbl_marketplace_saved s using (
+                    select user_id, listing_id from tbl_marketplace_saved
+                    where user_id=:user %s
+                    order by user_id, listing_id for update
+                ) bookmark
+                where s.user_id=bookmark.user_id and s.listing_id=bookmark.listing_id
+                """.formatted(incomingSaves), Map.of("user", userId));
+        for (UUID listing : listings) {
             jdbc.update("delete from tbl_marketplace_listing_photo where listing_id=:id", Map.of("id", listing));
             deleteListingMedia(listing);
             jdbc.update("delete from tbl_marketplace_listing where id=:id", Map.of("id", listing));

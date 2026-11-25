@@ -155,7 +155,11 @@ public class TableGroupController {
 	) {
 		UUID userId = getCurrentUserId(principal);
 		String joinNote = dto == null ? null : dto.note();
-		tableGroupService.joinTableGroup(userId, tableGroupId, joinNote);
+		if (dto == null || dto.acknowledgedBlockedMemberIds() == null) {
+			tableGroupService.joinTableGroup(userId, tableGroupId, joinNote);
+		} else {
+			tableGroupService.joinTableGroup(userId, tableGroupId, joinNote, dto.acknowledgedBlockedMemberIds());
+		}
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Void>builder()

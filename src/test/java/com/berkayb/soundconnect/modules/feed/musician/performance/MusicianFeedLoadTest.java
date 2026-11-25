@@ -687,7 +687,7 @@ class MusicianFeedLoadTest {
             return new MusicianFeedViewerGuard(users, musicians, venues, venueProfiles, listeners);
         }
         @Bean MusicianFeedRestrictionGuard restrictions(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper) {
-            var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class));
+            var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class), event -> {});
             return new MusicianFeedRestrictionGuard(new MusicianFeedRestrictionRepository(jdbc),
                     new MusicianFeedModerationScopeResolver(mapper), new ProfileBlockVisibility(blocks, jdbc));
         }

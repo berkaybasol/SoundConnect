@@ -49,7 +49,7 @@ class UserBlockServicePostgresTest {
             jdbc.update("insert into tbl_user(id,status,email_verified) values (?,'ACTIVE',true)", id);
         var sql = new NamedParameterJdbcTemplate(source);
         tx = new TransactionTemplate(new DataSourceTransactionManager(source));
-        blocks = new UserBlockService(sql, new AccountDeliveryFence(sql), follows);
+        blocks = new UserBlockService(sql, new AccountDeliveryFence(sql), follows, event -> {});
         blockedAccounts = new BlockedAccountQuery(sql, names);
     }
 

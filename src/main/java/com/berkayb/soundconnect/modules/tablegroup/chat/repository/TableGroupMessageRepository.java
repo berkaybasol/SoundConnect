@@ -57,6 +57,17 @@ public interface TableGroupMessageRepository extends JpaRepository<TableGroupMes
 	);
 
 	@Query("""
+			select m from TableGroupMessage m where m.tableGroupId = :tableId and m.deletedAt is null
+			and (m.gameId is not null or not exists (
+				select 1 from UserBlock b where b.unblockedAt is null
+				and ((b.blocker.id = :viewer and b.blocked.id = m.senderId)
+				  or (b.blocked.id = :viewer and b.blocker.id = m.senderId))))
+			order by m.createdAt desc, m.id desc
+			""")
+	Page<TableGroupMessage> findVisibleHistory(@Param("tableId") UUID tableId, @Param("viewer") UUID viewer,
+	                                          Pageable pageable);
+
+	@Query("""
 			select distinct message.tableGroupId
 			from TableGroupMessage message
 			where exists (

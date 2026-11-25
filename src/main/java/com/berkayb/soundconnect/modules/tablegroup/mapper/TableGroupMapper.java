@@ -26,6 +26,8 @@ public interface TableGroupMapper {
 	@Mapping(target = "username", expression = "java((String) null)") //eklendi
 	@Mapping(target = "profilePictureUrl", expression = "java((String) null)") //eklendi
 	@Mapping(target = "visibilityMode", ignore = true)
+	@Mapping(target = "blockedByMe", ignore = true)
+	@Mapping(target = "blockedArrival", ignore = true)
 	TableGroupParticipantDto toDto(TableGroupParticipant entity); //degisti
 	
 	

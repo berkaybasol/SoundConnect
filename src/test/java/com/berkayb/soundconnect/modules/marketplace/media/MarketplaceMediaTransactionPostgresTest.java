@@ -1,10 +1,14 @@
 package com.berkayb.soundconnect.modules.marketplace.media;
 
+import com.berkayb.soundconnect.modules.marketplace.MarketplaceTypes.*;
+import com.berkayb.soundconnect.modules.marketplace.dto.MarketplaceRequests.*;
+import com.berkayb.soundconnect.modules.marketplace.dto.MarketplaceResponses.Listing;
 import com.berkayb.soundconnect.modules.media.abuse.MediaUploadAbuseGuard;
 import com.berkayb.soundconnect.modules.media.enums.MediaStatus;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetReferenceGuard;
 import com.berkayb.soundconnect.modules.media.support.MediaJpaPostgresFixture;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,6 +21,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -107,24 +115,107 @@ class MarketplaceMediaTransactionPostgresTest extends MediaJpaPostgresFixture {
     }
 
     @Test
-    void reportSnapshotRetainsOldPhotoAfterReplacementAndAccountPurge() {
-        var listing = draft(); var evidence = image(listing.id()); var replacement = image(listing.id());
-        listing = update(listing, evidence.getId());
-        UUID report = retainInReport(listing.id(), evidence.getId());
-        update(listing, replacement.getId());
-        assertThat(asset(evidence.getId()).getStatus()).isEqualTo(MediaStatus.READY);
+    void accountPurgeRemovesPublishedListingAndPreservesReportedEvidenceAndOtherSeller() {
+        UUID viewer = account("viewer");
+        UUID moderator = account("moderator");
+        jdbc.update("insert into user_permissions select :user,id from tbl_permissions where name='MANAGE_MARKETPLACE_REPORTS'",
+                Map.of("user", moderator));
+        UUID city = UUID.randomUUID(), district = UUID.randomUUID();
+        jdbc.update("insert into tbl_city values(:id,'Ankara')", Map.of("id", city));
+        jdbc.update("insert into tbl_district values(:id,:city,'Çankaya')", Map.of("id", district, "city", city));
+        UUID category = service.categories(seller).getFirst().children().getFirst().id();
+        var listing = publish(seller, "Reported guitar", category, district);
+        var other = publish(buyer, "Other guitar", category, district);
+        UUID evidence = listing.photos().getFirst().assetId(), otherPhoto = other.photos().getFirst().assetId();
+        var report = service.report(viewer, listing.id(), new Report(ReportReason.SCAM, "Wrong description", UUID.randomUUID()));
+        var snapshot = service.reports(moderator, ReportStatus.OPEN, 0, 20).content().getFirst().evidence();
+        assertThat(snapshot.path("title").asText()).isEqualTo(listing.title());
+        assertThat(snapshot.path("photos").get(0).path("assetId").asText()).isEqualTo(evidence.toString());
 
-        tx(() -> { listings.lockUser(seller); lifecycle.purgeAccount(seller); return null; });
+        UUID replacement = image(listing.id()).getId();
+        service.update(seller, listing.id(), listedItem(listing, "Edited guitar", category, district, replacement));
+        service.save(viewer, listing.id());
+        service.save(viewer, other.id());
+        service.save(seller, other.id());
+        assertThat(service.discovery(viewer, null, 0, 20).content()).extracting(Listing::id)
+                .containsExactlyInAnyOrder(listing.id(), other.id());
+        var preserved = service.detail(viewer, other.id());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            transaction.executeWithoutResult(status -> { listings.lockUser(seller); lifecycle.purgeAccount(seller); });
+        }
 
+        assertThat(service.discovery(viewer, null, 0, 20).content()).containsExactly(preserved);
+        assertThat(service.saved(viewer, 0, 20).content()).containsExactly(preserved);
+        assertThat(service.saved(seller, 0, 20).content()).isEmpty();
+        assertThatThrownBy(() -> service.detail(viewer, listing.id())).isInstanceOfSatisfying(SoundConnectException.class,
+                ex -> assertThat(ex.getErrorType()).isEqualTo(ErrorType.MARKETPLACE_NOT_FOUND));
+        assertThat(service.detail(viewer, other.id())).isEqualTo(preserved);
+        assertThat(asset(otherPhoto).getStatus()).isEqualTo(MediaStatus.READY);
         assertThat(photos(listing.id())).isEmpty();
-        assertThat(asset(evidence.getId()).getStatus()).isEqualTo(MediaStatus.READY);
-        assertThat(asset(replacement.getId()).getStatus()).isEqualTo(MediaStatus.DELETION_PENDING);
-        assertThat(jdbc.queryForObject("select listing_id from tbl_marketplace_report where id=:id", Map.of("id", report), UUID.class)).isNull();
-        assertThat(jdbc.queryForList("select media_asset_id from tbl_marketplace_report_photo where report_id=:id", Map.of("id", report), UUID.class))
-                .containsExactly(evidence.getId());
-        assertThatThrownBy(() -> context.getBean(MediaAssetReferenceGuard.class).assertNotReferenced(evidence.getId()))
-                .isInstanceOf(SoundConnectException.class);
-        assertThat(events.committed).containsExactly(replacement.getId());
+        assertThat(asset(replacement).getStatus()).isEqualTo(MediaStatus.DELETION_PENDING);
+        assertThat(events.committed).containsExactly(replacement);
+
+        var retained = service.reports(moderator, ReportStatus.OPEN, 0, 20).content().getFirst();
+        assertThat(retained.id()).isEqualTo(report.id());
+        assertThat(retained.listingId()).isNull();
+        assertThat(retained.evidence()).isEqualTo(snapshot);
+        assertThat(asset(evidence).getStatus()).isEqualTo(MediaStatus.READY);
+        var mediaAccess = context.getBean(MarketplaceMediaAccess.class);
+        mediaAccess.requireMediaAccess(moderator, listing.id(), evidence);
+        assertThatThrownBy(() -> mediaAccess.requireMediaAccess(viewer, listing.id(), evidence))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        ex -> assertThat(ex.getErrorType()).isEqualTo(ErrorType.MEDIA_ASSET_NOT_FOUND));
+        assertThatThrownBy(() -> context.getBean(MediaAssetReferenceGuard.class).assertNotReferenced(evidence))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        ex -> assertThat(ex.getErrorType()).isEqualTo(ErrorType.MEDIA_ASSET_IN_USE));
+    }
+
+    private Listing publish(UUID owner, String title, UUID category, UUID district) {
+        var draft = service.createDraft(owner, new Draft(UUID.randomUUID()));
+        var complete = service.update(owner, draft.id(), listedItem(draft, title, category, district, image(draft.id()).getId()));
+        return service.publish(owner, draft.id(), new Version(complete.version()));
+    }
+
+    private Update listedItem(Listing listing, String title, UUID category, UUID district, UUID photo) {
+        return new Update(listing.version(), title, "Used electric guitar", category, null, null, Condition.USED,
+                50000L, district, List.of(photo), false, Delivery.PICKUP);
+    }
+
+    @Test
+    void twoSellersWhoSavedEachOthersListingsCanPurgeConcurrently() throws Exception {
+        UUID city = UUID.randomUUID(), district = UUID.randomUUID();
+        jdbc.update("insert into tbl_city values(:id,'Ankara')", Map.of("id", city));
+        jdbc.update("insert into tbl_district values(:id,:city,'Çankaya')", Map.of("id", district, "city", city));
+        UUID category = service.categories(seller).getFirst().children().getFirst().id();
+        Listing first = publish(seller, "First guitar", category, district);
+        Listing second = publish(buyer, "Second guitar", category, district);
+        service.save(buyer, first.id());
+        service.save(seller, second.id());
+
+        var locked = new CountDownLatch(2);
+        var start = new CompletableFuture<Void>().orTimeout(10, TimeUnit.SECONDS);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var purges = List.of(seller, buyer).stream().map(owner -> pool.submit(() ->
+                    transaction.executeWithoutResult(status -> {
+                        jdbc.getJdbcTemplate().execute("set local lock_timeout='5s'");
+                        listings.lockUser(owner);
+                        jdbc.queryForList("select id from tbl_marketplace_listing where owner_user_id=:user for update",
+                                Map.of("user", owner), UUID.class);
+                        locked.countDown();
+                        start.join();
+                        lifecycle.purgeAccount(owner);
+                    }))).toList();
+            try {
+                assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                start.complete(null);
+            }
+            for (var purge : purges) purge.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from tbl_marketplace_saved", Map.of(), Long.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from tbl_marketplace_listing", Map.of(), Long.class)).isZero();
+        assertThat(events.committed).containsExactlyInAnyOrder(
+                first.photos().getFirst().assetId(), second.photos().getFirst().assetId());
     }
 
     @Test

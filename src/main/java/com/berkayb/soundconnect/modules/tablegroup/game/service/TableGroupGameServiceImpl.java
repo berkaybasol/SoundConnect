@@ -22,6 +22,7 @@ import com.berkayb.soundconnect.modules.tablegroup.observability.TableGroupMetri
 import com.berkayb.soundconnect.modules.tablegroup.repository.TableGroupRepository;
 import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import lombok.RequiredArgsConstructor;
@@ -68,6 +69,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 	private final TableGroupErasureGamePublisher erasurePublisher;
 	private final com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence accounts;
 	private final com.berkayb.soundconnect.modules.notification.service.AfterCommitDeliveryExecutor erasureDelivery;
+	private final UserBlockService blocks;
 
 	@Override
 	@Transactional(noRollbackFor = TableGroupGameActiveExistsException.class)
@@ -102,7 +104,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 			}
 			TableGroupGame lockedReplay = lockGame(tableGroupId, replay.get().getId());
 			TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, lockedReplay, now);
-			return reconciled == null ? messageResponse(lockedReplay) : reconciled;
+			return forViewer(requesterId, reconciled == null ? messageResponse(lockedReplay) : reconciled);
 		}
 		Optional<TableGroupGame> activeGame = gameRepository
 				.findFirstByTableGroupIdAndStatusInOrderByCreatedAtDesc(tableGroupId, ACTIVE_STATUSES);
@@ -151,7 +153,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		messageRepository.flush();
 
 		TableGroupGameResponseDto response = projectionService.project(game);
-		return realtimePublisher.publishCreatedAfterCommit(tableGroup, anchor, response);
+		return forViewer(requesterId, realtimePublisher.publishCreatedAfterCommit(tableGroup, anchor, response));
 	}
 
 	@Override
@@ -167,7 +169,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		}
 		TableGroupGame game = lockGame(tableGroupId, active.get().getId());
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, lockedTable.now());
-		return Optional.ofNullable(reconciled == null ? messageResponse(game) : reconciled);
+		return Optional.ofNullable(forViewer(requesterId, reconciled == null ? messageResponse(game) : reconciled));
 	}
 
 	@Override
@@ -178,7 +180,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		TableGroup tableGroup = lockedTable.tableGroup();
 		TableGroupGame game = lockGame(tableGroupId, gameId);
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, lockedTable.now());
-		return reconciled == null ? messageResponse(game) : reconciled;
+		return forViewer(requesterId, reconciled == null ? messageResponse(game) : reconciled);
 	}
 
 	@Override
@@ -192,10 +194,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		Optional<TableGroupGamePlayer> existing = playerRepository.findByGameIdAndUserId(gameId, requesterId);
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, now);
 		if (reconciled != null) {
-			return reconciled;
+			return forViewer(requesterId, reconciled);
 		}
 		if (existing.isPresent() && existing.get().getStatus() == TableGroupGamePlayerStatus.ACTIVE) {
-			return messageResponse(game);
+			return forViewer(requesterId, messageResponse(game));
 		}
 		requireLobbyBeforeDeadline(game, now);
 		if (existing.isPresent()) {
@@ -211,7 +213,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 					.joinedAt(now)
 					.build());
 		}
-		return persistAndPublish(game);
+		return forViewer(requesterId, persistAndPublish(game));
 	}
 
 	@Override
@@ -225,10 +227,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		Instant now = lockedTable.now();
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, now);
 		if (reconciled != null) {
-			return reconciled;
+			return forViewer(requesterId, reconciled);
 		}
 		if (player.getStatus() == TableGroupGamePlayerStatus.LEFT) {
-			return messageResponse(game);
+			return forViewer(requesterId, messageResponse(game));
 		}
 		requireLobbyBeforeDeadline(game, now);
 		player.setStatus(TableGroupGamePlayerStatus.LEFT);
@@ -236,7 +238,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		if (game.getCreatedBy().equals(requesterId)) {
 			cancelState(game, "CREATOR_LEFT", now);
 		}
-		return persistAndPublish(game);
+		return forViewer(requesterId, persistAndPublish(game));
 	}
 
 	@Override
@@ -252,10 +254,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		}
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, now);
 		if (reconciled != null) {
-			return reconciled;
+			return forViewer(requesterId, reconciled);
 		}
 		if (game.getStatus() == TableGroupGameStatus.IN_PROGRESS) {
-			return messageResponse(game);
+			return forViewer(requesterId, messageResponse(game));
 		}
 		requireLobbyBeforeDeadline(game, now);
 		if (activePlayers(gameId).size() < 2) {
@@ -263,7 +265,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		}
 		startState(game, now);
 		metricAfterCommit(metrics::gameStarted);
-		return persistAndPublish(game);
+		return forViewer(requesterId, persistAndPublish(game));
 	}
 
 	@Override
@@ -280,10 +282,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		Instant now = lockedTable.now();
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, now);
 		if (reconciled != null) {
-			return reconciled;
+			return forViewer(requesterId, reconciled);
 		}
 		if (!ACTIVE_STATUSES.contains(game.getStatus())) {
-			return messageResponse(game);
+			return forViewer(requesterId, messageResponse(game));
 		}
 		cancelState(
 				game,
@@ -292,7 +294,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 						: "CANCELLED_BY_OWNER",
 				now
 		);
-		return persistAndPublish(game);
+		return forViewer(requesterId, persistAndPublish(game));
 	}
 
 	@Override
@@ -323,10 +325,10 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		Instant now = lockedTable.now();
 		TableGroupMessageResponseDto reconciled = reconcileIfDue(tableGroup, game, now);
 		if (reconciled != null) {
-			return reconciled;
+			return forViewer(requesterId, reconciled);
 		}
 		if (replay.isPresent()) {
-			return messageResponse(game);
+			return forViewer(requesterId, messageResponse(game));
 		}
 		requireActionWindow(game, now);
 		if (player.getStatus() != TableGroupGamePlayerStatus.ACTIVE) {
@@ -354,7 +356,11 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 		if (allActivePlayersActed(game)) {
 			resolveCurrentRound(game, now, false);
 		}
-		return persistAndPublish(game);
+		return forViewer(requesterId, persistAndPublish(game));
+	}
+
+	private TableGroupMessageResponseDto forViewer(UUID viewer, TableGroupMessageResponseDto response) {
+		return TableGroupGameVisibility.forViewer(blocks, viewer, response);
 	}
 
 	@Transactional
@@ -783,6 +789,7 @@ public class TableGroupGameServiceImpl implements TableGroupGameService {
 						|| request.targetUserId() == null) {
 					throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
 				}
+				accounts.requireInteractionAllowed(requesterId, request.targetUserId());
 				TableGroupGamePlayer target = requirePlayer(game.getId(), request.targetUserId());
 				if (target.getStatus() != TableGroupGamePlayerStatus.ACTIVE) {
 					throw new SoundConnectException(ErrorType.VALIDATION_ERROR);

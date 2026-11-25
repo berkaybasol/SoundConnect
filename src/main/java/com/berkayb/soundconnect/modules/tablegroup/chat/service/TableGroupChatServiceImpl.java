@@ -17,13 +17,13 @@ import com.berkayb.soundconnect.modules.tablegroup.observability.TableGroupMetri
 import com.berkayb.soundconnect.modules.tablegroup.support.TableGroupEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
-import com.berkayb.soundconnect.shared.realtime.WebSocketChannels;
+import com.berkayb.soundconnect.modules.tablegroup.game.service.TableGroupGameVisibility;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,7 +50,8 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 
 	private final TableGroupMessageRepository messageRepository;
 	private final TableGroupMessageMapper messageMapper;
-	private final SimpMessagingTemplate messagingTemplate;
+	private final TableGroupChatDelivery delivery;
+	private final UserBlockService blocks;
 	private final TableGroupEntityFinder tableGroupEntityFinder;
 	private final TableGroupChatUnreadHelper unreadHelper;
 	private final TableGroupRateLimitGuard rateLimitGuard;
@@ -161,17 +162,11 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		);
 		TableGroupMessageResponseDto response = messageMapper.toResponseDto(savedMessage);
 
-		List<UUID> unreadRecipients = tableGroup.getParticipants().stream()
-				.filter(participant -> participant.getStatus() == ParticipantStatus.ACCEPTED)
-				.map(participant -> participant.getUserId())
-				.filter(Objects::nonNull)
-				.filter(userId -> !userId.equals(senderId))
-				.distinct()
-				.toList();
+		Set<UUID> unreadRecipients = TableGroupChatDelivery.acceptedUsers(tableGroup);
 
 		runAfterCommit(() -> {
 			recordMetric("message_sent", metrics::messageSent);
-			deliverCommittedMessage(tableGroupId, senderId, unreadRecipients, response);
+			delivery.enqueue(tableGroupId, response.messageId(), unreadRecipients);
 		});
 		return response;
 	}
@@ -188,8 +183,7 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_REPORT_STATE_CHANGED));
 		message.setDeletedAt(java.time.LocalDateTime.now(java.time.Clock.systemUTC()));
 		messageRepository.saveAndFlush(message);
-		var tombstone = messageMapper.toResponseDto(message);
-		runAfterCommit(() -> deliverCommittedMessage(tableGroupId, message.getSenderId(), List.of(), tombstone));
+		runAfterCommit(() -> delivery.enqueue(tableGroupId, messageId, Set.of()));
 	}
 
 	private Optional<TableGroupMessageResponseDto> findReplay(
@@ -252,8 +246,8 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 
 		Pageable boundedPageable = boundedPageable(pageable);
 		Page<TableGroupMessage> entityPage = messageRepository
-				.findByTableGroupIdAndDeletedAtIsNullOrderByCreatedAtDescIdDesc(
-						tableGroupId,
+				.findVisibleHistory(
+						tableGroupId, requesterId,
 						boundedPageable
 				);
 		List<UUID> gameIds = entityPage.getContent().stream()
@@ -261,13 +255,16 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 				.filter(Objects::nonNull)
 				.distinct()
 				.toList();
-		Map<UUID, TableGroupGameResponseDto> games = gameIds.isEmpty()
-				? Map.of()
-				: Optional.ofNullable(gameProjectionService.projectByIds(gameIds)).orElseGet(Map::of);
-		Page<TableGroupMessageResponseDto> result = entityPage.map(message ->
-				message.getGameId() == null
-						? messageMapper.toResponseDto(message)
-						: messageMapper.toResponseDto(message, games.get(message.getGameId())));
+		Map<UUID, TableGroupGameResponseDto> games = gameIds.isEmpty() ? Map.of() : gameProjectionService.projectByIds(gameIds);
+		Set<UUID> identities = TableGroupGameVisibility.identities(games.values());
+		entityPage.stream().filter(message -> message.getGameId() != null)
+				.map(TableGroupMessage::getSenderId).forEach(identities::add);
+		Set<UUID> hidden = identities.isEmpty() ? Set.of() : blocks.blockedAmong(requesterId, identities);
+		Page<TableGroupMessageResponseDto> result = entityPage.map(message -> {
+			if (message.getGameId() == null) return messageMapper.toResponseDto(message);
+			var game = Objects.requireNonNull(games.get(message.getGameId()), "Missing game for chat anchor");
+			return TableGroupGameVisibility.restrict(messageMapper.toResponseDto(message, game), hidden);
+		});
 		if (markRead && boundedPageable.getPageNumber() == 0) {
 			// Clear the derived badge only if the history transaction commits.
 			runAfterCommit(() -> unreadHelper.resetUnread(requesterId, tableGroupId));
@@ -344,47 +341,6 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 				callback.run();
 			}
 		});
-	}
-
-	private void deliverCommittedMessage(
-			UUID tableGroupId,
-			UUID senderId,
-			List<UUID> unreadRecipients,
-			TableGroupMessageResponseDto response
-	) {
-		for (UUID recipientId : unreadRecipients) {
-			try {
-				unreadHelper.incrementUnread(recipientId, tableGroupId);
-			} catch (RuntimeException exception) {
-				// The helper is fail-soft itself; this protects delivery if an
-				// alternative implementation is introduced later.
-				recordMetric("unread_delivery_failed", () -> metrics.unreadCacheFailed("delivery"));
-				log.warn(
-						"TABLE-GROUP CHAT unread delivery failed: userId={}, tableGroupId={}, error={}",
-						recipientId,
-						tableGroupId,
-						exception.toString()
-				);
-			}
-		}
-
-		String destination = WebSocketChannels.tableGroup(tableGroupId);
-		try {
-			messagingTemplate.convertAndSend(destination, response);
-			log.debug(
-					"TABLE-GROUP CHAT WS push -> dest={}, sender={}, msgId={}",
-					destination,
-					senderId,
-					response.messageId()
-			);
-		} catch (RuntimeException exception) {
-			recordMetric("realtime_publish_failed", metrics::realtimePublishFailed);
-			log.warn(
-					"TABLE-GROUP CHAT WS push FAILED -> dest={}, err={}",
-					destination,
-					exception.toString()
-			);
-		}
 	}
 
 	private void recordMetric(String metricName, Runnable metricAction) {

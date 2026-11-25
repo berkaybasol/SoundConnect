@@ -133,7 +133,10 @@ public class MarketplaceService {
         Optional<AdminReport> replay=repository.reportReplay(viewer,request.clientRequestId());
         if(replay.isPresent()) {
             AdminReport old=replay.get();
-            if(!Objects.equals(old.listingId(),id) || old.reason()!=request.reason() || !Objects.equals(old.description(),description))
+            // Erasure clears the live FK; the snapshot still identifies the original request.
+            boolean sameListing = old.listingId() != null ? old.listingId().equals(id)
+                    : id != null && old.evidence() != null && id.toString().equals(old.evidence().path("id").textValue());
+            if(!sameListing || old.reason()!=request.reason() || !Objects.equals(old.description(),description))
                 throw failure(ErrorType.MARKETPLACE_IDEMPOTENCY_CONFLICT);
             return new ReportReceipt(old.id(),old.status());
         }

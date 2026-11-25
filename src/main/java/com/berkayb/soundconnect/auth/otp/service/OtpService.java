@@ -157,6 +157,14 @@ public class OtpService {
 		return verifyOtp(email, code, OtpPurpose.PASSWORD_RESET);
 	}
 
+	public OtpIssueClaim acquireErasureOtp(UUID userId, String email) {
+		return acquireOtpIssue(userId + ":" + normalize(email), "account-deletion", OtpPurpose.ERASURE, false);
+	}
+
+	public boolean verifyErasureOtp(UUID userId, String email, String code) {
+		return verifyOtp(userId + ":" + normalize(email), code, OtpPurpose.ERASURE);
+	}
+
 	private boolean verifyOtp(String email, String code, OtpPurpose purpose) {
 		RecoveryRuntime.requireOperational();
 		validateConfiguration();
@@ -399,7 +407,8 @@ public class OtpService {
 
 	private enum OtpPurpose {
 		REGISTRATION("", "Registration"),
-		PASSWORD_RESET("password-reset:", "Password reset");
+		PASSWORD_RESET("password-reset:", "Password reset"),
+		ERASURE("account-deletion:", "Account deletion");
 
 		private final String keyPrefix;
 		private final String logLabel;

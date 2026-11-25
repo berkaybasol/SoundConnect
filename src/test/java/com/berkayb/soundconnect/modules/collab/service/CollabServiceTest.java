@@ -24,6 +24,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -940,12 +941,44 @@ class CollabServiceTest {
     }
 
     @Test
-    void completedJobCanBeReviewedOnceAndUpdatesTargetRating() {
+    void erasedPersonalActorCanOnlyReturnAnExistingReview() {
+        User publisher = user(UUID.randomUUID().toString());
+        User applicant = user(UUID.randomUUID().toString());
+        applicant.setErasedAt(LocalDateTime.now());
+        Collab listing = listing(publisher, CollabListingStatus.CLOSED);
+        CollabActor applicantActor = actor(UUID.randomUUID().toString(), ProfileType.MUSICIAN);
+        CollabJob job = CollabJob.builder().listing(listing).publisherUser(publisher).applicantUser(applicant)
+                .publisherActor(listing.getPublisherActor()).applicantActor(applicantActor)
+                .status(CollabJobStatus.COMPLETED).build();
+        job.setId(UUID.randomUUID());
+        when(userRepository.findByIdForUpdate(publisher.getId())).thenReturn(Optional.of(publisher));
+        when(jobRepository.findByIdForUpdate(job.getId())).thenReturn(Optional.of(job));
+        var request = new CollabReviewCreateRequest(UUID.randomUUID(), 4, "İyi");
+
+        assertThatThrownBy(() -> service.review(publisher.getId(), job.getId(), request))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+
+        var existing = CollabReview.builder().rating(4).comment("İyi").build();
+        when(reviewRepository.findByJobIdAndReviewerActorId(job.getId(), listing.getPublisherActor().getId()))
+                .thenReturn(Optional.of(existing));
+        var response = mock(CollabReviewResponse.class);
+        when(mapper.review(existing)).thenReturn(response);
+        assertThat(service.review(publisher.getId(), job.getId(), request)).isSameAs(response);
+        verify(reviewRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(actorRepository, eventPublisher);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void completedJobCanBeReviewedOnceAndUpdatesTargetRating(boolean deletedBandRepresentative) {
         User publisher = user("00000000-0000-0000-0000-000000000081");
         User applicant = user("00000000-0000-0000-0000-000000000082");
+        if (deletedBandRepresentative) applicant.setErasedAt(LocalDateTime.now());
         Collab listing = listing(publisher, CollabListingStatus.CLOSED);
         CollabActor publisherActor = actor("00000000-0000-0000-0000-000000000083", ProfileType.VENUE);
-        CollabActor applicantActor = actor("00000000-0000-0000-0000-000000000084", ProfileType.MUSICIAN);
+        CollabActor applicantActor = actor("00000000-0000-0000-0000-000000000084",
+                deletedBandRepresentative ? ProfileType.BAND : ProfileType.MUSICIAN);
         CollabJob job = CollabJob.builder().listing(listing).publisherUser(publisher).applicantUser(applicant)
                 .publisherActor(publisherActor).applicantActor(applicantActor).status(CollabJobStatus.COMPLETED)
                 .publisherConfirmedAt(NOW.minusSeconds(120)).applicantConfirmedAt(NOW.minusSeconds(60))
@@ -972,6 +1005,7 @@ class CollabServiceTest {
         assertThat(applicantActor.getRatingSum()).isEqualTo(5);
         assertThat(applicantActor.getReviewCount()).isOne();
         verify(reviewRepository).saveAndFlush(any(CollabReview.class));
+        verify(eventPublisher, times(deletedBandRepresentative ? 0 : 1)).publishEvent(any(Object.class));
     }
 
     @Test

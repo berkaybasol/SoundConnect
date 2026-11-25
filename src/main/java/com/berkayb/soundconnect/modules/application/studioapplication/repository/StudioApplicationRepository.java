@@ -16,8 +16,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface StudioApplicationRepository extends JpaRepository<StudioApplication, UUID> {
-	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	@Query("select application from StudioApplication application where application.id = :id")
+    // Match erasure's account -> application lock order. The applicant is immutable.
+    @Query(value = """
+            with applicant as materialized (
+                select u.id from tbl_user u join tbl_studio_applications a on a.applicant_id=u.id
+                where a.id=:id and u.erased_at is null for update of u
+            ) select a.* from tbl_studio_applications a join applicant on applicant.id=a.applicant_id
+                where a.id=:id for update of a
+            """, nativeQuery = true)
 	Optional<StudioApplication> findByIdForUpdate(@Param("id") UUID id);
 
 	Optional<StudioApplication> findByApplicantAndStatus(User applicant, ApplicationStatus status);

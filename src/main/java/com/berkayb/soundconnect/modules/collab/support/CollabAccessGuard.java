@@ -26,7 +26,8 @@ public class CollabAccessGuard {
         Set<String> profiles = users.findExistingPersonalProfileRoleNames(viewerId);
         if (profiles.size() != 1 || profiles.stream().noneMatch(BUSINESS_ROLES::contains)
                 || roles.stream().filter(PERSONAL_ROLES::contains).count() != 1
-                || !roles.containsAll(profiles) || !active(viewerId)) throw forbidden();
+                || !roles.containsAll(profiles)) throw forbidden();
+        requireActive(viewerId);
     }
 
     public void requireModerator(UUID viewerId) {
@@ -45,10 +46,11 @@ public class CollabAccessGuard {
         if (!allowed) throw forbidden();
     }
 
-    private boolean active(UUID viewerId) {
-        return Boolean.TRUE.equals(jdbc.queryForObject("""
+    public void requireActive(UUID viewerId) {
+        boolean active = Boolean.TRUE.equals(jdbc.queryForObject("""
                 select exists(select 1 from tbl_user where id=:id and status='ACTIVE' and email_verified and erased_at is null)
                 """, Map.of("id", viewerId), Boolean.class));
+        if (!active) throw forbidden();
     }
     private void requireIdentity(UUID viewerId) {
         if (viewerId == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);

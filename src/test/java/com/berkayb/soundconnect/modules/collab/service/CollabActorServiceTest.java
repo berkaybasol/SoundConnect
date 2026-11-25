@@ -19,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -130,6 +131,32 @@ class CollabActorServiceTest {
 
         assertThat(result.contactUserId()).isEqualTo(user.getId());
         assertThat(result.contactUsername()).isNull();
+    }
+
+    @Test
+    void erasedContactIsAnonymousWhileASharedBandsNameAndAvatarStayVisible() {
+        User erased = new User();
+        erased.setId(UUID.randomUUID());
+        erased.setUsername("tombstone");
+        erased.setErasedAt(LocalDateTime.now());
+        CollabActor actor = actor(UUID.randomUUID(), UUID.randomUUID(), true);
+        actor.setAvatarUrl("legacy-avatar");
+
+        CollabActorSummary personal = service.toSummary(actor, erased);
+        assertThat(personal.contactUserId()).isNull();
+        assertThat(personal.contactUsername()).isNull();
+        assertThat(personal.displayName()).isEqualTo("Silinmiş hesap");
+        assertThat(personal.avatarUrl()).isNull();
+        assertThat(personal.profileAvailable()).isFalse();
+
+        actor.setProfileType(ProfileType.BAND);
+        CollabActorSummary band = service.toSummary(actor, erased);
+        assertThat(band.contactUserId()).isNull();
+        assertThat(band.contactUsername()).isNull();
+        assertThat(band.displayName()).isEqualTo(actor.getDisplayName());
+        assertThat(band.avatarUrl()).isEqualTo(actor.getAvatarUrl());
+        assertThat(band.sourceProfileId()).isEqualTo(actor.getSourceProfileId());
+        assertThat(band.profileAvailable()).isTrue();
     }
 
     private CollabActor actor(UUID actorId, UUID sourceId, boolean active) {

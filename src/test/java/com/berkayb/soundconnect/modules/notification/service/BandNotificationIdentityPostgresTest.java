@@ -14,6 +14,23 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.*;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.*;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.mapper.BandMapper;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandServiceImpl;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service.BandAccountLifecycle;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.dto.request.BandDeletionDecision;
+import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
+import com.berkayb.soundconnect.modules.media.enums.*;
+import com.berkayb.soundconnect.modules.setlistcreator.dto.request.*;
+import com.berkayb.soundconnect.modules.setlistcreator.mapper.SetlistMapper;
+import com.berkayb.soundconnect.modules.setlistcreator.service.SetistServiceImpl;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.support.MusicianProfileEntityFinder;
+import com.berkayb.soundconnect.modules.track.entity.Track;
+import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
+import com.berkayb.soundconnect.modules.collab.entity.Collab;
+import com.berkayb.soundconnect.modules.collab.entity.CollabActor;
+import com.berkayb.soundconnect.modules.collab.enums.*;
+import com.berkayb.soundconnect.modules.location.entity.City;
+import com.berkayb.soundconnect.modules.profile.shared.media.enums.ProfileType;
+import com.berkayb.soundconnect.shared.exception.ErrorType;
+import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.shared.identity.GhostListenerIdentityBatchResolver;
@@ -65,6 +82,8 @@ class BandNotificationIdentityPostgresTest {
             .withLabel("soundconnect.task","band-notification-identity-20260929").withReuse(false);
     @Autowired DataSource source; @Autowired EntityManager em; @Autowired PlatformTransactionManager manager;
     @Autowired BandServiceImpl bands; @Autowired NotificationService reads; @Autowired NotificationRepository inbox;
+    @Autowired BandAccountLifecycle bandLifecycle;
+    @Autowired SetistServiceImpl setlists;
     @Autowired TransactionalNotificationService writer; @Autowired NotificationEventListener consumer;
     @Autowired NotificationDeliveryPolicy policy;
     @MockitoBean com.berkayb.soundconnect.modules.media.service.MediaAssetService media;
@@ -78,13 +97,132 @@ class BandNotificationIdentityPostgresTest {
         jdbc=new JdbcTemplate(source);
         try(var c=source.getConnection();var s=c.createStatement()) {
             assertThat(c.getMetaData().getURL()).contains("band_identity_regression");
-            for(String file:List.of("2026-09-10-listener-account-erasure.sql","2026-09-29-band-notification-identity.sql"))
+            for(String file:List.of("2026-09-10-listener-account-erasure.sql","2026-09-29-band-notification-identity.sql",
+                    "2026-11-25-band-collab-closure.sql"))
                 s.execute(Files.readString(Path.of("scripts/db",file)));
         }
         doAnswer(call -> {queued.add(call.getArgument(0));return null;}).when(executor).submit(any());
         tx(() -> {founder=user();member=user();return null;});
         band=bands.createBand(founder,profile("OldBand"+UUID.randomUUID().toString().substring(0,8))).id();
     }
+    @Test void lastFounderTransfersDirectlyAndRemainingMemberKeepsBandCoverTracksAndRepertoire() {
+        joinBand();
+        var repertoire = setlists.createSetlist(founder,new SetlistCreateRequestDto("Prova repertuvarı",null,band));
+        var withSet = setlists.addSetToSetlist(founder,repertoire.id(),new SetlistSetRequestDto("İlk set","20 dk",1));
+        var setId = withSet.sets().getFirst().id();
+        assertThat(setId).isNotNull();
+        var withSong = setlists.addItemToSet(founder,setId,new SetlistItemRequestDto("QA grup","Birinci şarkı",null,1));
+        assertThat(withSong.sets().getFirst().items().getFirst().id()).isNotNull();
+        UUID cover = tx(() -> {
+            var asset = MediaAsset.builder().ownerId(founder).ownerType(MediaOwnerType.USER)
+                    .kind(MediaKind.IMAGE).mimeType("image/png").size(24L).status(MediaStatus.READY).build();
+            em.persist(asset);
+            var group = em.find(Band.class, band);
+            group.setProfilePictureMediaId(asset.getId());
+            em.persist(Track.builder().ownerId(band).ownerType(TrackOwnerType.BAND)
+                    .mediaAssetId(UUID.randomUUID()).title("Ortak kayıt").build());
+            return asset.getId();
+        });
+        assertThat(bandLifecycle.deletionOptions(founder)).singleElement().satisfies(option ->
+                assertThat(option.successors()).extracting("userId").containsExactly(member));
+        eraseMemberships(founder, List.of(new BandDeletionDecision(band,BandDeletionDecision.Action.TRANSFER,member)));
+        var profile = bands.getBandById(band,member);
+        assertThat(profile.profilePictureMediaId()).isEqualTo(cover);
+        assertThat(profile.members()).singleElement().satisfies(m -> assertThat(m.role()).isEqualTo("FOUNDER"));
+        assertThat(jdbc.queryForObject("select owner_id from tbl_media_asset where id=? and owner_type='BAND'",UUID.class,cover)).isEqualTo(band);
+        var remaining = setlists.getSetlistDetail(member,repertoire.id());
+        assertThat(remaining.name()).isEqualTo("Prova repertuvarı");
+        assertThat(remaining.sets().getFirst().title()).isEqualTo("İlk set");
+        assertThat(remaining.sets().getFirst().items().getFirst().songName()).isEqualTo("Birinci şarkı");
+        assertThat(jdbc.queryForObject("select title from tbl_tracks where owner_id=?",String.class,band)).isEqualTo("Ortak kayıt");
+    }
+
+    @Test void invalidOrObsoleteChoiceRollsBackAllBandChanges() {
+        joinBand();
+        var valid = new BandDeletionDecision(band,BandDeletionDecision.Action.CLOSE,null);
+        var stale = new BandDeletionDecision(UUID.randomUUID(),BandDeletionDecision.Action.CLOSE,null);
+        var foreignMember = new BandDeletionDecision(band,BandDeletionDecision.Action.TRANSFER,UUID.randomUUID());
+        for (var choices : List.of(List.<BandDeletionDecision>of(),List.of(valid,valid),List.of(valid,stale),List.of(foreignMember))) {
+            assertThatThrownBy(() -> eraseMemberships(founder, choices)).isInstanceOfSatisfying(
+                    SoundConnectException.class, ex -> assertThat(ex.getErrorType()).isEqualTo(ErrorType.BAND_DELETION_DECISION_CONFLICT));
+            assertThat(bands.getBandById(band,founder).members()).hasSize(2);
+        }
+        jdbc.update("update tbl_user set access_suspended=true where id=?",member);
+        assertThat(bandLifecycle.deletionOptions(founder).getFirst().successors()).isEmpty();
+        assertThatThrownBy(() -> eraseMemberships(founder,List.of(
+                new BandDeletionDecision(band,BandDeletionDecision.Action.TRANSFER,member))))
+                .isInstanceOf(SoundConnectException.class);
+        eraseMemberships(founder,List.of(valid));
+        assertThat(jdbc.queryForObject("select count(*) from tbl_band where id=?",Integer.class,band)).isZero();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void departureWithRemainingFounderNeedsNoChoice(boolean cofounder) {
+        joinBand();
+        if (cofounder) jdbc.update("update tbl_band_member set band_role='FOUNDER' where band_id=? and user_id=?",band,member);
+        assertThat(bandLifecycle.deletionOptions(member)).isEmpty();
+        eraseMemberships(member,List.of());
+        assertThat(bands.getBandById(band,founder).members()).singleElement().satisfies(m -> assertThat(m.userId()).isEqualTo(founder));
+    }
+
+    @Test void ordinaryLeaveWorksForACofounderButPreservesLastFounder() {
+        joinBand();
+        jdbc.update("update tbl_band_member set band_role='FOUNDER' where band_id=? and user_id=?",band,member);
+        bands.leaveBand(band,member,version());
+        assertThat(status()).isEqualTo("LEFT");
+        assertThatThrownBy(() -> bands.leaveBand(band,founder,0L)).isInstanceOfSatisfying(
+                SoundConnectException.class,e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.BAND_FOUNDER_CANNOT_LEAVE));
+    }
+
+    private void joinBand() {
+        bands.inviteMember(band,founder,member,null);
+        bands.acceptInvite(band,member,invitation());
+    }
+
+    @Test void closingLastFounderBandClosesAnotherPublishersBandListingAndKeepsTheirPersonalListing() {
+        var listings = tx(() -> {
+            City city = City.builder().name("Band closure " + UUID.randomUUID()).build();
+            em.persist(city);
+            var publisher = em.find(User.class,member);
+            var actor = CollabActor.builder().profileType(ProfileType.BAND).sourceProfileId(band)
+                    .displayName("Kapanacak grup").build();
+            var personal = CollabActor.builder().profileType(ProfileType.MUSICIAN).sourceProfileId(UUID.randomUUID())
+                    .displayName("Kalan müzisyen").build();
+            em.persist(actor);
+            em.persist(personal);
+            return List.of(openListing(publisher,actor,city),openListing(publisher,personal,city));
+        });
+        eraseMemberships(founder,List.of(new BandDeletionDecision(band,BandDeletionDecision.Action.CLOSE,null)));
+        assertThat(jdbc.queryForObject("select status from tbl_collab where id=?",String.class,listings.get(0))).isEqualTo("CLOSED");
+        assertThat(jdbc.queryForObject("select status from tbl_collab where id=?",String.class,listings.get(1))).isEqualTo("OPEN");
+        assertThat(jdbc.queryForObject("select active from tbl_collab_actor where source_profile_id=?",Boolean.class,band)).isFalse();
+        assertThatThrownBy(() -> tx(() -> {
+            em.persist(Track.builder().ownerType(TrackOwnerType.BAND).ownerId(band)
+                    .mediaAssetId(UUID.randomUUID()).title("Stale upload").build());
+            em.flush();
+            return null;
+        })).rootCause().isInstanceOfSatisfying(java.sql.SQLException.class,
+                error -> assertThat(error.getSQLState()).isEqualTo("23514"));
+    }
+
+    private UUID openListing(User publisher, CollabActor actor, City city) {
+        var listing = Collab.builder().owner(publisher).publisherActor(actor).city(city)
+                .clientRequestId(UUID.randomUUID()).creationPayloadHash("2".repeat(64))
+                .cadence(CollabCadence.REGULAR).wantedType(CollabWantedType.MUSICIAN).branch(CollabBranch.VOCAL)
+                .title("Prova").description("Açık prova").status(CollabListingStatus.OPEN)
+                .publishedAt(java.time.Instant.now()).build();
+        em.persist(listing);
+        return listing.getId();
+    }
+
+    private void eraseMemberships(UUID actor, List<BandDeletionDecision> choices) {
+        new TransactionTemplate(manager).executeWithoutResult(status -> {
+            jdbc.queryForObject("select id from tbl_user where id=? for update",UUID.class,actor);
+            bandLifecycle.eraseMemberships(actor, choices);
+        });
+    }
+
     @Test void blockedFounderCannotInviteAndOlderInvitationIsNotDeliveredAfterUnblock() {
         bands.inviteMember(band, founder, member, null);
         var previous = event(rows().getFirst());
@@ -241,8 +379,10 @@ class BandNotificationIdentityPostgresTest {
     }
     <T>T tx(Supplier<T> action){return new TransactionTemplate(manager).execute(s -> action.get());}
     @Configuration(proxyBeanMethods=false) @EnableJpaRepositories(basePackages="com.berkayb.soundconnect")
+    @ComponentScan(basePackageClasses=SetlistMapper.class)
     @EntityScan(basePackages="com.berkayb.soundconnect")
-    @Import({JpaAuditingConfig.class,BandServiceImpl.class,BandEntityFinder.class,UserEntityFinder.class,
+    @Import({JpaAuditingConfig.class,BandServiceImpl.class,BandAccountLifecycle.class,BandEntityFinder.class,UserEntityFinder.class,
+            SetistServiceImpl.class,MusicianProfileEntityFinder.class,
             TransactionalNotificationService.class,NotificationServiceImpl.class,GhostListenerIdentityBatchResolver.class,
             NotificationDeliveryPolicy.class,AccountDeliveryFence.class,NotificationEventListener.class})
     static class Config {

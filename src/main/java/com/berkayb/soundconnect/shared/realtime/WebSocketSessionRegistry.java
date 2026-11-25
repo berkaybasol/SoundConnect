@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.shared.realtime;
 
+import com.berkayb.soundconnect.auth.passwordchange.AccountPasswordChangeService.PasswordChanged;
 import com.berkayb.soundconnect.modules.user.service.AccountAccessChanged;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -72,15 +73,23 @@ public class WebSocketSessionRegistry {
 
 	@TransactionalEventListener
 	public void accountAccessChanged(AccountAccessChanged decision) {
-		if (!decision.suspended()) return;
+		if (decision.suspended()) closeOlderSessions(decision.userId(), decision.sessionVersion());
+	}
+
+	@TransactionalEventListener
+	public void passwordChanged(PasswordChanged change) {
+		closeOlderSessions(change.userId(), change.sessionVersion());
+	}
+
+	private void closeOlderSessions(UUID userId, long version) {
 		sessions.forEach((id, session) -> {
-			if (session.userId().equals(decision.userId()) && session.sessionVersion() < decision.sessionVersion()) {
-				closeSuspended(id, session);
+			if (session.userId().equals(userId) && session.sessionVersion() < version) {
+				closeRevoked(id, session);
 			}
 		});
 	}
 
-	void closeSuspended(String id, SessionContext session) {
+	void closeRevoked(String id, SessionContext session) {
 		if (!sessions.remove(id, session) || session.socket() == null) return;
 		try {
 			session.socket().close(CloseStatus.POLICY_VIOLATION);

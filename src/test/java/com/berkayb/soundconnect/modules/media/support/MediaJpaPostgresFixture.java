@@ -66,7 +66,7 @@ public abstract class MediaJpaPostgresFixture {
     protected MarketplaceMediaLifecycle lifecycle;
     protected MarketplaceRepository listings;
     protected RecordingEvents events;
-    protected UUID seller, buyer, sellerProfile;
+    protected UUID seller, buyer;
     private TimeZone originalZone;
 
     @BeforeEach
@@ -113,9 +113,6 @@ public abstract class MediaJpaPostgresFixture {
             jdbc.getJdbcTemplate().execute(Files.readString(Path.of("scripts/db", migration)));
         }
         seller = account("media-seller"); buyer = account("media-buyer");
-        sellerProfile = jdbc.queryForObject("select id from tbl_musician_profile where user_id=:id", Map.of("id", seller), UUID.class);
-        when(context.getBean(ProfileOwnershipResolver.class).resolveOwnedProfiles(eq(seller), anySet()))
-                .thenReturn(List.of(new OwnedProfileTarget(ProfileType.MUSICIAN, sellerProfile, "Seller", null)));
     }
 
     @AfterEach
@@ -129,8 +126,11 @@ public abstract class MediaJpaPostgresFixture {
         jdbc.update("insert into tbl_user(id,user_name) values(:id,:name)", Map.of("id", id, "name", name));
         jdbc.update("insert into tbl_role values(:id,'ROLE_MUSICIAN') on conflict(name) do nothing", Map.of("id", role));
         jdbc.update("insert into user_roles select :id,id from tbl_role where name='ROLE_MUSICIAN'", Map.of("id", id));
+        UUID profile = UUID.randomUUID();
         jdbc.update("insert into tbl_musician_profile(id,user_id,name) values(:profile,:id,:name)",
-                Map.of("profile", UUID.randomUUID(), "id", id, "name", name));
+                Map.of("profile", profile, "id", id, "name", name));
+        when(context.getBean(ProfileOwnershipResolver.class).resolveOwnedProfiles(eq(id), anySet()))
+                .thenReturn(List.of(new OwnedProfileTarget(ProfileType.MUSICIAN, profile, name, null)));
         return id;
     }
 

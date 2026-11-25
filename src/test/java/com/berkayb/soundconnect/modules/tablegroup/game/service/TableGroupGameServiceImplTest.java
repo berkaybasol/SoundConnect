@@ -52,6 +52,7 @@ class TableGroupGameServiceImplTest {
 	@Mock TableGroupMessageMapper messageMapper;
 	@Mock UserRepository userRepository;
 	@Mock TableGroupGameProjectionService projectionService;
+	@Mock com.berkayb.soundconnect.modules.user.block.UserBlockService blocks;
 	@Mock TableGroupGameRealtimePublisher realtimePublisher;
 	@Mock TableGroupGameTimeProvider timeProvider;
 	@Mock TableGroupDiceRoller diceRoller;
@@ -438,6 +439,23 @@ class TableGroupGameServiceImplTest {
 				projectionService,
 				realtimePublisher
 		);
+	}
+
+	@Test
+	void cannotCastANewVoteForABlockedPeer() {
+		UUID user = UUID.randomUUID(), other = UUID.randomUUID(), tableId = UUID.randomUUID(), gameId = UUID.randomUUID();
+		Instant now = Instant.now();
+		when(timeProvider.now()).thenReturn(now);
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(tableId)).thenReturn(openTable(tableId, user, now));
+		when(gameRepository.findByIdForUpdate(gameId)).thenReturn(Optional.of(inProgressVote(gameId, tableId, user, now)));
+		when(playerRepository.findByGameIdAndUserId(gameId, user)).thenReturn(Optional.of(player(gameId, user, "ece", now)));
+		doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE)).when(accounts).requireInteractionAllowed(user, other);
+		assertThatThrownBy(() -> service.submitAction(user, tableId, gameId,
+				new TableGroupGameActionRequestDto(UUID.randomUUID(), TableGroupGameActionType.VOTE, other)))
+				.isInstanceOfSatisfying(SoundConnectException.class,
+						e -> assertThat(e.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+		verify(actionRepository, never()).save(any());
+		verifyNoInteractions(realtimePublisher);
 	}
 
 	@Test

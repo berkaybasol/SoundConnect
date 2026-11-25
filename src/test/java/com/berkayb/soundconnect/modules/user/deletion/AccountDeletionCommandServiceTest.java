@@ -33,14 +33,23 @@ class AccountDeletionCommandServiceTest {
     @Test void forgedGoogleTokenNeverStartsDeletion() {
         when(google.verify("forged-token")).thenThrow(new SoundConnectException(ErrorType.UNAUTHORIZED));
         assertThatThrownBy(() -> commands.deleteSelf(user, new AccountDeletionRequest("DELETE", null, "forged-token")))
-                .isInstanceOf(SoundConnectException.class);
+                .isInstanceOfSatisfying(SoundConnectException.class, failure ->
+                        assertThat(failure.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETION_REAUTH_REQUIRED));
+        verifyNoInteractions(deletion);
+    }
+
+    @Test void unavailableGoogleVerifierPreservesTheRetryableError() {
+        var unavailable = new SoundConnectException(ErrorType.GOOGLE_SIGN_IN_UNAVAILABLE);
+        when(google.verify("valid-token")).thenThrow(unavailable);
+        assertThatThrownBy(() -> commands.deleteSelf(user, new AccountDeletionRequest("DELETE", null, "valid-token")))
+                .isSameAs(unavailable);
         verifyNoInteractions(deletion);
     }
 
     @Test void onlyTheVerifiedGoogleSubjectCrossesTheDeletionBoundary() {
         when(google.verify("raw-token")).thenReturn(new VerifiedGoogleIdentity("signed-subject", "mail@test.invalid", "name", false));
         commands.deleteSelf(user, new AccountDeletionRequest("DELETE", null, "raw-token"));
-        verify(deletion).deleteSelf(user, null, "signed-subject");
+        verify(deletion).deleteSelf(user, null, "signed-subject", null);
         assertThat(new AccountDeletionRequest("DELETE", "secret", "raw-token").toString())
                 .doesNotContain("secret", "raw-token");
     }

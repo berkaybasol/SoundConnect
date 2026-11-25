@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,7 +21,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(SpringExtension.class)
-@DataJpaTest
+@DataJpaTest(properties = "spring.datasource.url=jdbc:h2:mem:chat-${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1;INIT=CREATE DOMAIN IF NOT EXISTS TIMESTAMPTZ AS TIMESTAMP WITH TIME ZONE")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class TableGroupMessageRepositoryTest {
 	
 	@Autowired
@@ -28,6 +30,36 @@ class TableGroupMessageRepositoryTest {
 
 	@Autowired
 	private TestEntityManager entityManager;
+
+	@Test
+	void bothSidesGetFullVisiblePagesAndCountsWhileAThirdViewerKeepsAllMessages() {
+		UUID a = account("ayse"), b = account("deniz"), c = account("ece"), table = UUID.randomUUID();
+		entityManager.getEntityManager().createNativeQuery(
+				"insert into tbl_user_block (blocker_id, blocked_id, created_at) values (?1,?2,current_timestamp)")
+				.setParameter(1, a).setParameter(2, b).executeUpdate();
+		for (UUID sender : List.of(a, b, c, b, a, c)) {
+			messageRepository.save(TableGroupMessage.builder().tableGroupId(table).senderId(sender)
+					.createdAt(LocalDateTime.now()).messageType(MessageType.TEXT).content("text").build());
+		}
+		// A game card is redacted per viewer after paging; the shared game stays accessible.
+		messageRepository.saveAndFlush(TableGroupMessage.builder().tableGroupId(table).senderId(b)
+				.createdAt(LocalDateTime.now()).gameId(UUID.randomUUID()).messageType(MessageType.GAME).content("game").build());
+		for (UUID viewer : List.of(a, b)) {
+			var page = messageRepository.findVisibleHistory(table, viewer, PageRequest.of(0, 2));
+			assertThat(page).hasSize(2);
+			assertThat(page.getTotalElements()).isEqualTo(5);
+			assertThat(messageRepository.findVisibleHistory(table, viewer, PageRequest.of(0, 20)))
+					.allMatch(m -> m.getGameId() != null || !m.getSenderId().equals(viewer.equals(a) ? b : a));
+		}
+		assertThat(messageRepository.findVisibleHistory(table, c, PageRequest.of(0, 2)).getTotalElements()).isEqualTo(7);
+	}
+
+	private UUID account(String username) {
+		var user = com.berkayb.soundconnect.modules.user.entity.User.builder().username(username)
+				.email(username+"@test.invalid").password("unused").emailVerified(true)
+				.status(com.berkayb.soundconnect.modules.user.enums.UserStatus.ACTIVE).build();
+		return entityManager.persistAndFlush(user).getId();
+	}
 	
 	@Test
 	void findNewestMessages_whenMessagesExist_shouldReturnNonDeletedInDescendingOrder() {

@@ -24,8 +24,19 @@ public class AccountDeletionCommandService {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
         }
         rateLimit.checkAccountDeletion(userId.toString());
-        String googleSubject = request.googleIdToken() == null || request.googleIdToken().isBlank()
-                ? null : googleIdTokenValidator.verify(request.googleIdToken()).subject();
-        deletion.deleteSelf(userId, request.currentPassword(), googleSubject);
+        deletion.deleteSelf(userId, request.currentPassword(), verifyGoogleSubject(request.googleIdToken()), request.bandDecisions());
+    }
+
+    private String verifyGoogleSubject(String idToken) {
+        if (idToken == null || idToken.isBlank()) return null;
+        try {
+            return googleIdTokenValidator.verify(idToken).subject();
+        } catch (SoundConnectException failure) {
+            // Only the Google proof failed. The authenticated SoundConnect session is still valid.
+            if (failure.getErrorType() == ErrorType.UNAUTHORIZED) {
+                throw new SoundConnectException(ErrorType.ACCOUNT_DELETION_REAUTH_REQUIRED);
+            }
+            throw failure;
+        }
     }
 }

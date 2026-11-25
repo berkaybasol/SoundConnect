@@ -24,7 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -56,13 +56,10 @@ class VenueApplicationDecisionConcurrencyTest {
 	@InjectMocks VenueApplicationServiceImpl service;
 
 	@Test
-	void decisionFinderDeclaresPessimisticWriteLock() throws NoSuchMethodException {
-		Lock lock = VenueApplicationRepository.class
-				.getMethod("findByIdForUpdate", UUID.class)
-				.getAnnotation(Lock.class);
-
-		assertThat(lock).isNotNull();
-		assertThat(lock.value()).isEqualTo(LockModeType.PESSIMISTIC_WRITE);
+	void decisionFinderLocksAccountBeforeApplication() throws NoSuchMethodException {
+		var query = VenueApplicationRepository.class.getMethod("findByIdForUpdate", UUID.class)
+				.getAnnotation(Query.class);
+		assertThat(query.value()).containsSubsequence("with applicant as materialized", "for update of u", "for update of a");
 	}
 
 	@Test

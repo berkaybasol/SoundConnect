@@ -76,7 +76,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 		try {
 			UserDetailsImpl principal = requireFreshPrincipal(sessionId);
 			subscriptionAuthorizer.authorize(principal, destination);
-			return true;
+			return !subscriptionAuthorizer.suppressStaleTableFrame(principal.getId(), destination, message.getPayload());
 		} catch (AuthenticationException | AccessDeniedException exception) {
 			// Broker deliveries can race with logout, token expiry or a
 			// development database reset. The durable notification is already
@@ -149,7 +149,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 			);
 		}
 		if (freshUserDetails instanceof UserDetailsImpl principal && principal.getUser().isAccessSuspended()) {
-			sessionRegistry.closeSuspended(sessionId, session);
+			sessionRegistry.closeRevoked(sessionId, session);
 			throw new DisabledException("User account is suspended");
 		}
 		if (!(freshUserDetails instanceof UserDetailsImpl freshPrincipal)
@@ -159,7 +159,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 			throw new DisabledException("User account is not active");
 		}
 		if (freshPrincipal.getUser().getSessionVersion() != session.sessionVersion()) {
-			sessionRegistry.remove(sessionId);
+			sessionRegistry.closeRevoked(sessionId, session);
 			throw new BadCredentialsException("WebSocket session has been revoked");
 		}
 		return freshPrincipal;

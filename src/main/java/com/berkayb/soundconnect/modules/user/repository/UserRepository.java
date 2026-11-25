@@ -75,6 +75,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Query("select r.name from User u join u.roles r where u.id = :id")
 	Set<String> findRoleNamesByUserId(@Param("id") UUID id);
 
+	/** Read current grants under the account lock, including grants inherited from a legacy role. */
+	@Query(value = """
+			select exists (
+			    select 1 from tbl_permissions p
+			    where (p.name in ('ADMIN_PANEL_ACCESS','READ_USERS') or starts_with(p.name, 'MANAGE_'))
+			      and (exists (select 1 from user_permissions up where up.user_id=:id and up.permission_id=p.id)
+			        or exists (select 1 from user_roles ur join role_permissions rp on rp.role_id=ur.role_id
+			                   where ur.user_id=:id and rp.permission_id=p.id))
+			)
+			""", nativeQuery = true)
+	boolean hasAdministrativePermissionForSelfDeletion(@Param("id") UUID id);
+
 	/**
 	 * Reads the personal profile aggregates that actually exist for an account.
 	 * Role rows alone are insufficient for legacy/corrupt data because a stale

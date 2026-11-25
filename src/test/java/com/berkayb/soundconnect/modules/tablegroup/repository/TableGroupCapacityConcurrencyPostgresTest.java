@@ -376,7 +376,8 @@ class TableGroupCapacityConcurrencyPostgresTest {
 				mock(TableGroupRateLimitGuard.class),
 				mock(TableGroupMetrics.class),
 				mock(TableGroupGameLifecycleService.class),
-				mock(com.berkayb.soundconnect.modules.tablegroup.scheduler.TableGroupExpiryWorker.class)
+				mock(com.berkayb.soundconnect.modules.tablegroup.scheduler.TableGroupExpiryWorker.class),
+				mock(com.berkayb.soundconnect.modules.tablegroup.service.TableGroupBlockWarnings.class)
 		);
 	}
 

@@ -80,7 +80,7 @@ class MusicianFeedReplayVisibilityPostgresTest {
         sql = new JdbcTemplate(dataSource);
         jdbc = new NamedParameterJdbcTemplate(dataSource);
         sql.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-11-24-user-blocks.sql")));
-        var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class));
+        var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class), event -> {});
         posts = mock(OverthinkingPostService.class);
         guard = new MusicianFeedReplayVisibilityGuard(jdbc, mapper, posts,
                 new com.berkayb.soundconnect.modules.feed.musician.moderation.MusicianFeedRestrictionGuard(

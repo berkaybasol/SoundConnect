@@ -27,6 +27,15 @@ public class AuthAccountRateLimitGuard {
 		check("account-deletion", userId, properties.getLogin());
 	}
 
+	public void checkMailboxDeletion(String email, boolean issuing) {
+		check(issuing ? "mailbox-deletion-request" : "mailbox-deletion-confirm", EmailUtils.normalize(email),
+				issuing ? properties.getPasswordResetRequest() : properties.getPasswordResetConfirm());
+	}
+
+	public void checkPasswordChange(String userId) {
+		check("password-change", userId, properties.getLogin());
+	}
+
 	public void checkRegister(String email) {
 		check("register", EmailUtils.normalize(email), properties.getRegister());
 	}

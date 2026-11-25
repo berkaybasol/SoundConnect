@@ -34,7 +34,8 @@ public record TableGroupGameResponseDto(
 		ListenerVisibilityMode selectedUserVisibilityMode,
 		TableGroupGameOutcome outcome,
 		String resultMessage,
-		String cancellationReason
+		String cancellationReason,
+		boolean canStart
 ) {
 	public TableGroupGameResponseDto {
 		if (createdByVisibilityMode != ListenerVisibilityMode.GHOST) {
@@ -43,6 +44,23 @@ public record TableGroupGameResponseDto(
 		if (selectedUserVisibilityMode != ListenerVisibilityMode.GHOST) {
 			selectedUserVisibilityMode = null;
 		}
+	}
+
+	/** Determine readiness before any viewer-specific player identities are removed. */
+	public TableGroupGameResponseDto(
+			int schemaVersion, UUID gameId, UUID tableGroupId, long revision, TableGroupGameTopic topic,
+			TableGroupGameMode mode, TableGroupGameStatus status, TableGroupGamePhase phase, UUID createdBy,
+			String createdByUsername, ListenerVisibilityMode createdByVisibilityMode, int round, Instant joinDeadlineAt,
+			Instant actionDeadlineAt, Instant serverTime, List<TableGroupGamePlayerResponseDto> players,
+			List<TableGroupGameRevealedActionResponseDto> revealedActions, UUID selectedUserId, String selectedUsername,
+			ListenerVisibilityMode selectedUserVisibilityMode, TableGroupGameOutcome outcome, String resultMessage,
+			String cancellationReason
+	) {
+		this(schemaVersion, gameId, tableGroupId, revision, topic, mode, status, phase, createdBy, createdByUsername,
+				createdByVisibilityMode, round, joinDeadlineAt, actionDeadlineAt, serverTime, players, revealedActions,
+				selectedUserId, selectedUsername, selectedUserVisibilityMode, outcome, resultMessage, cancellationReason,
+				status == TableGroupGameStatus.LOBBY && players.stream()
+						.filter(p -> p.status() == TableGroupGamePlayerStatus.ACTIVE).limit(2).count() == 2);
 	}
 
 	/** Keeps source compatibility for existing game response fixtures. */

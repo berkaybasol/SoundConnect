@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,6 +23,9 @@ public class UserBlockService {
     private final NamedParameterJdbcTemplate jdbc;
     private final AccountDeliveryFence accounts;
     private final FollowRepository follows;
+    private final ApplicationEventPublisher events;
+
+    public record RelationshipChanged(UUID actor, UUID target, boolean blocked) {}
 
     public BlockStatus status(UUID actor, UUID target) {
         return accounts.blockStatus(actor, target);
@@ -58,11 +62,14 @@ public class UserBlockService {
         accounts.requireActive(List.of(actor, target));
         accounts.lockInteraction(actor, target);
         int changed = jdbc.update("""
-                insert into tbl_user_block (blocker_id, blocked_id) values (:actor, :target)
+                insert into tbl_user_block (blocker_id, blocked_id, created_at) values (:actor, :target, clock_timestamp())
                 on conflict (blocker_id, blocked_id) do update set created_at=clock_timestamp(), unblocked_at=null
                 where tbl_user_block.unblocked_at is not null
                 """, Map.of("actor",actor,"target",target));
-        if (changed > 0) follows.deleteBetween(actor, target);
+        if (changed > 0) {
+            follows.deleteBetween(actor, target);
+            events.publishEvent(new RelationshipChanged(actor, target, true));
+        }
         return new BlockStatus(true, true);
     }
 
@@ -70,10 +77,11 @@ public class UserBlockService {
     public BlockStatus unblock(UUID actor, UUID target) {
         if (actor.equals(target)) throw new SoundConnectException(ErrorType.BAD_REQUEST);
         accounts.lockInteraction(actor, target);
-        jdbc.update("""
+        int changed = jdbc.update("""
                 update tbl_user_block set unblocked_at=clock_timestamp()
                 where blocker_id=:actor and blocked_id=:target and unblocked_at is null
                 """, Map.of("actor",actor,"target",target));
+        if (changed > 0) events.publishEvent(new RelationshipChanged(actor, target, false));
         return status(actor, target);
     }
 }

@@ -32,6 +32,10 @@ public class TableGroupParticipant {
 	
 	@Column(name = "joined_at", nullable = false)
 	private Instant joinedAt; // katilimci ne zaman eklendi?
+
+	// Request creation and seat acceptance may occur in a different order for two users.
+	@Column(name = "accepted_at")
+	private Instant acceptedAt;
 	
 	// katilimcinin durumu
 	@Enumerated(EnumType.STRING)
