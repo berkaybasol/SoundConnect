@@ -88,7 +88,11 @@ class TableGroupBlockWarningsPostgresTest {
         assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,false);
         warnings.relationshipChanged(new UserBlockService.RelationshipChanged(deniz, eren, true));
         verifyNoInteractions(messaging, unread);
-        sql.update("update tbl_table_group_participants set status='ACCEPTED',accepted_at=now()+interval '1 minute' where user_id=?", deniz);
+        // Eren already occupied his seat when Deniz submitted and acknowledged this application.
+        sql.update("""
+                update tbl_table_group_participants set status='ACCEPTED',joined_at=now()+interval '1 minute',
+                    accepted_at=now()+interval '2 minutes' where user_id=?
+                """, deniz);
         assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,false);
         warnings.relationshipChanged(new UserBlockService.RelationshipChanged(deniz, eren, true));
         for (UUID viewer : List.of(deniz, eren)) {
@@ -97,5 +101,44 @@ class TableGroupBlockWarningsPostgresTest {
             verify(unread).resetUnread(viewer,table);
         }
         verifyNoMoreInteractions(messaging, unread);
+    }
+
+    @Test void blockerLearnsAboutAnArrivalDuringTheirPendingApplicationOnFirstAcceptedRead() {
+        sql.update("update tbl_user_block set created_at=now()-interval '4 hours'");
+        sql.update("update tbl_table_group_participants set status='PENDING' where user_id=?", deniz);
+        assertThat(warnings.forViewer(table, deniz)).isEmpty();
+        sql.update("update tbl_table_group_participants set status='ACCEPTED',accepted_at=now()-interval '30 minutes' where user_id=?", eren);
+        warnings.notifyAccepted(table, eren, application);
+        verifyNoInteractions(messaging);
+        assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,false);
+
+        sql.update("update tbl_table_group_participants set status='ACCEPTED',accepted_at=now()-interval '5 minutes' where user_id=?", deniz);
+        assertThat(warnings.forViewer(table, deniz)).containsExactlyEntriesOf(Map.of(eren,true));
+        assertThat(warnings.forViewer(table, eren)).isEmpty();
+        assertThat(warnings.forViewer(table, ece)).isEmpty();
+
+        // A new block after both seats were occupied is the user's own in-table action.
+        sql.update("update tbl_user_block set created_at=now()");
+        assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,false);
+    }
+
+    @Test void oldSeatNewlyBlockedDuringThePendingRequestIsAlsoShownOnApproval() {
+        sql.update("""
+                update tbl_table_group_participants set status='ACCEPTED',accepted_at=now()-interval '3 hours'
+                where user_id=?
+                """, eren);
+        // The fixture's block was created one hour ago, between application and acceptance.
+        sql.update("update tbl_table_group_participants set accepted_at=now() where user_id=?", deniz);
+        assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,true);
+        assertThat(warnings.forViewer(table, eren)).isEmpty();
+        assertThat(warnings.forViewer(table, ece)).isEmpty();
+    }
+
+    @Test void ownerWhoseSeatStartedAtCreationIsWarnedOnlyForSubsequentArrivals() {
+        sql.update("update tbl_table_group_participants set accepted_at=joined_at where user_id=?", deniz);
+        sql.update("update tbl_table_group_participants set status='ACCEPTED',accepted_at=now()-interval '30 minutes' where user_id=?", eren);
+        assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,true);
+        sql.update("update tbl_user_block set created_at=now()");
+        assertThat(warnings.forViewer(table, deniz)).containsEntry(eren,false);
     }
 }

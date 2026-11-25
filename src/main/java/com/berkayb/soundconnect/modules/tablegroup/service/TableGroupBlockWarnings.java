@@ -26,18 +26,21 @@ public class TableGroupBlockWarnings {
     private final TableGroupChatUnreadHelper unread;
 
     /** Compare against the block writer's DB clock after the user and table locks have been acquired. */
-    public Instant acceptanceTime() {
+    public Instant membershipTime() {
         return jdbc.getJdbcTemplate().queryForObject("select clock_timestamp()",
                 (rs, row) -> rs.getTimestamp(1).toInstant());
     }
 
     // Only an outgoing block is a reason to warn this particular viewer.
     public Map<UUID, Boolean> forViewer(UUID tableId, UUID viewerId) {
+        // The join confirmation covered the seats and blocks that existed at request time.
+        // A later arrival or a new block while waiting needs a warning on first accepted access.
         return jdbc.query("""
                 select member.user_id,
-                       (viewer.user_id is not null and member.accepted_at is not null
-                        and (viewer.accepted_at is null or viewer.accepted_at < member.accepted_at)
-                        and b.created_at <= member.accepted_at) as arrived_later
+                       (viewer.user_id is not null and (
+                           (member.accepted_at > viewer.joined_at and b.created_at <= member.accepted_at)
+                           or (b.created_at > viewer.joined_at and b.created_at <= viewer.accepted_at)
+                       )) as needs_warning
                 from tbl_table_group t
                 join tbl_table_group_participants member on member.table_group_id=t.id and member.status='ACCEPTED'
                 join tbl_user_block b on b.blocker_id=:viewer and b.blocked_id=member.user_id and b.unblocked_at is null
@@ -46,7 +49,7 @@ public class TableGroupBlockWarnings {
                 where t.id=:tableId and t.status='ACTIVE' and t.expires_at > current_timestamp
                 """, Map.of("tableId", tableId, "viewer", viewerId), rs -> {
             Map<UUID, Boolean> members = new LinkedHashMap<>();
-            while (rs.next()) members.put(rs.getObject("user_id", UUID.class), rs.getBoolean("arrived_later"));
+            while (rs.next()) members.put(rs.getObject("user_id", UUID.class), rs.getBoolean("needs_warning"));
             return members;
         });
     }

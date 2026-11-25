@@ -139,6 +139,7 @@ class TableGroupServiceImplTest {
 	@BeforeEach
 	void setUp() {
 		ownerId = UUID.randomUUID();
+		lenient().when(blockWarnings.membershipTime()).thenAnswer(invocation -> Instant.now());
 		tableGroupId = UUID.randomUUID();
 		participantId = UUID.randomUUID();
 		lenient().when(userRepository.findRoleNamesByUserId(any(UUID.class)))

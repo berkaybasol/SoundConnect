@@ -275,7 +275,8 @@ public class TableGroupServiceImpl implements TableGroupService{
 		TableGroupActorPolicy.requireEligible(lockedActor);
 		requireNoInstitutionalFootprint(userId);
 		TableGroup tableGroup = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
-		Instant now = Instant.now();
+		// This request is the point at which the applicant acknowledged the current seats.
+		Instant now = blockWarnings.membershipTime();
 		requireActiveAndUnexpired(tableGroup, now);
 
 		if (tableGroup.getOwnerId().equals(userId)) {
@@ -408,7 +409,7 @@ public class TableGroupServiceImpl implements TableGroupService{
 		}
 
 		participant.setStatus(ParticipantStatus.ACCEPTED);
-		participant.setAcceptedAt(blockWarnings.acceptanceTime());
+		participant.setAcceptedAt(blockWarnings.membershipTime());
 		// Cancellation purges games with clearAutomatically=true. Flush the target
 		// acceptance first so that clearing the persistence context cannot discard
 		// it; the surrounding transaction still rolls both changes back together.
@@ -690,10 +691,11 @@ public class TableGroupServiceImpl implements TableGroupService{
 		entity.setNeighborhood(neighborhood);
 
 		// Owner'ı otomatik ACCEPTED participant olarak ekle
+		Instant ownerAdmission = blockWarnings.membershipTime();
 		TableGroupParticipant ownerParticipant = TableGroupParticipant.builder()
 		                                                              .userId(ownerId)
-		                                                              .joinedAt(now)
-		                                                              .acceptedAt(blockWarnings.acceptanceTime())
+		                                                              .joinedAt(ownerAdmission)
+		                                                              .acceptedAt(ownerAdmission)
 		                                                              .status(ParticipantStatus.ACCEPTED)
 		                                                              .build();
 
