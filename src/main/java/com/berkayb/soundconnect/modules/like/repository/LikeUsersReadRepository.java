@@ -16,10 +16,10 @@ import java.util.UUID;
 public class LikeUsersReadRepository {
     private final NamedParameterJdbcTemplate jdbc;
 
-    public List<Row> page(EngagementTargetType type, UUID targetId, LikeUsersCursor after, int limit) {
+    public List<Row> page(UUID viewer, EngagementTargetType type, UUID targetId, LikeUsersCursor after, int limit) {
         if (limit < 1 || limit > 51) throw new IllegalArgumentException("Like users page exceeds its bound");
         MapSqlParameterSource parameters = new MapSqlParameterSource()
-                .addValue("type", type.name()).addValue("targetId", targetId).addValue("limit", limit);
+                .addValue("viewer", viewer).addValue("type", type.name()).addValue("targetId", targetId).addValue("limit", limit);
         String seek = "";
         if (after != null) {
             parameters.addValue("afterId", after.likeId());
@@ -35,6 +35,9 @@ public class LikeUsersReadRepository {
                 select likes.id,likes.user_id,likes.created_at
                 from tbl_like likes join tbl_user account on account.id=likes.user_id
                 where likes.target_type=:type and likes.target_id=:targetId
+                  and not exists (select 1 from tbl_user_block b where b.unblocked_at is null
+                    and ((b.blocker_id=:viewer and b.blocked_id=likes.user_id)
+                      or (b.blocked_id=:viewer and b.blocker_id=likes.user_id)))
                   and account.status='ACTIVE' and account.email_verified and account.erased_at is null
                 """ + seek + " order by likes.created_at desc,likes.id desc limit :limit", parameters,
                 (row, index) -> {

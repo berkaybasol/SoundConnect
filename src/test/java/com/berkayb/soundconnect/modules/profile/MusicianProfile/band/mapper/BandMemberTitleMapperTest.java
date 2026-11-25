@@ -6,6 +6,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity.Band
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -39,6 +40,19 @@ class BandMemberTitleMapperTest {
         var dto = new BandMemberResponseDto(UUID.randomUUID(), "aedrum", null, "MEMBER", "ACTIVE");
         assertThat(dto.memberTitle()).isNull();
         assertThat(dto.titleVersion()).isZero();
+    }
+
+    @Test void suspendingTheFounderChangesContactAvailabilityWhileKeepingTheirPublicMembership() {
+        var founder = member(BandRole.FOUNDER, "Vokal", 1, BandMemberShipStatus.ACTIVE);
+        founder.getUser().setStatus(UserStatus.ACTIVE);
+        founder.getUser().setEmailVerified(true);
+        assertThat(mapper.toMemberDto(founder).contactAvailable()).isTrue();
+        founder.getUser().setAccessSuspended(true);
+        var view = mapper.toMemberDto(founder);
+        assertThat(view.contactAvailable()).isFalse();
+        assertThat(view.role()).isEqualTo("FOUNDER");
+        assertThat(view.status()).isEqualTo("ACTIVE");
+        assertThat(new ObjectMapper().valueToTree(view).has("accessSuspended")).isFalse();
     }
 
     @Test void newlyBuiltMembershipHasZeroVersionAndNoDisplayRoleFallback() {

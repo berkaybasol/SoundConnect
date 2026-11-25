@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.track.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
 import com.berkayb.soundconnect.modules.media.enums.MediaOwnerType;
@@ -50,6 +51,8 @@ class TrackServiceMediaIntegrityTest {
 	@Mock BandRepository bandRepository;
 	@Mock BandMemberRepository bandMemberRepository;
 	@Mock StudioProfileRepository studioProfileRepository;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	@InjectMocks TrackServiceImpl service;
 
 	private UUID ownerId;

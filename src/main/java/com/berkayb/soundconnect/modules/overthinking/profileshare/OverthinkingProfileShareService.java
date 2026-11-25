@@ -10,6 +10,7 @@ import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.*;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
@@ -29,6 +30,7 @@ public class OverthinkingProfileShareService {
     private final OverthinkingPostService posts;
     private final LikeRepository likes;
     private final CommentRepository comments;
+    private final UserBlockService blocks;
 
     @Transactional(isolation = Isolation.REPEATABLE_READ, timeout = 10)
     public OverthinkingProfileShareResponse.State get(UUID owner, UUID postId) {
@@ -72,24 +74,30 @@ public class OverthinkingProfileShareService {
         var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "publishedAt", "id"));
         active(viewer, false);
         UUID owner = repository.listenerOwner(profileId).orElseThrow(this::profileNotFound);
+        if (blocks.blockedEitherWay(viewer, owner)) throw profileNotFound();
         Actor target;
         try { target = actor(owner, false); }
         catch (SoundConnectException hidden) { throw profileNotFound(); }
         if (!target.profile().getProfileId().equals(profileId) || !target.profile().getChoiceCompleted()) throw profileNotFound();
         if (!target.canPublish()) return PageResponse.from(Page.empty(pageable));
-        var shares = com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer()
-                ? repository.findMainstageByProfile(profileId, owner, PageRequest.of(page, size))
-                : repository.findByListenerProfileIdAndOwnerUserId(profileId, owner, pageable);
+        boolean mainstage = com.berkayb.soundconnect.modules.media.support.MediaContentAudiencePolicy.isListenerViewer();
+        Page<OverthinkingProfileShare> shares;
+        if (blocks.hasBlocks(viewer)) {
+            shares = repository.findVisibleToViewer(profileId, owner, viewer, mainstage, PageRequest.of(page, size));
+        } else {
+            shares = mainstage ? repository.findMainstageByProfile(profileId, owner, PageRequest.of(page, size))
+                    : repository.findByListenerProfileIdAndOwnerUserId(profileId, owner, pageable);
+        }
         if (shares.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, shares.getTotalElements()));
         var originals = posts.getByIdsForViewer(viewer, shares.stream().map(OverthinkingProfileShare::getSourcePostId).toList());
         shares = new PageImpl<>(shares.stream().filter(share -> originals.containsKey(share.getSourcePostId())).toList(),
                 pageable, shares.getTotalElements());
         if (shares.isEmpty()) return PageResponse.from(new PageImpl<>(List.of(), pageable, shares.getTotalElements()));
         var shareIds = shares.stream().map(OverthinkingProfileShare::getId).toList();
-        var likeCounts = likes.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+        var likeCounts = likes.countVisibleByTargets(viewer, TARGET, shareIds).stream()
                 .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId,
                         LikeRepository.TargetCountProjection::getCount));
-        var commentCounts = comments.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+        var commentCounts = comments.countVisibleByTargets(viewer, TARGET, shareIds).stream()
                 .collect(Collectors.toMap(CommentRepository.TargetCountProjection::getTargetId,
                         CommentRepository.TargetCountProjection::getCount));
         var liked = likes.findLikedTargetIds(viewer, TARGET, shareIds);

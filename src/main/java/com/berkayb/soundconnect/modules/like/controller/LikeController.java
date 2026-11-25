@@ -85,8 +85,7 @@ public class LikeController {
 			@PathVariable EngagementTargetType targetType,
 			@PathVariable UUID targetId
 	) {
-		long count = targetType == EngagementTargetType.ANNOUNCEMENT || targetType == EngagementTargetType.COMMENT
-                ? likeService.countLikes(viewerId, targetType, targetId) : likeService.countLikes(targetType, targetId);
+		long count = likeService.countLikes(viewerId, targetType, targetId);
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Long>builder()

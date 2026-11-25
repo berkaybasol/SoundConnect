@@ -40,6 +40,7 @@ import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -86,6 +87,7 @@ public class BandServiceImpl implements BandService {
 	private final EventPerformerRequestService eventPerformerRequestService;
 	private final EventMemberPublicationRepository eventMemberPublicationRepository;
 	private final UserRepository userRepository;
+	private final AccountDeliveryFence contact;
 	
 	
 	@Override
@@ -193,6 +195,7 @@ public class BandServiceImpl implements BandService {
 			log.warn("Kullanıcı yetkisiz davet girişimi: inviterId={}, bandId={}", inviterId, bandId);
 			throw new SoundConnectException(ErrorType.BAND_INVITE_UNAUTHORIZED);
 		}
+		contact.requireInteractionAllowed(inviterId, invitedUserId);
 		User invited = userEntityFinder.getUser(invitedUserId);
 		// A band invitation must be answerable by its recipient. The decision
 		// endpoints require an active, verified musician with a canonical profile.

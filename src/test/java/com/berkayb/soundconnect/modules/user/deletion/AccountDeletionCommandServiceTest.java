@@ -38,7 +38,7 @@ class AccountDeletionCommandServiceTest {
     }
 
     @Test void onlyTheVerifiedGoogleSubjectCrossesTheDeletionBoundary() {
-        when(google.verify("raw-token")).thenReturn(new VerifiedGoogleIdentity("signed-subject", "mail@test.invalid", "name"));
+        when(google.verify("raw-token")).thenReturn(new VerifiedGoogleIdentity("signed-subject", "mail@test.invalid", "name", false));
         commands.deleteSelf(user, new AccountDeletionRequest("DELETE", null, "raw-token"));
         verify(deletion).deleteSelf(user, null, "signed-subject");
         assertThat(new AccountDeletionRequest("DELETE", "secret", "raw-token").toString())

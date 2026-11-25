@@ -606,7 +606,24 @@ class EventPlanPostgresTest {
         var changed = new EventPlanDefinition(venueId, today, null, List.of(1, 4), List.of(),
                 new EventPlanTemplate("Band program", null, LocalTime.of(21, 0), LocalTime.of(23, 0),
                         null, null, bandId, null));
-        var pending = service.update(ownerId, plan.id(), new EventPlanUpdateRequest(accepted.version(), changed));
+        jdbc.update("update tbl_user set access_suspended=true where id=?", founder.userId());
+        assertThatThrownBy(() -> service.create(ownerId, new EventPlanCreateRequest(UUID.randomUUID(), changed)))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.BAND_CONTACT_UNAVAILABLE));
+        var editorial = new EventPlanDefinition(venueId, today, null, List.of(1, 4), List.of(),
+                new EventPlanTemplate("Band program", "Program açıklaması", LocalTime.of(20, 0), LocalTime.of(22, 0),
+                        null, null, bandId, null));
+        var edited = service.update(ownerId, plan.id(), new EventPlanUpdateRequest(accepted.version(), editorial));
+        assertThat(edited.consentStatus()).isEqualTo(EventPlanConsentStatus.ACCEPTED);
+        assertThat(generated(plan.id())).isEqualTo(identities);
+        assertThat(jdbc.queryForObject("select profile_calendar_approved from tbl_event where id=?", Boolean.class, eventId)).isTrue();
+        assertThat(jdbc.queryForObject("select band_role from tbl_band_member where band_id=? and user_id=?",
+                String.class, bandId, member.userId())).isEqualTo("MEMBER");
+        assertThatThrownBy(() -> service.update(ownerId, plan.id(), new EventPlanUpdateRequest(edited.version(), changed)))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.BAND_CONTACT_UNAVAILABLE));
+        jdbc.update("update tbl_user set access_suspended=false where id=?", founder.userId());
+        var pending = service.update(ownerId, plan.id(), new EventPlanUpdateRequest(edited.version(), changed));
         assertThat(pending.consentStatus()).isEqualTo(EventPlanConsentStatus.PENDING);
         assertThat(generated(plan.id())).isEqualTo(identities);
         assertThat(jdbc.queryForObject("select visible from event_member_publications where event_id=? and musician_profile_id=?",
@@ -687,7 +704,8 @@ class EventPlanPostgresTest {
             VenueRepository.class, MusicianProfileRepository.class, BandRepository.class,
             MediaAssetRepository.class, VenueProfileRepository.class})
     @EntityScan(basePackages = "com.berkayb.soundconnect")
-    @Import({EventPlanService.class, EventMapper.class, BandRepresentationPolicy.class})
+    @Import({EventPlanService.class, EventMapper.class, BandRepresentationPolicy.class,
+            com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class})
     static class Config {
         @Bean DataSource dataSource() {
             if (!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL is not running");

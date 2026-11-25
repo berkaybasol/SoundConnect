@@ -132,6 +132,9 @@ public class PasswordResetService {
 		// entity. A pessimistic query locks it but does not replace that snapshot.
 		entityManager.refresh(user);
 		assertLockedIdentityStillMatches(resolved, user, email);
+		if (user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
+		}
 
 		String passwordHash = passwordEncoder.encode(request.password());
 		if (userRepository.resetPasswordAndRevokeSessions(user.getId(), passwordHash) != 1) {

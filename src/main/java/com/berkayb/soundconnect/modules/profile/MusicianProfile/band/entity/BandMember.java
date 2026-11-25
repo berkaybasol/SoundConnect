@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.entity;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandMemberShipStatus;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.band.enums.BandRole;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.shared.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -55,6 +56,12 @@ public class BandMember extends BaseEntity {
 
 	@Column(name = "title_version", nullable = false)
 	private long titleVersion;
+
+	public boolean canReceiveBandContact() {
+		return status == BandMemberShipStatus.ACTIVE && bandRole == BandRole.FOUNDER
+				&& user != null && user.getStatus() == UserStatus.ACTIVE && Boolean.TRUE.equals(user.getEmailVerified())
+				&& user.getErasedAt() == null && !user.isAccessSuspended();
+	}
 
 	// Invitation, role and title transitions cannot change this row's identity
 	// while it is held in Band.members (a persistent Set with orphan removal).

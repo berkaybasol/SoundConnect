@@ -62,6 +62,13 @@ class DmMessageEventListenerTest {
     }
 
     @Test
+    void aBlockAfterSendSuppressesTheAlreadyQueuedRealtimeUpdate() {
+        when(accounts.contactEventSuppressed(eq(senderId), eq(recipientId), any())).thenReturn(true);
+        listener.onDmMessageSent(event());
+        verifyNoInteractions(messages, mapper, messaging);
+    }
+
+    @Test
     void readEventProjectsCurrentDatabaseBadge() {
         when(messages.countByRecipientIdAndReadAtIsNull(recipientId)).thenReturn(4L);
         listener.onDmMessageRead(new DmMessageReadEvent(conversationId, recipientId));

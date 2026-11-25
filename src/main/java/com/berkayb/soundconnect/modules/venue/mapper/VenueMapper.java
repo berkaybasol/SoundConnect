@@ -7,11 +7,13 @@ import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.venue.dto.request.VenueRequestDto;
 import com.berkayb.soundconnect.modules.venue.dto.response.VenueResponseDto;
 import com.berkayb.soundconnect.modules.venue.entity.Venue;
+import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Mapper(componentModel = "spring")
 public interface VenueMapper {
@@ -42,16 +44,17 @@ public interface VenueMapper {
 	@Mapping(target = "neighborhoodName", source = "neighborhood.name")
 	@Mapping(target = "ownerId", source = "owner.id")
 	@Mapping(target = "ownerFullName", source = "owner.username")
-	@Mapping(target = "activeMusicians", expression = "java(toActiveMusicians(venue))")
-	VenueResponseDto toResponse(Venue venue);
+	@Mapping(target = "activeMusicians", expression = "java(toActiveMusicians(venue, hiddenMusicianIds))")
+	VenueResponseDto toResponse(Venue venue, @Context Set<UUID> hiddenMusicianIds);
 	
-	default Set<String> toActiveMusicians(Venue venue) {
+	default Set<String> toActiveMusicians(Venue venue, Set<UUID> hiddenMusicianIds) {
 		if (venue.getActiveMusicians() == null) return null;
 		return venue.getActiveMusicians()
 		            .stream()
+		            .filter(mp -> mp.getId() == null || !hiddenMusicianIds.contains(mp.getId()))
 		            .map(mp -> mp.getStageName())
 		            .collect(java.util.stream.Collectors.toSet());
 	}
 	
-	List<VenueResponseDto> toResponseList(List<Venue> venues);
+	List<VenueResponseDto> toResponseList(List<Venue> venues, @Context Set<UUID> hiddenMusicianIds);
 }

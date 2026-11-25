@@ -19,13 +19,17 @@ import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
 import com.berkayb.soundconnect.modules.role.repository.RoleRepository;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
+import com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -63,6 +67,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	private final StudioApplicationAdminMailService studioApplicationAdminMailService;
 	private final StudioApplicationTimeProvider timeProvider;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
+	private final EntityManager entityManager;
 
 	@Override
 	@Transactional
@@ -106,7 +111,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		StudioApplication saved = applicationRepository.save(application);
 		studioApplicationAdminMailService.sendNewApplicationMail(saved);
 		log.info("Studio application created applicantId={} applicationId={}", applicantUserId, saved.getId());
-		return applicationMapper.toResponseDto(saved);
+		return applicationMapper.toApplicantDto(saved);
 	}
 
 	@Override
@@ -120,7 +125,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		User applicant = userEntityFinder.getUser(applicantUserId);
 		return PageResponse.from(
 				applicationRepository.findAllByApplicant(applicant, pageable)
-						.map(applicationMapper::toResponseDto));
+						.map(applicationMapper::toApplicantDto));
 	}
 
 	@Override
@@ -128,7 +133,7 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	public StudioApplicationResponseDto getPendingApplicationByUser(UUID applicantUserId) {
 		User applicant = userEntityFinder.getUser(applicantUserId);
 		return applicationRepository.findByApplicantAndStatus(applicant, ApplicationStatus.PENDING)
-				.map(applicationMapper::toResponseDto)
+				.map(applicationMapper::toApplicantDto)
 				.orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_APPLICATION_NOT_FOUND));
 	}
 
@@ -152,11 +157,21 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 				.orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_APPLICATION_NOT_FOUND)));
 	}
 
+    @Override
+    @Transactional(readOnly = true)
+    public StudioApplicationRejectedException rejectionForApplicant(UUID applicantUserId) {
+        return applicationRepository
+                .findFirstByApplicantIdAndStatusOrderByDecisionDateDescIdDesc(applicantUserId, ApplicationStatus.REJECTED)
+                .map(application -> new StudioApplicationRejectedException(application.getStudioName(), application.getRejectionReason()))
+                .orElseGet(() -> new StudioApplicationRejectedException(null, null));
+    }
+
 	@Override
 	@Transactional
 	public StudioApplicationResponseDto approveApplication(UUID applicationId, UUID adminId) {
 		StudioApplication application = pendingApplicationForUpdate(applicationId);
-		User applicant = lockApplicantForProfileAcquisition(application, RoleEnum.ROLE_STUDIO);
+		User applicant = lockDecisionApplicant(application);
+		personalProfileTypePolicy.assertCanAcquire(applicant, RoleEnum.ROLE_STUDIO);
 		if (studioProfileRepository.existsByUserId(applicant.getId())) {
 			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_ALREADY_EXISTS);
 		}
@@ -170,13 +185,15 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 				: UserStatus.INACTIVE);
 		userRepository.save(applicant);
 
-		studioProfileService.createApprovedProfile(new StudioProfileProvisioningCommand(
+		var profile = studioProfileService.createApprovedProfile(new StudioProfileProvisioningCommand(
 				applicant.getId(), application.getStudioName(), application.getStudioAddress(),
 				application.getPhone(), application.getCity().getId(), application.getDistrict().getId(),
 				application.getNeighborhood().getId()
 		));
 
+		application.setApprovedStudioProfileId(profile.id());
 		application.setStatus(ApplicationStatus.APPROVED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(timeProvider.nowUtc());
 		application.setReviewedBy(resolveAdmin(adminId));
 		application.setRejectionReason(null);
@@ -190,12 +207,13 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 	@Transactional
 	public StudioApplicationResponseDto rejectApplication(UUID applicationId, UUID adminId, String reason) {
 		StudioApplication application = pendingApplicationForUpdate(applicationId);
-		User applicant = lockApplicant(application);
+		User applicant = lockDecisionApplicant(application);
 		String normalizedReason = normalizeRequired(reason, "reason");
 		if (normalizedReason.length() > 500) {
 			throw new SoundConnectException(ErrorType.VALIDATION_ERROR, "reason can be at most 500 characters");
 		}
 		application.setStatus(ApplicationStatus.REJECTED);
+		application.setDecisionId(UUID.randomUUID());
 		application.setDecisionDate(timeProvider.nowUtc());
 		application.setReviewedBy(resolveAdmin(adminId));
 		application.setRejectionReason(normalizedReason);
@@ -221,21 +239,28 @@ public class StudioApplicationServiceImpl implements StudioApplicationService {
 		return application;
 	}
 
-	private User lockApplicant(StudioApplication application) {
+	private User lockDecisionApplicant(StudioApplication application) {
 		User reference = application.getApplicant();
 		if (reference == null || reference.getId() == null) {
 			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
 		}
-		return userRepository.findByIdForUpdate(reference.getId())
+		User applicant = userRepository.findByIdForUpdate(reference.getId())
 				.orElseThrow(() -> new SoundConnectException(ErrorType.USER_NOT_FOUND));
-	}
-
-	private User lockApplicantForProfileAcquisition(StudioApplication application, RoleEnum targetRole) {
-		User reference = application.getApplicant();
-		if (reference == null || reference.getId() == null) {
-			throw new SoundConnectException(ErrorType.USER_NOT_FOUND);
+		entityManager.refresh(applicant, LockModeType.PESSIMISTIC_WRITE);
+		if (applicant.getErasedAt() != null) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		}
-		return personalProfileTypePolicy.lockAndAssertCanAcquire(reference.getId(), targetRole);
+		// Existing active accounts may apply separately from the registration flow.
+		if (applicant.getStatus() == UserStatus.ACTIVE && Boolean.TRUE.equals(applicant.getEmailVerified())
+				&& !applicant.isGoogleProfileIncomplete()) {
+			return applicant;
+		}
+		if (applicant.getStatus() != UserStatus.PENDING_STUDIO_REQUEST
+				|| !applicant.getRoles().isEmpty() || !applicant.getPermissions().isEmpty()
+				|| (applicant.getProvider() == AuthProvider.GOOGLE && !Boolean.TRUE.equals(applicant.getEmailVerified()))) {
+			throw new SoundConnectException(ErrorType.INVALID_APPLICATION_STATUS);
+		}
+		return applicant;
 	}
 
 	private User resolveAdmin(UUID adminId) {

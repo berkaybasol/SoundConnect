@@ -2,7 +2,6 @@ package com.berkayb.soundconnect.auth.security;
 
 import com.berkayb.soundconnect.auth.service.CustomUserDetailsService;
 import com.berkayb.soundconnect.modules.application.venueapplication.service.VenueApplicationSessionAccess;
-import com.berkayb.soundconnect.modules.user.enums.AuthProvider;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.security.SecurityErrorResponseWriter;
@@ -110,13 +109,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				continueWithoutAuthentication(request, response, filterChain, audienceSessionRequired);
 				return;
 			}
+			if (rejectSuspended(request, response, userDetails)) return;
 			if (!(userDetails instanceof UserDetailsImpl principal)
 					|| principal.getUser().getSessionVersion() != sessionVersion) {
 				SecurityContextHolder.clearContext();
 				securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 				return;
 			}
-			if (canAuthenticate(userDetails, request)) {
+			if (isAccountUsable(userDetails) && !hasNoRoles(userDetails)) {
 				setAuthentication(request, userDetails);
 			} else {
 				SecurityContextHolder.clearContext();
@@ -167,6 +167,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			securityErrorResponseWriter.write(request, response, ErrorType.UNAUTHORIZED);
 			return;
 		}
+		if (rejectSuspended(request, response, details)) return;
 		if (!(details instanceof UserDetailsImpl principal)
 				|| principal.getUser().getSessionVersion() != sessionVersion
 				|| !venueApplicationSessionAccess.isAccessible(principal.getUser(), claims.applicationId())) {
@@ -175,6 +176,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		}
 		setAuthentication(request, new VenueApplicationPrincipal(principal.getUser(), claims.applicationId()));
 		filterChain.doFilter(request, response);
+	}
+
+	private boolean rejectSuspended(HttpServletRequest request, HttpServletResponse response, UserDetails details)
+			throws IOException {
+		// An authentic, unexpired bearer can learn only this account-level decision,
+		// including when the decision itself just revoked its session revision.
+		if (details instanceof UserDetailsImpl principal && principal.getUser().getErasedAt() == null
+				&& principal.getUser().isAccessSuspended()) {
+			SecurityContextHolder.clearContext();
+			securityErrorResponseWriter.write(request, response, ErrorType.ACCOUNT_SUSPENDED);
+			return true;
+		}
+		return false;
 	}
 
 	private void continueWithoutAuthentication(HttpServletRequest request, HttpServletResponse response,
@@ -191,16 +205,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		log.debug("JWT authentication rejected. method={}, path={}, exceptionType={}",
 				request.getMethod(), request.getRequestURI(), exception.getClass().getSimpleName());
 		SecurityContextHolder.clearContext();
-	}
-
-	private boolean canAuthenticate(UserDetails userDetails, HttpServletRequest request) {
-		if (!isAccountUsable(userDetails)) {
-			return false;
-		}
-		if (!hasNoRoles(userDetails)) {
-			return true;
-		}
-		return isRolelessGooglePrincipal(userDetails) && isGoogleProfileCompletionRequest(request);
 	}
 
 	private void setAuthentication(HttpServletRequest request, UserDetails userDetails) {
@@ -220,16 +224,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	private boolean hasNoRoles(UserDetails userDetails) {
 		return userDetails instanceof UserDetailsImpl principal
 				&& (principal.getUser().getRoles() == null || principal.getUser().getRoles().isEmpty());
-	}
-
-	private boolean isRolelessGooglePrincipal(UserDetails userDetails) {
-		return userDetails instanceof UserDetailsImpl principal
-				&& principal.getUser().getProvider() == AuthProvider.GOOGLE;
-	}
-
-	private boolean isGoogleProfileCompletionRequest(HttpServletRequest request) {
-		return "POST".equalsIgnoreCase(request.getMethod())
-				&& "/api/v1/auth/complete-google-profile".equals(request.getRequestURI());
 	}
 
 }

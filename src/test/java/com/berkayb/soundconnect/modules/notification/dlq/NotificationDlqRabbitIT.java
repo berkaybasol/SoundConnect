@@ -39,15 +39,22 @@ class NotificationDlqRabbitIT {
         channel.exchangeDeclare(exchange, "direct", true);
         channel.queueDeclare(dlq, true, false, false, Map.of()); channel.queueDeclare(ingress, true, false, false, Map.of());
         channel.queueBind(ingress, exchange, "notification.event");
+        channel.confirmSelect();
         ops = operations(broker);
     }
     NotificationDlqOperations operations(NotificationDlqBroker b) { return new NotificationDlqOperations(b, config, new SimpleMeterRegistry(), dlq, ingress, exchange, "notification.event"); }
     @AfterEach void cleanup() throws Exception { broker.close(); if (fixture != null) fixture.abort(); if (source != null) source.destroy(); }
-    void send(String text) throws Exception { channel.basicPublish("", dlq, new AMQP.BasicProperties.Builder().contentType("application/json").deliveryMode(2).build(), text.getBytes()); channel.queueDeclarePassive(dlq); }
+    void send(String text) throws Exception {
+        channel.basicPublish("", dlq, new AMQP.BasicProperties.Builder().contentType("application/json").deliveryMode(2).build(),
+                text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        channel.waitForConfirmsOrDie(5_000);
+    }
     int ready(String q) throws Exception { return channel.queueDeclarePassive(q).getMessageCount(); }
     void depth(int expected) { await().atMost(Duration.ofSeconds(8)).untilAsserted(() -> assertThat(ready(dlq)).isEqualTo(expected)); }
     NotificationDlqOperations.Selection select() {
-        var m = ops.inspect(UUID.randomUUID()).messages().stream().filter(NotificationDlqMessage.Metadata::replayable).findFirst().orElseThrow();
+        var inspection = ops.inspect(UUID.randomUUID());
+        assertThat(inspection.outcome()).isEqualTo("INSPECTED_WINDOW");
+        var m = inspection.messages().stream().filter(NotificationDlqMessage.Metadata::replayable).findFirst().orElseThrow();
         return new NotificationDlqOperations.Selection(m.eventId(), m.fingerprint());
     }
     void observe(NotificationDlqOperations o, int expected) {
@@ -134,7 +141,12 @@ class NotificationDlqRabbitIT {
             var result = ops.replay(UUID.randomUUID(), selected);
             assertThat(result.outcome()).isIn("PUBLISH_AMBIGUOUS", "UNAVAILABLE_OR_AMBIGUOUS");
             assertThat(result.sourceAck()).isIn("NOT_SENT", "UNKNOWN");
-        } finally { assertThat(RABBIT.execInContainer("rabbitmqctl", "set_vm_memory_high_watermark", "0.4").getExitCode()).isZero(); }
+        } finally {
+            assertThat(RABBIT.execInContainer("rabbitmqctl", "set_vm_memory_high_watermark", "0.4").getExitCode()).isZero();
+            // The command changes the limit before RabbitMQ asynchronously clears its resource alarm.
+            await().atMost(Duration.ofSeconds(15)).until(() ->
+                    RABBIT.execInContainer("rabbitmq-diagnostics", "-q", "check_local_alarms").getExitCode() == 0);
+        }
         depth(1);
     }
     @Test void missingQueueAndStaleObservationAreUnknown() throws Exception {

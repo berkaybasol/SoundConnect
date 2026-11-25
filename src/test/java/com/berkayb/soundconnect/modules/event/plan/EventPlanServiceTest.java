@@ -50,6 +50,7 @@ class EventPlanServiceTest {
     @Mock EventPerformerNotificationOutboxPublisher notifications;
     @Mock EventScheduleClock clock;
     @Mock ObjectMapper json;
+    @Mock com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence contact;
     @InjectMocks EventPlanService service;
     final UUID id=UUID.randomUUID(),ownerId=UUID.randomUUID(),venueId=UUID.randomUUID(),musicianId=UUID.randomUUID();
     final LocalDate date=LocalDate.of(2026,9,22);

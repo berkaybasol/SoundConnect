@@ -28,6 +28,8 @@ import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.search.service.VisibleProfileSearch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -56,6 +58,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	private final FollowService followService;
 	private final FollowGraphMutationService followGraphMutationService;
 	private final ListenerVisibilityTimeProvider visibilityTimeProvider;
+	private final ProfileBlockVisibility profileBlocks;
 	private final PersonalProfileTypePolicy personalProfileTypePolicy;
 	private final ListenerProfileProvisioner listenerProfileProvisioner;
 	private final ListenerSpotifyPlaylistRepository listenerSpotifyPlaylistRepository;
@@ -72,14 +75,9 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 			);
 		}
 
-		return listenerProfileRepository.searchForPublicDiscovery(
-				q,
-				UsernameUtils.normalize(q),
-				ListenerVisibilityMode.GHOST,
-				PageRequest.of(0, SEARCH_RESULT_LIMIT)
-		)
+		return VisibleProfileSearch.collect(SEARCH_RESULT_LIMIT, page -> listenerProfileRepository.searchForPublicDiscovery(
+				q, UsernameUtils.normalize(q), ListenerVisibilityMode.GHOST, page), profile -> profile.getUser().getId(), profileBlocks)
 				.stream()
-				.limit(SEARCH_RESULT_LIMIT)
 				.map(this::toSearchResponse)
 				.toList();
 	}
@@ -89,6 +87,7 @@ public class ListenerProfileServiceImpl implements ListenerProfileService {
 	public ListenerProfilePublicResponseDto getProfileByProfileId(UUID profileId) {
 		ListenerProfile profile = listenerProfileRepository.findForPublicById(profileId)
 		                                                   .orElseThrow(() -> profileNotFoundById(profileId));
+		profileBlocks.requireVisible(profile.getUser().getId());
 		if (!profile.isVisibilityChoiceCompleted()) {
 			throw profileNotFoundById(profileId);
 		}

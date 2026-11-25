@@ -38,6 +38,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = CollabReportAdminController.class)
@@ -54,6 +55,8 @@ class CollabReportAdminControllerAuthorizationTest {
     @WithMockUser(roles = "ADMIN")
     void adminRoleWithoutExplicitPermissionCannotReadReports() throws Exception {
         mockMvc.perform(get("/api/v1/admin/collab/reports"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/collab/reports/{id}", UUID.randomUUID()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
     }
@@ -86,8 +89,36 @@ class CollabReportAdminControllerAuthorizationTest {
                     .contentType("application/json").content("""
                             {"decision":"DISMISS","expectedVersion":0,"resolutionNote":"İhlal tespit edilmedi."}
                             """)).andExpect(status().isForbidden());
-        } else mockMvc.perform(get("/api/v1/admin/collab/reports")).andExpect(status().isForbidden());
+        } else {
+            mockMvc.perform(get("/api/v1/admin/collab/reports")).andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/admin/collab/reports/{id}", UUID.randomUUID()))
+                    .andExpect(status().isForbidden());
+        }
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void authorizedDetailReadsOnlyTheSelectedReportAndPreventsCaching() throws Exception {
+        UUID adminId = UUID.randomUUID(), reportId = UUID.randomUUID();
+        UserDetailsImpl principal = mock(UserDetailsImpl.class);
+        when(principal.getId()).thenReturn(adminId);
+        var report = mock(CollabReportAdminResponse.class);
+        when(report.id()).thenReturn(reportId);
+        when(report.reporterUsername()).thenReturn("gitarist");
+        when(report.hasListingEvidence()).thenReturn(true);
+        when(service.detail(adminId, reportId)).thenReturn(report);
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, List.of(new SimpleGrantedAuthority("MANAGE_COLLAB_REPORTS"))));
+        try {
+            mockMvc.perform(get("/api/v1/admin/collab/reports/{id}", reportId))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                    .andExpect(jsonPath("$.data.id").value(reportId.toString()))
+                    .andExpect(jsonPath("$.data.reporterUsername").value("gitarist"))
+                    .andExpect(jsonPath("$.data.hasListingEvidence").value(true));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test

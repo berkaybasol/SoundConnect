@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.profile.shared.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.mapper.MediaAssetMapper;
 import com.berkayb.soundconnect.modules.media.service.MediaAssetService;
 import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy;
@@ -37,7 +38,7 @@ class ProfileMediaUiServiceImplTest {
 				mediaAssetMapper,
 				trackService,
 				listenerVisibilityPolicy
-		);
+		, org.mockito.Mockito.mock(ProfileBlockVisibility.class));
 	}
 
 	@Test

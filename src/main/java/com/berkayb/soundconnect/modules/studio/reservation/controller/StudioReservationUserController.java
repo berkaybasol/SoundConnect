@@ -63,6 +63,14 @@ public class StudioReservationUserController {
         ));
     }
 
+    @GetMapping("/{reservationId}")
+    public ResponseEntity<BaseResponse<StudioReservationResponse>> get(
+            @AuthenticationPrincipal UserDetailsImpl principal, @PathVariable UUID reservationId
+    ) {
+        return ResponseEntity.ok(success(HttpStatus.OK, "Rezervasyon getirildi",
+                reservationService.getCustomer(principal.getId(), reservationId)));
+    }
+
     @GetMapping("/rooms/{roomId}")
     public ResponseEntity<BaseResponse<StudioPageResponse<StudioReservationResponse>>> listRoomDate(
             @AuthenticationPrincipal UserDetailsImpl principal,

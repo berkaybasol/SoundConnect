@@ -92,38 +92,31 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 			throw new BadCredentialsException("Missing or invalid WebSocket token");
 		}
 
-		final UserDetails userDetails;
 		final UUID userId;
 		final long expiresAt;
 		final long sessionVersion;
 		try {
 			userId = jwtTokenProvider.getUserIdFromToken(token);
-			userDetails = userDetailsService.loadUserById(userId);
 			expiresAt = jwtTokenProvider.getExpirationFromToken(token).getTime();
 			sessionVersion = jwtTokenProvider.getSessionVersionFromToken(token);
 		} catch (RuntimeException exception) {
 			throw new BadCredentialsException("Missing or invalid WebSocket token", exception);
 		}
 
-		if (!isAccountUsable(userDetails)) {
-			throw new DisabledException("User account is not active");
+		// Register the signed identity before reading the account. A concurrent committed
+		// suspension either closes this transport or is visible to the account read.
+		String sessionId = accessor.getSessionId();
+		sessionRegistry.register(sessionId, userId, expiresAt, sessionVersion, accessor.getSessionAttributes());
+		try {
+			UserDetailsImpl principal = requireFreshPrincipal(sessionId);
+			if (listenerProfileChoiceStatusReader.requiresChoice(principal.getUser())) {
+				throw new DisabledException("Listener profile visibility choice is required");
+			}
+			accessor.setUser(new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+		} catch (RuntimeException failure) {
+			sessionRegistry.remove(sessionId);
+			throw failure;
 		}
-		if (!(userDetails instanceof UserDetailsImpl principal)
-				|| principal.getUser().getRoles() == null
-				|| principal.getUser().getRoles().isEmpty()) {
-			throw new DisabledException("User profile onboarding is incomplete");
-		}
-		if (listenerProfileChoiceStatusReader.requiresChoice(principal.getUser())) {
-			throw new DisabledException("Listener profile visibility choice is required");
-		}
-		if (principal.getUser().getSessionVersion() != sessionVersion) {
-			throw new BadCredentialsException("WebSocket session has been revoked");
-		}
-		sessionRegistry.register(accessor.getSessionId(), userId, expiresAt, sessionVersion);
-
-		UsernamePasswordAuthenticationToken authentication =
-				new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-		accessor.setUser(authentication);
 	}
 
 	private UserDetailsImpl requireFreshPrincipal(StompHeaderAccessor accessor) {
@@ -154,6 +147,10 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 					"Authenticated WebSocket session required",
 					exception
 			);
+		}
+		if (freshUserDetails instanceof UserDetailsImpl principal && principal.getUser().isAccessSuspended()) {
+			sessionRegistry.closeSuspended(sessionId, session);
+			throw new DisabledException("User account is suspended");
 		}
 		if (!(freshUserDetails instanceof UserDetailsImpl freshPrincipal)
 				|| !isAccountUsable(freshPrincipal)

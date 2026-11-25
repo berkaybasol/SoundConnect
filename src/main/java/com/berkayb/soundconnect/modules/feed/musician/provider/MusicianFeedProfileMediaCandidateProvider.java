@@ -15,7 +15,7 @@ import java.util.*;
 
 @Component
 public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCandidateProvider {
-    private static final String SQL = """
+    private static final String SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             with publications as (
                 select attachment.id as attachment_id, attachment.media_asset_id, attachment.profile_type,
                        attachment.profile_type as author_profile_type,
@@ -76,8 +76,8 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
                    (case when publication.profile_type='BAND' then band_follow.id is not null
                          else following.id is not null end) as followed_by_viewer,
                    ((publication.author_user_id=:viewerId) or publication.owned_band) as owned_by_viewer,
-                   (select count(*) from tbl_like likes where likes.target_type='MEDIA' and likes.target_id=publication.media_asset_id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='MEDIA'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='MEDIA' and likes.target_id=publication.media_asset_id) as like_count,
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='MEDIA'
                        and comments.target_id=publication.media_asset_id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId and mine.target_type='MEDIA'
                        and mine.target_id=publication.media_asset_id) as liked_by_me
@@ -129,7 +129,7 @@ public class MusicianFeedProfileMediaCandidateProvider implements MusicianFeedCa
             order by case when :venueAudience and not :followingPool and media.kind in ('VIDEO','AUDIO') then 0 else 1 end,
                      publication.created_at desc, publication.attachment_id desc
             limit :limit
-            """.replace("/* FEED_MODERATION */", allowed(item("'PROFILE_MEDIA:' || publication.attachment_id::text"),
+            """).replace("/* FEED_MODERATION */", allowed(item("'PROFILE_MEDIA:' || publication.attachment_id::text"),
                     target("'MEDIA'", "publication.media_asset_id")))
             .replace("/* ARTIST_CITY_MATCH */", MusicianFeedArtistDiscovery.cityMatchSql(
                     "publication.author_profile_type", "publication.author_profile_id", "account.city_id"));

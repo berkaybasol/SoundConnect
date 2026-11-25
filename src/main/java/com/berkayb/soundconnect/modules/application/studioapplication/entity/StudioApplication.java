@@ -64,6 +64,12 @@ public class StudioApplication extends BaseEntity {
 	@Column(name = "application_date", nullable = false)
 	private LocalDateTime applicationDate;
 
+    @Column(name = "decision_id")
+    private java.util.UUID decisionId;
+
+    @Column(name = "approved_studio_profile_id")
+    private java.util.UUID approvedStudioProfileId;
+
 	@Column(name = "decision_date")
 	private LocalDateTime decisionDate;
 

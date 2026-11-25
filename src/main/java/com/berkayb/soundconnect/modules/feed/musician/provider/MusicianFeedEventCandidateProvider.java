@@ -38,7 +38,7 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                 where publication.visible and followed.follower_id=:viewerId))
             """;
 
-    private static final String ELIGIBLE_EVENT_SQL = """
+    private static final String ELIGIBLE_EVENT_SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select event.id, event.title, event.description, event.event_date,
                    %s as normalized_start_seconds,
                    case when event.end_time is null then null else %s end as normalized_end_seconds,
@@ -105,8 +105,8 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                      member_publication.author_user_id=:viewerId or
                      exists(select 1 from tbl_band_member own_member where own_member.band_id=band.id
                             and own_member.user_id=:viewerId and own_member.status='ACTIVE')) as owned_by_viewer,
-                   (select count(*) from tbl_like likes where likes.target_type='EVENT' and likes.target_id=event.id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='EVENT'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='EVENT' and likes.target_id=event.id) as like_count,
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='EVENT'
                        and comments.target_id=event.id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='EVENT' and mine.target_id=event.id) as liked_by_me
@@ -224,7 +224,7 @@ public class MusicianFeedEventCandidateProvider implements MusicianFeedCandidate
                     and not (:hasCity and venue.city_id=:cityId))
               )
             offset 0
-            """.formatted(
+            """).formatted(
             EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS)

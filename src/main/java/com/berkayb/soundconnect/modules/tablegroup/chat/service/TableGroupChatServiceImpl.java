@@ -176,6 +176,22 @@ public class TableGroupChatServiceImpl implements TableGroupChatService {
 		return response;
 	}
 
+	/** Access, report and table identity are checked in the same transaction as this removal. */
+	@Override
+	@Transactional
+	public void removeReportedMessage(UUID tableGroupId, UUID messageId) {
+		TableGroup table = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
+		assertChatOpen(table);
+		TableGroupMessage message = messageRepository.findById(messageId)
+				.filter(row -> tableGroupId.equals(row.getTableGroupId()) && row.getDeletedAt() == null
+						&& row.getMessageType() == MessageType.TEXT)
+				.orElseThrow(() -> new SoundConnectException(ErrorType.TABLE_GROUP_REPORT_STATE_CHANGED));
+		message.setDeletedAt(java.time.LocalDateTime.now(java.time.Clock.systemUTC()));
+		messageRepository.saveAndFlush(message);
+		var tombstone = messageMapper.toResponseDto(message);
+		runAfterCommit(() -> deliverCommittedMessage(tableGroupId, message.getSenderId(), List.of(), tombstone));
+	}
+
 	private Optional<TableGroupMessageResponseDto> findReplay(
 			UUID tableGroupId,
 			UUID senderId,

@@ -119,6 +119,20 @@ boolean existsByOwner_Id(UUID ownerId);
 					"""
 	)
 	Page<Venue> searchByName(@Param("q") String q, Pageable pageable);
+
+	String VISIBLE_NAME_MATCHES = """
+			from tbl_venues v join tbl_user owner on owner.id=v.owner_id
+			join tbl_district district on district.id=v.district_id and district.city_id=v.city_id
+			join tbl_neighborhood neighborhood on neighborhood.id=v.neighborhood_id and neighborhood.district_id=v.district_id
+			where v.status='APPROVED' and owner.status='ACTIVE' and owner.email_verified
+			  and position(lower(:q) in lower(coalesce(v.name,''))) > 0
+			  and not exists(select 1 from tbl_user_block b where b.unblocked_at is null and
+			      ((b.blocker_id=:viewer and b.blocked_id=v.owner_id) or (b.blocked_id=:viewer and b.blocker_id=v.owner_id)))
+			""";
+
+	@Query(value = "select v.* " + VISIBLE_NAME_MATCHES + " order by lower(v.name),v.id",
+			countQuery = "select count(*) " + VISIBLE_NAME_MATCHES, nativeQuery = true)
+	Page<Venue> searchVisibleByName(@Param("viewer") UUID viewer, @Param("q") String q, Pageable pageable);
 	
 	
 	Page<Venue> findByNameContainingIgnoreCase(String name, Pageable pageable);

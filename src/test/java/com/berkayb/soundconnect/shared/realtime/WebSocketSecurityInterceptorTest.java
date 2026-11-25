@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.Listener
 import com.berkayb.soundconnect.modules.role.entity.Role;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.UserStatus;
+import com.berkayb.soundconnect.modules.user.service.AccountAccessChanged;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,18 +26,66 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.util.UUID;
 import java.util.Set;
 import java.util.Date;
+import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class WebSocketSecurityInterceptorTest {
+	@Test void committedSuspensionClosesTheUsersOldTransportsIncludingIdleDevices() throws Exception {
+		UUID user = UUID.randomUUID();
+		WebSocketHandler handler = sessionRegistry.trackTransport(mock(WebSocketHandler.class));
+		WebSocketSession first = connectedTransport(handler, "suspend-a", user, 4);
+		WebSocketSession second = connectedTransport(handler, "suspend-b", user, 3);
+		WebSocketSession newer = connectedTransport(handler, "restored-device", user, 5);
+		WebSocketSession peer = connectedTransport(handler, "peer", UUID.randomUUID(), 0);
+		sessionRegistry.accountAccessChanged(new AccountAccessChanged(user,true,5));
+		sessionRegistry.accountAccessChanged(new AccountAccessChanged(user,false,5));
+		verify(first).close(CloseStatus.POLICY_VIOLATION);
+		verify(second).close(CloseStatus.POLICY_VIOLATION);
+		verify(newer,never()).close(CloseStatus.POLICY_VIOLATION);
+		verify(peer,never()).close(CloseStatus.POLICY_VIOLATION);
+		assertThat(sessionRegistry.find("suspend-a")).isEmpty();
+		assertThat(sessionRegistry.find("restored-device")).isPresent();
+		handler.afterConnectionClosed(newer, CloseStatus.NORMAL);
+		assertThat(sessionRegistry.find("restored-device")).isEmpty();
+	}
+
+	private WebSocketSession connectedTransport(WebSocketHandler handler, String id, UUID user, long version) throws Exception {
+		WebSocketSession socket = mock(WebSocketSession.class);
+		when(socket.getId()).thenReturn(id);
+		when(socket.getAttributes()).thenReturn(new HashMap<>());
+		handler.afterConnectionEstablished(socket);
+		sessionRegistry.register(socket.getId(), user, System.currentTimeMillis()+60000, version, socket.getAttributes());
+		return socket;
+	}
+
+	@Test void missedCloseEventCannotDeliverAChatMessageToASuspendedAccount() {
+		UUID id = UUID.randomUUID();
+		UserDetailsImpl user = principal(id);
+		user.getUser().setAccessSuspended(true);
+		when(userDetailsService.loadUserById(id)).thenReturn(user);
+		sessionRegistry.register("suspended-device",id,System.currentTimeMillis()+60000);
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.MESSAGE);
+		accessor.setSessionId("suspended-device");
+		accessor.setDestination(WebSocketChannels.dm(id));
+		assertThat(interceptor.preSend(message(accessor),channel)).isNull();
+		assertThat(sessionRegistry.find("suspended-device")).isEmpty();
+		org.mockito.Mockito.verifyNoInteractions(subscriptionAuthorizer);
+	}
+
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.EnumSource(value = StompCommand.class, names = {"SUBSCRIBE", "SEND"})
 	void passwordResetRejectsAlreadyConnectedInboundSession(StompCommand command) {
@@ -128,6 +177,31 @@ class WebSocketSecurityInterceptorTest {
 
 		assertThatThrownBy(() -> interceptor.preSend(message(accessor), channel))
 				.isInstanceOf(BadCredentialsException.class);
+	}
+
+	@Test
+	void suspensionCommittedDuringConnectClosesTheTransportBeforeItCanReceiveMessages() throws Exception {
+		UUID userId = UUID.randomUUID();
+		UserDetailsImpl principal = principal(userId);
+		WebSocketSession socket = mock(WebSocketSession.class);
+		when(socket.getAttributes()).thenReturn(new HashMap<>());
+		sessionRegistry.trackTransport(mock(WebSocketHandler.class)).afterConnectionEstablished(socket);
+		when(jwtTokenProvider.validateToken("valid-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserIdFromToken("valid-token")).thenReturn(userId);
+		when(jwtTokenProvider.getExpirationFromToken("valid-token")).thenReturn(new Date(System.currentTimeMillis() + 60_000));
+		when(userDetailsService.loadUserById(userId)).thenReturn(principal);
+		when(listenerProfileChoiceStatusReader.requiresChoice(principal.getUser())).thenAnswer(invocation -> {
+			sessionRegistry.accountAccessChanged(new AccountAccessChanged(userId, true, 1));
+			return false;
+		});
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+		accessor.setSessionId("connecting-device");
+		accessor.setSessionAttributes(socket.getAttributes());
+		accessor.setNativeHeader("Authorization", "Bearer valid-token");
+
+		interceptor.preSend(message(accessor), channel);
+		verify(socket).close(CloseStatus.POLICY_VIOLATION);
+		assertThat(sessionRegistry.find("connecting-device")).isEmpty();
 	}
 
 	@Test

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.abuse.MediaUploadAbuseGuard;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.MediaKind;
@@ -64,6 +65,8 @@ class MediaAssetCompletionIntegrityTest {
 	@Mock ImageThumbnailService imageThumbnailService;
 	@Mock PresignedUploadWriteWindow presignedUploadWriteWindow;
 	@Mock MediaDeletionProperties mediaDeletionProperties;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 	@InjectMocks MediaAssetServiceImpl service;
 
 	private UUID ownerId;

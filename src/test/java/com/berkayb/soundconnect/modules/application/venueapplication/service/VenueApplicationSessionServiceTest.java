@@ -68,6 +68,17 @@ class VenueApplicationSessionServiceTest {
         when(access.permits(user, application)).thenReturn(true);
     }
 
+    @Test void suspensionAfterHttpAuthenticationPreventsPromotionOfAnApprovedApplication() {
+        application.setStatus(ApplicationStatus.APPROVED);
+        user.setAccessSuspended(true);
+        when(applications.findOwnedForUpdate(applicationId, userId)).thenReturn(Optional.of(application));
+        when(users.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+
+        failure(() -> service.promote(userId, applicationId, user.getSessionVersion()), ErrorType.ACCOUNT_SUSPENDED);
+        verify(entityManager).refresh(user, LockModeType.PESSIMISTIC_WRITE);
+        verifyNoInteractions(tokens, access);
+    }
+
     private Notification notice() {
         Notification n = Notification.builder().recipientId(userId).type(NotificationType.VENUE_APPLICATION_REJECTED)
                 .title("Mekân başvurusu").message("Mekân başvurun reddedildi.").read(false)

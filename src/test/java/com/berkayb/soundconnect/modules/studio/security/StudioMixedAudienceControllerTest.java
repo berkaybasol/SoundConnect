@@ -2,6 +2,7 @@ package com.berkayb.soundconnect.modules.studio.security;
 
 import com.berkayb.soundconnect.auth.security.JwtAuthenticationFilter;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
+import com.berkayb.soundconnect.modules.application.admin.PendingApplicationQuery;
 import com.berkayb.soundconnect.modules.application.studioapplication.controller.admin.StudioApplicationAdminController;
 import com.berkayb.soundconnect.modules.application.studioapplication.controller.user.UserStudioApplicationController;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
@@ -21,6 +22,7 @@ import com.berkayb.soundconnect.modules.track.enums.TrackOwnerType;
 import com.berkayb.soundconnect.modules.track.service.TrackService;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -66,15 +69,25 @@ class StudioMixedAudienceControllerTest {
     @MockitoBean TrackService tracks;
     @MockitoBean BacklineCatalogService catalog;
     @MockitoBean StudioApplicationService applications;
+    @MockitoBean PendingApplicationQuery reviewAccess;
     final UUID actor = UUID.randomUUID(), resource = UUID.randomUUID();
 
     @AfterEach void clearViewer() { SecurityContextHolder.clearContext(); }
+
+    @Test
+    @WithMockUser(authorities = {"ROLE_ADMIN", "ADMIN_PANEL_ACCESS"})
+    void panelAccessAloneDoesNotExposeStudioCategoryRequests() throws Exception {
+        mvc.perform(request(Route.CATEGORY_ADMIN))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.data").doesNotExist());
+        verifyNoInteractions(catalog);
+    }
 
     @ParameterizedTest @EnumSource(Route.class)
     void listenerVetoWinsOverLegacyStudioAndAdministrativeAuthorities(Route route) throws Exception {
         authenticate(true);
         mvc.perform(request(route)).andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
-        verifyNoInteractions(profiles, rooms, equipment, reservations, tracks, catalog, applications);
+        verifyNoInteractions(profiles, rooms, equipment, reservations, tracks, catalog, applications, reviewAccess);
     }
 
     @ParameterizedTest @EnumSource(Route.class)
@@ -91,7 +104,10 @@ class StudioMixedAudienceControllerTest {
             case CATEGORY_OWNER -> verify(catalog).listOwnerRequests(actor, 0, 20);
             case CATEGORY_ADMIN -> verify(catalog).listAdminRequests(null, 0, 20);
             case APPLICATION_OWNER -> verify(applications).getPendingApplicationByUser(actor);
-            case APPLICATION_ADMIN -> verify(applications).getById(resource);
+            case APPLICATION_ADMIN -> {
+                verify(reviewAccess).requireAccess(any(UserDetailsImpl.class), eq(PendingApplicationQuery.Kind.STUDIO));
+                verify(applications).getById(resource);
+            }
             case TRACK_CREATE -> verify(tracks).createTrack(eq(resource), eq(actor), any());
             case TRACK_DELETE -> verify(tracks).deleteTrack(resource, resource, actor, TrackOwnerType.STUDIO_PROFILE);
         }
@@ -114,7 +130,7 @@ class StudioMixedAudienceControllerTest {
     }
 
     private void authenticate(boolean listener) {
-        var authorityNames = new ArrayList<>(List.of("ROLE_STUDIO", "MANAGE_PROFILES", "MANAGE_STUDIO_APPLICATIONS", "MANAGE_BACKLINE_CATALOG"));
+        var authorityNames = new ArrayList<>(List.of("ROLE_STUDIO", "MANAGE_PROFILES", "ADMIN_PANEL_ACCESS", "MANAGE_STUDIO_APPLICATIONS", "MANAGE_BACKLINE_CATALOG"));
         if (listener) authorityNames.add("ROLE_LISTENER");
         var principal = UserDetailsImpl.fromUser(User.builder().id(actor).username("studio").build());
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(

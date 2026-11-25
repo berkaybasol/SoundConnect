@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.follow.service;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.follow.entity.Follow;
 import com.berkayb.soundconnect.modules.follow.outbox.FollowNotificationOutboxService;
 import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
@@ -42,6 +43,8 @@ class FollowServiceImplTest {
 
 	@Mock
 	private ListenerProfileChoiceStatusReader listenerProfileChoiceStatusReader;
+
+	@Mock UserBlockService blocks;
 	
 	@InjectMocks
 	private FollowServiceImpl sut;
@@ -69,6 +72,14 @@ class FollowServiceImplTest {
 	}
 	
 	// -------- follow() --------
+	@Test
+	void blockedPairCannotCreateAFollowOrNotification() {
+		doThrow(new SoundConnectException(ErrorType.FORBIDDEN_ACCESS)).when(blocks)
+				.requireInteractionAllowed(follower.getId(), following.getId());
+		assertThatThrownBy(() -> sut.follow(follower, following)).isInstanceOf(SoundConnectException.class);
+		verifyNoInteractions(followRepository, notificationOutbox);
+	}
+
 	@Test
 	void follow_ok() {
 		// not self, not already following

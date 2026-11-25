@@ -1,5 +1,9 @@
 package com.berkayb.soundconnect.modules.feed.musician.performance;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.berkayb.soundconnect.modules.follow.repository.FollowRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
@@ -337,7 +341,8 @@ class MusicianFeedLoadTest {
         // Transactional scripts contain DO blocks: send each entire script to PostgreSQL.
         for (String name : List.of("2026-09-11-musician-feed-delivery.sql", "2026-09-11-musician-feed-feedback.sql",
                 "2026-09-11-musician-feed-replay.sql", "2026-09-13-musician-feed-feedback-lookup.sql",
-                "2026-09-13-musician-feed-moderation.sql", "2026-09-13-musician-feed-retention-lookup.sql")) {
+                "2026-09-13-musician-feed-moderation.sql", "2026-09-13-musician-feed-retention-lookup.sql",
+                "2026-11-24-user-blocks.sql")) {
             jdbc.getJdbcTemplate().execute(Files.readString(Path.of("scripts", "db", name)));
         }
         // Online indexes explicitly require separate autocommit statements.
@@ -682,7 +687,9 @@ class MusicianFeedLoadTest {
             return new MusicianFeedViewerGuard(users, musicians, venues, venueProfiles, listeners);
         }
         @Bean MusicianFeedRestrictionGuard restrictions(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper) {
-            return new MusicianFeedRestrictionGuard(new MusicianFeedRestrictionRepository(jdbc), new MusicianFeedModerationScopeResolver(mapper));
+            var blocks = new UserBlockService(jdbc, new AccountDeliveryFence(jdbc), mock(FollowRepository.class));
+            return new MusicianFeedRestrictionGuard(new MusicianFeedRestrictionRepository(jdbc),
+                    new MusicianFeedModerationScopeResolver(mapper), new ProfileBlockVisibility(blocks, jdbc));
         }
         @Bean OverthinkingPostService unusedOverthinking() { return mock(OverthinkingPostService.class); }
         @Bean MusicianFeedReplayVisibilityGuard visibility(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper,

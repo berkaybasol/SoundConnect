@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.UUID;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,7 +28,7 @@ class VenueActiveArtistControllerTest {
     @BeforeEach
     void setUp() {
         service = mock(VenueActiveArtistService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new VenueActiveArtistController(service)).build();
+        mvc = MockMvcBuilders.standaloneSetup(new VenueActiveArtistController(service, mock(ProfileBlockVisibility.class))).build();
     }
 
     @Test

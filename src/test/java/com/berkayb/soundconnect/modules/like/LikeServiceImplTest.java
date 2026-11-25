@@ -44,11 +44,7 @@ class LikeServiceImplTest {
         when(repository.lockActiveActor(actor)).thenReturn(Optional.of(actor));
         service.like(actor,type,target); service.like(actor,type,target);
         service.unlike(actor,type,target); service.unlike(actor,type,target);
-        if (type == EngagementTargetType.ANNOUNCEMENT) {
-            verify(targets,times(4)).validateExists(actor,type,target);
-        } else {
-            verify(targets,times(4)).validateExists(type,target);
-        }
+        verify(targets,times(4)).validateExists(actor,type,target);
         verify(repository,times(2)).insertIfAbsent(any(),eq(actor),eq(type.name()),eq(target));
         verify(repository,times(2)).deleteDesiredLike(actor,type.name(),target);
         verify(repository,never()).existsByUserIdAndTargetTypeAndTargetId(any(),any(),any());
@@ -83,15 +79,11 @@ class LikeServiceImplTest {
         UUID actor=UUID.randomUUID(), target=UUID.randomUUID();
         when(repository.lockActiveActor(actor)).thenReturn(Optional.of(actor));
         var hidden = new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
-        if (type == EngagementTargetType.ANNOUNCEMENT) {
-            doThrow(hidden).when(targets).validateExists(null,type,target);
-            doThrow(hidden).when(targets).validateExists(actor,type,target);
-        } else {
-            doThrow(hidden).when(targets).validateExists(type,target);
-        }
+        doThrow(hidden).when(targets).validateExists(null,type,target);
+        doThrow(hidden).when(targets).validateExists(actor,type,target);
         assertThatThrownBy(() -> service.countLikes(type,target)).isSameAs(hidden);
         assertThatThrownBy(() -> service.isLiked(actor,type,target)).isSameAs(hidden);
-        verify(repository,never()).countByTargetTypeAndTargetId(any(),any());
+        verify(repository,never()).countVisibleByTarget(any(),any(),any());
         verify(repository,never()).existsByUserIdAndTargetTypeAndTargetId(any(),any(),any());
     }
 }

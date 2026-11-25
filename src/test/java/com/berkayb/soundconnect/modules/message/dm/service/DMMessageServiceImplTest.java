@@ -85,7 +85,7 @@ class DMMessageServiceImplTest {
 	@Test
 	void deletedMessageCannotBeAcknowledged() {
 		UUID messageId = UUID.randomUUID();
-		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findReadTargetById(messageId)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, senderId, recipientId)));
 		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(DMMessage.builder()
 				.id(messageId).conversationId(conversationId).recipientId(recipientId).deletedAt(LocalDateTime.now()).build()));
@@ -249,7 +249,7 @@ class DMMessageServiceImplTest {
 		                         .messageType("text")
 		                         .build();
 		
-		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findReadTargetById(messageId)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, senderId, recipientId)));
 		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
 		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 		
@@ -272,6 +272,23 @@ class DMMessageServiceImplTest {
 	}
 	
 	@Test
+	void privateReadUpdatesOnlyTheRecipientAndStaysPrivateOnRetry() {
+		UUID id = UUID.randomUUID();
+		var message = DMMessage.builder().id(id).conversationId(conversationId).senderId(senderId).recipientId(recipientId).build();
+		when(messageRepository.findReadTargetById(id)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, senderId, recipientId)));
+		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findByIdForUpdate(id)).thenReturn(Optional.of(message));
+		when(accountDeliveryFence.interactionBlockedForUpdate(recipientId, senderId)).thenReturn(true, false);
+		service.markMessageAsRead(id, recipientId);
+		service.markMessageAsRead(id, recipientId);
+		var mapper = org.mapstruct.factory.Mappers.getMapper(DMMessageMapper.class);
+		assertThat(mapper.toRecipientResponseDto(message).readAt()).isNotNull();
+		assertThat(mapper.toResponseDto(message).readAt()).isNull();
+		verify(conversationRepository, never()).save(any());
+		verify(notificationService, times(2)).markDmMessageAsRead(recipientId, id);
+	}
+
+	@Test
 	@DisplayName("markMessageAsRead: idempotent read still schedules committed badge refresh")
 	void markMessageAsRead_alreadyReadRefreshesProjection() {
 		UUID messageId = UUID.randomUUID();
@@ -284,7 +301,7 @@ class DMMessageServiceImplTest {
 		                         .messageType("text")
 		                         .readAt(LocalDateTime.now())
 		                         .build();
-		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
+		when(messageRepository.findReadTargetById(messageId)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, senderId, recipientId)));
 		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
 		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
 
@@ -301,19 +318,7 @@ class DMMessageServiceImplTest {
 	void markMessageAsRead_notRecipient() {
 		UUID messageId = UUID.randomUUID();
 		
-		DMMessage msg = DMMessage.builder()
-		                         .id(messageId)
-		                         .conversationId(conversationId)
-		                         .senderId(senderId)
-		                         .recipientId(recipientId)
-		                         .content("x")
-		                         .messageType("text")
-		                         .build();
-		
-		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.of(conversationId));
-		when(messageRepository.findByIdForUpdate(messageId)).thenReturn(Optional.of(msg));
-		
-		when(conversationRepository.findByIdForUpdate(conversationId)).thenReturn(Optional.of(conversation));
+		when(messageRepository.findReadTargetById(messageId)).thenReturn(Optional.of(new DMMessageRepository.ReadTarget(conversationId, senderId, recipientId)));
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, senderId));
 		
 		verify(messageRepository, never()).saveAndFlush(any());
@@ -325,7 +330,7 @@ class DMMessageServiceImplTest {
 	@DisplayName("markMessageAsRead: mesaj yoksa hata")
 	void markMessageAsRead_messageNotFound() {
 		UUID messageId = UUID.randomUUID();
-		when(messageRepository.findConversationIdByMessageId(messageId)).thenReturn(Optional.empty());
+		when(messageRepository.findReadTargetById(messageId)).thenReturn(Optional.empty());
 		
 		assertThrows(SoundConnectException.class, () -> service.markMessageAsRead(messageId, recipientId));
 		
@@ -351,7 +356,7 @@ class DMMessageServiceImplTest {
 		when(conversationRepository.findById(conversationId)).thenReturn(Optional.of(conversation));
 		when(messageRepository.findByConversationId(eq(conversationId), any(org.springframework.data.domain.Pageable.class)))
 				.thenReturn(org.springframework.data.domain.Page.empty());
-		service.getMessagesByConversationId(conversationId, org.springframework.data.domain.PageRequest.of(2, 5000));
+		service.getMessagesByConversationId(conversationId, org.springframework.data.domain.PageRequest.of(2, 5000), recipientId);
 		var page = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
 		verify(messageRepository).findByConversationId(eq(conversationId), page.capture());
 		assertThat(page.getValue().getPageNumber()).isEqualTo(2);

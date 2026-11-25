@@ -103,7 +103,7 @@ class DMMessageUserControllerTest {
 		                                  "a", "text", LocalDateTime.now(), null, null);
 		var m2 = new DMMessageResponseDto(UUID.randomUUID(), conversationId, otherId, currentUserId,
 		                                  "b", "text", LocalDateTime.now(), null, null);
-		when(messageService.getMessagesByConversationId(eq(conversationId), org.mockito.Mockito.any(Pageable.class)))
+		when(messageService.getMessagesByConversationId(eq(conversationId), org.mockito.Mockito.any(Pageable.class), eq(currentUserId)))
 				.thenReturn(new PageImpl<>(List.of(m1, m2)));
 		
 		mockMvc.perform(get(BASE + PATH_LIST, conversationId).principal(p))

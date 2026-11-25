@@ -50,7 +50,10 @@ public class OverthinkingRevealRequest extends BaseEntity {
 	private OverthinkingRevealRequestStatus status = OverthinkingRevealRequestStatus.PENDING;
 	// istegin beklemede, kabul veya reddedilmis Oldugunu belirtir
 	
-	public boolean isPending() {
+	@Column(name = "delivery_suppressed", nullable = false, columnDefinition = "boolean default false")
+    private boolean deliverySuppressed;
+
+    public boolean isPending() {
 		return status == OverthinkingRevealRequestStatus.PENDING;
 	}
 	

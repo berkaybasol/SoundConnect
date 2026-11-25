@@ -74,6 +74,12 @@ public class User extends BaseEntity {
 			columnDefinition = "bigint default 0")
 	@JsonIgnore
 	private long sessionVersion;
+
+	/** Changed together with the account-access decision and credential revision. */
+	@Column(name = "access_suspended", nullable = false, updatable = false,
+			columnDefinition = "boolean default false")
+	@JsonIgnore
+	private boolean accessSuspended;
 	
 	@NotBlank
 	@Email
@@ -113,6 +119,12 @@ public class User extends BaseEntity {
 	@Column(name = "provider_subject", length = 255)
 	@JsonIgnore
 	private String providerSubject;
+
+	@JsonIgnore
+	public boolean isGoogleProfileIncomplete() {
+		return provider == AuthProvider.GOOGLE && (roles == null || roles.isEmpty()
+				|| (roles.size() == 1 && roles.stream().anyMatch(role -> "ROLE_USER".equals(role.getName()))));
+	}
 	
 	@Builder.Default
 	@Column(name = "email_verified", nullable = false)

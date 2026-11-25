@@ -23,6 +23,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -37,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -107,6 +111,38 @@ class BacklineCatalogServiceTest {
         assertThat(savedRequest.get().getRequestPayloadHash()).hasSize(64);
         assertThat(first.createdAtUtc()).isEqualTo(Instant.parse("2026-07-21T10:30:00Z"));
         verify(requestRepository).saveAndFlush(any(BacklineCategoryRequest.class));
+    }
+
+    @Test
+    void adminListReadsAllStatusesWithStableNewestFirstPagination() {
+        var parent = BacklineCategory.createRoot("keys", "Klavye", "klavye", null, 0);
+        parent.setId(UUID.randomUUID());
+        var pending = BacklineCategoryRequest.create(
+                studio, ownerId, UUID.randomUUID(), "a".repeat(64), BacklineCategoryRequestType.SUBCATEGORY,
+                "Org", "org", "Prova odası için", parent, List.of());
+        var withdrawn = BacklineCategoryRequest.create(
+                studio, ownerId, UUID.randomUUID(), "b".repeat(64), BacklineCategoryRequestType.ROOT_CATEGORY,
+                "Yaylılar", "yaylılar", null, null,
+                List.of(new BacklineCategoryRequest.CategoryCandidate("Çello", "çello")));
+        withdrawn.withdraw();
+        var page = PageRequest.of(1, 2, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        when(requestRepository.findAll(page)).thenReturn(new PageImpl<>(List.of(pending, withdrawn), page, 5));
+
+        var result = service.listAdminRequests(null, 1, 2);
+
+        assertThat(result.getNumber()).isOne();
+        assertThat(result.getTotalElements()).isEqualTo(5);
+        assertThat(result.getContent()).extracting(row -> row.status())
+                .containsExactly(BacklineCategoryRequestStatus.PENDING, BacklineCategoryRequestStatus.WITHDRAWN);
+        var subcategory = result.getContent().getFirst();
+        assertThat(subcategory.studioName()).isEqualTo("Stüdyo Atlas");
+        assertThat(subcategory.requestedName()).isEqualTo("Org");
+        assertThat(subcategory.parentCategoryName()).isEqualTo("Klavye");
+        assertThat(subcategory.requesterNote()).isEqualTo("Prova odası için");
+        assertThat(result.getContent().getLast().proposedChildren()).extracting(child -> child.name())
+                .containsExactly("Çello");
+        verify(requestRepository).findAll(page);
+        verifyNoMoreInteractions(requestRepository, categoryRepository);
     }
 
     @Test

@@ -31,6 +31,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
@@ -39,7 +40,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
-import java.sql.SQLException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -71,12 +73,13 @@ class VenueActiveArtistRepositoryTest {
     Neighborhood neighborhood;
 
     @BeforeEach
-    void seedVenueAfterCheckingDatasource() throws SQLException {
+    void seedVenueAfterCheckingDatasource() throws Exception {
         assertThat(POSTGRES.isRunning()).isTrue();
         try (var connection = dataSource.getConnection()) {
             assertThat(connection.getMetaData().getURL()).isEqualTo(POSTGRES.getJdbcUrl());
             assertThat(connection.getCatalog()).isEqualTo(POSTGRES.getDatabaseName());
         }
+        new JdbcTemplate(dataSource).execute(Files.readString(Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         city = persist(City.builder().name("Ankara").build());
         district = persist(District.builder().name("Çankaya").city(city).build());
         neighborhood = persist(Neighborhood.builder().name("Çayyolu").district(district).build());
@@ -97,12 +100,36 @@ class VenueActiveArtistRepositoryTest {
                 .status(RequestStatus.ACCEPTED).requestByType(RequestByType.VENUE).build());
         em.flush();
 
-        var result = repository.findMusicians(venue.getId(), "", PageRequest.of(0, 1));
+        var result = repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 1));
         assertThat(result.getTotalElements()).isEqualTo(2);
         assertThat(result.getContent()).extracting(VenueActiveArtistRow::id).containsExactly(first.getId());
-        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(1, 1)).getContent())
+        assertThat(repository.findMusicians(venue.getId(), "", null, PageRequest.of(1, 1)).getContent())
                 .extracting(VenueActiveArtistRow::id).containsExactly(second.getId());
-        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(2, 1)).getContent()).isEmpty();
+        assertThat(repository.findMusicians(venue.getId(), "", null, PageRequest.of(2, 1)).getContent()).isEmpty();
+    }
+
+    @Test
+    void activeBlocksFilterMusiciansInBothDirectionsBeforePaginationAndCounting() {
+        var outgoing = musician("A", "first", venue, RequestStatus.ACCEPTED, true, RequestByType.ARTIST);
+        var incoming = musician("B", "second", venue, RequestStatus.ACCEPTED, true, RequestByType.VENUE);
+        var visible = musician("C", "third", venue, RequestStatus.ACCEPTED, true, RequestByType.ARTIST);
+        var viewer = newVenue("viewer").getOwner().getId();
+        em.flush();
+        var jdbc = new JdbcTemplate(dataSource);
+        var blockSql = "insert into tbl_user_block(blocker_id, blocked_id) values (?, ?)";
+        jdbc.update(blockSql, viewer, outgoing.getUser().getId());
+        jdbc.update(blockSql, incoming.getUser().getId(), viewer);
+
+        var page = PageRequest.of(0, 1);
+        var result = repository.findMusicians(venue.getId(), "", viewer, page);
+        assertThat(result.getContent()).extracting(VenueActiveArtistRow::id).containsExactly(visible.getId());
+        assertThat(result.getTotalElements()).isOne();
+        assertThat(repository.findMusicians(venue.getId(), "first", viewer, page)).isEmpty();
+        assertThat(repository.findMusicians(venue.getId(), "", null, page).getTotalElements()).isEqualTo(3);
+        assertThat(repository.findMusicians(venue.getId(), "", visible.getUser().getId(), page)
+                .getTotalElements()).isEqualTo(3);
+        jdbc.update("update tbl_user_block set unblocked_at = now() where blocker_id = ?", viewer);
+        assertThat(repository.findMusicians(venue.getId(), "", viewer, page).getTotalElements()).isEqualTo(2);
     }
 
     @Test
@@ -126,7 +153,7 @@ class VenueActiveArtistRepositoryTest {
         var username = musician("Other", "bugrasahin", venue, RequestStatus.ACCEPTED, true, RequestByType.VENUE);
         var group = band("Şahbaz", venue, RequestStatus.ACCEPTED, true);
         em.flush();
-        assertThat(repository.findMusicians(venue.getId(), query, PageRequest.of(0, 20)).getContent())
+        assertThat(repository.findMusicians(venue.getId(), query, null, PageRequest.of(0, 20)).getContent())
                 .extracting(VenueActiveArtistRow::id).containsExactlyInAnyOrder(stage.getId(), username.getId());
         assertThat(repository.findBands(venue.getId(), query, PageRequest.of(0, 20)).getContent())
                 .extracting(VenueActiveArtistRow::id).containsExactly(group.getId());
@@ -138,7 +165,7 @@ class VenueActiveArtistRepositoryTest {
         musician("Ordinary", "ordinary", venue, RequestStatus.ACCEPTED, true, RequestByType.ARTIST);
         band("Ordinary band", venue, RequestStatus.ACCEPTED, true);
         em.flush();
-        assertThat(repository.findMusicians(venue.getId(), query, PageRequest.of(0, 20))).isEmpty();
+        assertThat(repository.findMusicians(venue.getId(), query, null, PageRequest.of(0, 20))).isEmpty();
         assertThat(repository.findBands(venue.getId(), query, PageRequest.of(0, 20))).isEmpty();
     }
 
@@ -148,13 +175,13 @@ class VenueActiveArtistRepositoryTest {
         var second = musician("Same", "two", venue, RequestStatus.ACCEPTED, true, RequestByType.VENUE);
         var fallback = musician("   ", "username", venue, RequestStatus.ACCEPTED, true, RequestByType.ARTIST);
         em.flush();
-        var page0 = repository.findMusicians(venue.getId(), "", PageRequest.of(0, 1));
-        var page1 = repository.findMusicians(venue.getId(), "", PageRequest.of(1, 1));
+        var page0 = repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 1));
+        var page1 = repository.findMusicians(venue.getId(), "", null, PageRequest.of(1, 1));
         assertThat(List.of(page0.getContent().getFirst().id(), page1.getContent().getFirst().id()))
                 .containsExactlyInAnyOrder(first.getId(), second.getId()).doesNotHaveDuplicates();
-        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(0, 1)).getContent())
+        assertThat(repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 1)).getContent())
                 .isEqualTo(page0.getContent());
-        assertThat(repository.findMusicians(venue.getId(), "username", PageRequest.of(0, 20)).getContent())
+        assertThat(repository.findMusicians(venue.getId(), "username", null, PageRequest.of(0, 20)).getContent())
                 .singleElement().satisfies(row -> {
                     assertThat(row.id()).isEqualTo(fallback.getId());
                     assertThat(row.name()).isEqualTo("username");
@@ -177,7 +204,7 @@ class VenueActiveArtistRepositoryTest {
             group.setProfilePictureMediaId(image.getId());
         }
         em.flush();
-        var musicians = repository.findMusicians(venue.getId(), "", PageRequest.of(0, 20)).getContent();
+        var musicians = repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 20)).getContent();
         var bands = repository.findBands(venue.getId(), "", PageRequest.of(0, 20)).getContent();
         for (var rows : List.of(musicians, bands)) {
             assertThat(rows).hasSize(6);
@@ -195,7 +222,7 @@ class VenueActiveArtistRepositoryTest {
         em.flush();
         assertThat(repository.existsVenueProfile(venue.getId())).isTrue();
         assertThat(repository.existsVenueProfile(UUID.randomUUID())).isFalse();
-        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
+        assertThat(repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 20))).isEmpty();
         assertThat(repository.findBands(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
     }
 
@@ -233,7 +260,7 @@ class VenueActiveArtistRepositoryTest {
     private void assertHiddenDirectory() {
         em.flush();
         assertThat(repository.existsVenueProfile(venue.getId())).isFalse();
-        assertThat(repository.findMusicians(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
+        assertThat(repository.findMusicians(venue.getId(), "", null, PageRequest.of(0, 20))).isEmpty();
         assertThat(repository.findBands(venue.getId(), "", PageRequest.of(0, 20))).isEmpty();
     }
 

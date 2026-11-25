@@ -19,5 +19,10 @@ public interface DMMessageMapper {
 	
 	@Mapping(target = "messageId", source = "id")
 	@Mapping(target = "sentAt",   source = "createdAt")
+	@Mapping(target = "readAt", expression = "java(entity.isReadReceiptHidden() ? null : entity.getReadAt())")
 	DMMessageResponseDto toResponseDto(DMMessage entity);
+
+	@Mapping(target = "messageId", source = "id")
+	@Mapping(target = "sentAt", source = "createdAt")
+	DMMessageResponseDto toRecipientResponseDto(DMMessage entity);
 }

@@ -49,6 +49,15 @@ public class VenueApplication extends BaseEntity {
 	@Column
 	private LocalDateTime decisionDate; // karar tarihi.
 
+    @Column(name = "decision_id")
+    private java.util.UUID decisionId;
+
+    @Column(name = "reviewed_by_id")
+    private java.util.UUID reviewedById;
+
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     // Exact decision source; never infer an approved application from a later owned venue.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_venue_id")

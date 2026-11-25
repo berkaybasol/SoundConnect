@@ -208,6 +208,7 @@ public class EndPoints {
 		public static final String WITHDRAW = "/applications/{applicationId}/withdraw";
 		public static final String ME_JOBS = "/me/jobs";
 		public static final String CONFIRM_COMPLETION = "/jobs/{jobId}/confirm-completion";
+		public static final String CANCEL_JOB = "/jobs/{jobId}/cancel";
 		public static final String JOB_REVIEWS = "/jobs/{jobId}/reviews";
 		public static final String ACTOR_REVIEWS = "/actors/{actorId}/reviews";
 		public static final String REPORTS = "/{listingId}/reports";
@@ -215,7 +216,8 @@ public class EndPoints {
 
 	public static class CollabAdmin {
 		public static final String BASE = API + VERSION + "/admin/collab/reports";
-		public static final String REVIEW = "/{reportId}/review";
+		public static final String DETAIL = "/{reportId}";
+		public static final String REVIEW = DETAIL + "/review";
 	}
 	
 	public static class Comment {

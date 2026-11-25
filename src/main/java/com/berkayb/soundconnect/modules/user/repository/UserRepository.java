@@ -48,6 +48,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	Optional<User> findByEmail(String email);
 	Optional<User> findByProviderAndProviderSubject(AuthProvider provider, String providerSubject);
 
+	// A new Google identity has no row to lock yet. Serialize confirmations across API nodes.
+	@Query(value = "select 1 from pg_advisory_xact_lock(hashtextextended('google-onboarding:' || cast(:subject as text), 0))", nativeQuery = true)
+	int lockGoogleOnboarding(@Param("subject") String subject);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select u from User u where u.provider = :provider and u.providerSubject = :subject")
+	Optional<User> findByProviderSubjectForUpdate(@Param("provider") AuthProvider provider, @Param("subject") String subject);
+
+	@Modifying
+	@Query(value = "update tbl_user set session_version = session_version + 1 where id = :id and session_version = :previous", nativeQuery = true)
+	int revokeGoogleOnboardingSessions(@Param("id") UUID id, @Param("previous") long previous);
+
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select u from User u where u.email = :email")
 	Optional<User> findByEmailForUpdate(@Param("email") String email);

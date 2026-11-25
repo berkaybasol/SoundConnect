@@ -75,6 +75,7 @@ class StudioReservationCustomerAudienceControllerTest {
         switch (route) {
             case CREATE -> verify(service).create(eq(actor), any());
             case LIST -> verify(service).listCustomer(actor, 0, 20);
+            case DETAIL -> verify(service).getCustomer(actor, resource);
             case ROOM_DATE -> verify(service).listCustomerRoomDate(actor, resource, LocalDate.of(2026, 9, 14), 0, 20);
             case CANCEL -> verify(service).cancelCustomer(eq(actor), eq(resource), any());
         }
@@ -87,6 +88,7 @@ class StudioReservationCustomerAudienceControllerTest {
                      "durationHours":2,"contactPhone":"05551112233","clientRequestId":"%s"}
                     """.formatted(resource, UUID.randomUUID()));
             case LIST -> get(BASE);
+            case DETAIL -> get(BASE + "/{id}", resource);
             case ROOM_DATE -> get(BASE + "/rooms/{id}", resource).param("date", "2026-09-14");
             case CANCEL -> post(BASE + "/{id}/cancel", resource).contentType("application/json")
                     .content("{\"expectedVersion\":0}");
@@ -103,5 +105,5 @@ class StudioReservationCustomerAudienceControllerTest {
         return id;
     }
 
-    enum Route { CREATE, LIST, ROOM_DATE, CANCEL }
+    enum Route { CREATE, LIST, DETAIL, ROOM_DATE, CANCEL }
 }

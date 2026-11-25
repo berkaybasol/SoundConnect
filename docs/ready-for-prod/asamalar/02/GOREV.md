@@ -1,5 +1,15 @@
 # Aşama 02 — admin panelinin işletim işlevleri
 
+## 25 Kasım 2026 · Kabul edilen panel kapsamı
+
+Mekân ve stüdyo başvuruları, Collab şikâyetleri, dört profil türünde kullanıcı arama ve hesap detayı, hesabı askıya alma ve geri açma, Backline kategori talepleri, Masa şikâyetleri, profil ve içerik şikâyetleri ile önerilen mekânlar kabul edildi. Masa kaldırıldığında açık sohbetin kapanması fiziksel Android cihazda doğrulandı. Profil ve içerik şikâyetleri için kullanıcı, staging v15’te iki Android emülatöründe dört yönetici kararının doğrulanmasını kabul etti. Aynı sürümde yorum sayacı düzeltildi.
+
+Tek bir Pazar ilanına ait önceki şikâyet kararlarını topluca gösterme (5), genel yönetici işlem geçmişi (4), bekleyen işlerin özeti (13), ekip yetkileri (14) ve başarısız bildirimlerin panelden takibi (15) prod sonrasına bırakıldı. Eski başvuru araması (7), Pazar kararlarının taraflara otomatik bildirilmesi (11), ayrı destek ekranı (12) ve katalog bakımı (17) kapsam dışında.
+
+Özel mesajlara sunucu tarafındaki yönetici erişimi yayın öncesinde incelenecek. Şikâyet kanıtının saklanmasına (10) ek geliştirme ancak somut hukuki zorunluluk belirlenirse yapılacak. Dört profil için kullanıcı engelleme, Aşama 03’ten öne alınarak staging v12’de doğrulandı.
+
+**23 Kasım 2026.** Yetkili yönetici mekân ve stüdyo başvurularında telefonu görebiliyor, başvuruyu onaylayabiliyor veya gerekçeyle reddedebiliyor. Karar kaydında kararı veren yönetici ve zaman tutuluyor. Android’de v4’ten v5’e güncelleme doğrulandı ve kullanıcı yeni panelin görünümünü Vivo telefonunda onayladı. Mobilde 7.185, backend’de 6.576 test geçti. Backend’de iki test atlandı. Sonraki işler kullanıcı yönetimi, şikâyet geçmişi ve backline kategori talepleri. [Karar kaydı için SQL](../../../../scripts/db/2026-11-22-application-reviews.sql) · [PostgreSQL karar testleri](../../../../src/test/java/com/berkayb/soundconnect/auth/controller/GoogleRegistrationHttpPostgresTest.java)
+
 **21 Kasım 2026.** 02 görevi hazır. Ürün çalışması 01’in Git kapanışı doğrulandıktan ve kullanıcı devam talimatını verdikten sonra başlar. Kullanıcı 01.7 kapasite kabulünü yayın öncesine erteledi. Hedef dal `ready-for-prod-02`. [Güncel durum](../../DURUM.md) · [Aşama sırası](../../PLAN.md)
 
 ## Amaç ve kalite

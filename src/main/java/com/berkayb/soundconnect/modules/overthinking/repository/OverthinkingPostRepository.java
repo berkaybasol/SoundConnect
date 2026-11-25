@@ -16,6 +16,33 @@ import java.util.UUID;
 
 public interface OverthinkingPostRepository extends JpaRepository<OverthinkingPost, UUID> {
 	String MAINSTAGE = com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL;
+	String VISIBLE_TO_VIEWER = """
+			where (cast(:artist as uuid) is null or post.artist_id=:artist)
+			  and (not :mainstage or (
+			""" + MAINSTAGE + """
+			  ))
+			  and
+			""" + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingBlockVisibility.VISIBLE_SOURCE;
+
+	@Query(value = "select post.* from tbl_overthinking_post post " + VISIBLE_TO_VIEWER + """
+			order by case when :oldest then post.created_at end asc, case when :oldest then post.id end asc,
+				post.created_at desc, post.id desc
+			""", countQuery = "select count(*) from tbl_overthinking_post post " + VISIBLE_TO_VIEWER, nativeQuery = true)
+	Page<OverthinkingPost> findVisibleToViewer(@Param("viewer") UUID viewer, @Param("artist") UUID artist,
+			@Param("mainstage") boolean mainstage, @Param("oldest") boolean oldest, Pageable pageable);
+
+	@Query(value = """
+			select post.* from tbl_overthinking_post post left join (
+				select target_id, count(*) as likes from tbl_like l where target_type='OVERTHINKING'
+                and not exists (select 1 from tbl_user_block b where b.unblocked_at is null
+                   and ((b.blocker_id=:viewer and b.blocked_id=l.user_id)
+                     or (b.blocked_id=:viewer and b.blocker_id=l.user_id)))
+                group by target_id
+			) engagement on engagement.target_id=post.id
+			""" + VISIBLE_TO_VIEWER + " order by coalesce(engagement.likes,0) desc, post.created_at desc, post.id desc",
+			countQuery = "select count(*) from tbl_overthinking_post post " + VISIBLE_TO_VIEWER, nativeQuery = true)
+	Page<OverthinkingPost> findMostLikedVisibleToViewer(@Param("viewer") UUID viewer, @Param("artist") UUID artist,
+			@Param("mainstage") boolean mainstage, Pageable pageable);
 
 	@Query(value = "select post.id from tbl_overthinking_post post where post.id in (:ids) and " + MAINSTAGE,
 			nativeQuery = true)

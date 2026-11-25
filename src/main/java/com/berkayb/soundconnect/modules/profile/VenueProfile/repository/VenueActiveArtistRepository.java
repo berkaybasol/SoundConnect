@@ -26,6 +26,9 @@ public interface VenueActiveArtistRepository extends Repository<Venue, UUID> {
     String MUSICIAN_FILTER = """
             where venue.id = :venueId and
             """ + VenueRepository.PUBLIC_VISIBILITY + """
+            and not exists (select 1 from UserBlock b where b.unblockedAt is null
+                and ((b.blocker.id = :viewerId and b.blocked.id = musicianUser.id)
+                  or (b.blocked.id = :viewerId and b.blocker.id = musicianUser.id)))
             and exists (select request.id from ArtistVenueConnectionRequest request
                 where request.venue.id = venue.id and request.musicianProfile.id = musician.id
                 and request.status = com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.enums.RequestStatus.ACCEPTED)
@@ -50,7 +53,7 @@ public interface VenueActiveArtistRepository extends Repository<Venue, UUID> {
             + MUSICIAN_FILTER + " order by lower(" + MUSICIAN_NAME + "), musician.id",
             countQuery = "select count(musician) " + MUSICIAN_FROM + MUSICIAN_FILTER)
     Page<VenueActiveArtistRow> findMusicians(@Param("venueId") UUID venueId, @Param("q") String query,
-                                           Pageable pageable);
+                                           @Param("viewerId") UUID viewerId, Pageable pageable);
 
     String BAND_FROM = "from Venue venue join venue.activeBands band ";
     String BAND_FILTER = """

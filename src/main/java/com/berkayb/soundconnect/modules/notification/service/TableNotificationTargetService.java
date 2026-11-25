@@ -41,7 +41,8 @@ public class TableNotificationTargetService {
         join tbl_table_group t on t.id::text=n.payload->>'tableGroupId'
         join tbl_user u on u.id=n.recipient_id
         join tbl_user o on o.id=t.owner_id
-        join tbl_user s on s.id::text=n.subject and s.id<>t.owner_id
+        join tbl_user s on s.id::text=n.subject and (s.id<>t.owner_id or
+          (n.type='TABLE_CANCELLED' and n.payload->>'reason'='ADMIN_REMOVED'))
         left join tbl_table_group_participants p on p.table_group_id=t.id and p.user_id=s.id
         where u.status='ACTIVE' and u.email_verified and u.erased_at is null
           and o.status='ACTIVE' and o.email_verified and o.erased_at is null
@@ -65,7 +66,7 @@ public class TableNotificationTargetService {
               and n.payload->>'ownerId'=t.owner_id::text and n.payload->>'action'='PARTICIPANT_REMOVED'
             when 'TABLE_CANCELLED' then n.recipient_id=s.id and p.status='ACCEPTED' and t.status='CANCELLED'
               and n.payload->>'action'='CANCELLED'
-              and n.payload->>'reason' in ('OWNER_CANCELLED','OWNER_JOINED_ANOTHER_TABLE')
+              and n.payload->>'reason' in ('OWNER_CANCELLED','OWNER_JOINED_ANOTHER_TABLE','ADMIN_REMOVED')
             when 'TABLE_EXPIRED' then n.recipient_id=s.id and p.status='ACCEPTED' and t.status='INACTIVE'
               and n.payload->>'ownerId'=t.owner_id::text and n.payload->>'action'='EXPIRED'
             else false end

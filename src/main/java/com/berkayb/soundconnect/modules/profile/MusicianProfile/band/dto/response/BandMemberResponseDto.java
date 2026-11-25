@@ -9,8 +9,13 @@ public record BandMemberResponseDto(
 		String role,
 		String status,
 		String memberTitle,
-		long titleVersion
+		long titleVersion,
+		boolean contactAvailable
 ) {
+	public BandMemberResponseDto(UUID userId, String username, String profilePicture,
+	                             String role, String status, String memberTitle, long titleVersion) {
+		this(userId, username, profilePicture, role, status, memberTitle, titleVersion, false);
+	}
 	public BandMemberResponseDto(UUID userId, String username, String profilePicture,
 	                             String role, String status) {
 		this(userId, username, profilePicture, role, status, null, 0L);

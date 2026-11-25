@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class CommentTargetAccessGuard {
     private final CommentTargetAccessRepository repository;
     private final AnnouncementAccess announcements;
+    private final ProfileBlockVisibility profileBlocks;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireReadable(EngagementTargetType type, UUID id) {
@@ -26,11 +28,14 @@ public class CommentTargetAccessGuard {
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireReadable(UUID viewerId, EngagementTargetType type, UUID id) {
         if (type == null || id == null) throw new SoundConnectException(ErrorType.INVALID_PARAMETER);
+        UUID account = viewerId == null ? ProfileBlockVisibility.viewerId() : viewerId;
+        if (!profileBlocks.hiddenTargets(account, type.name(), java.util.List.of(id)).isEmpty())
+            throw new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
         boolean visible = switch (type) {
             case EVENT -> repository.lockPublicEvent(id).isPresent();
             case EVENT_POST -> readableEventPost(id);
             case TABLE_GROUP_POST -> readableTablePost(id);
-            case OVERTHINKING_PROFILE_SHARE -> readableOverthinkingProfileShare(id);
+            case OVERTHINKING_PROFILE_SHARE -> readableOverthinkingProfileShare(account, id);
             case OVERTHINKING -> lockReadablePost(id);
             case MEDIA -> readableMedia(id);
             // COMMENT is a like target only, never another commentable content level.
@@ -65,9 +70,10 @@ public class CommentTargetAccessGuard {
         return repository.lockPublishedTablePost(id, owner.getUserId(), owner.getTableGroupId(), java.time.Instant.now()).isPresent();
     }
 
-    private boolean readableOverthinkingProfileShare(UUID id) {
+    private boolean readableOverthinkingProfileShare(UUID viewer, UUID id) {
         var owner = repository.overthinkingProfileShareOwner(id).orElse(null);
         if (owner == null || owner.getUserId() == null || owner.getSourcePostId() == null) return false;
+        if (!profileBlocks.hiddenTargets(viewer, "OVERTHINKING", java.util.List.of(owner.getSourcePostId())).isEmpty()) return false;
         // Match publication writes/removal: account -> listener visibility ->
         // source -> exact publication. This prevents a source/profile deletion
         // from committing between validation and an engagement insert.

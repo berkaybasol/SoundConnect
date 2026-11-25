@@ -7,6 +7,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.calendar.dto.Mus
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.calendar.dto.MusicianCalendarSettingsUpdate;
 import com.berkayb.soundconnect.modules.profile.MusicianProfile.calendar.service.MusicianCalendarService;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -33,6 +34,7 @@ public class MusicianCalendarController {
 
 	private final MusicianCalendarService calendarService;
 	private final MusicianCalendarRateLimitGuard rateLimitGuard;
+	private final ProfileBlockVisibility profileBlocks;
 
 	@PreAuthorize("hasRole('MUSICIAN')")
 	@GetMapping(USER_BASE + "/me/calendar-settings")
@@ -61,6 +63,7 @@ public class MusicianCalendarController {
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size
 	) {
+		profileBlocks.requireVisibleTarget("MUSICIAN", profileId);
 		return response(calendarService.getCalendar(profileId, startDate, endDate, page, size));
 	}
 

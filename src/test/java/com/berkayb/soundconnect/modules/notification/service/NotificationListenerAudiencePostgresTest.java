@@ -143,10 +143,11 @@ class NotificationListenerAudiencePostgresTest {
         try (var connection = jdbc.getDataSource().getConnection()) {
             assertThat(connection.getCatalog()).isEqualTo("notification_listener_audience_test");
         }
-        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
+        jdbc.execute("create table if not exists tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp, access_suspended boolean not null default false)");
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         jdbc.execute("create table if not exists tbl_dm_conversation(id uuid primary key, user_a_id uuid, user_b_id uuid)");
         jdbc.execute("create table if not exists tbl_dm_message(id uuid primary key, conversation_id uuid, sender_id uuid, recipient_id uuid, read_at timestamp, deleted_at timestamp)");
-        jdbc.execute("truncate tbl_notification,tbl_notification_receipt,tbl_dm_message,tbl_dm_conversation,user_roles,tbl_role,tbl_user");
+        jdbc.execute("truncate tbl_notification,tbl_notification_receipt,tbl_dm_message,tbl_dm_conversation,user_roles,tbl_role,tbl_user_block,tbl_user");
         recipient = UUID.randomUUID();
         jdbc.update("insert into tbl_user values (?,'ACTIVE',true,null)", recipient);
         role("ROLE_LISTENER");

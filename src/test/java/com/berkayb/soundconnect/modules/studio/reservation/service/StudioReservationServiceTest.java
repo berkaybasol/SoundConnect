@@ -26,6 +26,7 @@ import com.berkayb.soundconnect.modules.studio.room.mapper.StudioRoomMapper;
 import com.berkayb.soundconnect.modules.studio.room.repository.StudioRoomRepository;
 import com.berkayb.soundconnect.modules.studio.room.service.StudioRoomDailyMetricsService;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
@@ -56,6 +57,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -73,6 +76,7 @@ class StudioReservationServiceTest {
     @Mock StudioRoomDailyMetricsService dailyMetricsService;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+    @Mock UserBlockService userBlocks;
     @InjectMocks StudioReservationService service;
 
     private UUID requesterId;
@@ -161,6 +165,7 @@ class StudioReservationServiceTest {
         return List.of(
                 () -> service.create(actorId, createRequest()),
                 () -> service.listCustomer(actorId, 0, 20),
+                () -> service.getCustomer(actorId, UUID.randomUUID()),
                 () -> service.listCustomerRoomDate(actorId, roomId, LocalDate.of(2026, 9, 14), 0, 20),
                 () -> service.cancelCustomer(actorId, UUID.randomUUID(), new StudioVersionRequest(0L)));
     }
@@ -319,6 +324,38 @@ class StudioReservationServiceTest {
                 .containsEntry("reservationId", approvedReservationId.toString())
                 .containsEntry("action", "APPROVED")
                 .containsEntry("status", StudioReservationStatus.CONFIRMED.name());
+    }
+
+    @Test
+    void customerHistoryIsScopedToItsRequesterAndIndependentOfPublicRoomAccess() {
+        var existing = pendingReservation(UUID.randomUUID(), requester);
+        when(reservationRepository.findByIdAndRequesterId(existing.getId(), requesterId)).thenReturn(Optional.of(existing));
+        assertThat(service.getCustomer(requesterId, existing.getId()).id()).isEqualTo(existing.getId());
+        assertThatThrownBy(() -> service.getCustomer(UUID.randomUUID(), existing.getId()))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
+        verifyNoInteractions(userBlocks, roomRepository);
+    }
+
+    @Test
+    void blockedPendingReservationCanBeRejectedButCannotBeApproved() {
+        var pending = pendingReservation(UUID.randomUUID(), requester);
+        when(studioProfileRepository.findByUserIdForUpdate(ownerId)).thenReturn(Optional.of(profile));
+        when(roomRepository.findActiveByIdAndStudioProfileIdForUpdate(roomId, profile.getId())).thenReturn(Optional.of(room));
+        when(reservationRepository.findByIdAndRoomIdForUpdate(pending.getId(), roomId)).thenReturn(Optional.of(pending));
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE))
+                .when(userBlocks).requireInteractionAllowed(ownerId, requesterId);
+        when(userBlocks.blockedEitherWay(ownerId, requesterId)).thenReturn(true);
+        when(reservationRepository.saveAndFlush(pending)).thenReturn(pending);
+
+        assertThatThrownBy(() -> service.approve(ownerId, roomId, pending.getId(), new StudioVersionRequest(0L)))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        verifyNoInteractions(eventPublisher, occupancyRepository);
+        var rejected = service.reject(ownerId, roomId, pending.getId(), new StudioVersionRequest(0L));
+        assertThat(rejected.status()).isEqualTo(StudioReservationStatus.REJECTED_BY_STUDIO);
+        assertThat(rejected.interactionBlocked()).isTrue();
+        assertThat(rejected.requesterPhone()).isNull();
     }
 
     @Test
@@ -833,6 +870,20 @@ class StudioReservationServiceTest {
         assertThat(eventCaptor.getValue().payload())
                 .containsEntry("reservationId", reservationId.toString())
                 .containsEntry("action", "CANCELLED_BY_STUDIO");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void blockedRequesterCreatesNeitherReservationNorOccupancyNorNotification(boolean approvalRequired) {
+        arrangeCreate(approvalRequired);
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE))
+                .when(userBlocks).requireInteractionAllowed(requesterId, ownerId);
+
+        assertThatThrownBy(() -> service.create(requesterId, createRequest()))
+                .isInstanceOfSatisfying(SoundConnectException.class,
+                        error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE));
+        verify(reservationRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(occupancyRepository, eventPublisher);
     }
 
     private void arrangeCreate(boolean approvalRequired) {

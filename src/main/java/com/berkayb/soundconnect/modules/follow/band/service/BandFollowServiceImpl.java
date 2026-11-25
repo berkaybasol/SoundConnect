@@ -97,17 +97,16 @@ public class BandFollowServiceImpl implements BandFollowService {
 	
 	@Override
 	@Transactional(readOnly = true)
-	public long countFollowers(UUID bandId) {
-		Band band = bandEntityFinder.getBand(bandId);
-		return bandFollowRepository.countByBand(band);
+	public long countFollowers(UUID bandId, UUID viewerId) {
+		bandEntityFinder.getBand(bandId);
+		return bandFollowRepository.countVisibleFollowers(bandId, viewerId);
 	}
 	
 	@Override
 	@Transactional
-	public List<BandFollowResponseDto> getBandFollowers(UUID bandId) {
-		Band band = bandEntityFinder.getBand(bandId);
-		
-		return toResponseDtos(bandFollowRepository.findAllByBand(band));
+	public List<BandFollowResponseDto> getBandFollowers(UUID bandId, UUID viewerId) {
+		bandEntityFinder.getBand(bandId);
+		return toResponseDtos(bandFollowRepository.visibleFollowers(bandId, viewerId));
 	}
 	
 	@Override

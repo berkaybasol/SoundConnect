@@ -29,6 +29,7 @@ import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
@@ -64,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class StudioMutationAuthorizationControllerTest {
 
     @MockitoBean StudioRoomService roomService;
+    @MockitoBean ProfileBlockVisibility profileBlocks;
     @MockitoBean StudioEquipmentService equipmentService;
     @MockitoBean StudioReservationService reservationService;
     // This controller slice deliberately disables servlet filters. Mock the

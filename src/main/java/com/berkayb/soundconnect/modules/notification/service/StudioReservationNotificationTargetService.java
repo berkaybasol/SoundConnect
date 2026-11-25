@@ -27,7 +27,10 @@ public class StudioReservationNotificationTargetService {
             select n.id as notification_id,n.recipient_id,n.type,r.id as reservation_id,
                    r.room_id,rm.studio_profile_id,coalesce(nullif(btrim(sp.name),''),'Stüdyo') as studio_name,
                    rm.name as room_name,sp.user_id=:recipient as owner_mode,r.status,
-                   rm.archived_at is not null as room_archived,r.starts_at,r.ends_at,sp.time_zone
+                   rm.archived_at is not null as room_archived,r.starts_at,r.ends_at,sp.time_zone,
+                   exists(select 1 from tbl_user_block b where b.unblocked_at is null
+                        and ((b.blocker_id=r.requester_id and b.blocked_id=sp.user_id)
+                          or (b.blocker_id=sp.user_id and b.blocked_id=r.requester_id))) as interaction_blocked
             from tbl_notification n
             join tbl_user u on u.id=n.recipient_id
             join tbl_studio_room_reservation r on r.id=case
@@ -84,7 +87,7 @@ public class StudioReservationNotificationTargetService {
                     rs.getString("studio_name"),rs.getString("room_name"),rs.getBoolean("owner_mode"),
                     status,rs.getBoolean("room_archived"),status==StudioReservationStatus.CONFIRMED && !end.isAfter(now),
                     start,end,zone.getId(),localStart.toLocalDate(),localEnd.toLocalDate(),
-                    localStart.toLocalTime(),localEnd.toLocalTime());
+                    localStart.toLocalTime(),localEnd.toLocalTime(),rs.getBoolean("interaction_blocked"));
         });
         if (rows.size()!=1) throw unavailable();
         return rows.getFirst();

@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.event.performer.service;
 
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
+
 import com.berkayb.soundconnect.modules.event.entity.Event;
 import com.berkayb.soundconnect.modules.event.enums.EventPerformerApprovalStatus;
 import com.berkayb.soundconnect.modules.event.enums.PerformerType;
@@ -54,6 +56,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.any;
 
 class EventPerformerRequestServiceImplTest {
+    @Mock private AccountDeliveryFence contact;
 
 	@Mock private EventPerformerRequestRepository requestRepository;
 	@Mock private EventRepository eventRepository;
@@ -82,7 +85,7 @@ class EventPerformerRequestServiceImplTest {
 				notificationOutboxPublisher,
 				venueProfileRepository,
 				mediaAssetService,
-				clock
+				clock, contact
 		);
 	}
 
@@ -406,12 +409,12 @@ class EventPerformerRequestServiceImplTest {
 		Band band = new Band();
 		band.setId(UUID.randomUUID());
 		band.setName("Sahipsiz Grup");
-		when(bandMemberRepository.findByBandId(band.getId())).thenReturn(List.of());
+		when(bandMemberRepository.lockAvailableFounderIds(band.getId())).thenReturn(List.of());
 
 		assertThatThrownBy(() -> service.createPendingRequest(venueOwnerId, event, null, band))
 				.isInstanceOf(SoundConnectException.class)
 				.extracting("errorType")
-				.isEqualTo(ErrorType.EVENT_PERFORMER_REQUEST_INVALID);
+				.isEqualTo(ErrorType.BAND_CONTACT_UNAVAILABLE);
 
 		verify(requestRepository, never()).save(any(EventPerformerRequest.class));
 		verifyNoInteractions(notificationOutboxPublisher);

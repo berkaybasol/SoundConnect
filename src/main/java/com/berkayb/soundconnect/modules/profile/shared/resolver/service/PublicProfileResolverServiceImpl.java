@@ -5,6 +5,7 @@ import com.berkayb.soundconnect.modules.profile.ListenerProfile.support.Listener
 import com.berkayb.soundconnect.modules.profile.shared.resolver.contributor.PublicProfileContributor;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileTargetDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 	
 	private final List<PublicProfileContributor> contributors;
 	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	@Override
 	@Transactional
@@ -25,6 +27,7 @@ public class PublicProfileResolverServiceImpl implements PublicProfileResolverSe
 		if (userId == null) {
 			return new UserProfilesResolveResponseDto(null, List.of());
 		}
+		if (profileBlocks.hidden(userId)) return new UserProfilesResolveResponseDto(userId, List.of());
 		ListenerVisibilityPolicy.PublicVisibilityRestrictions restrictions =
 				listenerVisibilityPolicy.publicVisibilityRestrictions(List.of(userId));
 		if (restrictions.pendingChoiceUserIds().contains(userId)) {

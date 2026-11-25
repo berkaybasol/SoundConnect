@@ -116,6 +116,9 @@ public class AuthService {
 		if (user.getErasedAt() != null) {
 			throw new SoundConnectException(ErrorType.ACCOUNT_DELETED);
 		}
+		if (user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
+		}
 
 		// Password verification precedes every account-state response. This
 		// credential only opens the applicant's own status/notification routes.
@@ -128,16 +131,16 @@ public class AuthService {
 			return BaseResponse.<LoginResponse>builder().success(true).code(200)
 					.message("Başvuru oturumu açıldı.").data(session).build();
 		}
-		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
-			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
-		}
 		if (user.getStatus() == UserStatus.REJECTED_STUDIO_REQUEST) {
-			throw new SoundConnectException(ErrorType.STUDIO_APPLICATION_REJECTED);
+			throw studioApplicationService.rejectionForApplicant(user.getId());
 		}
 		
 		// email dogrulanmis mi kontrol et
 		if (!Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw new EmailVerificationRequiredException(user.getEmail());
+		}
+		if (user.getStatus() == UserStatus.PENDING_STUDIO_REQUEST) {
+			throw new SoundConnectException(ErrorType.PENDING_STUDIO_APPROVAL);
 		}
 		
 		if (user.getStatus() != UserStatus.ACTIVE) {
@@ -374,6 +377,9 @@ public class AuthService {
 		User user = userRepository.findByEmailForUpdate(email).orElse(null);
 		if (!valid || user == null || Boolean.TRUE.equals(user.getEmailVerified())) {
 			throw invalidOtp();
+		}
+		if (user.isAccessSuspended()) {
+			throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
 		}
 		
 		// kullanici dogrula

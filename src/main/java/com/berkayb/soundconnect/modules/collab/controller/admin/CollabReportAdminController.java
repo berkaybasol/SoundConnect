@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.CollabAdmin.BASE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.CollabAdmin.DETAIL;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.CollabAdmin.REVIEW;
 
 @RestController
@@ -48,6 +49,17 @@ public class CollabReportAdminController {
                 .body(BaseResponse.<PageResponse<CollabReportAdminResponse>>builder()
                 .success(true).code(200).message("Collab raporları listelendi.")
                 .data(service.list(principal.getId(), status, reason, page, size)).build());
+    }
+
+    @GetMapping(DETAIL)
+    public ResponseEntity<BaseResponse<CollabReportAdminResponse>> detail(
+            @AuthenticationPrincipal UserDetailsImpl principal,
+            @PathVariable UUID reportId) {
+        if (principal == null) throw new SoundConnectException(ErrorType.UNAUTHORIZED);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore().cachePrivate())
+                .body(BaseResponse.<CollabReportAdminResponse>builder()
+                        .success(true).code(200).message("Collab raporu getirildi.")
+                        .data(service.detail(principal.getId(), reportId)).build());
     }
 
     @PostMapping(REVIEW)

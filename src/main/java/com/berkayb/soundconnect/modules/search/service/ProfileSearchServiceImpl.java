@@ -15,6 +15,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.util.UsernameUtils;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -51,6 +52,7 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 	private final VenueRepository venueRepository;
 	private final MediaAssetService mediaAssetService;
 	private final ListenerVisibilityPolicy listenerVisibilityPolicy;
+	private final ProfileBlockVisibility profileBlocks;
 
 	@Override
 	@Transactional
@@ -82,7 +84,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		List<SearchCandidate> candidates = new ArrayList<>();
 
 		if (requestedTypes.contains(ProfileSearchType.MUSICIAN)) {
-			musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery, perTypePage)
+			VisibleProfileSearch.collect(perTypeLimit, page -> musicianProfileRepository.searchByStageNameOrUsername(q, usernameQuery, page),
+					profile -> profile.getUser().getId(), profileBlocks)
 		                         .stream()
 		                         .limit(perTypeLimit)
 		                         .map(profile -> new SearchCandidate(
@@ -99,12 +102,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		}
 
 		if (requestedTypes.contains(ProfileSearchType.LISTENER)) {
-			listenerProfileRepository.searchForPublicDiscovery(
-						 q,
-						 usernameQuery,
-						 ListenerVisibilityMode.GHOST,
-						 perTypePage
-					 )
+			VisibleProfileSearch.collect(perTypeLimit, page -> listenerProfileRepository.searchForPublicDiscovery(
+					q, usernameQuery, ListenerVisibilityMode.GHOST, page), profile -> profile.getUser().getId(), profileBlocks)
 		                         .stream()
 		                         .limit(perTypeLimit)
 		                         .map(profile -> new SearchCandidate(
@@ -140,7 +139,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		}
 
 		if (requestedTypes.contains(ProfileSearchType.STUDIO) && !MediaContentAudiencePolicy.isListenerViewer()) {
-			studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, perTypePage)
+			VisibleProfileSearch.collect(perTypeLimit, page -> studioProfileRepository.searchByNameUsernameOrDescription(q, usernameQuery, page),
+					profile -> profile.getUser().getId(), profileBlocks)
 		                       .stream()
 		                       .limit(perTypeLimit)
 		                       .map(profile -> new SearchCandidate(
@@ -157,7 +157,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		}
 
 		if (requestedTypes.contains(ProfileSearchType.VENUE)) {
-			venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, perTypePage)
+			VisibleProfileSearch.collect(perTypeLimit, page -> venueRepository.searchByNameOrOwnerUsername(q, usernameQuery, page).getContent(),
+					venue -> venue.getOwner() == null ? null : venue.getOwner().getId(), profileBlocks)
 		               .stream()
 		               .map(venue -> new SearchCandidate(
 				               "VENUE",
@@ -174,13 +175,9 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		               .forEach(candidates::add);
 		}
 
+		var owners = candidates.stream().map(SearchCandidate::ownerUserId).filter(Objects::nonNull).toList();
 		ListenerVisibilityPolicy.PublicVisibilityRestrictions restrictions = Objects.requireNonNull(
-				listenerVisibilityPolicy.publicVisibilityRestrictions(
-				candidates.stream()
-				          .map(SearchCandidate::ownerUserId)
-				          .filter(userId -> userId != null)
-				          .toList()
-		), "Listener visibility policy returned null");
+				listenerVisibilityPolicy.publicVisibilityRestrictions(owners), "Listener visibility policy returned null");
 		Set<UUID> ghostUserIds = restrictions.ghostUserIds();
 		Set<UUID> pendingChoiceUserIds = restrictions.pendingChoiceUserIds();
 
@@ -192,6 +189,9 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 		              .limit(safeLimit)
 		              .toList();
 		Map<UUID, String> mediaUrls = resolveMediaUrls(selected);
+		List<UUID> bandIds = selected.stream().filter(candidate -> "BAND".equals(candidate.type()))
+				.map(SearchCandidate::profileId).toList();
+		Set<UUID> contactableBands = bandIds.isEmpty() ? Set.of() : bandRepository.findContactableBandIds(bandIds);
 
 		return selected.stream()
 		              .map(candidate -> new ProfileSearchItemDto(
@@ -201,7 +201,8 @@ public class ProfileSearchServiceImpl implements ProfileSearchService {
 			              candidate.title(),
 			              candidate.subtitle(),
 			              candidate.mediaAssetId() == null ? null : mediaUrls.get(candidate.mediaAssetId()),
-			              candidate.visibilityMode()
+			              candidate.visibilityMode(),
+			              "BAND".equals(candidate.type()) ? contactableBands.contains(candidate.profileId()) : null
 		              ))
 		              .toList();
 	}

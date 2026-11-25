@@ -17,6 +17,15 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
 	boolean existsBySourceEventId(UUID sourceEventId);
 
+	@Query(value = """
+			select n.id from tbl_notification n
+			where n.id in (:ids) and n.type='OVERTHINKING_REVEAL_REQUEST_APPROVED'
+			  and exists (select 1 from tbl_user_block b where b.unblocked_at is null
+				and ((b.blocker_id=n.recipient_id and cast(b.blocked_id as text)=n.payload->>'authorId')
+				  or (b.blocked_id=n.recipient_id and cast(b.blocker_id as text)=n.payload->>'authorId')))
+			""", nativeQuery = true)
+	java.util.Set<UUID> findHiddenRevealApprovals(@Param("ids") List<UUID> ids);
+
 	@Modifying
 	@Transactional
 	@Query(value = """

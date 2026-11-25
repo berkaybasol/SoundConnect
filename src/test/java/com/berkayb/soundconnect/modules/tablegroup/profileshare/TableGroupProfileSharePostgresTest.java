@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.tablegroup.profileshare;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.repository.CommentRepository;
 import com.berkayb.soundconnect.modules.comment.support.CommentTargetAccessGuard;
 import com.berkayb.soundconnect.modules.engagement.enums.EngagementTargetType;
@@ -73,6 +75,10 @@ import static org.awaitility.Awaitility.await;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TableGroupProfileSharePostgresTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean UserBlockService blocks;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean ProfileBlockVisibility profileBlocks;
+
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
     @org.springframework.test.context.bean.override.mockito.MockitoBean

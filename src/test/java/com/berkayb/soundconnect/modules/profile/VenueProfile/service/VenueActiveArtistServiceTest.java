@@ -44,7 +44,7 @@ class VenueActiveArtistServiceTest {
         if (type == VenueActiveArtistType.BAND) {
             when(repository.findBands(venueId, "şah", pageable)).thenReturn(page);
         } else {
-            when(repository.findMusicians(venueId, "şah", pageable)).thenReturn(page);
+            when(repository.findMusicians(venueId, "şah", null, pageable)).thenReturn(page);
         }
         var result = service.list(venueId, type, "  şah  ", 1, 2);
         assertThat(result.page()).isEqualTo(1);
@@ -59,7 +59,7 @@ class VenueActiveArtistServiceTest {
             assertThat(item.profilePictureUrl()).isEqualTo(row.profilePictureUrl());
         });
         if (type == VenueActiveArtistType.BAND) {
-            verify(repository, never()).findMusicians(any(), any(), any());
+            verify(repository, never()).findMusicians(any(), any(), any(), any());
         } else {
             verify(repository, never()).findBands(any(), any(), any());
         }
@@ -106,7 +106,7 @@ class VenueActiveArtistServiceTest {
         if (type == VenueActiveArtistType.BAND) {
             when(repository.findBands(venueId, "", pageable)).thenReturn(page);
         } else {
-            when(repository.findMusicians(venueId, "", pageable)).thenReturn(page);
+            when(repository.findMusicians(venueId, "", null, pageable)).thenReturn(page);
         }
         assertThat(service.list(venueId, type, null, 0, 20).content()).singleElement().satisfies(item -> {
             assertThat(item.name()).isEqualTo(type == VenueActiveArtistType.BAND ? "Grup" : "Sanatçı");

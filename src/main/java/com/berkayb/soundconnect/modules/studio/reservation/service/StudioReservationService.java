@@ -32,6 +32,7 @@ import com.berkayb.soundconnect.modules.studio.room.repository.StudioRoomReposit
 import com.berkayb.soundconnect.modules.studio.room.service.StudioRoomDailyMetrics;
 import com.berkayb.soundconnect.modules.studio.room.service.StudioRoomDailyMetricsService;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -79,6 +80,7 @@ public class StudioReservationService {
     private final StudioRoomDailyMetricsService dailyMetricsService;
     private final ApplicationEventPublisher eventPublisher;
     private final GhostListenerIdentityBatchResolver ghostListenerIdentityBatchResolver;
+    private final UserBlockService userBlocks;
 
     @Transactional
     public StudioReservationResponse create(UUID requesterId, StudioReservationCreateRequest request) {
@@ -98,9 +100,11 @@ public class StudioReservationService {
         }
 
         StudioRoom room = lockActiveRoom(request.roomId());
-        if (room.getStudioProfile().getUser().getId().equals(requesterId)) {
+        UUID ownerId = room.getStudioProfile().getUser().getId();
+        if (ownerId.equals(requesterId)) {
             throw new SoundConnectException(ErrorType.STUDIO_RESERVATION_SELF_NOT_ALLOWED);
         }
+        userBlocks.requireInteractionAllowed(requesterId, ownerId);
         StudioBookingWindow window = timeProvider.validateBookingWindow(
                 room.getStudioProfile(),
                 request.date(),
@@ -181,6 +185,7 @@ public class StudioReservationService {
             throw invalidStatus();
         }
 
+        userBlocks.requireInteractionAllowed(ownerUserId, reservation.getRequester().getId());
         StudioBookingWindow window = new StudioBookingWindow(reservation.getStartsAt(), reservation.getEndsAt());
         assertNoOccupancyConflict(roomId, window);
         List<StudioRoomReservation> competingRequests = reservationRepository
@@ -347,6 +352,14 @@ public class StudioReservationService {
     }
 
     @Transactional(readOnly = true)
+    public StudioReservationResponse getCustomer(UUID requesterId, UUID reservationId) {
+        requireCustomerAccess(requesterId);
+        return reservationRepository.findByIdAndRequesterId(reservationId, requesterId)
+                .map(this::toCustomer)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.STUDIO_RESERVATION_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
     public StudioPageResponse<StudioReservationResponse> listCustomerRoomDate(
             UUID requesterId,
             UUID roomId,
@@ -396,20 +409,15 @@ public class StudioReservationService {
                         range.endsAt(),
                         PageRequest.of(boundedPage, boundedSize)
                 );
-        Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(
-                reservationEntities.getContent().stream()
-                        .map(StudioRoomReservation::getRequester)
-                        .filter(Objects::nonNull)
-                        .map(User::getId)
-                        .filter(Objects::nonNull)
-                        .toList()
-        );
+        var requesterIds = reservationEntities.getContent().stream().map(value -> value.getRequester().getId()).toList();
+        Map<UUID, GhostListenerIdentity> ghostIdentities = resolveGhostIdentities(requesterIds);
+        var blocked = userBlocks.blockedAmong(ownerUserId, requesterIds);
         Page<StudioReservationOwnerResponse> reservations = reservationEntities.map(reservation -> {
             User requester = reservation.getRequester();
             GhostListenerIdentity ghostIdentity = requester == null
                     ? null
                     : ghostIdentities.get(requester.getId());
-            return toOwner(reservation, ghostIdentity);
+            return toOwner(reservation, ghostIdentity, blocked.contains(requester.getId()));
         });
         List<StudioOccupancyOwnerResponse> occupancies = occupancyRepository
                 .findActiveByRoomInRange(roomId, range.startsAt(), range.endsAt())
@@ -647,13 +655,14 @@ public class StudioReservationService {
         );
         return toOwner(
                 reservation,
-                requester == null ? null : ghostIdentities.get(requester.getId())
+                requester == null ? null : ghostIdentities.get(requester.getId()),
+                userBlocks.blockedEitherWay(reservation.getRoom().getStudioProfile().getUser().getId(), requester.getId())
         );
     }
 
     private StudioReservationOwnerResponse toOwner(
             StudioRoomReservation reservation,
-            GhostListenerIdentity ghostIdentity
+            GhostListenerIdentity ghostIdentity, boolean interactionBlocked
     ) {
         User requester = reservation.getRequester();
 		ZoneId zone = timeProvider.zoneOf(reservation.getRoom().getStudioProfile());
@@ -664,7 +673,7 @@ public class StudioReservationService {
                 reservation.getRoom().getId(),
                 requester.getId(),
                 requester.getPublicCode(),
-                reservation.getContactPhoneSnapshot(),
+                interactionBlocked ? null : reservation.getContactPhoneSnapshot(),
                 ghostIdentity == null ? requester.getUsername() : ghostIdentity.username(),
                 ghostIdentity == null ? requester.getProfilePicture() : ghostIdentity.profilePictureUrl(),
                 reservation.getStartsAt(),
@@ -680,7 +689,7 @@ public class StudioReservationService {
                 reservation.getTotalPriceMinorSnapshot(),
                 reservation.getCurrencySnapshot(),
                 reservation.getVersion(),
-                ghostIdentity == null ? null : ghostIdentity.visibilityMode()
+                ghostIdentity == null ? null : ghostIdentity.visibilityMode(), interactionBlocked
         );
     }
 

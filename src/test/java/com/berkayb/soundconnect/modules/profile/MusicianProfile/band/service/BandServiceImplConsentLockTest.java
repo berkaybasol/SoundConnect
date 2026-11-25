@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.profile.MusicianProfile.band.service;
 
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
+
 import com.berkayb.soundconnect.modules.application.artistvenuelinkapplication.repository.ArtistVenueConnectionRequestRepository;
 import com.berkayb.soundconnect.modules.event.performer.service.EventPerformerRequestService;
 import com.berkayb.soundconnect.modules.event.publication.EventMemberPublicationRepository;
@@ -38,6 +40,7 @@ import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class BandServiceImplConsentLockTest {
+    @Mock private AccountDeliveryFence contact;
 
 	@Mock private BandRepository bandRepository;
 	@Mock private BandMemberRepository bandMemberRepository;
@@ -77,7 +80,7 @@ class BandServiceImplConsentLockTest {
 				trackRepository,
 				eventPerformerRequestService,
 				eventMemberPublicationRepository,
-				userRepository
+				userRepository, contact
 		);
 	}
 

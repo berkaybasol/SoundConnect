@@ -18,5 +18,7 @@ public interface TableGroupChatService {
 	                                             boolean markRead, UUID expectedApplicationId);
 	
 	int getUnreadBadge(UUID requesterId, UUID tableGroupId);
+
+	void removeReportedMessage(UUID tableGroupId, UUID messageId);
 	
 }

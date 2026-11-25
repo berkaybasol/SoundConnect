@@ -34,6 +34,10 @@ public class TableGroupRateLimitGuard {
 		check("join:user:" + userId, properties.getJoin());
 	}
 
+	public void checkReport(UUID userId) {
+		check("report:user:" + userId, properties.getReport());
+	}
+
 	public void checkMessageUser(UUID userId, UUID tableGroupId) {
 		check("message:user:" + userId, properties.getMessageGlobal());
 		check("message:user:" + userId + ":table:" + tableGroupId, properties.getMessagePerTable());

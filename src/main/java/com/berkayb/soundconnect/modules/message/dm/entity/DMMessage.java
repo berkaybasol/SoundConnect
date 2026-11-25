@@ -53,6 +53,9 @@ public class DMMessage extends BaseEntity {
 	@Column(name = "read_at")
 	private LocalDateTime readAt; // mesaj ne zaman okundu?
 	
+	@Column(name = "read_receipt_hidden", nullable = false, columnDefinition = "boolean default false")
+	private boolean readReceiptHidden;
+
 	@Column(name = "deleted_at")
 	private LocalDateTime deletedAt; // mesaj ne zaman silindi?
 	

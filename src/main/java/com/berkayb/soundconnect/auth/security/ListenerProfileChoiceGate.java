@@ -68,7 +68,7 @@ public class ListenerProfileChoiceGate {
 				|| (HttpMethod.DELETE.matches(method) && "/api/v1/users/me/account".equals(path))
 				|| "/error".equals(path)
 				|| (HttpMethod.POST.matches(method) && AUTH_POST_ENDPOINTS.contains(path))
-				|| (HttpMethod.GET.matches(method) && OWNER_PROFILE.equals(path))
+				|| (HttpMethod.GET.matches(method) && (OWNER_PROFILE.equals(path) || SessionAccessController.PATH.equals(path)))
 				|| (HttpMethod.PATCH.matches(method) && AVATAR.equals(path))
 				|| (HttpMethod.PATCH.matches(method) && VISIBILITY.equals(path));
 	}

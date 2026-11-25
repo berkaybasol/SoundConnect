@@ -21,6 +21,7 @@ $script:LocalPushEnvironmentBefore = @{}
 $LocalSchemaMigrations = @(
     @{ Name = "Studio domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-07-21-studio-domain.sql" },
     @{ Name = "Collab domain"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-domain.sql" },
+    @{ Name = "Collab job cancellation"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-collab-job-cancellation.sql" },
     @{ Name = "Collab moderation"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-moderation.sql" },
     @{ Name = "Collab notification outbox"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-11-collab-notification-outbox.sql" },
     @{ Name = "TableGroup hardening"; Path = Join-Path $ProjectRoot "scripts\db\2026-08-17-tablegroup-hardening.sql" },
@@ -97,7 +98,17 @@ $LocalSchemaMigrations = @(
     @{ Name = "Band notification identity"; Path = Join-Path $ProjectRoot "scripts\db\2026-09-29-band-notification-identity.sql"; Marker = "2026-09-29-band-notification-identity" }
     @{ Name = "Application mail intents"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-06-application-mail-intents.sql" }
     @{ Name = "Account session version"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-08-account-session-version.sql" }
+    @{ Name = "Application review receipts"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-22-application-reviews.sql" },
+    @{ Name = "Collab report evidence provenance"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-23-collab-report-evidence.sql" }
+    @{ Name = "Account access decisions"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-23-account-access-decisions.sql" }
+    @{ Name = "Venue suggestion pagination"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-venue-suggestion-page.sql" }
+    @{ Name = "User blocks"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-user-blocks.sql" }
+    @{ Name = "Private DM reads"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-private-dm-reads.sql" }
+    @{ Name = "Overthinking blocked requests"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-overthinking-block-delivery.sql" }
+    @{ Name = "Masa reports"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-table-group-reports.sql" }
     @{ Name = "Mobile diagnostics"; Path = Join-Path $ProjectRoot "scripts\db\2026-10-08-mobile-diagnostics.sql" }
+    @{ Name = "Table report permission"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-24-table-report-permission.sql" }
+    @{ Name = "Profile and content reports"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-content-reports.sql" }
 )
 
 function Assert-Command([string]$Name) {

@@ -49,7 +49,8 @@ class DmNotificationSourcePostgresTest {
                 user, password);
         jdbc = new JdbcTemplate(dataSource);
         named = new NamedParameterJdbcTemplate(dataSource);
-        jdbc.execute("create table tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp)");
+        jdbc.execute("create table tbl_user(id uuid primary key, status text, email_verified boolean, erased_at timestamp, access_suspended boolean not null default false)");
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         jdbc.execute("create table tbl_dm_conversation(id uuid primary key, user_a_id uuid, user_b_id uuid)");
         jdbc.execute("create table tbl_dm_message(id uuid primary key, conversation_id uuid, sender_id uuid, recipient_id uuid, read_at timestamp, deleted_at timestamp)");
         jdbc.execute("create table tbl_notification(id uuid primary key, recipient_id uuid, type text, payload jsonb, is_read boolean)");
@@ -68,6 +69,28 @@ class DmNotificationSourcePostgresTest {
     void cleanup() {
         if (executor != null) executor.close();
         if (admin != null && schema != null) admin.execute("drop schema " + schema + " cascade");
+    }
+
+    @Test
+    void queuedDirectContactDoesNotResumeAfterUnblockAndOtherEventsRemainEligible() {
+        var before = Instant.now().minusSeconds(60);
+        var after = Instant.now().plusSeconds(60);
+        var oldMessage = new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.DM_NEW_MESSAGE,
+                "Message","Message",event().payload(),false,before);
+        var oldFollow = new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.SOCIAL_NEW_FOLLOWER,
+                "Follow","Follow",Map.of("followerId",sender),false,before);
+        var table = new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.TABLE_CANCELLED,
+                "Table","Table",Map.of("senderId",sender),false,before);
+        jdbc.update("insert into tbl_user_block (blocker_id,blocked_id) values (?,?)",recipient,sender);
+        assertThat(eligible(oldMessage)).isFalse();
+        assertThat(eligible(oldFollow)).isFalse();
+        assertThat(eligible(table)).isTrue();
+        jdbc.update("update tbl_user_block set unblocked_at=clock_timestamp()");
+        assertThat(eligible(oldMessage)).isFalse();
+        assertThat(eligible(oldFollow)).isFalse();
+        var newFollow = new NotificationInboundEvent(UUID.randomUUID(),recipient,NotificationType.SOCIAL_NEW_FOLLOWER,
+                "Follow","Follow",Map.of("followerId",sender),false,after);
+        assertThat(eligible(newFollow)).isTrue();
     }
 
     @Test

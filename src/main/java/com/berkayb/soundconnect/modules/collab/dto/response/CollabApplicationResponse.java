@@ -15,5 +15,6 @@ public record CollabApplicationResponse(
         String message,
         Instant submittedAt,
         Instant statusChangedAt,
-        Instant decidedAt
+        Instant decidedAt,
+        boolean interactionBlocked
 ) {}

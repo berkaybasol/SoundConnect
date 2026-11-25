@@ -63,6 +63,7 @@ class CollabControllerAuthorizationTest {
                 new Endpoint("POST", "/applications/" + ID + "/withdraw", VERSION),
                 new Endpoint("GET", "/me/jobs", null),
                 new Endpoint("POST", "/jobs/" + ID + "/confirm-completion", VERSION),
+                new Endpoint("POST", "/jobs/" + ID + "/cancel", VERSION),
                 new Endpoint("POST", "/jobs/" + ID + "/reviews", "{\"clientRequestId\":\"" + ID + "\",\"rating\":4}"),
                 new Endpoint("GET", "/actors/" + ID + "/reviews", null),
                 new Endpoint("POST", "/" + ID + "/reports", "{\"clientRequestId\":\"" + ID + "\",\"reason\":\"SPAM\"}")

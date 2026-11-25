@@ -20,16 +20,26 @@ public record LoginResponse(
 		boolean admin,
 		boolean requiresListenerProfileChoice,
 		String sessionScope,
-		UUID applicationId
+		UUID applicationId,
+		boolean requiresGoogleProfileCompletion
 ) {
 	public LoginResponse(String token, UserStatus status, UUID userId, String username,
 			Set<String> roles, Set<String> permissions, boolean admin, boolean requiresListenerProfileChoice) {
-		this(token, status, userId, username, roles, permissions, admin, requiresListenerProfileChoice, null, null);
+		this(token, status, userId, username, roles, permissions, admin, requiresListenerProfileChoice, null, null, false);
+	}
+
+	public static LoginResponse googleProfileRequired() {
+		return new LoginResponse(null, null, null, null, Set.of(), Set.of(), false, false, null, null, true);
+	}
+
+	public static LoginResponse pendingStudio(User user, UUID applicationId) {
+		return new LoginResponse(null, user.getStatus(), user.getId(), user.getUsername(),
+				Set.of(), Set.of(), false, false, null, applicationId, false);
 	}
 
 	public static LoginResponse forVenueApplication(String token, User user, UUID applicationId) {
 		return new LoginResponse(token, user.getStatus(), user.getId(), user.getUsername(),
-				Set.of(), Set.of(), false, false, "VENUE_APPLICATION", applicationId);
+				Set.of(), Set.of(), false, false, "VENUE_APPLICATION", applicationId, false);
 	}
 
 	public static LoginResponse fromUser(

@@ -13,9 +13,9 @@ public interface BandFollowService {
 	
 	boolean isFollowingBand(UUID followerUserId, UUID bandId);
 	
-	long countFollowers(UUID bandId);
+	long countFollowers(UUID bandId, UUID viewerId);
 	
-	List<BandFollowResponseDto> getBandFollowers(UUID bandId);
+	List<BandFollowResponseDto> getBandFollowers(UUID bandId, UUID viewerId);
 	
 	List<BandFollowResponseDto> getMyFollowedBands(UUID followerUserId);
 }

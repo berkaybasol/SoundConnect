@@ -8,6 +8,7 @@ public enum ErrorType {
 	
 	// USER (1000-1099)
 	USER_NOT_FOUND(1001, "User not found", HttpStatus.NOT_FOUND, "Kullanıcı sistemde bulunamadı."),
+	ACCOUNT_ACCESS_CONFLICT(1010, "Account access decision conflicts with current state", HttpStatus.CONFLICT, "Hesap erişimi değişti. Güncel kararı kontrol et."),
 	USER_ALREADY_EXISTS(1002, "User already exists", HttpStatus.CONFLICT, "Bu kullanıcı zaten mevcut."),
 	EMAIL_ALREADY_EXISTS(1003, "Email already exists", HttpStatus.CONFLICT, "Bu email adresi zaten kullanılıyor."),
 	USER_ALREADY_REGISTERED(1004,"User already registered",HttpStatus.CONFLICT, "Profil zaten tanimlanmis."),
@@ -19,7 +20,12 @@ public enum ErrorType {
 	ACCOUNT_DELETED(1008, "Account was permanently deleted", HttpStatus.GONE, "Bu hesap kalıcı olarak silinmiş."),
 
 	INVALID_CREDENTIALS(1100, "Invalid username or password", HttpStatus.UNAUTHORIZED, "Kullanıcı adı veya şifre hatalı."),
+	GOOGLE_LOCAL_ACCOUNT_USE_PASSWORD(1116, "Use password sign-in for this account", HttpStatus.CONFLICT, "Bu e-posta için mevcut SoundConnect hesabına kullanıcı adı ve şifrenle giriş yap."),
+	GOOGLE_SIGN_IN_UNAVAILABLE(1117, "Google sign-in temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Google ile giriş şu anda kullanılamıyor. Lütfen tekrar dene."),
+	GOOGLE_EMAIL_OWNERSHIP_REQUIRED(1118, "Independent email verification required", HttpStatus.FORBIDDEN, "Bu adresin sahipliği ayrıca doğrulanmalı. Yeni hesap için e-postayla kayıt yolunu kullan."),
+	ACCOUNT_SUSPENDED(1119, "Account access suspended", HttpStatus.FORBIDDEN, "Hesabınız askıya alındı."),
 	UNAUTHORIZED(1101, "You are not authorized", HttpStatus.UNAUTHORIZED, "Bu işlemi yapmak için giriş yapmalısınız."),
+	USER_INTERACTION_UNAVAILABLE(1120, "User interaction unavailable", HttpStatus.FORBIDDEN, "Bu hesapla etkileşim kullanılamıyor."),
 	FORBIDDEN_ACCESS(1102, "You don't have permission to access this resource", HttpStatus.FORBIDDEN, "Bu kaynağa erişim izniniz yok."),
 	TOKEN_EXPIRED(1103, "JWT token has expired", HttpStatus.UNAUTHORIZED, "Oturum süresi dolmuş. Lütfen tekrar giriş yapın."),
 	AUTH_RATE_LIMITED(1104, "Too many authentication requests", HttpStatus.TOO_MANY_REQUESTS, "Çok fazla kimlik doğrulama isteği gönderildi. Lütfen kısa süre sonra tekrar deneyin."),
@@ -221,7 +227,16 @@ public enum ErrorType {
 	TABLE_GROUP_PROFILE_SHARE_NOT_FOUND(9131,"Table profile publication not found",HttpStatus.NOT_FOUND,"Masa paylaşımı bulunamadı."),
 	TABLE_GROUP_PROFILE_SHARE_UNAVAILABLE(9132,"Table profile publication unavailable",HttpStatus.SERVICE_UNAVAILABLE,"Masa paylaşımına şu anda ulaşılamıyor. Lütfen yeniden deneyin."),
 	TABLE_GROUP_PROFILE_SHARE_FORBIDDEN(9133,"Table profile publication requires current membership",HttpStatus.FORBIDDEN,"Yalnızca sahibi olduğunuz veya katıldığınız açık masaları paylaşabilirsiniz."),
-	
+	TABLE_GROUP_REPORT_REQUEST_CONFLICT(9134,"Table report request conflict",HttpStatus.CONFLICT,"Bu gönderim anahtarı farklı bir şikâyet için kullanılmış."),
+	TABLE_GROUP_REPORT_TARGET_UNAVAILABLE(9135,"Table report target unavailable",HttpStatus.NOT_FOUND,"Bu içerik için bildirim gönderilemiyor veya bildirim süresi doldu."),
+
+	TABLE_GROUP_REPORT_NOT_FOUND(9137,"Table report not found",HttpStatus.NOT_FOUND,"Masa şikâyeti bulunamadı."),
+	TABLE_GROUP_REPORT_STATE_CHANGED(9138,"Report or moderation target changed",HttpStatus.CONFLICT,"Şikâyet veya bildirilen içerik değişti. Güncel kaydı açıp tekrar dene."),
+	CONTENT_REPORT_TARGET_UNAVAILABLE(9140,"Content report target unavailable",HttpStatus.NOT_FOUND,"Bu içerik için şikâyet gönderilemiyor."),
+	CONTENT_REPORT_STATE_CHANGED(9141,"Content report state changed",HttpStatus.CONFLICT,"Şikâyet veya bildirilen içerik değişti. Güncel kaydı aç."),
+	CONTENT_REPORT_NOT_FOUND(9142,"Content report not found",HttpStatus.NOT_FOUND,"Şikâyet bulunamadı."),
+	CONTENT_REPORT_RATE_LIMITED(9143,"Too many content reports",HttpStatus.TOO_MANY_REQUESTS,"Çok sayıda şikâyet gönderdin. Daha sonra tekrar dene."),
+
 	// BAND (9200 - 9250)
 	BAND_ALREADY_EXISTS(9200,"Band already exists", HttpStatus.CONFLICT, "Bu band zaten mevcut."),
 	BAND_MEMBER_NOT_FOUND(9201,"Band member not found", HttpStatus.NOT_FOUND, "Band member bulunamadi."),
@@ -240,6 +255,7 @@ public enum ErrorType {
 	BAND_MEMBER_TITLE_INVALID(9214, "Band member title is invalid", HttpStatus.BAD_REQUEST, "Üye başlığı tek satır ve en fazla 20 karakter olmalı."),
 	BAND_MEMBER_TITLE_VERSION_CONFLICT(9215, "Band member title has changed", HttpStatus.CONFLICT, "Üye başlığı değişti. Üyeleri yenileyip tekrar dene."),
 	BAND_MEMBER_VERSION_CONFLICT(9221, "Band membership has changed", HttpStatus.CONFLICT, "Üyelik bilgileri değişti. Üyeleri yenileyip tekrar seç."),
+	BAND_CONTACT_UNAVAILABLE(9222, "Band is unavailable for contact", HttpStatus.CONFLICT, "Grup şu anda iletişime açık değil."),
 	BAND_MEMBER_TITLE_UNAUTHORIZED(9216, "Band member title update is forbidden", HttpStatus.FORBIDDEN, "Üye başlıklarını yalnızca grubun kurucusu düzenleyebilir."),
 	BAND_PENDING_INVITATIONS_FORBIDDEN(9217, "Pending band invitations are private to the active founder", HttpStatus.FORBIDDEN, "Bekleyen davetleri yalnızca grubun kurucusu görebilir."),
 	BAND_PENDING_INVITATIONS_PAGE_INVALID(9218, "Pending band invitation pagination is invalid", HttpStatus.BAD_REQUEST, "Davet listesi sayfa bilgisi geçersiz."),

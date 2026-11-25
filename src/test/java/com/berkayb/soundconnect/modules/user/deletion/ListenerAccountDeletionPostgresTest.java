@@ -31,6 +31,7 @@ import com.berkayb.soundconnect.modules.tablegroup.game.service.TableGroupGameLi
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.enums.*;
 import com.berkayb.soundconnect.modules.user.repository.UserRepository;
+import com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence;
 import com.berkayb.soundconnect.shared.config.JpaAuditingConfig;
 import com.berkayb.soundconnect.shared.exception.*;
 import jakarta.persistence.EntityManager;
@@ -113,7 +114,8 @@ class ListenerAccountDeletionPostgresTest {
                     "2026-09-10-overthinking-inbox-seen.sql", "2026-09-10-overthinking-profile-shares.sql",
                     "2026-09-10-overthinking-production-safety.sql", "2026-09-10-listener-account-erasure.sql",
                     "2026-09-10-tablegroup-profile-shares.sql", "2026-09-10-tablegroup-profile-share-history.sql",
-                    "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql")) {
+                    "2026-09-24-studio-reservation-notification-outbox.sql", "2026-09-27-follow-notification-outbox.sql",
+                    "2026-11-24-user-blocks.sql")) {
                 statement.execute(Files.readString(Path.of("scripts/db", migration)));
             }
         }
@@ -468,7 +470,7 @@ class ListenerAccountDeletionPostgresTest {
                     try {
                         return tx(() -> {
                             if (decision) revealParticipants.lockRequesterForDecision(peer,target);
-                            else revealParticipants.lockPostAuthor(target);
+                            else revealParticipants.lockPostAuthor(peer, target);
                             return jdbc.queryForList("select id from "+targetTable+" where id=? for update",UUID.class,target).isEmpty();
                         });
                     } catch (SoundConnectException failure) {
@@ -710,7 +712,8 @@ class ListenerAccountDeletionPostgresTest {
     @EnableJpaRepositories(basePackages = "com.berkayb.soundconnect")
     @EntityScan(basePackages = "com.berkayb.soundconnect")
     @Import({JpaAuditingConfig.class, ListenerAccountDeletionService.class, ListenerAccountDataCleaner.class,
-            MediaDeletionStateService.class, CommentAuthorBatchResolver.class, OverthinkingRevealParticipantGuard.class})
+            MediaDeletionStateService.class, CommentAuthorBatchResolver.class, OverthinkingRevealParticipantGuard.class,
+            AccountDeliveryFence.class})
     static class Config {
         @Bean DataSource dataSource() {
             if (!POSTGRES.isRunning()) throw new IllegalStateException("Disposable PostgreSQL must be running");

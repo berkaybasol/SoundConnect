@@ -47,6 +47,7 @@ public class ListenerAccountDataCleaner {
         jdbc.update("delete from tbl_overthinking_reveal_inbox where author_id = ?", userId);
         jdbc.update("delete from tbl_event_audience_intent where user_id = ?", userId);
         jdbc.update("delete from tbl_follow where follower_id = ? or following_id = ?", userId, userId);
+        jdbc.update("delete from tbl_user_block where blocker_id = ? or blocked_id = ?", userId, userId);
         jdbc.update("delete from tbl_band_follow where follower_id = ?", userId);
         jdbc.update("delete from tbl_collab_saved_listing where user_id = ?", userId);
         jdbc.update("delete from tbl_venue_applications where user_id = ?", userId);

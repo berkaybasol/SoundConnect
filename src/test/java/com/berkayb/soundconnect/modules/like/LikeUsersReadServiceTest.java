@@ -39,7 +39,7 @@ class LikeUsersReadServiceTest {
             rows.add(new LikeUsersReadRepository.Row(UUID.randomUUID(), user, now.minusSeconds(i)));
             if (i < 50) users.put(user, new UserSummaryDto(user, "username" + i, null));
         }
-        when(repository.page(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target, null, 51)).thenReturn(rows);
+        when(repository.page(viewer, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target, null, 51)).thenReturn(rows);
         when(identities.resolve(List.copyOf(users.keySet()))).thenReturn(users);
 
         var result = service.get(viewer, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target, 50, null);
@@ -50,8 +50,8 @@ class LikeUsersReadServiceTest {
         assertThat(position.createdAt()).isEqualTo(rows.get(49).createdAt());
         var order = inOrder(likes, targets, repository, identities);
         order.verify(likes).lockActiveActor(viewer);
-        order.verify(targets).validateExists(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target);
-        order.verify(repository).page(EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target, null, 51);
+        order.verify(targets).validateExists(viewer, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target);
+        order.verify(repository).page(viewer, EngagementTargetType.OVERTHINKING_PROFILE_SHARE, target, null, 51);
         order.verify(identities).resolve(List.copyOf(users.keySet()));
         verifyNoInteractions(comments);
     }
@@ -61,8 +61,7 @@ class LikeUsersReadServiceTest {
         when(likes.lockActiveActor(viewer)).thenReturn(Optional.of(viewer));
         var failure = new SoundConnectException(ErrorType.ENGAGEMENT_NOT_FOUND);
         if (type == EngagementTargetType.COMMENT) doThrow(failure).when(comments).requireLikeable(viewer, target, false);
-        else if (type == EngagementTargetType.ANNOUNCEMENT) doThrow(failure).when(targets).validateExists(viewer,type,target);
-        else doThrow(failure).when(targets).validateExists(type, target);
+        else doThrow(failure).when(targets).validateExists(viewer, type, target);
         assertThatThrownBy(() -> service.get(viewer, type, target, 20, null)).isSameAs(failure);
         verifyNoInteractions(repository, identities);
     }
@@ -84,7 +83,7 @@ class LikeUsersReadServiceTest {
 
     @Test void finalAndEmptyPagesDoNotInventACursor() {
         when(likes.lockActiveActor(viewer)).thenReturn(Optional.of(viewer));
-        when(repository.page(EngagementTargetType.MEDIA, target, null, 21)).thenReturn(List.of());
+        when(repository.page(viewer, EngagementTargetType.MEDIA, target, null, 21)).thenReturn(List.of());
         var result = service.get(viewer, EngagementTargetType.MEDIA, target, null, null);
         assertThat(result.items()).isEmpty();
         assertThat(result.hasMore()).isFalse();

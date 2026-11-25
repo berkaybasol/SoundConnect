@@ -7,6 +7,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface OverthinkingProfileShareRepository extends JpaRepository<OverthinkingProfileShare, UUID> {
+    String VISIBLE_PROFILE_SHARES = """
+            from tbl_overthinking_profile_share share join tbl_overthinking_post post on post.id=share.source_post_id
+            where share.listener_profile_id=:profileId and share.owner_user_id=:owner and (not :mainstage or (
+            """ + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingMainstageVisibility.SQL + ")) and "
+            + com.berkayb.soundconnect.modules.overthinking.support.OverthinkingBlockVisibility.VISIBLE_SOURCE;
+
+    @Query(value = "select share.* " + VISIBLE_PROFILE_SHARES + " order by share.published_at desc,share.id desc",
+            countQuery = "select count(*) " + VISIBLE_PROFILE_SHARES, nativeQuery = true)
+    Page<OverthinkingProfileShare> findVisibleToViewer(@Param("profileId") UUID profileId, @Param("owner") UUID owner,
+            @Param("viewer") UUID viewer, @Param("mainstage") boolean mainstage, Pageable pageable);
     Optional<OverthinkingProfileShare> findByOwnerUserIdAndSourcePostId(UUID ownerUserId, UUID sourcePostId);
     Optional<OverthinkingProfileShare> findByIdAndOwnerUserId(UUID id, UUID ownerUserId);
     Page<OverthinkingProfileShare> findByListenerProfileIdAndOwnerUserId(UUID listenerProfileId, UUID ownerUserId, Pageable pageable);

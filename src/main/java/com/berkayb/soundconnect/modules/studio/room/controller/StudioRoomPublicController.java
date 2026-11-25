@@ -16,6 +16,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +31,13 @@ import java.util.UUID;
 @Validated
 @Tag(name = "PUBLIC / Studio Rooms", description = "Public studio rooms and availability")
 public class StudioRoomPublicController {
+    private final ProfileBlockVisibility profileBlocks;
+
+    @ModelAttribute
+    public void checkProfileAccess(@PathVariable UUID profileId) {
+        profileBlocks.requireVisibleTarget("STUDIO", profileId);
+    }
+
     private final StudioRoomService roomService;
     private final StudioReservationService reservationService;
 

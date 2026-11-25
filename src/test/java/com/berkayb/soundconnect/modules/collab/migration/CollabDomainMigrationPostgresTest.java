@@ -313,6 +313,10 @@ class CollabDomainMigrationPostgresTest {
 
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
             assertThat(singleString(statement, """
+                    SELECT evidence_captured_at_report::text FROM tbl_collab_report
+                     WHERE id = '00000000-0000-0000-0000-000000000925'
+                    """)).isEqualTo("false");
+            assertThat(singleString(statement, """
                     SELECT listing_evidence ->> 'title'
                       FROM tbl_collab_report
                      WHERE id = '00000000-0000-0000-0000-000000000925'
@@ -985,10 +989,10 @@ class CollabDomainMigrationPostgresTest {
     }
 
     private static String moderationMigrationSql() throws Exception {
-        return Files.readString(Path.of(
-                System.getProperty("user.dir"),
-                "scripts", "db", "2026-08-11-collab-moderation.sql"
-        ));
+        Path migrations = Path.of(System.getProperty("user.dir"), "scripts", "db");
+        return Files.readString(migrations.resolve("2026-08-11-collab-moderation.sql"))
+                + System.lineSeparator()
+                + Files.readString(migrations.resolve("2026-11-23-collab-report-evidence.sql"));
     }
 
     private static String migrationSql() throws Exception {

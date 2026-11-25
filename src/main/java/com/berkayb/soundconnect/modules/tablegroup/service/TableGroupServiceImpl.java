@@ -232,6 +232,20 @@ public class TableGroupServiceImpl implements TableGroupService{
 		log.info("TableGroup {} cancelled by owner {}", tableGroupId, ownerId);
 	}
 
+	/** Invoked in the authorized review transaction, after the public description was redacted. */
+	@Override
+	public void closeForModeration(UUID tableGroupId) {
+		TableGroup group = tableGroupEntityFinder.getTableGroupByIdForUpdate(tableGroupId);
+		if (!isActiveAndUnexpired(group, Instant.now())) {
+			throw new SoundConnectException(ErrorType.TABLE_GROUP_REPORT_STATE_CHANGED);
+		}
+		UUID owner = group.getOwnerId();
+		String body = "Bu masa yönetici incelemesi sonucunda yayından kaldırıldı.";
+		cancelLockedTableGroups(List.of(group), "TABLE_CANCELLED", body, "ADMIN_REMOVED");
+		notificationOutboxService.enqueue(owner, NotificationType.TABLE_CANCELLED,
+				"Masa yayından kaldırıldı", body, tablePayload(tableGroupId, "CANCELLED", Map.of("reason", "ADMIN_REMOVED")));
+	}
+
 	// kullanicinin masaya katilma basvurusu
 	@Override
 	public void joinTableGroup(UUID userId, UUID tableGroupId, String joinNote) {

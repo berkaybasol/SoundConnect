@@ -7,6 +7,7 @@ package com.berkayb.soundconnect.auth.model;
 public record VerifiedGoogleIdentity(
 		String subject,
 		String email,
-		String displayName
+		String displayName,
+		boolean authoritativeEmail
 ) {
 }

@@ -4,6 +4,6 @@ import com.berkayb.soundconnect.modules.application.venueapplication.enums.Appli
 import java.time.Instant;
 import java.util.UUID;
 
-/** Private contact details and moderator free text are intentionally absent. */
+/** Owned application result. A rejection explanation is disclosed only to its applicant. */
 public record VenueApplicationDecisionDto(UUID id, UUID applicantUserId, ApplicationStatus status,
-        String venueName, Instant applicationDate, Instant decisionDate, UUID venueId) { }
+        String venueName, Instant applicationDate, Instant decisionDate, UUID venueId, String rejectionReason) { }

@@ -13,8 +13,14 @@ public record ProfileSearchItemDto(
 		String subtitle,
 		String imageUrl,
 		@JsonInclude(JsonInclude.Include.NON_NULL)
-		ListenerVisibilityMode visibilityMode
+		ListenerVisibilityMode visibilityMode,
+		@JsonInclude(JsonInclude.Include.NON_NULL)
+		Boolean bandContactAvailable
 ) {
+	public ProfileSearchItemDto(String type, UUID targetId, UUID userId, String title, String subtitle,
+	                            String imageUrl, ListenerVisibilityMode visibilityMode) {
+		this(type, targetId, userId, title, subtitle, imageUrl, visibilityMode, null);
+	}
 	public ProfileSearchItemDto {
 		visibilityMode = ghostOnly(visibilityMode);
 	}

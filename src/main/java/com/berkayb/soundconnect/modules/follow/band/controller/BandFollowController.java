@@ -3,6 +3,7 @@ package com.berkayb.soundconnect.modules.follow.band.controller;
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
 import com.berkayb.soundconnect.modules.follow.band.dto.response.BandFollowResponseDto;
 import com.berkayb.soundconnect.modules.follow.band.service.BandFollowService;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.shared.response.BaseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -79,7 +80,7 @@ public class BandFollowController {
 	@GetMapping(FOLLOWER_COUNT)
 	@Operation(summary = "Band follower count getirir")
 	public ResponseEntity<BaseResponse<Long>> countBandFollowers(@PathVariable UUID bandId) {
-		long count = bandFollowService.countFollowers(bandId);
+		long count = bandFollowService.countFollowers(bandId, ProfileBlockVisibility.viewerId());
 		
 		return ResponseEntity.ok(
 				BaseResponse.<Long>builder()
@@ -94,7 +95,7 @@ public class BandFollowController {
 	@GetMapping(FOLLOWERS)
 	@Operation(summary = "Band follower listesini getirir")
 	public ResponseEntity<BaseResponse<List<BandFollowResponseDto>>> getBandFollowers(@PathVariable UUID bandId) {
-		List<BandFollowResponseDto> followers = bandFollowService.getBandFollowers(bandId);
+		List<BandFollowResponseDto> followers = bandFollowService.getBandFollowers(bandId, ProfileBlockVisibility.viewerId());
 		
 		return ResponseEntity.ok(
 				BaseResponse.<List<BandFollowResponseDto>>builder()

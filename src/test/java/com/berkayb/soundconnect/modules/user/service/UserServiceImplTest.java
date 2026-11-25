@@ -23,6 +23,8 @@ import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -621,6 +623,56 @@ class UserServiceImplTest {
 		InOrder cleanupOrder = inOrder(marketplaceMediaLifecycle, userRepository);
 		cleanupOrder.verify(marketplaceMediaLifecycle).purgeAccount(lowerTargetId);
 		cleanupOrder.verify(userRepository).delete(regularTarget);
+		cleanupOrder.verify(userRepository).flush();
+	}
+
+	@Test
+	void deleteUserById_PreservesProfessionalProfileAndItsHistory() {
+		UUID targetId = UUID.randomUUID();
+		User studio = User.builder().id(targetId).roles(Set.of()).build();
+		when(userRepository.findByIdForUpdate(targetId)).thenReturn(Optional.of(studio));
+		when(userRepository.findExistingPersonalProfileRoleNames(targetId)).thenReturn(Set.of("ROLE_STUDIO"));
+
+		assertThatThrownBy(() -> userService.deleteUserById(userId, targetId))
+				.isInstanceOfSatisfying(SoundConnectException.class, failure ->
+						assertThat(failure.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE));
+
+		verifyNoInteractions(marketplaceMediaLifecycle, listenerAccountDeletionService);
+		verify(userRepository, never()).delete(any(User.class));
+	}
+
+	@ParameterizedTest
+	@CsvSource({
+			"PENDING_VENUE_REQUEST,", "PENDING_STUDIO_REQUEST,", "REJECTED_STUDIO_REQUEST,",
+			"ACTIVE,ROLE_MUSICIAN", "ACTIVE,ROLE_VENUE", "ACTIVE,ROLE_STUDIO",
+			"ACTIVE,ROLE_ORGANIZER", "ACTIVE,ROLE_PRODUCER"
+	})
+	void deleteUserById_RejectsProfessionalAccountBeforeItsProfileExists(UserStatus status, String role) {
+		UUID targetId = UUID.randomUUID();
+		User target = User.builder().id(targetId).status(status)
+				.roles(role == null ? Set.of() : Set.of(Role.builder().name(role).build())).build();
+		when(userRepository.findByIdForUpdate(targetId)).thenReturn(Optional.of(target));
+
+		assertThatThrownBy(() -> userService.deleteUserById(userId, targetId))
+				.isInstanceOfSatisfying(SoundConnectException.class, failure ->
+						assertThat(failure.getErrorType()).isEqualTo(ErrorType.ACCOUNT_DELETION_UNSUPPORTED_PROFILE));
+
+		verify(userRepository, never()).delete(any(User.class));
+		verifyNoInteractions(marketplaceMediaLifecycle, listenerAccountDeletionService);
+	}
+
+	@Test
+	void deleteUserById_StillUsesListenerErasureWhenProfileIsMissing() {
+		UUID targetId = UUID.randomUUID();
+		User listener = User.builder().id(targetId).status(UserStatus.ACTIVE)
+				.roles(Set.of(Role.builder().name("ROLE_LISTENER").build())).build();
+		when(userRepository.findByIdForUpdate(targetId)).thenReturn(Optional.of(listener));
+
+		userService.deleteUserById(userId, targetId);
+
+		verify(listenerAccountDeletionService).deleteByAdministrator(targetId);
+		verifyNoInteractions(marketplaceMediaLifecycle);
+		verify(userRepository, never()).delete(any(User.class));
 	}
 	
 	/**

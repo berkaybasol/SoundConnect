@@ -1,5 +1,7 @@
 package com.berkayb.soundconnect.modules.overthinking.service;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.mapper.CommentMapper;
@@ -85,6 +87,10 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class OverthinkingLifecyclePostgresTest {
+    @MockitoBean UserBlockService blocks;
+
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.berkayb.soundconnect.modules.promotion.announcement.AnnouncementAccess announcementAccess;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
@@ -168,6 +174,19 @@ class OverthinkingLifecyclePostgresTest {
         assertThat(count("tbl_overthinking_reveal_request", "post_id", other)).isEqualTo(1);
         assertThat(count("tbl_comment", "id", otherRoot)).isEqualTo(1);
         assertThat(count("tbl_like", "target_id", otherRoot)).isEqualTo(1);
+    }
+
+    @Test void moderatorDeletionChecksSnapshotAndRetractsOnlyTheSelectedAnonymousPost() {
+        UUID selected = post(null), other = post(null);
+        UUID root = comment(selected,null), reply = comment(selected,root);
+        reveals.createRevealRequest(reader,selected);
+        likes.setCommentLike(reader,reply,true);
+        assertError(() -> posts.removeReportedPost(selected,"different title","Body"), ErrorType.CONTENT_REPORT_STATE_CHANGED);
+        assertThat(count("tbl_comment","id",reply)).isOne();
+        posts.removeReportedPost(selected,"Title","Body");
+        assertGone(selected,root,reply);
+        assertThat(count("tbl_overthinking_post","id",other)).isOne();
+        assertError(() -> posts.removeReportedPost(selected,"Title","Body"), ErrorType.CONTENT_REPORT_STATE_CHANGED);
     }
 
     @Test void failedOrUnauthorizedDeletionPreservesEveryDependentRow() {
@@ -533,6 +552,15 @@ class OverthinkingLifecyclePostgresTest {
         assertThat(otherCard.likeCount()).isZero();
         assertThat(otherCard.commentCount()).isZero();
         assertThat(otherCard.likedByMe()).isFalse();
+
+        comments.deleteComment(author, reply);
+        comments.deleteComment(reader, sourceComment);
+        var updatedCard = shares.list(reader, target.profile, 0, 20).content().getFirst();
+        assertThat(updatedCard.commentCount()).isEqualTo(1);
+        assertThat(updatedCard.post().commentCount()).isZero();
+        assertThat(posts.getById(source, null).commentCount()).isZero();
+        assertThat(comments.getReplies(reader, root, PageRequest.of(0, 20)).getContent())
+                .singleElement().satisfies(row -> assertThat(row.deleted()).isTrue());
 
         shares.delete(target.owner, first.shareId());
         assertThat(count("tbl_comment", "target_id", first.shareId())).isZero();
@@ -978,7 +1006,7 @@ class OverthinkingLifecyclePostgresTest {
             TrackRepository.class, MediaAssetRepository.class, MusicianProfileRepository.class, BandRepository.class, StudioProfileRepository.class,
             UserRepository.class, ListenerProfileRepository.class, OverthinkingProfileShareRepository.class})
     @EntityScan(basePackages = "com.berkayb.soundconnect")
-    @Import({JpaAuditingConfig.class, OverthinkingPostServiceImpl.class, OverthinkingPostCreationReceipts.class, OverthinkingPostCommandService.class,
+    @Import({com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class, JpaAuditingConfig.class, OverthinkingPostServiceImpl.class, OverthinkingPostCreationReceipts.class, OverthinkingPostCommandService.class,
             OverthinkingRevealRequestServiceImpl.class, OverthinkingRevealParticipantGuard.class,
             OverthinkingArtistResolverServiceImpl.class, TrackServiceImpl.class, CommentServiceImpl.class,
             CommentEntityFinder.class, CommentTargetAccessGuard.class, LikeServiceImpl.class,

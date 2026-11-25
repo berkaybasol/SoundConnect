@@ -159,6 +159,14 @@ public class NotificationServiceImpl implements NotificationService {
 
 	private List<NotificationResponseDto> rehydrateActorIdentities(List<NotificationResponseDto> notifications) {
 		if (notifications == null || notifications.isEmpty()) return notifications;
+		var approvals = notifications.stream().filter(Objects::nonNull)
+				.filter(n -> n.type() == NotificationType.OVERTHINKING_REVEAL_REQUEST_APPROVED)
+				.map(NotificationResponseDto::id).toList();
+		if (!approvals.isEmpty()) {
+			var hidden = notificationRepository.findHiddenRevealApprovals(approvals);
+			if (!hidden.isEmpty()) notifications = notifications.stream()
+					.map(n -> n != null && hidden.contains(n.id()) ? anonymousRevealApproval(n) : n).toList();
+		}
 		boolean hasIdentitySnapshot = notifications.stream()
 				.filter(Objects::nonNull)
 				.anyMatch(notification -> hasActorIdentity(notification.type()));
@@ -234,6 +242,13 @@ public class NotificationServiceImpl implements NotificationService {
 					return rehydrateActorIdentity(notification, identities, failed);
 				})
 				.toList();
+	}
+
+	private NotificationResponseDto anonymousRevealApproval(NotificationResponseDto notification) {
+		var payload = mutablePayload(notification.payload());
+		payload.keySet().retainAll(List.of("module", "action", "postId", "revealRequestId"));
+		return new NotificationResponseDto(notification.id(), notification.recipientId(), notification.type(),
+				"Anonim paylaşım bildirimi", "", notification.read(), notification.createdAt(), Map.copyOf(payload));
 	}
 
 	private NotificationResponseDto rehydrateActorIdentity(

@@ -38,6 +38,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -233,12 +234,14 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	}
 
 	private java.util.Set<UUID> currentAudienceIds(List<UUID> ids) {
-		return java.util.Set.copyOf(MediaContentAudiencePolicy.isListenerViewer()
+		var readable = new java.util.HashSet<>(MediaContentAudiencePolicy.isListenerViewer()
 				? mediaAssetRepository.findMainstagePublicIds(ids.stream().distinct().toList()) : ids);
+		readable.removeAll(profileBlocks.hiddenTargets(ProfileBlockVisibility.viewerId(), "MEDIA", readable));
+		return readable;
 	}
 
 	private void requireCurrentAudience(UUID id) {
-		if (MediaContentAudiencePolicy.isListenerViewer()
+		if ((MediaContentAudiencePolicy.isListenerViewer() || ProfileBlockVisibility.viewerId() != null)
 				&& !currentAudienceIds(List.of(id)).contains(id)) {
 			throw new SoundConnectException(ErrorType.MEDIA_ASSET_NOT_FOUND);
 		}
@@ -271,6 +274,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 	private final MediaDeletionProperties mediaDeletionProperties;
 	private final AnnouncementAccess announcementAccess;
 	private final MarketplaceMediaAccess marketplaceMediaAccess;
+	private final ProfileBlockVisibility profileBlocks;
 	
 	/**
 	 * Kullanici medya yukleme istegi gonderdiginde bu metod calsiir.
@@ -447,6 +451,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
 
 	private boolean lockAndIsHiddenGhostProfileMedia(MediaOwnerType ownerType, UUID ownerId) {
 		if (ownerType == null || ownerId == null) return false;
+		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) return true;
 		return switch (ownerType) {
 			// Hold the same row lock used by visibility transitions until the media
 			// query completes. This closes the visibility-check/content-read window.

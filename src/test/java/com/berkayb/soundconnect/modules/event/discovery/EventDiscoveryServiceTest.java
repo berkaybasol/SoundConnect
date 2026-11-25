@@ -173,7 +173,7 @@ class EventDiscoveryServiceTest {
 
     private EventDiscoveryRow row(UUID musicianId, UUID bandId, String manual, String poster) {
         return new EventDiscoveryRow(UUID.randomUUID(), "Test", poster, musicianId,
-                musicianId == null ? null : "bugrasahin", null, bandId,
+                musicianId == null ? null : "bugrasahin", musicianId == null ? null : "Gece Sesi", bandId,
                 bandId == null ? null : "Şahbaz", manual, UUID.randomUUID(), "soundconnectankara",
                 "Ankara", "Çankaya", "Çayyolu", today, LocalTime.of(20, 0), LocalTime.of(22, 0), "Açıklama");
     }

@@ -28,6 +28,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
@@ -48,6 +49,7 @@ class MusicianCalendarControllerTest {
 	@TestConfiguration @EnableMethodSecurity static class MethodSecurity {}
 	@Autowired MockMvc mvc;
 	@MockitoBean MusicianCalendarService service;
+	@MockitoBean ProfileBlockVisibility profileBlocks;
 	@MockitoBean MusicianCalendarRateLimitGuard guard;
 	private static final String SETTINGS = "/api/v1/user/musician-profiles/me/calendar-settings";
 	@AfterEach void clearAuthentication() { SecurityContextHolder.clearContext(); }

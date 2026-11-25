@@ -12,5 +12,6 @@ public record VenueApplicationResponseDto(
 		String phone, // applicant.phone!
 		ApplicationStatus status,
 		LocalDateTime applicationDate,
-		LocalDateTime decisionDate
+		LocalDateTime decisionDate,
+        @com.fasterxml.jackson.annotation.JsonIgnore UUID decisionId
 ) {}

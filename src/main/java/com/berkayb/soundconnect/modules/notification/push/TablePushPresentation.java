@@ -19,7 +19,7 @@ public final class TablePushPresentation {
     public static boolean supportsTable(String capability) { return CAPABILITY.equals(capability) || CollabPushPresentation.supportsCollab(capability); }
     public static boolean valid(String type, String variant) {
         if ("TABLE_CANCELLED".equals(type))
-            return Set.of("OWNER_CANCELLED", "OWNER_JOINED_ANOTHER_TABLE").contains(variant == null ? "" : variant);
+            return Set.of("OWNER_CANCELLED", "OWNER_JOINED_ANOTHER_TABLE", "ADMIN_REMOVED").contains(variant == null ? "" : variant);
         return "DEFAULT".equals(variant) && TYPES.stream().anyMatch(t -> t.name().equals(type));
     }
 

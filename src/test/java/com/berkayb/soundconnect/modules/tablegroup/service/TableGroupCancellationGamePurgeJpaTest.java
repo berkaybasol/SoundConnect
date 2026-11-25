@@ -31,7 +31,7 @@ import com.berkayb.soundconnect.modules.venue.repository.VenueRepository;
 import com.berkayb.soundconnect.shared.config.JpaAuditingConfig;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -83,8 +83,8 @@ class TableGroupCancellationGamePurgeJpaTest {
 	@Autowired private PlatformTransactionManager transactionManager;
 
 	@ParameterizedTest
-	@ValueSource(booleans = {true, false})
-	void cancellationCommitsAfterBulkPurgeWithLazyRecipients(boolean activeGame) {
+	@CsvSource({"true,false", "false,false", "true,true"})
+	void cancellationCommitsAfterBulkPurgeWithLazyRecipients(boolean activeGame, boolean moderator) {
 		Instant now = Instant.now();
 		UUID ownerId = UUID.randomUUID();
 		UUID recipientId = UUID.randomUUID();
@@ -141,12 +141,16 @@ class TableGroupCancellationGamePurgeJpaTest {
 				now, ownerId, recipientId, activeGame));
 		assertThat(seed).isNotNull();
 
-		transaction.executeWithoutResult(status ->
-				tableService.cancelTableGroup(ownerId, seed.tableGroupId()));
+		transaction.executeWithoutResult(status -> {
+			if (moderator) tableService.closeForModeration(seed.tableGroupId());
+			else tableService.cancelTableGroup(ownerId, seed.tableGroupId());
+		});
 
 		transaction.executeWithoutResult(status -> {
 			TableGroup cancelled = tableGroupRepository.findById(seed.tableGroupId()).orElseThrow();
 			assertThat(cancelled.getStatus()).isEqualTo(TableGroupStatus.CANCELLED);
+			assertThat(cancelled.getParticipants()).extracting(TableGroupParticipant::getUserId)
+					.containsExactlyInAnyOrder(ownerId, recipientId);
 			assertThat(gameRepository.findIdsByTableGroupId(seed.tableGroupId())).isEmpty();
 			assertThat(playerRepository.findByGameIdOrderByJoinedAtAscIdAsc(seed.gameId())).isEmpty();
 			assertThat(messageRepository.countByTableGroupIdAndDeletedAtIsNull(seed.tableGroupId()))
@@ -159,6 +163,12 @@ class TableGroupCancellationGamePurgeJpaTest {
 				anyString(),
 				anyMap()
 		);
+		if (moderator) {
+			verify(outbox).enqueue(eq(ownerId), eq(NotificationType.TABLE_CANCELLED), anyString(), anyString(),
+					eq(Map.of("module", "TABLE", "action", "CANCELLED", "tableGroupId", seed.tableGroupId().toString(),
+							"reason", "ADMIN_REMOVED")));
+		}
+		verifyNoMoreInteractions(outbox);
 	}
 
 	private Seed seed(
@@ -185,8 +195,9 @@ class TableGroupCancellationGamePurgeJpaTest {
 				.status(TableGroupStatus.ACTIVE)
 				.city(city)
 				.participants(new HashSet<>(List.of(
-						participant(ownerId, now),
-						participant(recipientId, now)
+						participant(ownerId, now, ParticipantStatus.ACCEPTED),
+						participant(recipientId, now, ParticipantStatus.ACCEPTED),
+						participant(UUID.randomUUID(), now, ParticipantStatus.PENDING)
 				)))
 				.build());
 		TableGroupGame game = TableGroupGame.builder()
@@ -228,10 +239,10 @@ class TableGroupCancellationGamePurgeJpaTest {
 		return new Seed(tableGroup.getId(), game.getId());
 	}
 
-	private TableGroupParticipant participant(UUID userId, Instant now) {
+	private TableGroupParticipant participant(UUID userId, Instant now, ParticipantStatus status) {
 		return TableGroupParticipant.builder()
 				.userId(userId)
-				.status(ParticipantStatus.ACCEPTED)
+				.status(status)
 				.joinedAt(now)
 				.build();
 	}

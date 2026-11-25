@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.promotion.announcement;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.analytics.AnnouncementAnalyticsStore;
 import com.berkayb.soundconnect.modules.analytics.AnalyticsIdentity;
 import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
@@ -74,6 +75,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class AnnouncementPostgresTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
     @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("announcements_test").withUsername("announcements_test").withPassword("announcements_test").withReuse(false);
     @Autowired DataSource dataSource; @Autowired EntityManager em; @Autowired PlatformTransactionManager manager;
@@ -336,7 +339,7 @@ class AnnouncementPostgresTest {
     @EnableJpaRepositories(basePackageClasses = {PromotionRepository.class, MediaAssetRepository.class, UserRepository.class,
             LikeRepository.class, CommentRepository.class, OverthinkingPostRepository.class})
     @EntityScan(basePackages = "com.berkayb.soundconnect")
-    @Import({JpaAuditingConfig.class, AnnouncementAdminService.class, AnnouncementReadService.class, AnnouncementAccess.class,
+    @Import({com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class, JpaAuditingConfig.class, AnnouncementAdminService.class, AnnouncementReadService.class, AnnouncementAccess.class,
             PromotionServiceImpl.class, CommentTargetAccessGuard.class, EngagementTargetValidatorImpl.class,
             CommentLikeAccessGuard.class, LikeServiceImpl.class, LikeUsersReadService.class, LikeUsersReadRepository.class, CommentServiceImpl.class,
             CommentEntityFinder.class, MediaAssetStatusUpdater.class})

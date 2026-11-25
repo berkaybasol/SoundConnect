@@ -159,6 +159,7 @@ class AuthResetRealtimeAuthenticatedHttpIT {
             MailProducerImpl.class, MailJobHelper.class, MailContentBuilder.class, MailQueueConfig.class,
             UserAccountController.class, UserServiceImpl.class, UserEntityFinder.class, UsernameChangeTimeProvider.class,
             WebSocketConfig.class, WebSocketSecurityInterceptor.class, WebSocketSessionRegistry.class,
+            com.berkayb.soundconnect.auth.security.SessionAccessController.class,
             WebSocketSubscriptionAuthorizer.class, NotificationWebSocketServiceImpl.class, JpaAuditingConfig.class,
             AuthMonitorFixtureConfiguration.class})
     static class Fixture {
@@ -289,6 +290,39 @@ class AuthResetRealtimeAuthenticatedHttpIT {
         Files.writeString(pending, json.writeValueAsString(Map.of("stage", stage, "at", Instant.now().toString())));
         Files.move(pending, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         System.out.println("READY01_MONITOR_" + stage);
+    }
+
+    @Test void committedSuspensionDisconnectsIdleLiveSocketsAndRecoveryRequiresNewCredentials() throws Exception {
+        Actor actor = actor();
+        String token = login(actor, OLD_PASSWORD);
+        var scheduler = new ThreadPoolTaskScheduler();
+        scheduler.initialize();
+        var client = new WebSocketStompClient(new StandardWebSocketClient());
+        client.setTaskScheduler(scheduler);
+        var converter = new MappingJackson2MessageConverter();
+        converter.setObjectMapper(json);
+        client.setMessageConverter(converter);
+        var tx = new TransactionTemplate(transactions);
+        try {
+            var first = connect(client, token, actor.id);
+            var second = connect(client, token, actor.id);
+            tx.executeWithoutResult(status -> {
+                em.createNativeQuery("update tbl_user set access_suspended=true, session_version=session_version+1 where id=:id")
+                        .setParameter("id", actor.id).executeUpdate();
+                serverContext.publishEvent(new com.berkayb.soundconnect.modules.user.service.AccountAccessChanged(actor.id,true,1));
+            });
+            await().atMost(Duration.ofSeconds(10)).until(() -> !first.session.isConnected() && !second.session.isConnected());
+            var response = request("GET", "/api/v1/session/access", token, null, 403);
+            assertThat(json.readTree(response.body()).path("code").asInt()).isEqualTo(1119);
+            request("POST","/api/v1/auth/login",null,Map.of("username",actor.username,"password",OLD_PASSWORD),403);
+            tx.executeWithoutResult(status -> em.createNativeQuery("update tbl_user set access_suspended=false where id=:id")
+                    .setParameter("id", actor.id).executeUpdate());
+            request("GET", "/api/v1/session/access", token, null, 401);
+            request("GET", "/api/v1/session/access", login(actor, OLD_PASSWORD), null, 204);
+        } finally {
+            client.stop();
+            scheduler.shutdown();
+        }
     }
 
     @Test void passwordResetThroughActualHttpRevokesBothDevicesAndAlreadyOpenRabbitSubscriptions() throws Exception {
@@ -558,7 +592,11 @@ class AuthResetRealtimeAuthenticatedHttpIT {
     private void assertLimited(HttpResponse<String> response) {
         assertThat(Long.parseLong(response.headers().firstValue("Retry-After").orElseThrow())).isBetween(1L, 5L);
     }
-    private void emptyOwnedRedis() throws Exception { assertThat(ownedRedisCommand("FLUSHDB").trim()).isEqualTo("OK"); }
+    // All HTTP clients share the loopback rate-limit key in this class's disposable Redis.
+    @BeforeEach
+    void emptyOwnedRedis() throws Exception {
+        assertThat(ownedRedisCommand("FLUSHDB").trim()).isEqualTo("OK");
+    }
     private String ownedRedisCommand(String command) throws Exception {
         assertThat(Set.of("FLUSHDB", "DBSIZE")).contains(command);
         assertOwnedRedis();

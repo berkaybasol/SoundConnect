@@ -19,8 +19,9 @@ public interface DMMessageRepository extends JpaRepository<DMMessage, UUID> {
 	@Query("select m from DMMessage m where m.id = :id")
 	Optional<DMMessage> findByIdForUpdate(@Param("id") UUID id);
 
-	@Query("select m.conversationId from DMMessage m where m.id = :id")
-	Optional<UUID> findConversationIdByMessageId(@Param("id") UUID id);
+	record ReadTarget(UUID conversationId, UUID senderId, UUID recipientId) { }
+
+	Optional<ReadTarget> findReadTargetById(UUID id);
 
 	@Modifying(flushAutomatically = true)
 	@Query("delete from DMMessage m where m.conversationId = :conversationId")

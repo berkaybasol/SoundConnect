@@ -27,6 +27,9 @@ import com.berkayb.soundconnect.shared.exception.EmailVerificationRequiredExcept
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -63,9 +66,11 @@ class AuthServiceSecurityTest {
 	@Mock AuthAccountRateLimitGuard accountRateLimitGuard;
 	@InjectMocks AuthService authService;
 
-	@Test
-	void interruptedRegistrationReturnsCanonicalOtpDestinationOnlyAfterPasswordVerification() {
+	@ParameterizedTest
+	@EnumSource(value = UserStatus.class, names = {"INACTIVE", "PENDING_STUDIO_REQUEST"})
+	void interruptedRegistrationReturnsCanonicalOtpDestinationOnlyAfterPasswordVerification(UserStatus status) {
 		User user = unverifiedUser();
+		user.setStatus(status);
 		when(userRepository.findByUsername("berna")).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
 
@@ -76,7 +81,7 @@ class AuthServiceSecurityTest {
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.EMAIL_VERIFICATION_REQUIRED);
 		assertThat(exception.getEmail()).isEqualTo("berna@example.com");
 		assertThat(user.getEmailVerified()).isFalse();
-		assertThat(user.getStatus()).isEqualTo(UserStatus.INACTIVE);
+		assertThat(user.getStatus()).isEqualTo(status);
 		verifyNoInteractions(jwtTokenProvider, otpService, otpMailService);
 		verify(userRepository, never()).save(any());
 		verify(userRepository, never()).saveAndFlush(any());
@@ -304,16 +309,19 @@ class AuthServiceSecurityTest {
 		verifyNoInteractions(jwtTokenProvider);
 	}
 
-	@Test
-	void rejectedStudioGetsAStableDecisionErrorOnlyAfterPasswordVerification() {
-		User rejectedStudio = User.builder()
+	@ParameterizedTest
+	@ValueSource(booleans = {false, true})
+	void rejectedStudioGetsAStableDecisionErrorOnlyAfterPasswordVerification(boolean emailVerified) {
+		User rejectedStudio = User.builder().id(UUID.randomUUID())
 				.username("rejected-studio")
 				.email("studio@example.com")
 				.password("encoded")
-				.emailVerified(true)
+				.emailVerified(emailVerified)
 				.status(UserStatus.REJECTED_STUDIO_REQUEST)
 				.build();
-		when(userRepository.findByUsername("rejected-studio"))
+		when(studioApplicationService.rejectionForApplicant(rejectedStudio.getId()))
+                .thenReturn(new com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException("Studio", "Eksik adres"));
+        when(userRepository.findByUsername("rejected-studio"))
 				.thenReturn(Optional.of(rejectedStudio));
 		when(passwordEncoder.matches("secret", "encoded")).thenReturn(true);
 
@@ -323,6 +331,8 @@ class AuthServiceSecurityTest {
 		);
 
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.STUDIO_APPLICATION_REJECTED);
+        assertThat(((com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException) exception).getRejectionReason())
+                .isEqualTo("Eksik adres");
 		verifyNoInteractions(jwtTokenProvider);
 	}
 

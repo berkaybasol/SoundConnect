@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.util.Map;
 
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.BASE;
+import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.COMPLETE_GOOGLE_PROFILE;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.FORGOT_PASSWORD;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.GOOGLE_SIGN_IN;
 import static com.berkayb.soundconnect.shared.constant.EndPoints.Auth.LOGIN;
@@ -39,6 +40,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 	private static final Map<String, String> BUCKET_BY_PATH = Map.ofEntries(
 			Map.entry(BASE + LOGIN, LOGIN_BUCKET),
 			Map.entry(BASE + GOOGLE_SIGN_IN, GOOGLE_LOGIN_BUCKET),
+			Map.entry(BASE + COMPLETE_GOOGLE_PROFILE, GOOGLE_LOGIN_BUCKET),
 			Map.entry(BASE + REGISTER, REGISTER_BUCKET),
 			Map.entry(BASE + VERIFY_CODE, OTP_VERIFY_BUCKET),
 			Map.entry(BASE + RESEND_CODE, OTP_RESEND_BUCKET),

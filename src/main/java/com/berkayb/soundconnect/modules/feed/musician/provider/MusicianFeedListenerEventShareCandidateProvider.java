@@ -20,7 +20,7 @@ import java.util.*;
 @Component
 public class MusicianFeedListenerEventShareCandidateProvider implements MusicianFeedCandidateProvider {
     private static final ZoneId EVENT_ZONE = ZoneId.of("Europe/Istanbul");
-    private static final String SQL = """
+    private static final String SQL = MusicianFeedJdbcSupport.withVisibleEngagement("""
             select intent.post_id, intent.note, intent.published_at,
                    event.id as event_id, event.title, event.description, event.event_date,
                    %s as normalized_start_seconds,
@@ -38,9 +38,9 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
                    coalesce(listener.name, account.user_name) as author_display_name,
                    coalesce(avatar.playback_url, avatar.source_url, avatar.thumbnail_url, account.profile_picture) as author_avatar_url,
                    true as followed_by_viewer, (account.id=:viewerId) as owned_by_viewer,
-                   (select count(*) from tbl_like likes where likes.target_type='EVENT_POST'
+                   (select count(*) from tbl_like likes where /* VISIBLE_LIKER */ and likes.target_type='EVENT_POST'
                        and likes.target_id=intent.post_id) as like_count,
-                   (select count(*) from tbl_comment comments where comments.target_type='EVENT_POST'
+                   (select count(*) from tbl_comment comments where /* VISIBLE_COMMENT */ and comments.target_type='EVENT_POST'
                        and comments.target_id=intent.post_id and not comments.is_deleted) as comment_count,
                    exists(select 1 from tbl_like mine where mine.user_id=:viewerId
                        and mine.target_type='EVENT_POST' and mine.target_id=intent.post_id) as liked_by_me
@@ -106,7 +106,7 @@ public class MusicianFeedListenerEventShareCandidateProvider implements Musician
                           and delivered.target_id=intent.post_id)))
             order by intent.published_at desc, intent.post_id desc
             limit :limit
-            """.formatted(
+            """).formatted(
             EventProfilePublicationRepository.SQL_START_SECONDS,
             EventProfilePublicationRepository.SQL_END_SECONDS,
             EventProfilePublicationRepository.SQL_START_SECONDS)

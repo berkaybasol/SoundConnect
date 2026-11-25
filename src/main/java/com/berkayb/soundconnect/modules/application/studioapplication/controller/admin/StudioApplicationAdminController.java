@@ -1,7 +1,10 @@
 package com.berkayb.soundconnect.modules.application.studioapplication.controller.admin;
 
 import com.berkayb.soundconnect.auth.security.UserDetailsImpl;
-import com.berkayb.soundconnect.modules.application.studioapplication.dto.request.StudioApplicationRejectRequestDto;
+import com.berkayb.soundconnect.modules.application.admin.PendingApplicationQuery;
+import static com.berkayb.soundconnect.modules.application.admin.PendingApplicationQuery.Kind.STUDIO;
+import org.springframework.transaction.annotation.Transactional;
+import com.berkayb.soundconnect.modules.application.admin.ApplicationRejectionRequest;
 import com.berkayb.soundconnect.modules.application.studioapplication.dto.response.StudioApplicationResponseDto;
 import com.berkayb.soundconnect.modules.application.studioapplication.service.StudioApplicationService;
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
@@ -13,6 +16,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -32,47 +36,60 @@ import static com.berkayb.soundconnect.shared.constant.EndPoints.StudioApplicati
 @RequestMapping(ADMIN_BASE)
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("hasAuthority('MANAGE_STUDIO_APPLICATIONS') and !hasRole('LISTENER')")
+@PreAuthorize("hasAuthority('ADMIN_PANEL_ACCESS') and hasAuthority('MANAGE_STUDIO_APPLICATIONS') and !hasRole('LISTENER')")
 @Tag(name = "Admin / Studio Application", description = "Studio membership application review")
 public class StudioApplicationAdminController {
+	private final PendingApplicationQuery access;
 	private final StudioApplicationService applicationService;
 
+	@Transactional(readOnly = true)
 	@GetMapping(BY_STATUS)
 	public ResponseEntity<BaseResponse<PageResponse<StudioApplicationResponseDto>>> byStatus(
 			@RequestParam ApplicationStatus status,
 			@RequestParam(defaultValue = "0") @Min(0) @Max(1000) int page,
-			@RequestParam(defaultValue = "50") @Min(1) @Max(100) int size
+			@RequestParam(defaultValue = "50") @Min(1) @Max(100) int size,
+            @AuthenticationPrincipal UserDetailsImpl admin
 	) {
-		return ResponseEntity.ok(BaseResponse.<PageResponse<StudioApplicationResponseDto>>builder()
+        access.requireAccess(admin, STUDIO);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(BaseResponse.<PageResponse<StudioApplicationResponseDto>>builder()
 				.success(true).code(200).message("Studyo basvurulari listelendi")
 				.data(applicationService.getApplicationsByStatus(status, page, size)).build());
 	}
 
+	@Transactional(readOnly = true)
 	@GetMapping(GET_BY_ID)
-	public ResponseEntity<BaseResponse<StudioApplicationResponseDto>> byId(@PathVariable UUID id) {
-		return ResponseEntity.ok(BaseResponse.<StudioApplicationResponseDto>builder()
+	public ResponseEntity<BaseResponse<StudioApplicationResponseDto>> byId(
+            @PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl admin) {
+        access.requireAccess(admin, STUDIO);
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(BaseResponse.<StudioApplicationResponseDto>builder()
 				.success(true).code(200).message("Studyo basvurusu getirildi")
 				.data(applicationService.getById(id)).build());
 	}
 
+	@Transactional
 	@PostMapping(APPROVE)
 	public ResponseEntity<BaseResponse<StudioApplicationResponseDto>> approve(
 			@PathVariable UUID applicationId,
 			@AuthenticationPrincipal UserDetailsImpl admin
 	) {
-		return ResponseEntity.ok(BaseResponse.<StudioApplicationResponseDto>builder()
+		access.requireDecisionAccess(admin, STUDIO);
+        var response = applicationService.approveApplication(applicationId, admin.getId());
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Decision-Id", response.decisionId().toString()).body(BaseResponse.<StudioApplicationResponseDto>builder()
 				.success(true).code(200).message("Studyo basvurusu onaylandi")
-				.data(applicationService.approveApplication(applicationId, admin.getId())).build());
+				.data(response).build());
 	}
 
+	@Transactional
 	@PostMapping(REJECT)
 	public ResponseEntity<BaseResponse<StudioApplicationResponseDto>> reject(
 			@PathVariable UUID applicationId,
-			@Valid @RequestBody StudioApplicationRejectRequestDto request,
+			@Valid @RequestBody ApplicationRejectionRequest request,
 			@AuthenticationPrincipal UserDetailsImpl admin
 	) {
-		return ResponseEntity.ok(BaseResponse.<StudioApplicationResponseDto>builder()
+		access.requireDecisionAccess(admin, STUDIO);
+        var response = applicationService.rejectApplication(applicationId, admin.getId(), request.reason());
+		return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("X-Decision-Id", response.decisionId().toString()).body(BaseResponse.<StudioApplicationResponseDto>builder()
 				.success(true).code(200).message("Studyo basvurusu reddedildi")
-				.data(applicationService.rejectApplication(applicationId, admin.getId(), request.reason())).build());
+				.data(response).build());
 	}
 }

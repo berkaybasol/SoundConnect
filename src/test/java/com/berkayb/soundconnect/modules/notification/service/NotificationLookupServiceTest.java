@@ -49,6 +49,16 @@ class NotificationLookupServiceTest {
         verifyNoInteractions(badges, websocket, receipts, identities);
     }
 
+    @Test void historicalRevealApprovalKeepsItsPostDestinationAndHidesBlockedIdentity() {
+        var entity = Notification.builder().recipientId(owner).type(NotificationType.OVERTHINKING_REVEAL_REQUEST_APPROVED).build();
+        var post = UUID.randomUUID().toString();
+        visible(entity, Map.of("module", "OVERTHINKING", "postId", post, "authorId", UUID.randomUUID().toString()));
+        when(repository.findHiddenRevealApprovals(java.util.List.of(id))).thenReturn(java.util.Set.of(id));
+        var result = service.getUserNotification(owner, id);
+        assertThat(result.payload()).containsEntry("postId", post).doesNotContainKey("authorId");
+        assertThat(result.title()).isEqualTo("Anonim paylaşım bildirimi");
+    }
+
     @Test void alreadyReadOwnedNotificationCanStillResolveItsDestination() {
         var entity = Notification.builder().recipientId(owner)
                 .type(NotificationType.EVENT_PERFORMER_APPROVED).read(true).build();

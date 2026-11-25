@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -194,6 +195,18 @@ class PasswordResetServiceTest {
 	}
 
 	@Test
+	void googleAccountCannotResetAPasswordUsingItsThirdPartyContactAddress() {
+		User google = localUser();
+		google.setProvider(AuthProvider.GOOGLE);
+		when(userRepository.findByEmail(google.getEmail())).thenReturn(Optional.of(google));
+		var request = new ResetPasswordRequestDto(google.getEmail(), "123456", "newPassword", "newPassword");
+		SoundConnectException failure = catchThrowableOfType(() -> service.resetPassword(request), SoundConnectException.class);
+		assertThat(failure.getErrorType()).isEqualTo(ErrorType.PASSWORD_RESET_PROVIDER_UNSUPPORTED);
+		verifyNoInteractions(otpService, mailService, passwordEncoder);
+		verify(userRepository, never()).resetPasswordAndRevokeSessions(any(), any());
+	}
+
+	@Test
 	void synchronousMailQueueFailureReturnsSafeDeliveryError() {
 		User user = localUser();
 		when(userRepository.findByEmail("user@example.com"))
@@ -253,6 +266,23 @@ class PasswordResetServiceTest {
 		assertThat(exception.getErrorType()).isEqualTo(ErrorType.AUTH_RATE_LIMITED);
 		assertThat(exception.getRetryAfterSeconds()).isEqualTo(29L);
 		verifyNoInteractions(mailService);
+	}
+
+	@Test
+	void suspensionCommittedBeforeThePasswordResetLockPreservesCredentials() {
+		User beforeDecision = localUser();
+		User afterDecision = localUser();
+		afterDecision.setAccessSuspended(true);
+		when(userRepository.findByUsername("berkay")).thenReturn(Optional.of(beforeDecision));
+		when(otpService.verifyPasswordResetOtp("user@example.com", "123456")).thenReturn(true);
+		when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(afterDecision));
+
+		var failure = catchThrowableOfType(() -> service.resetPassword(resetRequest("berkay")), SoundConnectException.class);
+
+		assertThat(failure.getErrorType()).isEqualTo(ErrorType.ACCOUNT_SUSPENDED);
+		verify(entityManager).refresh(afterDecision);
+		verifyNoInteractions(passwordEncoder);
+		verify(userRepository, never()).resetPasswordAndRevokeSessions(any(), any());
 	}
 
 	@Test

@@ -52,7 +52,7 @@ class AuthRateLimitHttpContractTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"login", "google-sign-in", "register", "verify-code", "resend-code",
+	@ValueSource(strings = {"login", "google-sign-in", "complete-google-profile", "register", "verify-code", "resend-code",
 			"username-availability", "password-reset/account", "forgot-password", "reset-password"})
 	@SuppressWarnings("rawtypes")
 	void redisOutageBlocksEveryProtectedPostBeforeControllerExecution(String endpoint) throws Exception {

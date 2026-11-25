@@ -35,6 +35,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -43,6 +44,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -81,8 +84,9 @@ class CollabReportModerationServiceTest {
     @Test
     void adminListIncludesCompleteReadOnlyListingEvidence() {
         Collab listing = listing(user("00000000-0000-0000-0000-000000000101"));
-        CollabReport report = report(listing,
-                user("00000000-0000-0000-0000-000000000102"));
+        User reporter = user("00000000-0000-0000-0000-000000000102");
+        reporter.setUsername("gitarist");
+        CollabReport report = report(listing, reporter);
         when(reportRepository.findAdminPage(
                 eq(CollabReportStatus.OPEN), eq(CollabReportReason.SPAM), any()))
                 .thenReturn(new PageImpl<>(List.of(report)));
@@ -91,6 +95,10 @@ class CollabReportModerationServiceTest {
 
         assertThat(page.content()).hasSize(1);
         CollabReportAdminResponse response = page.content().getFirst();
+        assertThat(response.reporterUserId()).isEqualTo(reporter.getId());
+        assertThat(response.reporterUsername()).isEqualTo("gitarist");
+        assertThat(response.reviewedByUsername()).isNull();
+        assertThat(response.hasListingEvidence()).isTrue();
         assertListingEvidence(response, report);
         listing.setTitle("Degisen baslik");
         listing.setDescription("Degisen ve snapshot degerlerini etkilememesi gereken ilan aciklamasi.");
@@ -105,13 +113,48 @@ class CollabReportModerationServiceTest {
     }
 
     @Test
-    void reviewRejectsResolutionNoteThatIsTooShortAfterTrimming() {
+    void detailPreservesAnUnmarkedLegacySnapshotWithoutCertifyingTheCaptureTime() {
+        var listing = listing(user(UUID.randomUUID().toString()));
+        var report = report(listing, user(UUID.randomUUID().toString()));
+        report.setEvidenceCapturedAtReport(false);
+        listing.setTitle("İlan düzenlendi");
+        when(reportRepository.findById(report.getId())).thenReturn(Optional.of(report));
+        UUID viewer = UUID.randomUUID();
+
+        var detail = service.detail(viewer, report.getId());
+        verify(access).requireModerator(viewer);
+        assertThat(detail.listingTitle()).isEqualTo("Test ilanı");
+        assertThat(detail.hasListingEvidence()).isFalse();
+
+        report.setListingEvidence(null);
+        var withoutSnapshot = service.detail(viewer, report.getId());
+        assertThat(withoutSnapshot.listingTitle()).isEqualTo("İlan düzenlendi");
+        assertThat(withoutSnapshot.hasListingEvidence()).isFalse();
+    }
+
+    @Test
+    void erasedReporterRetainsTheIdWithoutExposingTheReplacementUsername() {
+        User reporter = user(UUID.randomUUID().toString());
+        reporter.setUsername("deleted_0123456789abcdef012345");
+        reporter.setErasedAt(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+        CollabReport report = report(listing(user(UUID.randomUUID().toString())), reporter);
+        when(reportRepository.findById(report.getId())).thenReturn(Optional.of(report));
+
+        var detail = service.detail(UUID.randomUUID(), report.getId());
+
+        assertThat(detail.reporterUserId()).isEqualTo(reporter.getId());
+        assertThat(detail.reporterUsername()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"x    ", "🎸🎸🎸", "🎸🎸🎸🎸 "})
+    void reviewRejectsResolutionNoteWithFewerThanFiveCodePointsAfterTrimming(String note) {
         UUID reportId = UUID.randomUUID();
 
         assertThatThrownBy(() -> service.review(
                 UUID.randomUUID(),
                 reportId,
-                new CollabReportReviewRequest(CollabReportDecision.DISMISS, 0L, "x    ")
+                new CollabReportReviewRequest(CollabReportDecision.DISMISS, 0L, note)
         ))
                 .isInstanceOf(SoundConnectException.class)
                 .extracting("errorType")
@@ -124,8 +167,10 @@ class CollabReportModerationServiceTest {
     void removingListingClosesItInvalidatesPendingApplicationsAndNotifiesEveryone() {
         User owner = user("00000000-0000-0000-0000-000000000001");
         User reporter = user("00000000-0000-0000-0000-000000000002");
+        reporter.setUsername("davulcu");
         User applicant = user("00000000-0000-0000-0000-000000000003");
         User admin = user("00000000-0000-0000-0000-000000000004");
+        admin.setUsername("moderator");
         Collab listing = listing(owner);
         CollabReport report = report(listing, reporter);
         CollabApplication pending = CollabApplication.builder()
@@ -152,6 +197,8 @@ class CollabReportModerationServiceTest {
         assertThat(report.getStatus()).isEqualTo(CollabReportStatus.ACTIONED);
         assertThat(report.getReviewedByUser()).isSameAs(admin);
         assertThat(response.reviewDecision()).isEqualTo(CollabReportDecision.REMOVE_LISTING);
+        assertThat(response.reporterUsername()).isEqualTo("davulcu");
+        assertThat(response.reviewedByUsername()).isEqualTo("moderator");
         assertListingEvidence(response, report);
         assertThat(response.listingStatus()).isEqualTo(CollabListingStatus.CLOSED);
         assertThat(response.listingStatusAtReport()).isEqualTo(CollabListingStatus.OPEN);
@@ -390,6 +437,7 @@ class CollabReportModerationServiceTest {
                 .reason(CollabReportReason.SPAM)
                 .reportedAt(NOW)
                 .listingEvidence(CollabReportListingEvidence.capture(listing))
+                .evidenceCapturedAtReport(true)
                 .status(CollabReportStatus.OPEN)
                 .build();
         report.setId(UUID.randomUUID());

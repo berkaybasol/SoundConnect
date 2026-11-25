@@ -47,5 +47,7 @@ public interface TableGroupService {
 	
 	// masa sahibi masayi iptal etsin
 	void cancelTableGroup(UUID ownerId, UUID tableGroupId);
+
+	void closeForModeration(UUID tableGroupId);
 	
 }

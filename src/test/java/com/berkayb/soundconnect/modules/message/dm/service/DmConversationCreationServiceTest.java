@@ -22,6 +22,7 @@ class DmConversationCreationServiceTest {
         assertThat(service.getOrCreate(actor,pair)).isEqualTo(conversation);
         verify(accounts).requireConversationReader(actor,List.of(pair.userAId(),pair.userBId()));
         verify(accounts,never()).requireActive(any());
+        verify(accounts,never()).requireInteractionAllowed(any(),any());
         verify(repository,never()).saveAndFlush(any());
     }
     @Test void absentConversationCannotBeCreatedWithErasedPeer() {
@@ -31,6 +32,17 @@ class DmConversationCreationServiceTest {
         doThrow(new SoundConnectException(ErrorType.ACCOUNT_DELETED)).when(accounts).requireActive(any());
         assertThat(catchThrowableOfType(() -> service.getOrCreate(actor,pair),SoundConnectException.class).getErrorType())
                 .isEqualTo(ErrorType.ACCOUNT_DELETED);
+        verify(repository,never()).saveAndFlush(any());
+    }
+
+    @Test void newConversationCannotBeCreatedBetweenBlockedAccounts() {
+        var repository=mock(DMConversationRepository.class); var accounts=mock(AccountDeliveryFence.class);
+        var service=new DmConversationCreationService(repository,accounts);
+        UUID actor=UUID.randomUUID(); var pair=DmParticipantPair.of(actor,UUID.randomUUID());
+        doThrow(new SoundConnectException(ErrorType.USER_INTERACTION_UNAVAILABLE)).when(accounts)
+                .requireInteractionAllowed(pair.userAId(),pair.userBId());
+        assertThat(catchThrowableOfType(() -> service.getOrCreate(actor,pair),SoundConnectException.class).getErrorType())
+                .isEqualTo(ErrorType.USER_INTERACTION_UNAVAILABLE);
         verify(repository,never()).saveAndFlush(any());
     }
 }

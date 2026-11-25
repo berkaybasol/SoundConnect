@@ -5,6 +5,8 @@ import com.berkayb.soundconnect.modules.application.studioapplication.dto.respon
 import com.berkayb.soundconnect.modules.application.venueapplication.enums.ApplicationStatus;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 
+import com.berkayb.soundconnect.shared.exception.StudioApplicationRejectedException;
+
 import java.util.UUID;
 
 public interface StudioApplicationService {
@@ -13,6 +15,7 @@ public interface StudioApplicationService {
 	StudioApplicationResponseDto getPendingApplicationByUser(UUID applicantUserId);
 	PageResponse<StudioApplicationResponseDto> getApplicationsByStatus(ApplicationStatus status, int page, int size);
 	StudioApplicationResponseDto getById(UUID applicationId);
+    StudioApplicationRejectedException rejectionForApplicant(UUID applicantUserId);
 	StudioApplicationResponseDto approveApplication(UUID applicationId, UUID adminId);
 	StudioApplicationResponseDto rejectApplication(UUID applicationId, UUID adminId, String reason);
 }

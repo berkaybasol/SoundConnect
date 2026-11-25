@@ -92,7 +92,8 @@ public final class CollabNotificationIdentity {
               and l.expires_at<=n.occurred_at and l.closed_at>=n.occurred_at
             when 'COLLAB_LISTING_REMOVED' then n.recipient_id=l.owner_user_id and l.status='CLOSED'
               and l.closure_reason='ADMIN_REMOVED' and l.closed_at=n.occurred_at
-            when 'COLLAB_JOB_COMPLETION_REQUESTED' then j.status in ('ACTIVE','COMPLETED') and
+            when 'COLLAB_JOB_COMPLETION_REQUESTED' then (j.status in ('ACTIVE','COMPLETED')
+              or (not :native and j.status='CANCELLED')) and
               ((n.recipient_id=j.publisher_user_id and j.applicant_confirmed_at=n.occurred_at)
                 or (n.recipient_id=j.applicant_user_id and j.publisher_confirmed_at=n.occurred_at))
             when 'COLLAB_JOB_COMPLETED' then j.status='COMPLETED' and j.completed_at=n.occurred_at

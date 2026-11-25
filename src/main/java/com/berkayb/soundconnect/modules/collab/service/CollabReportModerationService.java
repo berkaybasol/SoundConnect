@@ -72,6 +72,13 @@ public class CollabReportModerationService {
         return PageResponse.from(reports.map(this::response));
     }
 
+    @Transactional(readOnly = true)
+    public CollabReportAdminResponse detail(UUID viewerId, UUID reportId) {
+        access.requireModerator(viewerId);
+        return reportRepository.findById(reportId).map(this::response)
+                .orElseThrow(() -> new SoundConnectException(ErrorType.COLLAB_REPORT_NOT_FOUND));
+    }
+
     @Transactional
     public CollabReportAdminResponse review(UUID adminUserId,
                                             UUID reportId,
@@ -130,7 +137,8 @@ public class CollabReportModerationService {
 
     private static String normalizeResolutionNote(String value) {
         String normalized = value == null ? "" : value.strip();
-        if (normalized.length() < 5 || normalized.length() > 500) {
+        int length = normalized.codePointCount(0, normalized.length());
+        if (length < 5 || length > 500) {
             throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
         }
         return normalized;
@@ -222,21 +230,26 @@ public class CollabReportModerationService {
 
     private CollabReportAdminResponse response(CollabReport report) {
         Collab listing = report.getListing();
-        CollabReportListingEvidence evidence = report.getListingEvidence() == null
+        CollabReportListingEvidence storedEvidence = report.getListingEvidence();
+        CollabReportListingEvidence evidence = storedEvidence == null
                 ? CollabReportListingEvidence.capture(listing)
-                : report.getListingEvidence();
+                : storedEvidence;
         CollabInstrumentSummary instrument = evidence.instrumentId() == null ? null
                 : new CollabInstrumentSummary(evidence.instrumentId(), evidence.instrumentName());
+        User reporter = report.getReporterUser();
+        User reviewer = report.getReviewedByUser();
         return new CollabReportAdminResponse(
                 report.getId(), report.getVersion(), report.getStatus(), report.getReason(),
-                report.getDetails(), report.getReportedAt(), listing.getId(), evidence.title(),
+                report.getDetails(), report.getReportedAt(), listing.getId(),
+                storedEvidence != null && report.isEvidenceCapturedAtReport(), evidence.title(),
                 evidence.description(), listing.getStatus(), evidence.listingStatus(), evidence.publisherActorId(),
                 evidence.publisherDisplayName(), evidence.cadence(), evidence.wantedType(),
                 instrument, evidence.branch(), evidence.customSpecialty(),
                 new CollabCitySummary(evidence.cityId(), evidence.cityName()),
                 evidence.genres(), evidence.scheduledAt(), evidence.feeAmountMinor(), evidence.currency(),
-                report.getReporterUser().getId(), report.getReviewDecision(),
-                report.getReviewedByUser() == null ? null : report.getReviewedByUser().getId(),
+                reporter.getId(), reporter.getErasedAt() == null ? reporter.getUsername() : null,
+                report.getReviewDecision(),
+                reviewer == null ? null : reviewer.getId(), reviewer == null ? null : reviewer.getUsername(),
                 report.getReviewedAt(), report.getResolutionNote());
     }
 

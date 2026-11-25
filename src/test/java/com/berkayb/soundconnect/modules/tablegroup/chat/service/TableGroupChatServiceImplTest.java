@@ -71,6 +71,28 @@ class TableGroupChatServiceImplTest {
 	@InjectMocks
 	private TableGroupChatServiceImpl chatService;
 
+	@Test void reportedMessagePublishesAnAfterCommitTombstoneWithoutNewUnread() {
+		UUID table = UUID.randomUUID(), id = UUID.randomUUID(), author = UUID.randomUUID();
+		var message = TableGroupMessage.builder().id(id).senderId(author).tableGroupId(table)
+				.messageType(MessageType.TEXT).content("Original text").createdAt(java.time.LocalDateTime.now()).build();
+		when(tableGroupEntityFinder.getTableGroupByIdForUpdate(table)).thenReturn(TableGroup.builder()
+				.status(TableGroupStatus.ACTIVE).expiresAt(Instant.now().plusSeconds(60)).build());
+		when(messageRepository.findById(id)).thenReturn(Optional.of(message));
+		var mapper = org.mapstruct.factory.Mappers.getMapper(TableGroupMessageMapper.class);
+		when(messageMapper.toResponseDto(message)).thenAnswer(invocation -> mapper.toResponseDto(message));
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			chatService.removeReportedMessage(table,id);
+			verifyNoInteractions(messagingTemplate);
+			assertThat(message.getDeletedAt()).isNotNull();
+			TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+			verify(messagingTemplate).convertAndSend(WebSocketChannels.tableGroup(table),mapper.toResponseDto(message));
+			verifyNoInteractions(unreadHelper);
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
+	}
+
 	@Test void erasedSenderCannotReplayOrLockATableBeforeItsAccountFence() {
 		UUID sender=UUID.randomUUID(),table=UUID.randomUUID();
 		doThrow(new SoundConnectException(ErrorType.ACCOUNT_DELETED)).when(accounts).requireActive(List.of(sender));

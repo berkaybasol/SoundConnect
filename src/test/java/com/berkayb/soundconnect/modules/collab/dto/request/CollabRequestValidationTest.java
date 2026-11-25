@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.collab.enums.CollabReportDecision;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.List;
 import java.util.Set;
@@ -68,6 +70,13 @@ class CollabRequestValidationTest {
         assertThat(validator.validate(request))
                 .extracting(value -> value.getPropertyPath().toString())
                 .containsExactly("instrumentIds");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4,false", "5,true", "500,true", "501,false"})
+    void reviewNoteUsesTheSameUnicodeLengthBoundsAsPostgreSQL(int count, boolean accepted) {
+        var request = new CollabReportReviewRequest(CollabReportDecision.DISMISS, 0L, "🎸".repeat(count));
+        assertThat(validator.validate(request).isEmpty()).isEqualTo(accepted);
     }
 
     @Test

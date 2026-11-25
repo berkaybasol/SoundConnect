@@ -1,5 +1,9 @@
 package com.berkayb.soundconnect.modules.profile.VenueProfile.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
+import com.berkayb.soundconnect.modules.event.repository.EventRepository;
+import com.berkayb.soundconnect.modules.event.support.EventScheduleClock;
+import com.berkayb.soundconnect.modules.profile.MusicianProfile.entity.MusicianProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.dto.request.VenueProfileSaveRequestDto;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.entity.VenueProfile;
 import com.berkayb.soundconnect.modules.profile.VenueProfile.mapper.VenueProfileMapper;
@@ -14,7 +18,9 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -25,6 +31,10 @@ class VenueProfileContentRegressionTest {
     @Mock VenueProfileRepository profiles;
     @Mock VenueRepository venues;
     @Spy VenueProfileMapper mapper = Mappers.getMapper(VenueProfileMapper.class);
+
+    @Mock ProfileBlockVisibility profileBlocks;
+    @Mock EventRepository events;
+    @Mock EventScheduleClock clock;
     @InjectMocks VenueProfileServiceImpl service;
 
     @Test void ownerUpdateLocksTheProfileAndDistinguishesClearingFromOmission() {
@@ -68,5 +78,21 @@ class VenueProfileContentRegressionTest {
                         assertThat(exception.getErrorType()).isEqualTo(ErrorType.VENUE_NOT_FOUND));
         verify(venues).findPubliclyVisibleById(venueId);
         verifyNoInteractions(profiles, mapper);
+    }
+
+    @Test void publicVenuePreviewFiltersBlockedArtistsBeforeReturningNamesOrAvatars() {
+        var viewer = UUID.randomUUID();
+        var hidden = MusicianProfile.builder().id(UUID.randomUUID()).stageName("Hidden").build();
+        var visible = MusicianProfile.builder().id(UUID.randomUUID()).stageName("Visible").build();
+        var venue = Venue.builder().id(UUID.randomUUID()).activeMusicians(Set.of(hidden, visible)).build();
+        when(venues.findPubliclyVisibleById(venue.getId())).thenReturn(Optional.of(venue));
+        when(profiles.findByVenueId(venue.getId())).thenReturn(Optional.of(VenueProfile.builder().venue(venue).build()));
+        when(clock.localNow()).thenReturn(LocalDateTime.of(2026, 11, 24, 12, 0));
+        try (var audience = mockStatic(ProfileBlockVisibility.class)) {
+            audience.when(ProfileBlockVisibility::viewerId).thenReturn(viewer);
+            when(profileBlocks.hiddenTargets(eq(viewer), eq("MUSICIAN"), anyCollection())).thenReturn(Set.of(hidden.getId()));
+            assertThat(service.getPublicProfileDetail(venue.getId()).activeMusicians()).singleElement()
+                    .satisfies(row -> assertThat(row.musicianProfileId()).isEqualTo(visible.getId()));
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.notification.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.comment.abuse.CommentBurstGuard;
 import com.berkayb.soundconnect.modules.comment.dto.request.CommentCreateRequestDto;
 import com.berkayb.soundconnect.modules.comment.mapper.CommentMapper;
@@ -72,6 +73,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class MediaNotificationIdentityPostgresTest {
+    @MockitoBean ProfileBlockVisibility profileBlocks;
+
     @Container static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16.4-alpine")
             .withDatabaseName("media_identity_test").withUsername("media_identity").withPassword("disposable")
             .withLabel("soundconnect.task","media-notification-identity").withReuse(false);

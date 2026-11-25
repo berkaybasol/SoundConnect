@@ -23,6 +23,7 @@ import com.berkayb.soundconnect.modules.track.repository.TrackRepository;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,11 +46,13 @@ public class TrackServiceImpl implements TrackService {
 	private final BandMemberRepository bandMemberRepository;
 	private final StudioProfileRepository studioProfileRepository;
 	private final MediaAssetRepository mediaAssetRepository;
+	private final ProfileBlockVisibility profileBlocks;
 
 	@Override
 	@Transactional(readOnly = true)
 	public List<TrackResponseDto> getTracksByOwner(UUID ownerId, TrackOwnerType ownerType) {
 		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		List<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
 				? trackRepository.findMainstageByOwner(ownerId, ownerType)
 				: trackRepository.findAllByOwnerIdAndOwnerType(ownerId, ownerType);
@@ -67,6 +70,7 @@ public class TrackServiceImpl implements TrackService {
 	@Transactional(readOnly = true)
 	public Page<TrackResponseDto> listTracks(UUID ownerId, TrackOwnerType ownerType, Pageable pageable) {
 		if (ownerType == TrackOwnerType.STUDIO_PROFILE) MediaContentAudiencePolicy.requireStudioAccess();
+		if (profileBlocks.hiddenTarget(ownerType.name(), ownerId)) throw new SoundConnectException(ErrorType.PROFILE_NOT_FOUND);
 		Page<Track> tracks = MediaContentAudiencePolicy.isListenerViewer()
 				? trackRepository.findMainstageByOwner(ownerId, ownerType, pageable)
 				: trackRepository.findByOwnerIdAndOwnerType(ownerId, ownerType, pageable);
@@ -156,7 +160,9 @@ public class TrackServiceImpl implements TrackService {
 	@Override
 	@Transactional(readOnly = true)
 	public TrackResponseDto getTrackById(UUID trackId) {
-		return trackMapper.toDto(getTrackEntity(trackId), mediaAssetService);
+		var track = getTrackEntity(trackId);
+		if (profileBlocks.hiddenTarget(track.getOwnerType().name(), track.getOwnerId())) throw new SoundConnectException(ErrorType.TRACK_NOT_FOUND);
+		return trackMapper.toDto(track, mediaAssetService);
 	}
 
 	@Override

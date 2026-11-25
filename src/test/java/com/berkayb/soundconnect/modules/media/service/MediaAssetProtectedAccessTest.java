@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.abuse.MediaUploadAbuseGuard;
 import com.berkayb.soundconnect.modules.media.dto.response.MediaAccessUrlResponseDto;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
@@ -68,6 +69,8 @@ class MediaAssetProtectedAccessTest {
 	@Mock MediaUploadVerificationCoordinator mediaUploadVerificationCoordinator;
 	@Mock PresignedUploadWriteWindow presignedUploadWriteWindow;
 	@Mock MediaDeletionProperties mediaDeletionProperties;
+
+	@Mock ProfileBlockVisibility profileBlocks;
 
 	@InjectMocks MediaAssetServiceImpl service;
 

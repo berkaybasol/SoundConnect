@@ -9,6 +9,7 @@ import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
 import com.berkayb.soundconnect.shared.response.PageResponse;
 import lombok.RequiredArgsConstructor;
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(timeout = 10)
 public class TableGroupProfileShareService {
+    private final UserBlockService blocks;
     private static final EngagementTargetType TARGET = EngagementTargetType.TABLE_GROUP_POST;
 
     private final TableGroupProfileShareRepository repository;
@@ -121,6 +123,7 @@ public class TableGroupProfileShareService {
     private Actor publicTarget(UUID viewer, UUID profileId) {
         active(viewer, false);
         UUID owner = repository.listenerOwner(profileId).orElseThrow(this::profileNotFound);
+        if (blocks.blockedEitherWay(viewer, owner)) throw profileNotFound();
         Actor target;
         try { target = actor(owner, false); }
         catch (SoundConnectException hidden) { throw profileNotFound(); }
@@ -144,9 +147,9 @@ public class TableGroupProfileShareService {
                 .map(TableGroupProfileShare::getTableGroupId).distinct().toList();
         var sources = liveIds.isEmpty() ? Map.<UUID, TableGroupProfileShareResponse.Source>of() : sources(liveIds);
         var shareIds = shares.stream().map(TableGroupProfileShare::getId).toList();
-        var likeCounts = likes.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+        var likeCounts = likes.countVisibleByTargets(viewer, TARGET, shareIds).stream()
                 .collect(Collectors.toMap(LikeRepository.TargetCountProjection::getTargetId, LikeRepository.TargetCountProjection::getCount));
-        var commentCounts = comments.countByTargetTypeAndTargetIdIn(TARGET, shareIds).stream()
+        var commentCounts = comments.countVisibleByTargets(viewer, TARGET, shareIds).stream()
                 .collect(Collectors.toMap(CommentRepository.TargetCountProjection::getTargetId, CommentRepository.TargetCountProjection::getCount));
         var liked = likes.findLikedTargetIds(viewer, TARGET, shareIds);
         return shares.stream().map(share -> new TableGroupProfileShareResponse.Post(

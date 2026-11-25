@@ -43,7 +43,8 @@ public class VenueApplicationSessionService {
         return new VenueApplicationDecisionDto(app.getId(), userId, app.getStatus(), app.getVenueName(),
                 app.getApplicationDate().toInstant(ZoneOffset.UTC),
                 app.getDecisionDate()==null?null:app.getDecisionDate().toInstant(ZoneOffset.UTC),
-                app.getApprovedVenue()==null?null:app.getApprovedVenue().getId());
+                app.getApprovedVenue()==null?null:app.getApprovedVenue().getId(),
+                app.getStatus() == ApplicationStatus.REJECTED ? app.getRejectionReason() : null);
     }
 
     public LoginResponse promote(UUID userId, UUID applicationId, long authenticatedSessionVersion) {
@@ -98,6 +99,7 @@ public class VenueApplicationSessionService {
         var user=users.findByIdForUpdate(userId)
                 .orElseThrow(()->new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND));
         entityManager.refresh(user,LockModeType.PESSIMISTIC_WRITE);
+        if(user.isAccessSuspended()) throw new SoundConnectException(ErrorType.ACCOUNT_SUSPENDED);
         if(application.getApprovedVenue()!=null)
             entityManager.refresh(application.getApprovedVenue(),LockModeType.PESSIMISTIC_READ);
         if(!access.permits(user,application)) throw new SoundConnectException(ErrorType.VENUE_APPLICATION_NOT_FOUND);

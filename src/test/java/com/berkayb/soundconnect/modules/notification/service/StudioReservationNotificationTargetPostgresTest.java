@@ -40,6 +40,7 @@ class StudioReservationNotificationTargetPostgresTest {
         jdbc.execute("drop schema public cascade"); jdbc.execute("create schema public");
         jdbc.execute("create table tbl_user(id uuid primary key,status text,email_verified boolean,erased_at timestamp)");
         jdbc.execute("create table tbl_role(id uuid primary key,name text)");
+        jdbc.execute("create table tbl_user_block(blocker_id uuid, blocked_id uuid, unblocked_at timestamptz)");
         jdbc.execute("create table user_roles(user_id uuid,role_id uuid)");
         jdbc.execute("create table " + LISTENER_TABLE + "(user_id uuid)");
         jdbc.execute("create table tbl_studio_profile(id uuid primary key,user_id uuid,name text,time_zone text)");
@@ -87,9 +88,11 @@ class StudioReservationNotificationTargetPostgresTest {
         jdbc.update("update tbl_studio_room_reservation set status='CANCELLED_BY_STUDIO',starts_at=?,ends_at=?",
                 Timestamp.from(now.minusSeconds(172800)),Timestamp.from(now.minusSeconds(169200)));
         jdbc.update("update tbl_studio_room set archived_at=?",Timestamp.from(now.minusSeconds(86400)));
+        jdbc.update("insert into tbl_user_block values(?,?,null)",owner,customer);
         var result=service.resolve(customer,notification);
         assertThat(result.status()).isEqualTo(StudioReservationStatus.CANCELLED_BY_STUDIO);
         assertThat(result.roomArchived()).isTrue(); assertThat(result.completed()).isFalse();
+        assertThat(result.interactionBlocked()).isTrue();
         assertThat(result.localDate()).isEqualTo(LocalDate.of(2026,9,22));
         assertThat(jdbc.queryForObject("select count(*) from tbl_notification where not is_read",Integer.class)).isEqualTo(2);
     }

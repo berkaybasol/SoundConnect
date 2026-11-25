@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.media.service;
 
+import com.berkayb.soundconnect.modules.profile.shared.visibility.ProfileBlockVisibility;
 import com.berkayb.soundconnect.modules.media.entity.MediaAsset;
 import com.berkayb.soundconnect.modules.media.enums.*;
 import com.berkayb.soundconnect.modules.media.repository.MediaAssetRepository;
@@ -37,6 +38,8 @@ class MediaContentAudienceServiceTest {
     @Mock com.berkayb.soundconnect.modules.media.storage.MediaPolicy mediaPolicy;
     @Mock com.berkayb.soundconnect.modules.media.storage.StorageClient storageClient;
     @Mock com.berkayb.soundconnect.modules.media.storage.PresignedUploadWriteWindow presignedUploadWriteWindow;
+
+    @Mock ProfileBlockVisibility profileBlocks;
     @InjectMocks MediaAssetServiceImpl service;
     final UUID owner = UUID.randomUUID(), id = UUID.randomUUID();
 

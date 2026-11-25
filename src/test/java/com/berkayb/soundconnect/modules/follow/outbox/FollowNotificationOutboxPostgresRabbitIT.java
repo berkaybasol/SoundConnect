@@ -1,5 +1,6 @@
 package com.berkayb.soundconnect.modules.follow.outbox;
 
+import com.berkayb.soundconnect.modules.user.block.UserBlockService;
 import com.berkayb.soundconnect.modules.notification.config.NotificationRabbitConfig;
 import com.berkayb.soundconnect.modules.notification.entity.Notification;
 import com.berkayb.soundconnect.modules.notification.enums.NotificationType;
@@ -132,7 +133,7 @@ class FollowNotificationOutboxPostgresRabbitIT {
     @EnableTransactionManagement(proxyTargetClass = true)
     @Import({FollowNotificationOutboxService.class, FollowNotificationOutboxDispatcher.class,
             FollowNotificationOutboxScheduler.class, FollowNotificationDispatchCoordinator.class,
-            FollowNotificationPublisher.class, FollowServiceImpl.class, BandFollowServiceImpl.class,
+            UserBlockService.class, FollowNotificationPublisher.class, FollowServiceImpl.class, BandFollowServiceImpl.class,
             com.berkayb.soundconnect.modules.user.support.UserEntityFinder.class,
             com.berkayb.soundconnect.modules.profile.MusicianProfile.band.support.BandEntityFinder.class,
             com.berkayb.soundconnect.modules.profile.ListenerProfile.support.ListenerVisibilityPolicy.class,
@@ -217,6 +218,7 @@ class FollowNotificationOutboxPostgresRabbitIT {
         properties.setPublishedRetention(Duration.ofDays(7));
         ReflectionTestUtils.setField(producer, "publishRoutingKey", "notification.event");
         jdbc.execute(Files.readString(Path.of("scripts/db/2026-09-27-follow-notification-outbox.sql")));
+        jdbc.execute(Files.readString(Path.of("scripts/db/2026-11-24-user-blocks.sql")));
         jdbc.execute("truncate tbl_follow_notification_outbox, tbl_notification, tbl_notification_receipt, tbl_user cascade");
         jdbc.execute("create table if not exists tbl_push_delivery(id uuid primary key)");
         when(publicProfiles.resolveByUserId(any())).thenAnswer(inv -> new UserProfilesResolveResponseDto(inv.getArgument(0),List.of()));
@@ -562,6 +564,27 @@ class FollowNotificationOutboxPostgresRabbitIT {
         assertThat(rows.countByStatus(PUBLISHED)).isEqualTo(12);
         assertThat(admin.getQueueInfo(QUEUE).getMessageCount()).isEqualTo(12);
     }
+    @Test void bandFollowerListAndCountUseTheSameViewerInBothBlockDirections() {
+        var group = domain(true);
+        var visibleFollower = user();
+        var incomingFollower = user();
+        var viewer = user().getId();
+        group.follow();
+        bandFollows.followBand(visibleFollower.getId(), group.band);
+        bandFollows.followBand(incomingFollower.getId(), group.band);
+        var block = "insert into tbl_user_block(blocker_id, blocked_id) values (?, ?)";
+        jdbc.update(block, viewer, group.actor.getId());
+        jdbc.update(block, incomingFollower.getId(), viewer);
+        assertThat(bandFollows.getBandFollowers(group.band, viewer))
+                .extracting(row -> row.followerId()).containsExactly(visibleFollower.getId());
+        assertThat(bandFollows.countFollowers(group.band, viewer)).isOne();
+        assertThat(bandFollows.countFollowers(group.band, group.sibling.getId())).isEqualTo(3L);
+        jdbc.update("update tbl_user_block set unblocked_at = now() where blocker_id = ?", viewer);
+        assertThat(bandFollows.countFollowers(group.band, viewer)).isEqualTo(2L);
+        assertThat(bandFollows.getBandFollowers(group.band, viewer))
+                .extracting(row -> row.followerId()).containsExactlyInAnyOrder(visibleFollower.getId(), group.actor.getId());
+    }
+
     @Test void unavailableActorRecipientAndDeletedBandAreExplicitlySuppressed() {
         for(boolean actor:List.of(false,true)) {
             var event=event(); enqueue(event);

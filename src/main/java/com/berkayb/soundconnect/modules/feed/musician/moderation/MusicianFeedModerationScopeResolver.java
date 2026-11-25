@@ -72,6 +72,13 @@ public class MusicianFeedModerationScopeResolver {
         return Set.copyOf(scopes);
     }
 
+    String targetProfileType(MusicianFeedItemResponse item) {
+        JsonNode activity = mapper.valueToTree(item.payload());
+        String type = text(child(activity, "targetPayload"), "profileType");
+        if (type == null || !PROFILE_TYPES.contains(type)) throw new IllegalArgumentException("Invalid activity target profile");
+        return type;
+    }
+
     public String describeScope(String scope) {
         if (scope == null) return null;
         if (scope.startsWith("ITEM:")) return "Yalnız bu akış aktivitesi veya reklam kartı";

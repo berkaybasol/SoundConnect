@@ -35,6 +35,8 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                    (case when actor.profile_type='BAND' then band_follow.id is not null
                          else following.id is not null end) as followed_by_viewer,
                    (listing.owner_user_id=:viewerId) as owned_by_viewer,
+            """ + COLLAB_CONTACT_BLOCKED + """
+                    as interaction_blocked,
                    (select count(*) from tbl_collab_application application
                        where application.collab_id=listing.id) as application_count,
                    exists(select 1 from tbl_collab_application mine
@@ -207,7 +209,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 MusicianFeedJdbcSupport.instant(row, "closed_at"),
                 MusicianFeedJdbcSupport.instant(row, "created_at"), actor, author,
                 row.getLong("application_count"), row.getBoolean("owned_by_viewer"),
-                row.getBoolean("applied_by_me"), row.getBoolean("saved_by_me"),
+                row.getBoolean("applied_by_me"), row.getBoolean("saved_by_me"), row.getBoolean("interaction_blocked"),
                 row.getBoolean("city_match"), row.getBoolean("instrument_match"));
     }
 
@@ -226,7 +228,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
                 new CollabCitySummary(value.cityId(), value.cityName()), List.copyOf(genres), value.scheduledAt(),
                 value.expiresAt(), value.feeAmountMinor(), value.currency(), feeStatus, value.publishedAt(),
                 value.closedAt(), value.createdAt(), value.actor(), value.applicationCount(), value.ownedByViewer(),
-                value.appliedByMe(), value.savedByMe());
+                value.appliedByMe(), value.savedByMe(), value.interactionBlocked());
         int relevance = value.cityMatch() && value.instrumentMatch() ? 260_000
                 : value.cityMatch() ? 170_000 : value.instrumentMatch() ? 120_000 : 0;
         MusicianFeedReasonCode relevanceReason = value.cityMatch() && value.instrumentMatch()
@@ -264,7 +266,7 @@ public class MusicianFeedCollabCandidateProvider implements MusicianFeedCandidat
             UUID cityId, String cityName, Instant scheduledAt, Instant expiresAt,
             Long feeAmountMinor, String currency, Instant publishedAt, Instant closedAt, Instant createdAt,
             CollabActorSummary actor, MusicianFeedItemResponse.Author author, long applicationCount,
-            boolean ownedByViewer, boolean appliedByMe, boolean savedByMe,
+            boolean ownedByViewer, boolean appliedByMe, boolean savedByMe, boolean interactionBlocked,
             boolean cityMatch, boolean instrumentMatch
     ) { }
 }

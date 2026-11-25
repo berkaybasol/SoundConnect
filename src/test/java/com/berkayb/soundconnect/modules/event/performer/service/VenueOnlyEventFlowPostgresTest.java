@@ -62,6 +62,7 @@ import static org.mockito.Mockito.*;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({EventPerformerRequestServiceImpl.class, BandRepresentationPolicy.class, MusicianCalendarService.class,
+        com.berkayb.soundconnect.modules.user.support.AccountDeliveryFence.class,
         BandCalendarService.class, EventMapper.class, EventServiceImpl.class,
         com.berkayb.soundconnect.modules.event.plan.EventPlanLifecycle.class})
 @ActiveProfiles("test") @Testcontainers(disabledWithoutDocker = true)
