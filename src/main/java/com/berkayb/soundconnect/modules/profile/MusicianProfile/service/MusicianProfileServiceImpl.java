@@ -17,6 +17,7 @@ import com.berkayb.soundconnect.modules.profile.MusicianProfile.repository.Music
 import com.berkayb.soundconnect.modules.profile.shared.type.PersonalProfileTypePolicy;
 import com.berkayb.soundconnect.modules.profile.shared.ProfileInputValidation;
 import com.berkayb.soundconnect.modules.role.enums.RoleEnum;
+import com.berkayb.soundconnect.modules.spotify.dto.response.SpotifyTrackItemDto;
 import com.berkayb.soundconnect.modules.user.entity.User;
 import com.berkayb.soundconnect.modules.user.support.UserEntityFinder;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
@@ -114,6 +115,9 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		                                         .build();
 		
 		MusicianProfile saved = musicianProfileRepository.save(profile);
+		if (!spotifyIds(profile.getSpotifyTrackIds(), profile.getSpotifyTracks()).isEmpty()) {
+			recordSpotifyAddition(userId);
+		}
 		
 		log.info("Yeni muzisyen profili olusturuldu. UserId: {}", userId);
 		
@@ -212,8 +216,14 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 		if (dto.soundcloudUrl() != null) profile.setSoundcloudUrl(ProfileInputValidation.webUrl(dto.soundcloudUrl(), "soundcloudUrl"));
 		if (dto.spotifyEmbedUrl() != null) profile.setSpotifyEmbedUrl(ProfileInputValidation.webUrl(dto.spotifyEmbedUrl(), "spotifyEmbedUrl"));
 		if (dto.spotifyArtistId() != null) profile.setSpotifyArtistId(ProfileInputValidation.optionalIdentifier(dto.spotifyArtistId()));
-		if (dto.spotifyTrackIds() != null) profile.setSpotifyTrackIds(dto.spotifyTrackIds());
-		if (dto.spotifyTracks() != null) profile.setSpotifyTracks(dto.spotifyTracks());
+		if (dto.spotifyTrackIds() != null || dto.spotifyTracks() != null) {
+			var previousTracks = spotifyIds(profile.getSpotifyTrackIds(), profile.getSpotifyTracks());
+			if (dto.spotifyTrackIds() != null) profile.setSpotifyTrackIds(dto.spotifyTrackIds());
+			if (dto.spotifyTracks() != null) profile.setSpotifyTracks(dto.spotifyTracks());
+			if (!previousTracks.containsAll(spotifyIds(profile.getSpotifyTrackIds(), profile.getSpotifyTracks()))) {
+				recordSpotifyAddition(userId);
+			}
+		}
 		
 		if (dto.instrumentIds() != null) {
 			profile.setInstruments(resolveInstruments(dto.instrumentIds()));
@@ -287,6 +297,18 @@ public class MusicianProfileServiceImpl implements MusicianProfileService {
 	}
 	
 	
+	private static Set<String> spotifyIds(List<String> ids, List<SpotifyTrackItemDto> tracks) {
+		var result = new HashSet<String>();
+		if (ids != null) result.addAll(ids);
+		if (tracks != null) tracks.forEach(track -> result.add(track.spotifyTrackId()));
+		return result;
+	}
+
+	private void recordSpotifyAddition(UUID userId) {
+		entityManager.createNativeQuery("select sc_record_first_action(:member, 'spotify_track_added', array['MUSICIAN']) is not null")
+				.setParameter("member", userId).getSingleResult();
+	}
+
 	private void validateContent(MusicianProfileSaveRequestDto dto) {
 		if (dto == null) throw ProfileInputValidation.invalid("Profile content is required");
 		ProfileInputValidation.text(dto.stageName(), 255, "stageName");

@@ -129,9 +129,9 @@ public class AnnouncementAnalyticsStore implements AnnouncementImpressionHistory
     @Override
     @Transactional(readOnly = true, timeout = 4)
     public Map<UUID, QualifiedImpressions> qualifiedImpressionHistory(UUID viewer, List<UUID> ids, Instant recordedBefore) {
-        identity.requireEnabled();
         if (viewer == null || ids == null || ids.size() > 200 || recordedBefore == null) throw invalid();
-        if (ids.isEmpty()) return Map.of();
+        if (ids.isEmpty() || !properties.isEnabled()) return Map.of();
+        identity.requireEnabled();
         Instant anchor = recordedBefore.truncatedTo(ChronoUnit.MICROS);
         var result = new HashMap<UUID, QualifiedImpressions>();
         jdbc.query("""

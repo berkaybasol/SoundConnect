@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -91,6 +92,25 @@ public class AdminAccountDirectory {
     private final NamedParameterJdbcTemplate jdbc;
     private final AdminPanelReadAccess panelAccess;
     private final PublicProfileResolverService publicProfiles;
+
+    public record AnalyticsPreferenceCounts(long granted, long denied, long undecided, Instant asOf) {}
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public AnalyticsPreferenceCounts analyticsPreferences(UserDetailsImpl actor, ProfileType profileType) {
+        panelAccess.require(actor, PermissionEnum.READ_USERS);
+        if (profileType != null && !SUPPORTED.contains(profileType)) throw new SoundConnectException(ErrorType.VALIDATION_ERROR);
+        var params = new MapSqlParameterSource("version", MemberAnalyticsPreferenceService.POLICY_VERSION)
+                .addValue("profileType", profileType == null ? "ALL" : profileType.name());
+        return jdbc.queryForObject("""
+                select count(*) filter (where p.decision='GRANTED' and p.policy_version=:version) as granted,
+                       count(*) filter (where p.decision='DENIED') as denied,
+                       count(*) filter (where p.user_id is null or (p.decision='GRANTED' and p.policy_version<>:version)) as undecided,
+                       transaction_timestamp() as as_of
+                from tbl_analytics_membership_period m left join tbl_member_analytics_preference p on p.user_id=m.user_id
+                where m.user_id is not null and m.state='ACTIVE' and (:profileType='ALL' or m.profile_type=:profileType)
+                """, params, (row, i) -> new AnalyticsPreferenceCounts(row.getLong("granted"), row.getLong("denied"),
+                row.getLong("undecided"), row.getObject("as_of", OffsetDateTime.class).toInstant()));
+    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResponse<AdminAccountSummary> list(UserDetailsImpl actor, String query, ProfileType profileType,

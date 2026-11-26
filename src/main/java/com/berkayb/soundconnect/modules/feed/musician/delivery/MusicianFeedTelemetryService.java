@@ -70,6 +70,7 @@ public class MusicianFeedTelemetryService {
 
     private MusicianFeedTelemetryResponse recordAuthorized(UUID viewerId, MusicianFeedTelemetryRequest request,
                                                            BackstageFeedAudience expectedAudience) {
+        if (!properties.isTelemetryEnabled()) throw new SoundConnectException(ErrorType.FEED_TELEMETRY_DISABLED);
         if (request == null || request.clientEventId() == null || request.eventType() == null) throw invalid();
         Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         MusicianFeedDeliveredItem delivery = deliveries.require(request.impressionToken(), viewerId, null, now);

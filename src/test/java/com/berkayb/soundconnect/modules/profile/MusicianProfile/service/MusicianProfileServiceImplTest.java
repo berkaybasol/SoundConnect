@@ -46,6 +46,23 @@ class MusicianProfileServiceImplTest {
 	
 	@InjectMocks
 	MusicianProfileServiceImpl service;
+
+    @Test void spotifyReorderingAndRetriesOnlyRecordAnActualAddition() {
+        UUID userId = UUID.randomUUID();
+        var profile = MusicianProfile.builder().id(UUID.randomUUID()).user(User.builder().id(userId).build())
+                .spotifyTrackIds(List.of("one","two")).build();
+        when(repo.findByUserIdForUpdate(userId)).thenReturn(Optional.of(profile));
+        when(repo.save(profile)).thenReturn(profile);
+        when(mapper.toDto(profile)).thenReturn(mock(MusicianProfileResponseDto.class));
+        var query = mock(jakarta.persistence.Query.class);
+        when(entityManager.createNativeQuery(contains("sc_record_first_action"))).thenReturn(query);
+        when(query.setParameter("member",userId)).thenReturn(query);
+        for (var tracks : List.of(List.of("two","one"),List.of("one"),List.of("one","three"),List.of("one","three"))) {
+            var dto = new MusicianProfileSaveRequestDto(null,null,null,null,null,null,null,null,null,tracks,null);
+            service.updateProfile(userId,dto);
+        }
+        verify(query,times(1)).getSingleResult();
+    }
 	
 	@Test
 	void createProfile_shouldCreate_whenNotExists() {

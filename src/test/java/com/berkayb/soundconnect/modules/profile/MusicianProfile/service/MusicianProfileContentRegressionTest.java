@@ -23,6 +23,7 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,9 @@ class MusicianProfileContentRegressionTest {
             return profile;
         });
         var dto = content(null, "artist", null, List.of("trackA", "trackB"));
+        Query firstAction = mock(Query.class);
+        when(entityManager.createNativeQuery(contains("'spotify_track_added'"))).thenReturn(firstAction);
+        when(firstAction.setParameter("member", userId)).thenReturn(firstAction);
 
         var response = service.createProfile(userId, dto);
 
@@ -64,6 +68,7 @@ class MusicianProfileContentRegressionTest {
         var persisted = ArgumentCaptor.forClass(MusicianProfile.class);
         verify(profiles).save(persisted.capture());
         assertThat(persisted.getValue().getSpotifyTrackIds()).containsExactly("trackA", "trackB");
+        verify(firstAction).getSingleResult();
     }
 
     @Test void missingInstrumentRejectsTheWholeCreateInsteadOfSilentlyDroppingIt() {

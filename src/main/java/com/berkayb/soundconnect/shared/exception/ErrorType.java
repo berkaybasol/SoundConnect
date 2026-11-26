@@ -406,6 +406,8 @@ public enum ErrorType {
 	ANALYTICS_RATE_LIMITED(9912, "Analytics rate limited", HttpStatus.TOO_MANY_REQUESTS, "İstatistik istekleri çok sık. Biraz sonra tekrar dene."),
 	ANALYTICS_UNAVAILABLE(9913, "Analytics temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE, "İstatistikler şu anda kullanılamıyor."),
 	ANALYTICS_TOO_LARGE(9914, "Analytics request too large", HttpStatus.PAYLOAD_TOO_LARGE, "İstatistik isteği izin verilen boyutu aşıyor."),
+	ANALYTICS_PREFERENCE_CONFLICT(9915, "Analytics preference or policy has changed", HttpStatus.CONFLICT, "Analitik tercihi veya metni değişti. Güncel tercihi kontrol et."),
+	FEED_TELEMETRY_DISABLED(9916, "Feed telemetry collection is disabled", HttpStatus.GONE, "Akış kullanım ölçümü kapalı."),
 
 	// PERSONAL EVENT INTENT (9920-9924)
 	EVENT_INTENT_INVALID(9920, "Invalid event intent", HttpStatus.BAD_REQUEST, "Etkinlik planı veya paylaşım bilgileri geçersiz."),
