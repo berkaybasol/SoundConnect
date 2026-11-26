@@ -22,8 +22,9 @@ import static org.mockito.Mockito.*;
 
 class MusicianFeedRecentViewHistoryTest {
     private final NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+    private final MusicianFeedProperties properties = new MusicianFeedProperties();
     private final MusicianFeedDeliveryService service = new MusicianFeedDeliveryService(jdbc,
-            mock(MusicianFeedDeliveryTokenCodec.class), new MusicianFeedProperties(), new ObjectMapper(),
+            mock(MusicianFeedDeliveryTokenCodec.class), properties, new ObjectMapper(),
             mock(MusicianFeedReplayVisibilityGuard.class));
     private final UUID viewer = UUID.randomUUID(), session = UUID.randomUUID();
     private final Instant anchor = Instant.parse("2026-09-14T12:00:00Z");
@@ -43,6 +44,9 @@ class MusicianFeedRecentViewHistoryTest {
         UUID media = UUID.randomUUID();
         String key = MusicianFeedDeliverySnapshot.targetKey("MEDIA", media);
         Set<String> candidates = Set.of(key, "COLLAB:" + UUID.randomUUID());
+        assertThat(service.recentlyViewedTargetKeys(viewer, session, anchor, candidates)).isEmpty();
+        verifyNoInteractions(jdbc);
+        properties.setTelemetryEnabled(true);
         when(jdbc.query(anyString(), any(SqlParameterSource.class),
                 org.mockito.ArgumentMatchers.<RowMapper<String>>any())).thenAnswer(call -> {
             String sql = call.getArgument(0);

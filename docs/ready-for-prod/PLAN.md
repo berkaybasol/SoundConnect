@@ -11,11 +11,13 @@ onayı ve ardından bu oturumun yalnız hazırlıkla sınırlandırılması.
 | 01 | Hesap güvenliği, sağlık görünümü ve staging işletimi | Oturumların iptali, güvenli hız sınırı, kurulum ve geri alma, izleme, dış alarm ve kurtarma. Kapasite kabulü yayın öncesine ertelendi. | `ready-for-prod-01` |
 | 02 | Admin panelinin işletim işlevleri | Başvuru, kullanıcı, şikâyet, backline ve gerekli operasyon yönetimi; yetki ve kalıcı yönetici işlem izi | `ready-for-prod-02` |
 | 03 | Hesap yaşam döngüsü ve ortak kullanıcı güvenliği | Dört profil için silme, kullanıcı engelleme, kalan ortak hesap işlemleri; 02'de yapılan yaptırım/audit tekrar yazılmaz | `ready-for-prod-03` |
-| 04 | Google Analytics | Ölçüm planı, güvenli kimlik/tercih yönetimi, test/canlı ayrımı, gerçek cihaz olay doğrulaması | `ready-for-prod-04` |
+| 04 | Kullanım istatistikleri ve Google Analytics | SoundConnect canlı sayaç, aylık zirveler ve ilk hafta ölçümleri, GA4 aylık kullanım raporları, rıza ve güvenli kimlik yönetimi, test/canlı ayrımı ve gerçek cihaz doğrulaması | `ready-for-prod-04` |
 | 05 | Modül modül prod kalitesi ve gerçek kabul | Kapsamdaki modüllerin doğruluk, yetki/mahremiyet, eşzamanlılık, hata, kaynak sınırı ve gerçek kullanıcı yolu kapanışları | `ready-for-prod-05` |
 | 06 | Farklı GitHub repolarına taşıma ve prod altyapı yapılandırması | Geçmiş/kanıt korunumu, GitHub/CI/erişim güvenliği, secret/env/ortam ayrımı, AWS/Firebase ve diğer bağımlılıkların prod uygunluğu | `ready-for-prod-06` |
 | 07 | iOS | Apple kimliği/imza, APNs/Firebase, izinler, linkler ve ana ürün yollarının gerçek iPhone kabulü | `ready-for-prod-07` |
 | 08 | Bütünleşik üretim ve yayın kabulü | Android+iOS+backend, gerçekçi yük, kesinti/kurtarma, yedekten dönüş ve mağaza sürümü kabulü | `ready-for-prod-08` |
+
+**04'ün ilk üretim kurulumu.** PostgreSQL geçişleri ürün deposundaki [yerel kurulum sırasını](../../scripts/dev.ps1) izler. Aynı tarihli dört geçişin sırası üye tercihi, üyelik dönemleri ve kohortlar, ilk eylem, ardından canlı ziyarettir. API rolünün yeni tablolara ve tetikleyicilerin kullandığı işlevlere erişimi ayrı veritabanı rolleriyle doğrulanmalıdır. Canlı toplama için `APP_ANALYTICSREPORT_LIVEENABLED`, GA4 okuması için `APP_ANALYTICSREPORT_ENABLED`, `APP_ANALYTICSREPORT_PROPERTY` ve `APP_ANALYTICSREPORT_STREAM` kullanılır. GA4 erişimi sunucunun salt okunur kimliğiyle sağlanır. Üretim API'si, Android veri akışı, rapor başlangıcı ve uygulamadaki aydınlatma metinlerinin şirket, aktarım ve saklama bilgileri yayın öncesi açıktır.
 
 Önceki altı aşamalı plandaki son genel kabul, yeni 06 ve iOS 07 sonrasına 08
 olarak taşındı. Bildirimlerin önce bitirilmesi koşulu son kapanışla karşılandı;

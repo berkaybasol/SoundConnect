@@ -167,6 +167,7 @@ public class MusicianFeedDeliveryService {
         if (candidateTargetKeys.size() > MAX_RECENT_VIEW_TARGETS) {
             throw new IllegalArgumentException("Recent feed view target batch exceeds bound");
         }
+        if (!properties.isTelemetryEnabled()) return Set.of();
         Set<String> targetKeys = Set.copyOf(candidateTargetKeys);
         List<String> viewed = jdbc.query(RECENTLY_VIEWED_TARGETS_SQL,
                 new MapSqlParameterSource().addValue("viewerId", viewerId)

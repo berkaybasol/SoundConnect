@@ -129,6 +129,7 @@ class MusicianFeedDeliveryServicePostgresTest {
 
     @Test
     void recentViewsUseOnlyThisViewersQualifiedImpressionsBeforeTheSessionAnchor() throws Exception {
+        properties.setTelemetryEnabled(true);
         UUID priorSession = UUID.randomUUID(), otherViewer = UUID.randomUUID();
         execute("INSERT INTO tbl_user(id) VALUES ('" + otherViewer + "')");
         UUID seen = UUID.randomUUID(), prefetched = UUID.randomUUID(), opened = UUID.randomUUID();
@@ -177,6 +178,7 @@ class MusicianFeedDeliveryServicePostgresTest {
 
     @Test
     void expiredDeliveryStillContributesRecentViewsUntilCleanupWithoutExtendingSessionState() {
+        properties.setTelemetryEnabled(true);
         UUID previous = UUID.randomUUID(), target = UUID.randomUUID();
         Instant deliveredAt = now.minusSeconds(90_000);
         service.recordPage(viewer, previous, deliveredAt, 1, "history-test", 0,
@@ -339,7 +341,26 @@ class MusicianFeedDeliveryServicePostgresTest {
     }
 
     @Test
+    void defaultSettingsDeliverProductsWithoutCollectingOldClientsOptionalFeedEvents() {
+        var delivered = transactions.execute(status -> service.recordPage(viewer, session, now, 1,
+                "musician-v1", 0, List.of(item("TRACK:one")), now)).getFirst();
+        var telemetry = new MusicianFeedTelemetryService(jdbc, service, mock(MusicianFeedViewerGuard.class),
+                properties, Clock.fixed(now, ZoneOffset.UTC));
+        var request = new MusicianFeedTelemetryRequest(UUID.randomUUID(), delivered.impressionToken(),
+                MusicianFeedTelemetryEventType.OPEN, now);
+        for (Runnable send : List.<Runnable>of(() -> telemetry.record(viewer, request),
+                () -> telemetry.recordForVenue(viewer, request), () -> telemetry.recordForListener(viewer, request),
+                () -> telemetry.recordForStudio(viewer, request))) {
+            assertThatThrownBy(send::run).isInstanceOfSatisfying(SoundConnectException.class,
+                    error -> assertThat(error.getErrorType()).isEqualTo(ErrorType.FEED_TELEMETRY_DISABLED));
+        }
+        assertThat(number("select count(*) from tbl_musician_feed_telemetry_event")).isZero();
+        assertThat(number("select count(*) from tbl_musician_feed_delivery")).isOne();
+    }
+
+    @Test
     void telemetryReplayMustMatchBothEventAndDeliveryIdentity() {
+        properties.setTelemetryEnabled(true);
         List<MusicianFeedItemResponse> delivered = transactions.execute(status -> service.recordPage(
                 viewer, session, now, 1, "musician-v1", 0,
                 List.of(item("TRACK:one"), item("TRACK:two")), now));
@@ -370,6 +391,7 @@ class MusicianFeedDeliveryServicePostgresTest {
 
     @Test
     void concurrentRotatingTelemetryIdsConvergeOnOneDeliveryEvent() throws Exception {
+        properties.setTelemetryEnabled(true);
         MusicianFeedItemResponse delivered = transactions.execute(status -> service.recordPage(
                 viewer, session, now, 1, "musician-v1", 0, List.of(item("TRACK:one")), now)).getFirst();
         MusicianFeedTelemetryService telemetry = new MusicianFeedTelemetryService(jdbc, service,

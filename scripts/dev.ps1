@@ -114,6 +114,10 @@ $LocalSchemaMigrations = @(
     @{ Name = "Business account erasure"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-business-account-erasure.sql" }
     @{ Name = "Application mail cleanup"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-application-erasure-mail-cleanup.sql" }
     @{ Name = "Table membership acceptance time"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-25-table-block-arrival.sql" }
+    @{ Name = "Member analytics preference"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-26-member-analytics-preference.sql" }
+    @{ Name = "Analytics account periods and cohorts"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-26-analytics-reports.sql" }
+    @{ Name = "First meaningful action"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-26-analytics-first-action.sql" }
+    @{ Name = "Consented first-party live activity"; Path = Join-Path $ProjectRoot "scripts\db\2026-11-26-analytics-live-presence.sql" }
 )
 
 function Assert-Command([string]$Name) {

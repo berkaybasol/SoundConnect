@@ -54,6 +54,19 @@ class AnalyticsRateGuardRedisTest {
         var limited=catchThrowableOfType(()->guard.submission(request(ip)),RateLimitedException.class);
         assertThat(limited.getRetryAfterSeconds()).isBetween(40L,45L);assertThat(redis.opsForValue().get(local)).isEqualTo("300");assertThat(redis.getExpire(local)).isLessThanOrEqualTo(12);
     }
+    @Test void liveVisitsHaveSeparateExpiringQuotasWhileVenueMeasurementIsOff() {
+        properties.setEnabled(false);
+        properties.setIpRequestsPerMinute(1);
+        properties.setGlobalRequestsPerMinute(2);
+        guard.liveActivity(request("203.0.113.23"));
+        assertThatThrownBy(() -> guard.liveActivity(request("203.0.113.23"))).isInstanceOf(RateLimitedException.class);
+        guard.liveActivity(request("203.0.113.24"));
+        assertThatThrownBy(() -> guard.liveActivity(request("203.0.113.25"))).isInstanceOf(RateLimitedException.class);
+        assertThat(redis.keys("soundconnect:{live-activity}:ip:*")).hasSize(2).allSatisfy(key -> {
+            assertThat(key).matches("soundconnect:\\{live-activity}:ip:[0-9a-f]{64}");
+            assertThat(redis.getExpire(key)).isBetween(1L,60L);
+        });
+    }
     @Test void readQuotaIsIndependentFromSubmissionAndFollowsAccountAcrossIps() {
         properties.setOwnerReadsPerMinute(2);UUID owner=UUID.randomUUID();
         guard.read(request("203.0.113.5"),owner);guard.read(request("203.0.113.6"),owner);

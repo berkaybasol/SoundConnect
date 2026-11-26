@@ -23,6 +23,15 @@ class AnnouncementAnalyticsContractTest {
     private static final Instant NOW=Instant.parse("2026-09-13T12:00:00Z");
     private final ObjectMapper mapper=Jackson2ObjectMapperBuilder.json().build();
 
+    @Test void feedCanSelectAnnouncementsWithoutReadingOrWritingDisabledAnalytics() {
+        var jdbc = mock(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.class);
+        var identity = mock(AnalyticsIdentity.class);
+        var store = new AnnouncementAnalyticsStore(jdbc, identity, new AnalyticsProperties(), null, null);
+        assertThat(store.qualifiedImpressionHistory(CLIENT, List.of(ANNOUNCEMENT), NOW)).isEmpty();
+        store.recordEngagement(CLIENT, ANNOUNCEMENT, PLAYBACK, AnnouncementAnalyticsStore.EngagementMetric.LIKE, NOW);
+        verifyNoInteractions(jdbc, identity);
+    }
+
     static Stream<AnalyticsRequest.Type> announcementTypes() {
         return Arrays.stream(AnalyticsRequest.Type.values()).filter(AnalyticsRequest.Type::announcement);
     }

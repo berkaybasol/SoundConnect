@@ -12,6 +12,7 @@ public class MusicianFeedProperties {
             "soundconnect-local-musician-feed-delivery-secret-change-me";
 
     private boolean enabled = true;
+    private boolean telemetryEnabled;
     private String cursorSecret = DEVELOPMENT_CURSOR_SECRET;
     private Duration cursorTtl = Duration.ofHours(24);
     private String deliverySecret = DEVELOPMENT_DELIVERY_SECRET;
@@ -33,6 +34,8 @@ public class MusicianFeedProperties {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public boolean isTelemetryEnabled() { return telemetryEnabled; }
+    public void setTelemetryEnabled(boolean telemetryEnabled) { this.telemetryEnabled = telemetryEnabled; }
     public String getCursorSecret() { return cursorSecret; }
     public void setCursorSecret(String cursorSecret) { this.cursorSecret = cursorSecret; }
     public Duration getCursorTtl() { return cursorTtl; }

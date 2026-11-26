@@ -8,6 +8,7 @@ import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedPropertie
 import com.berkayb.soundconnect.modules.feed.musician.core.MusicianFeedViewerGuard;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.SoundConnectException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -30,8 +31,14 @@ class MusicianFeedVenueTelemetryServiceTest {
     private final MusicianFeedDeliveryService deliveries = mock(MusicianFeedDeliveryService.class);
     private final MusicianFeedViewerGuard viewers = mock(MusicianFeedViewerGuard.class);
     private final UUID viewer = UUID.randomUUID();
+    private final MusicianFeedProperties properties = new MusicianFeedProperties();
     private final MusicianFeedTelemetryService service = new MusicianFeedTelemetryService(jdbc, deliveries, viewers,
-            new MusicianFeedProperties(), Clock.fixed(NOW, ZoneOffset.UTC));
+            properties, Clock.fixed(NOW, ZoneOffset.UTC));
+
+    @BeforeEach
+    void enableTelemetryForLegacyContract() {
+        properties.setTelemetryEnabled(true);
+    }
 
     @Test
     void venueImpressionIsRecordedAgainstItsAuthoritativeDeliveryInTheSharedTelemetryLedger() {

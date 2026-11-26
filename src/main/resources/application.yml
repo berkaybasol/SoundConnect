@@ -109,6 +109,8 @@ management:
           degraded: 200
 
 app:
+  analytics-report:
+    live-enabled: ${APP_ANALYTICSREPORT_LIVEENABLED:${APP_ANALYTICSREPORT_ENABLED:false}}
   google:
     audience: ${GOOGLE_CLIENT_ID:}
     authorized-presenters: ${GOOGLE_AUTHORIZED_PRESENTERS:}
@@ -134,6 +136,9 @@ app:
   diagnostics:
     mobile:
       environment: ${SOUNDCONNECT_ENVIRONMENT:local}
+  feed:
+    musician:
+      telemetry-enabled: ${SOUNDCONNECT_FEED_TELEMETRY_ENABLED:false}
   venue-analytics:
     enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_ENABLED:false}
     reporting-enabled: ${SOUNDCONNECT_VENUE_ANALYTICS_REPORTING_ENABLED:false}

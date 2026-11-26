@@ -43,6 +43,12 @@ public class AdminAccountDirectoryController {
         return response(accounts.list(actor, query, profileType, status, suspended, page, size));
     }
 
+    @GetMapping("/analytics-preferences")
+    public ResponseEntity<BaseResponse<AdminAccountDirectory.AnalyticsPreferenceCounts>> analyticsPreferences(
+            @AuthenticationPrincipal UserDetailsImpl actor, @RequestParam(required = false) ProfileType profileType) {
+        return response(accounts.analyticsPreferences(actor, profileType));
+    }
+
     @GetMapping("/{userId}")
     public ResponseEntity<BaseResponse<AdminAccountDetail>> detail(@AuthenticationPrincipal UserDetailsImpl actor,
                                                                    @PathVariable UUID userId) {

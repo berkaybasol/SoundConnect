@@ -120,7 +120,7 @@ public class AuthRateLimiter {
 		}
 	}
 
-	private static String hashIdentity(String identity) {
+	public static String hashIdentity(String identity) {
 		String normalized = identity == null || identity.isBlank()
 				? "unknown"
 				: identity.trim();

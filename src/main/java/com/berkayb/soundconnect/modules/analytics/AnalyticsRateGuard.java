@@ -1,6 +1,7 @@
 package com.berkayb.soundconnect.modules.analytics;
 
 import com.berkayb.soundconnect.auth.ratelimit.TrustedProxyClientAddressResolver;
+import com.berkayb.soundconnect.auth.ratelimit.AuthRateLimiter;
 import com.berkayb.soundconnect.shared.exception.ErrorType;
 import com.berkayb.soundconnect.shared.exception.RateLimitedException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,6 +40,11 @@ public class AnalyticsRateGuard {
     }
     public void observations(UUID userId, UUID clientId, int count) {
         consume(List.of(key("actor", identity.actor(userId, clientId))), count, properties.getActorObservationsPerMinute());
+    }
+    public void liveActivity(HttpServletRequest request) {
+        String ipDigest = AuthRateLimiter.hashIdentity(resolver.resolve(request));
+        consume(List.of("soundconnect:{live-activity}:ip:" + ipDigest, "soundconnect:{live-activity}:global"),
+                1, properties.getIpRequestsPerMinute(), properties.getGlobalRequestsPerMinute());
     }
     public void read(HttpServletRequest request, UUID userId) {
         identity.requireEnabled();

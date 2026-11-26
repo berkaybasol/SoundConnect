@@ -6,6 +6,8 @@ import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfileT
 import com.berkayb.soundconnect.modules.profile.shared.resolver.dto.UserProfilesResolveResponseDto;
 import com.berkayb.soundconnect.modules.profile.shared.resolver.service.PublicProfileResolverService;
 import com.berkayb.soundconnect.modules.user.entity.User;
+import com.berkayb.soundconnect.modules.user.controller.MemberAnalyticsPreferenceController;
+import com.berkayb.soundconnect.modules.user.service.MemberAnalyticsPreferenceService;
 import com.berkayb.soundconnect.modules.user.service.AdminAccountDirectory;
 import com.berkayb.soundconnect.modules.user.service.AdminAccountAccessService;
 import com.berkayb.soundconnect.shared.exception.GlobalExceptionHandler;
@@ -45,6 +47,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -57,6 +61,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -64,10 +69,12 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest
 @ContextConfiguration(classes = {AdminAccountDirectoryController.class, AdminAccountDirectory.class,
+        MemberAnalyticsPreferenceService.class, MemberAnalyticsPreferenceController.class,
         AdminPanelReadAccess.class, AdminAccountAccessService.class, GlobalExceptionHandler.class, AdminAccountDirectoryPostgresTest.Config.class})
 @Testcontainers
 @Transactional
@@ -82,12 +89,18 @@ class AdminAccountDirectoryPostgresTest {
     @EnableMethodSecurity
     @EnableTransactionManagement
     static class Config {
-        @Bean DataSource database() {
+        @Bean DataSource database() throws Exception {
             var ds = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
             new ResourceDatabasePopulator(new ClassPathResource("admin-account-directory.sql")).execute(ds);
             var accessMigration = new ResourceDatabasePopulator(new FileSystemResource("scripts/db/2026-11-23-account-access-decisions.sql"));
             accessMigration.execute(ds);
             accessMigration.execute(ds);
+            String migration = Files.readString(Path.of("scripts/db/2026-11-26-member-analytics-preference.sql"));
+            try (var connection = ds.getConnection(); var sql = connection.createStatement()) {
+                sql.execute(migration);
+                sql.execute(migration);
+                sql.execute(Files.readString(Path.of("scripts/db/2026-11-26-analytics-reports.sql")));
+            }
             return ds;
         }
         @Bean NamedParameterJdbcTemplate queries(DataSource db) { return new NamedParameterJdbcTemplate(db); }
@@ -127,9 +140,142 @@ class AdminAccountDirectoryPostgresTest {
     }
 
     private RequestPostProcessor as(String... permissions) {
-        var principal = UserDetailsImpl.fromUser(User.builder().id(actor).sessionVersion(7).build());
+        return asAccount(actor, permissions);
+    }
+
+    private RequestPostProcessor asAccount(UUID id, String... permissions) {
+        var principal = UserDetailsImpl.fromUser(User.builder().id(id).sessionVersion(7).build());
         var authorities = Arrays.stream(permissions).map(SimpleGrantedAuthority::new).toList();
         return authentication(new UsernamePasswordAuthenticationToken(principal, null, authorities));
+    }
+
+    private static final String PREFERENCE = "/api/v1/users/me/analytics-preference";
+
+    private MockHttpServletRequestBuilder changePreference(UUID id, String decision, String policyVersion, int revision) {
+        return put(PREFERENCE).with(asAccount(id)).with(csrf()).contentType("application/json")
+                .content("""
+                        {"decision":"%s","policyVersion":"%s","expectedRevision":%d}
+                        """.formatted(decision, policyVersion, revision));
+    }
+
+    @Test void memberPreferencesStartEmptyAndBothDevicesShareOnlyTheCurrentGrant() throws Exception {
+        String version = MemberAnalyticsPreferenceService.POLICY_VERSION;
+        UUID member = account("member", "ACTIVE", 3);
+        UUID other = account("other", "ACTIVE", 2);
+        mvc.perform(get(PREFERENCE)).andExpect(status().isUnauthorized());
+        mvc.perform(get(PREFERENCE).with(asAccount(member))).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(jsonPath("$.data.decision").value("UNDECIDED")).andExpect(jsonPath("$.data.revision").value(0))
+                .andExpect(jsonPath("$.data.analyticsUserId").doesNotExist());
+        assertEquals(0, db.queryForObject("select count(*) from tbl_member_analytics_preference", Integer.class));
+        mvc.perform(changePreference(member, "GRANTED", "old-policy", 0)).andExpect(status().isConflict());
+        mvc.perform(changePreference(member, "UNDECIDED", version, 0)).andExpect(status().isBadRequest());
+        mvc.perform(changePreference(member, "GRANTED", version, 0)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.changedAt").isString()).andExpect(jsonPath("$.data.revision").value(1));
+        UUID grantedId = db.queryForObject("select analytics_user_id from tbl_member_analytics_preference where user_id=?",
+                UUID.class, member);
+        assertNotEquals(member, grantedId);
+        mvc.perform(get(PREFERENCE).with(asAccount(member))).andExpect(jsonPath("$.data.analyticsUserId").value(grantedId.toString()));
+        mvc.perform(changePreference(member, "GRANTED", version, 0)).andExpect(jsonPath("$.data.revision").value(1))
+                .andExpect(jsonPath("$.data.analyticsUserId").value(grantedId.toString()));
+        mvc.perform(get(PREFERENCE).with(asAccount(other))).andExpect(jsonPath("$.data.decision").value("UNDECIDED"));
+        mvc.perform(changePreference(member, "DENIED", version, 1)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.decision").value("DENIED")).andExpect(jsonPath("$.data.analyticsUserId").doesNotExist())
+                .andExpect(jsonPath("$.data.revision").value(2));
+        mvc.perform(changePreference(member, "GRANTED", version, 1)).andExpect(status().isConflict());
+        mvc.perform(get(PREFERENCE).with(asAccount(member))).andExpect(jsonPath("$.data.analyticsUserId").doesNotExist());
+        mvc.perform(changePreference(member, "GRANTED", version, 2)).andExpect(status().isOk());
+        assertNotEquals(grantedId, db.queryForObject(
+                "select analytics_user_id from tbl_member_analytics_preference where user_id=?", UUID.class, member));
+        db.update("update tbl_user set erased_at=now() where id=?", member);
+        assertEquals(0, db.queryForObject("select count(*) from tbl_member_analytics_preference", Integer.class));
+        mvc.perform(changePreference(member, "GRANTED", version, 0)).andExpect(status().isUnauthorized());
+    }
+
+    @Test void reportCountsCurrentDecisionsOncePerCompletedAccountAndSupportsAllProfileFilters() throws Exception {
+        String version = MemberAnalyticsPreferenceService.POLICY_VERSION;
+        String report = API + "/analytics-preferences";
+        UUID musician = account("choice-musician", "ACTIVE", 3);
+        UUID listener = account("choice-listener", "ACTIVE", 2);
+        account("choice-studio", "ACTIVE", 5);
+        UUID administrator = account("choice-admin", "ACTIVE", 1);
+        db.update("insert into user_roles values (?,3)", administrator);
+        UUID venue = account("choice-venue", "PENDING_VENUE_REQUEST", 4);
+        db.update("insert into tbl_musician_profile values (?)", musician);
+        mvc.perform(changePreference(listener, "GRANTED", version, 0)).andExpect(status().isOk());
+        mvc.perform(changePreference(musician, "DENIED", version, 0)).andExpect(status().isOk());
+        mvc.perform(changePreference(musician, "DENIED", version, 0)).andExpect(status().isOk());
+        // Ordinary API reads observe membership triggers committed by earlier requests.
+        db.execute("set constraints sc_analytics_member immediate");
+        mvc.perform(get(report).with(as(PANEL, READ))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.granted").value(1)).andExpect(jsonPath("$.data.denied").value(1))
+                .andExpect(jsonPath("$.data.undecided").value(1)).andExpect(jsonPath("$.data.asOf").isString())
+                .andExpect(jsonPath("$.data.*", hasSize(4)));
+        mvc.perform(get(report).param("profileType","VENUE").with(as(PANEL, READ))).andExpect(jsonPath("$.data.undecided").value(0));
+        db.update("update tbl_user set status='ACTIVE' where id=?", venue);
+        mvc.perform(get(report).param("profileType","VENUE").with(as(PANEL, READ))).andExpect(jsonPath("$.data.undecided").value(1));
+        mvc.perform(get(report).param("profileType","STUDIO").with(as(PANEL, READ))).andExpect(jsonPath("$.data.undecided").value(1));
+        db.update("update tbl_user set access_suspended=true where id=?", musician);
+        mvc.perform(get(report).param("profileType","MUSICIAN").with(as(PANEL, READ))).andExpect(jsonPath("$.data.denied").value(1))
+                .andExpect(jsonPath("$.data.granted").value(0)).andExpect(jsonPath("$.data.undecided").value(0));
+        mvc.perform(get(PREFERENCE).with(asAccount(musician))).andExpect(status().isUnauthorized());
+        db.update("update tbl_member_analytics_preference set policy_version='old' where user_id=?", listener);
+        mvc.perform(get(PREFERENCE).with(asAccount(listener))).andExpect(jsonPath("$.data.decision").value("UNDECIDED"))
+                .andExpect(jsonPath("$.data.analyticsUserId").doesNotExist());
+        mvc.perform(get(report).param("profileType","LISTENER").with(as(PANEL, READ))).andExpect(jsonPath("$.data.undecided").value(1))
+                .andExpect(jsonPath("$.data.granted").value(0));
+        db.update("update tbl_user set erased_at=now() where id=?", musician);
+        mvc.perform(get(report).with(as(PANEL, READ))).andExpect(jsonPath("$.data.denied").value(0));
+        mvc.perform(get(report).param("profileType","BAND").with(as(PANEL, READ))).andExpect(status().isBadRequest());
+        mvc.perform(get(report).with(as(PANEL))).andExpect(status().isForbidden());
+        mvc.perform(get(report).with(as(READ))).andExpect(status().isForbidden());
+        mvc.perform(get(report)).andExpect(status().isUnauthorized());
+    }
+
+    @Test void firebaseOnlyGrantMustBeRenewedWhileExplicitDenialStillCounts() throws Exception {
+        db.execute("set constraints sc_analytics_member immediate");
+        String oldPolicy = "2026-11-26";
+        String newPolicy = MemberAnalyticsPreferenceService.POLICY_VERSION;
+        UUID former = account("earlier-grant", "ACTIVE", 2);
+        UUID denied = account("earlier-denial", "ACTIVE", 2);
+        UUID oldIdentity = UUID.randomUUID();
+        db.update("insert into tbl_member_analytics_preference values (?,'GRANTED',?,1,now(),?)", former, oldPolicy, oldIdentity);
+        db.update("insert into tbl_member_analytics_preference values (?,'DENIED',?,1,now(),null)", denied, oldPolicy);
+        mvc.perform(get(PREFERENCE).with(asAccount(former))).andExpect(jsonPath("$.data.decision").value("UNDECIDED"))
+                .andExpect(jsonPath("$.data.revision").value(1)).andExpect(jsonPath("$.data.policyVersion").value(newPolicy))
+                .andExpect(jsonPath("$.data.analyticsUserId").doesNotExist());
+        mvc.perform(get(PREFERENCE).with(asAccount(denied))).andExpect(jsonPath("$.data.decision").value("DENIED"));
+        mvc.perform(get(API + "/analytics-preferences").param("profileType","LISTENER").with(as(PANEL,READ)))
+                .andExpect(jsonPath("$.data.granted").value(0)).andExpect(jsonPath("$.data.denied").value(1))
+                .andExpect(jsonPath("$.data.undecided").value(1));
+        mvc.perform(changePreference(former,"GRANTED",oldPolicy,1)).andExpect(status().isConflict());
+        mvc.perform(changePreference(former,"GRANTED",newPolicy,1)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.decision").value("GRANTED")).andExpect(jsonPath("$.data.revision").value(2));
+        assertNotEquals(oldIdentity,db.queryForObject("select analytics_user_id from tbl_member_analytics_preference where user_id=?", UUID.class, former));
+    }
+
+    @Test void concurrentFirstChoicesAcrossDevicesApplyExactlyOneRevision() throws Exception {
+        UUID member = account("two-devices", "ACTIVE", 2);
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
+        var start = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var results = List.of("GRANTED", "DENIED").stream().map(choice -> workers.submit(() -> {
+                start.await();
+                return mvc.perform(changePreference(member, choice, MemberAnalyticsPreferenceService.POLICY_VERSION, 0))
+                        .andReturn().getResponse().getStatus();
+            })).toList();
+            start.countDown();
+            assertEquals(List.of(200, 409), List.of(results.get(0).get(15, TimeUnit.SECONDS),
+                    results.get(1).get(15, TimeUnit.SECONDS)).stream().sorted().toList());
+            assertEquals(1L, db.queryForObject("select revision from tbl_member_analytics_preference where user_id=?", Long.class, member));
+        } finally {
+            for (UUID id : List.of(member, actor)) {
+                db.update("delete from user_roles where user_id=?", id);
+                db.update("delete from user_permissions where user_id=?", id);
+                db.update("delete from tbl_user where id=?", id);
+            }
+        }
     }
 
     @Test void allFourTypesHaveStablePagesAndOnlyReturnListFields() throws Exception {
